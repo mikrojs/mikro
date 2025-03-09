@@ -1,0 +1,31 @@
+BasedOnStyle: Google  # Use Google as the base style
+IndentWidth: 4        # Indentation size
+TabWidth: 4           # Width of a tab character
+UseTab: Never         # Always use spaces instead of tabs
+
+# Formatting rules
+ColumnLimit: 100        # Maximum line length
+BreakBeforeBraces: Attach  # Keep braces on the same line
+AllowShortIfStatementsOnASingleLine: false  # Prevent inline `if` statements
+IndentCaseLabels: true   # Indent case labels in switch statements
+
+InsertNewlineAtEOF: true
+KeepEmptyLinesAtEOF: false
+
+# Namespace handling
+NamespaceIndentation: All  # Indent inside namespaces
+FixNamespaceComments: true  # Add closing comments on namespace end
+SortIncludes: true  # Sort `#include` statements
+
+# Pointer & Reference Formatting
+PointerAlignment: Left   # `int* ptr` instead of `int *ptr`
+DerivePointerAlignment: false
+
+# Spaces
+SpaceBeforeParens: ControlStatements  # No space before function calls, but yes for `if`, `while`, etc.
+SpacesInAngles: false  # No spaces in `<T>` templates
+
+# C++11-specific
+Cpp11BracedListStyle: true
+AllowShortLambdasOnASingleLine: false
+

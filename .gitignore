@@ -1,0 +1,6 @@
+idf-tools
+build
+sdkconfig
+sdkconfig.old
+cmake-build-debug
+.env
