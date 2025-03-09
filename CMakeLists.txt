@@ -3,5 +3,9 @@
 cmake_minimum_required(VERSION 3.16)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(hello_world)
+add_compile_options(-Wno-incompatible-pointer-types)
+add_compile_options(-Wno-format)
+add_compile_options(-Wno-maybe-uninitialized)
+add_compile_options(-Wno-char-subscript)
+project(microjs)
 

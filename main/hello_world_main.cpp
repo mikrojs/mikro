@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include "sdkconfig.h"
+#include "quickjs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_chip_info.h"
@@ -41,6 +42,22 @@ extern "C" void app_main(void)
            (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 
     printf("Minimum free heap size: %" PRIu32 " bytes\n", esp_get_minimum_free_heap_size());
+
+    JSRuntime *rt = JS_NewRuntime();
+    JSContext *ctx = JS_NewContext(rt);
+
+    auto const code = "2+2";
+    auto const res = JS_Eval(ctx, code, 3, "<eval>", JS_EVAL_TYPE_GLOBAL);
+
+    int32_t num;
+    JS_ToInt32(ctx, &num, res);
+    JS_FreeValue(ctx, res);
+
+    JS_FreeContext(ctx);
+
+    JS_FreeRuntime(rt);
+
+    printf("The number is: %" PRIu32 "!\n", num);
 
     for (int i = 10; i >= 0; i--) {
         printf("Restarting in %d seconds...\n", i);
