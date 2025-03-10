@@ -4,3 +4,4 @@ sdkconfig
 sdkconfig.old
 cmake-build-debug
 .env
+.cache

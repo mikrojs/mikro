@@ -4,27 +4,25 @@
  * SPDX-License-Identifier: CC0-1.0
  */
 
-#include <stdio.h>
 #include <inttypes.h>
-#include "sdkconfig.h"
-#include "quickjs.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include <stdio.h>
+
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "quickjs.h"
+#include "sdkconfig.h"
 
-extern "C" void app_main(void)
-{
+extern "C" void app_main(void) {
     printf("Hello world!\n");
 
     /* Print chip information */
     esp_chip_info_t chip_info;
     uint32_t flash_size;
     esp_chip_info(&chip_info);
-    printf("This is %s chip with %d CPU core(s), %s%s%s%s, ",
-           CONFIG_IDF_TARGET,
-           chip_info.cores,
+    printf("This is %s chip with %d CPU core(s), %s%s%s%s, ", CONFIG_IDF_TARGET, chip_info.cores,
            (chip_info.features & CHIP_FEATURE_WIFI_BGN) ? "WiFi/" : "",
            (chip_info.features & CHIP_FEATURE_BT) ? "BT" : "",
            (chip_info.features & CHIP_FEATURE_BLE) ? "BLE" : "",
@@ -33,7 +31,7 @@ extern "C" void app_main(void)
     unsigned major_rev = chip_info.revision / 100;
     unsigned minor_rev = chip_info.revision % 100;
     printf("silicon revision v%d.%d, ", major_rev, minor_rev);
-    if(esp_flash_get_size(NULL, &flash_size) != ESP_OK) {
+    if (esp_flash_get_size(NULL, &flash_size) != ESP_OK) {
         printf("Get flash size failed");
         return;
     }
@@ -43,8 +41,8 @@ extern "C" void app_main(void)
 
     printf("Minimum free heap size: %" PRIu32 " bytes\n", esp_get_minimum_free_heap_size());
 
-    JSRuntime *rt = JS_NewRuntime();
-    JSContext *ctx = JS_NewContext(rt);
+    JSRuntime* rt = JS_NewRuntime();
+    JSContext* ctx = JS_NewContext(rt);
 
     auto const code = "2+2";
     auto const res = JS_Eval(ctx, code, 3, "<eval>", JS_EVAL_TYPE_GLOBAL);
