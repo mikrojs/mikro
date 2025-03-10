@@ -4,15 +4,16 @@
  * SPDX-License-Identifier: CC0-1.0
  */
 
-#include <inttypes.h>
 #include <stdio.h>
+
+#include <cinttypes>
 
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "quickjs.h"
+#include "microjs.h"
 #include "sdkconfig.h"
 
 extern "C" void app_main(void) {
@@ -41,21 +42,9 @@ extern "C" void app_main(void) {
 
     printf("Minimum free heap size: %" PRIu32 " bytes\n", esp_get_minimum_free_heap_size());
 
-    JSRuntime* rt = JS_NewRuntime();
-    JSContext* ctx = JS_NewContext(rt);
-
-    auto const code = "2+2";
-    auto const res = JS_Eval(ctx, code, 3, "<eval>", JS_EVAL_TYPE_GLOBAL);
-
-    int32_t num;
-    JS_ToInt32(ctx, &num, res);
-    JS_FreeValue(ctx, res);
-
-    JS_FreeContext(ctx);
-
-    JS_FreeRuntime(rt);
-
+    auto const num = evalInt("2+2");
     printf("The number is: %" PRIu32 "!\n", num);
+    printf("The string is: %s!\n", evalStr("'a'+'b'"));
 
     for (int i = 10; i >= 0; i--) {
         printf("Restarting in %d seconds...\n", i);
