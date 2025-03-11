@@ -25,3 +25,5 @@ void UJS_Stop(UJSRuntime* ujs_rt);
 #ifdef __cplusplus
 }
 #endif
+
+JSValue UJS_EvalGlobalDebug(JSContext* ctx, const char* filename, const char* content, size_t len);

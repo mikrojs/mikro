@@ -51,5 +51,5 @@ UJSRuntime* UJS_NewRuntimeWorker(void);
 UJSRuntime* UJS_NewRuntimeInternal(UJSRunOptions* options);
 JSValue UJS_EvalScript(JSContext* ctx, const char* filename);
 JSValue UJS_EvalModule(JSContext* ctx, const char* filename, bool is_main);
-JSValue UJS_EvalModuleContent(JSContext* ctx, const char* filename, bool is_main, bool use_realpath,
-                              const char* content, size_t len);
+JSValue UJS_EvalModuleContent(JSContext* ctx, const char* filename, const char* content,
+                              size_t len);

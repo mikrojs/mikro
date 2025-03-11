@@ -153,11 +153,11 @@ UJSRuntime* UJS_NewRuntimeInternal(UJSRunOptions* options) {
     ujs__bootstrap_core(ctx, core);
 
     /* Load some builtin references for easy access */
-    qrt->builtins.dispatch_event_func = JS_GetPropertyStr(ctx, global_obj, "dispatchEvent");
-    CHECK_EQ(JS_IsUndefined(qrt->builtins.dispatch_event_func), 0);
-    qrt->builtins.promise_event_ctor =
-        JS_GetPropertyStr(qrt->ctx, global_obj, "PromiseRejectionEvent");
-    CHECK_EQ(JS_IsUndefined(qrt->builtins.promise_event_ctor), 0);
+    ujs_rt->builtins.dispatch_event_func = JS_GetPropertyStr(ctx, global_obj, "dispatchEvent");
+    // CHECK_EQ(JS_IsUndefined(ujs_rt->builtins.dispatch_event_func), 0);
+    ujs_rt->builtins.promise_event_ctor =
+        JS_GetPropertyStr(ujs_rt->ctx, global_obj, "PromiseRejectionEvent");
+    // CHECK_EQ(JS_IsUndefined(ujs_rt->builtins.promise_event_ctor), 0);
 
     /* end bootstrap */
     JS_FreeAtom(ctx, core_atom);
@@ -244,27 +244,22 @@ int ujs__load_file(JSContext* ctx, DynBuf* dbuf, const char* filename) {  // tod
     return 0;
 }
 
-JSValue UJS_EvalModuleContent(JSContext* ctx, const char* specifier, bool is_main,
-                              bool use_real_path, const char* content, size_t len) {
+JSValue UJS_EvalModuleContent(JSContext* ctx, const char* filename, const char* content,
+                              size_t len) {
     /* Compile then run to be able to set import.meta */
     JSValue ret =
-        JS_Eval(ctx, content, len, specifier, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+        JS_Eval(ctx, content, len, filename, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
     if (!JS_IsException(ret)) {
-        js_module_set_import_meta(ctx, ret, use_real_path, is_main);
+        // js_module_set_import_meta(ctx, ret, use_real_path, is_main);
         ret = JS_EvalFunction(ctx, ret);
     }
-
-    /* Emit window 'load' event. */
-    if (!JS_IsException(ret) && is_main) {
-        static char emit_window_load[] = "window.dispatchEvent(new Event('load'));";
-        JSValue ret1 = JS_Eval(ctx, emit_window_load, strlen(emit_window_load), "<global>",
-                               JS_EVAL_TYPE_GLOBAL);
-        if (JS_IsException(ret1)) {
-            ujs_dump_error(ctx);
-        }
-    }
-
     return ret;
+}
+
+// @todo remove For debugging only
+JSValue UJS_EvalGlobalDebug(JSContext* ctx, const char* filename, const char* content, size_t len) {
+    /* Compile then run to be able to set import.meta */
+    return JS_Eval(ctx, content, len, filename, JS_EVAL_TYPE_GLOBAL);
 }
 
 JSValue UJS_EvalScript(JSContext* ctx, const char* filename) {
@@ -314,7 +309,7 @@ JSValue UJS_EvalModule(JSContext* ctx, const char* filename, bool is_main) {
     /* Add null termination, required by JS_Eval. */
     dbuf_putc(&dbuf, '\0');
 
-    ret = UJS_EvalModuleContent(ctx, filename, is_main, true, (char*)dbuf.buf, dbuf_size - 1);
+    ret = UJS_EvalModuleContent(ctx, filename, (char*)dbuf.buf, dbuf_size - 1);
 
     dbuf_free(&dbuf);
     return ret;

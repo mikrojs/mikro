@@ -1,5 +1,8 @@
 #pragma once
 
+#include <stddef.h>
+#include <stdlib.h>
+
 size_t ujs__malloc_usable_size(const void* ptr);
 void* ujs__malloc(size_t size);
 void* ujs__mallocz(size_t size);
