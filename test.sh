@@ -1,0 +1,1 @@
+(cd test && idf.py flash monitor)
