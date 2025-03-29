@@ -1,1 +1,1 @@
-(cd test && idf.py flash monitor)
+(cd test && idf.py partition-table partition-table-flash flash monitor)
