@@ -3,6 +3,7 @@ build
 sdkconfig
 sdkconfig.old
 cmake-build-debug
+managed_components
 .env
 .cache
 .vscode
