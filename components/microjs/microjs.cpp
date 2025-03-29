@@ -2,6 +2,8 @@
 
 #include <quickjs.h>
 
+#include <vector>
+
 #include "mem.h"
 #include "private.h"
 #include "utils.h"
@@ -165,8 +167,8 @@ UJSRuntime* UJS_NewRuntimeInternal(UJSRunOptions* options) {
     JS_FreeValue(ctx, global_obj);
 
     /* Timers */
-    ujs_rt->timers.timers = NULL;
-    ujs_rt->timers.next_timer = 1;
+    ujs_rt->timers = UJS_NewTimerRegistry();
+    ujs__timers_init(ctx, global_obj);
 
     return ujs_rt;
 }
@@ -234,8 +236,8 @@ int UJS_Loop(UJSRuntime* ujs_rt) {
         ujs_dump_error(ujs_rt->ctx);
         ret = 1;
     }
-
-    return ret;
+    ujs__timers_consume(ujs_rt->ctx);
+    return 0;
 }
 
 void UJS_Stop(UJSRuntime* ujs_rt) { CHECK_NOT_NULL(ujs_rt); }

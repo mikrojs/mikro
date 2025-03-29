@@ -1,10 +1,30 @@
 #pragma once
 
+#include <vector>
+
 #include "dbuf.h"
 #include "microjs.h"
 #include "quickjs.h"
 
-typedef struct UJSTimer UJSTimer;
+typedef struct UJSTimerEntry {
+    uint32_t id;
+    // is it an interval or a one-shot timer?
+    bool is_interval;
+    // original timeout (delay) value
+    uint32_t timeout;
+    // next deadline, based on system time
+    uint32_t next_deadline;
+    JSValue func;
+    int argc;
+    JSValue argv[];
+} UJSTimerEntry;
+
+typedef struct UJSTimers {
+    std::vector<UJSTimerEntry> entries;
+    // note: start at 1 to avoid if (timerId) {...} bugs
+    uint32_t next_timer_id = 1;
+} UJSTimerRegistry;
+
 typedef struct UJSFS UJSFS;
 
 struct UJSRuntime {
@@ -16,10 +36,7 @@ struct UJSRuntime {
     bool is_worker;
     bool freeing;
     UJSFS* fs;
-    struct {
-        UJSTimer* timers;
-        int64_t next_timer;
-    } timers;
+    UJSTimerRegistry* timers;
     struct {
         JSValue promise_event_ctor;
         JSValue dispatch_event_func;
@@ -47,9 +64,15 @@ int ujs__eval_bytecode(JSContext* ctx, const uint8_t* buf, size_t buf_len, bool 
 void ujs__sab_free(void* opaque, void* ptr);
 void ujs__sab_dup(void* opaque, void* ptr);
 
+UJSTimerRegistry* UJS_NewTimerRegistry(void);
 UJSRuntime* UJS_NewRuntimeWorker(void);
 UJSRuntime* UJS_NewRuntimeInternal(UJSRunOptions* options);
 JSValue UJS_EvalScript(JSContext* ctx, const char* filename);
 JSValue UJS_EvalModule(JSContext* ctx, const char* filename, bool is_main);
 JSValue UJS_EvalModuleContent(JSContext* ctx, const char* filename, const char* content,
                               size_t len);
+
+
+void ujs__timers_init(JSContext* ctx, JSValue ns);
+void ujs__timers_consume(JSContext* ctx);
+void ujs__timers_destroy(JSContext* ctx);

@@ -1,6 +1,6 @@
 idf_component_register(
         INCLUDE_DIRS "include"
-        REQUIRES quickjs littlefs driver
+        REQUIRES quickjs littlefs driver esp_timer
         SRCS
         "builtins.cpp"
         "dbuf.cpp"
