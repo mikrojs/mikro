@@ -1,5 +1,5 @@
 idf_component_register(
-        INCLUDE_DIRS "."
+        INCLUDE_DIRS "quickjs"
         SRCS
         "quickjs/quickjs.c"
         "quickjs/cutils.c"

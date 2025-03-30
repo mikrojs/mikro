@@ -277,9 +277,3 @@ int ujs_getsignum(const char* sig_str) {
 void ujs_dbuf_init(JSContext* ctx, DynBuf* s) {
     dbuf_init2(s, JS_GetRuntime(ctx), (DynBufReallocFunc*)js_realloc_rt);
 }
-
-int js__has_suffix(const char* str, const char* suffix) {
-    size_t len = strlen(str);
-    size_t slen = strlen(suffix);
-    return (len >= slen && !memcmp(str + len - slen, suffix, slen));
-}

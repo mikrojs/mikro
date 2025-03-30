@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <dbuf.h>
+#include <cutils.h>
 #include <quickjs.h>
 
 #ifndef countof
@@ -107,5 +107,3 @@ int ujs_getsignum(const char* sig_str);
     }
 
 void ujs_dbuf_init(JSContext* ctx, DynBuf* s);
-
-int js__has_suffix(const char* str, const char* suffix);

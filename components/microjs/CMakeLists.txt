@@ -3,7 +3,6 @@ idf_component_register(
         REQUIRES quickjs littlefs driver esp_timer
         SRCS
         "builtins.cpp"
-        "dbuf.cpp"
         "ujs_fs.cpp"
         "ujs_gpio.cpp"
         "fs.cpp"
