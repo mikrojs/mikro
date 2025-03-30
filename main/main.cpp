@@ -48,11 +48,17 @@ extern "C" void app_main(void) {
     const char* code = "2+5";
     const auto res = UJS_EvalGlobalDebug(ctx, "index.js", code, strlen(code));
 
-    int32_t num;
-    JS_ToInt32(ctx, &num, res);
-    JS_FreeValue(ctx, res);
+    if (JS_IsException(res)) {
+        printf("JS eval failed\n");
+    } else if (JS_IsNumber(res)) {
+        int32_t num;
+        JS_ToInt32(ctx, &num, res);
+        JS_FreeValue(ctx, res);
+        printf("The number is: %" PRIu32 "!\n", num);
+    } else {
+        printf("Non-number returned!\n");
+    }
 
-    printf("The number is: %" PRIu32 "!\n", num);
     // printf("The string is: %s!\n", evalStr("'a'+'b'"));
     printf("Minimum free heap size after: %" PRIu32 " bytes\n", esp_get_minimum_free_heap_size());
 
