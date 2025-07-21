@@ -40,3 +40,24 @@ sudo /Applications/Python\ 3.13/Install\ Certificates.command
 
 Using direnv and opening the project in CLion from the project root via the terminal (eg. `clion .`) should work out of
 the box.
+
+
+## Run main/dev app on a device
+The main/dev app is configured by the root sdkconfig file and can be run via idf.py from the project root:
+
+```sh
+# set the idf target
+idf.py set-target esp32c6
+# build and flash the app
+idf.py build flash monitor
+```
+
+## Running tests on a device
+Make sure to set the idf target before running the tests, e.g:
+```
+cd test && idf.py set-target esp32c6
+```
+Now, the test suite can be run with:
+```
+sh test.sh
+```
