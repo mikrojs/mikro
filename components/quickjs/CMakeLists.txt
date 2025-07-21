@@ -4,6 +4,6 @@ idf_component_register(
         "quickjs/quickjs.c"
         "quickjs/cutils.c"
         "quickjs/libunicode.c"
-        "quickjs/libbf.c"
+        "quickjs/xsum.c"
         "quickjs/libregexp.c"
 )
