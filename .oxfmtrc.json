@@ -3,7 +3,8 @@
   "ignorePatterns": [
     "esp32/*",
     "packages/@mikrojs/quickjs/deps/",
-    "packages/@mikrojs/analyze-imports/test/*"
+    "packages/@mikrojs/analyze-imports/test/*",
+    "pack-test/"
   ],
   "semi": false,
   "experimentalSortPackageJson": true,

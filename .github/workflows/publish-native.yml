@@ -1,0 +1,130 @@
+name: Publish @mikrojs/native
+
+on:
+  push:
+    tags:
+      - 'native-v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Pack only, do not publish to npm'
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+          - os: macos-13
+            platform: darwin
+            arch: x64
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+          - os: windows-2022
+            platform: win32
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Init submodules
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build native addon
+        run: pnpm -C packages/@mikrojs/native build:native
+
+      - name: Verify prebuild output
+        shell: bash
+        run: |
+          path="packages/@mikrojs/native/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/mikrojs.napi.node"
+          if [ ! -f "$path" ]; then
+            echo "Expected prebuild not found at $path"
+            exit 1
+          fi
+          ls -lh "$path"
+
+      - name: Upload prebuild artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ matrix.platform }}-${{ matrix.arch }}
+          path: packages/@mikrojs/native/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # --ignore-scripts: the publish runner has no C++ toolchain.
+      # Dev deps that expect a native build (cmake-js etc.) would fail
+      # their postinstall hooks otherwise.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Rebuild dist/ (pure TypeScript, no native code).
+      - run: pnpm -C packages/@mikrojs/native build:ts
+
+      - name: Download all platform prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          path: packages/@mikrojs/native/prebuilds/
+          pattern: prebuild-*
+          merge-multiple: false
+
+      # download-artifact v4 with merge-multiple: false places each artifact
+      # in its own subdir named after the artifact. We want the layout
+      # prebuilds/<platform>-<arch>/mikrojs.napi.node — rename each artifact
+      # dir to strip the "prebuild-" prefix.
+      - name: Normalize prebuild layout
+        run: |
+          cd packages/@mikrojs/native/prebuilds
+          for dir in prebuild-*; do
+            if [ -d "$dir" ]; then
+              mv "$dir" "${dir#prebuild-}"
+            fi
+          done
+          echo "Final prebuilds layout:"
+          find . -type f | sort
+
+      - name: Pack (dry-run preview)
+        run: pnpm -C packages/@mikrojs/native pack --pack-destination /tmp
+
+      - name: Publish to npm
+        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+        run: pnpm -C packages/@mikrojs/native publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Dry run notice
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
+        run: echo "Dry run complete. Tarball was built but not published. Re-run with dry_run=false to publish."

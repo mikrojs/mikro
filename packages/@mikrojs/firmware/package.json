@@ -27,7 +27,6 @@
     "sdkconfig.defaults",
     "sdkconfig.defaults.*",
     "partitions.csv",
-    "test",
     "bin",
     "cmake.js",
     "discover.js",

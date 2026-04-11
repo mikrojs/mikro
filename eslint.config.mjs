@@ -22,6 +22,7 @@ export default [
       'docs/.vitepress/cache/**',
       'coverage/**',
       'temp/**',
+      'pack-test/**',
     ],
   },
 
