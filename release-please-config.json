@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "separator": "-",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "packages": {
+    "packages/mikrojs": {"component": "mikrojs"},
+    "packages/@mikrojs/native": {"component": "native"},
+    "packages/@mikrojs/quickjs": {"component": "quickjs"},
+    "packages/@mikrojs/firmware": {"component": "firmware"},
+    "packages/@mikrojs/analyze-imports": {"component": "analyze-imports"},
+    "packages/@mikrojs/esptool": {"component": "esptool"},
+    "packages/@mikrojs/eslint-plugin": {"component": "eslint-plugin"},
+    "packages/create-mikrojs": {"component": "create-mikrojs"},
+    "packages/create-mikro": {"component": "create-mikro"}
+  },
+  "plugins": [
+    {
+      "type": "linked-versions",
+      "groupName": "mikrojs",
+      "components": [
+        "mikrojs",
+        "native",
+        "quickjs",
+        "firmware",
+        "analyze-imports",
+        "esptool",
+        "eslint-plugin",
+        "create-mikrojs",
+        "create-mikro"
+      ]
+    }
+  ]
+}

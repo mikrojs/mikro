@@ -1,18 +1,41 @@
-name: Publish @mikrojs/native
+name: release
 
 on:
   push:
-    tags:
-      - 'native-v*'
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Pack only, do not publish to npm'
+        description: 'Build prebuilds and pack tarballs but do not publish to npm'
         type: boolean
         default: true
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
-  build:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build-prebuilds:
+    needs: [release-please]
+    if: |
+      always() && (
+        needs.release-please.outputs.releases_created == 'true' ||
+        github.event_name == 'workflow_dispatch'
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -70,13 +93,21 @@ jobs:
           retention-days: 7
 
   publish:
-    needs: build
+    needs: [release-please, build-prebuilds]
+    if: |
+      always() && needs.build-prebuilds.result == 'success' && (
+        needs.release-please.outputs.releases_created == 'true' ||
+        github.event_name == 'workflow_dispatch'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v6
+
+      - name: Init submodules
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
 
       - uses: pnpm/action-setup@v4
 
@@ -86,13 +117,12 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      # --ignore-scripts: the publish runner has no C++ toolchain.
-      # Dev deps that expect a native build (cmake-js etc.) would fail
-      # their postinstall hooks otherwise.
+      # --ignore-scripts: this runner has no C++ toolchain installed for
+      # the native addon. Dev deps with postinstall hooks (cmake-js etc.)
+      # would fail otherwise. We only need to build the pure-TS dists here.
       - run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # Rebuild dist/ (pure TypeScript, no native code).
-      - run: pnpm -C packages/@mikrojs/native build:ts
+      - run: pnpm -r --if-present run build:ts
 
       - name: Download all platform prebuilds
         uses: actions/download-artifact@v4
@@ -101,10 +131,9 @@ jobs:
           pattern: prebuild-*
           merge-multiple: false
 
-      # download-artifact v4 with merge-multiple: false places each artifact
-      # in its own subdir named after the artifact. We want the layout
-      # prebuilds/<platform>-<arch>/mikrojs.napi.node — rename each artifact
-      # dir to strip the "prebuild-" prefix.
+      # download-artifact v4 places each artifact in its own subdir named
+      # after the artifact. We want prebuilds/<platform>-<arch>/mikrojs.napi.node
+      # — strip the "prebuild-" prefix from each dir.
       - name: Normalize prebuild layout
         run: |
           cd packages/@mikrojs/native/prebuilds
@@ -116,15 +145,16 @@ jobs:
           echo "Final prebuilds layout:"
           find . -type f | sort
 
-      - name: Pack (dry-run preview)
-        run: pnpm -C packages/@mikrojs/native pack --pack-destination /tmp
+      - name: Pack tarballs (preview)
+        run: pnpm -r --filter '!mikrojs-workspace' --filter '!@repo/*' pack --pack-destination /tmp
 
       - name: Publish to npm
         if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
-        run: pnpm -C packages/@mikrojs/native publish --access public --no-git-checks
+        run: pnpm -r --filter '!mikrojs-workspace' --filter '!@repo/*' publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
 
       - name: Dry run notice
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
-        run: echo "Dry run complete. Tarball was built but not published. Re-run with dry_run=false to publish."
+        run: echo "Dry run complete. Prebuilds built and tarballs packed but nothing was published. Re-run with dry_run=false to publish."
