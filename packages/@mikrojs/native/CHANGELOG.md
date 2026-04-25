@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.2](https://github.com/mikrojs/mikrojs/compare/native-v0.0.1...native-v0.0.2) (2026-04-25)
+
+
+### Bug Fixes
+
+* **build:** unblock native prebuilds on macOS and Windows CI ([b89af1d](https://github.com/mikrojs/mikrojs/commit/b89af1d0403f8e975d95e361782ef3f030c1d3b5))
+
 ## 0.0.1 (2026-04-25)
 
 
