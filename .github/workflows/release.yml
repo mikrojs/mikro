@@ -92,10 +92,40 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish:
-    needs: [release-please, build-prebuilds]
+  firmware-setup:
+    needs: [release-please]
     if: |
-      always() && needs.build-prebuilds.result == 'success' && (
+      always() && (
+        needs.release-please.outputs.releases_created == 'true' ||
+        github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      chips: ${{ steps.read.outputs.chips }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: read
+        run: echo "chips=$(jq -c .chips packages/@mikrojs/firmware/chips.json)" >> "$GITHUB_OUTPUT"
+
+  build-firmware:
+    needs: [firmware-setup]
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.firmware-setup.outputs.chips) }}
+    uses: ./.github/workflows/firmware-build.yml
+    with:
+      target: ${{ matrix.target }}
+      pack-format: unpacked
+      artifact-name: firmware-${{ matrix.target }}
+
+  publish:
+    needs: [release-please, build-prebuilds, build-firmware]
+    if: |
+      always()
+      && needs.build-prebuilds.result == 'success'
+      && needs.build-firmware.result == 'success'
+      && (
         needs.release-please.outputs.releases_created == 'true' ||
         github.event_name == 'workflow_dispatch'
       )
@@ -144,6 +174,41 @@ jobs:
           done
           echo "Final prebuilds layout:"
           find . -type f | sort
+
+      - name: Download all firmware prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          path: packages/@mikrojs/firmware/prebuilds/
+          pattern: firmware-*
+          merge-multiple: false
+
+      - name: Normalize firmware layout
+        run: |
+          cd packages/@mikrojs/firmware/prebuilds
+          for dir in firmware-*; do
+            if [ -d "$dir" ]; then
+              mv "$dir" "${dir#firmware-}"
+            fi
+          done
+          echo "Final firmware prebuilds layout:"
+          find . -type f | sort
+
+      - name: Verify firmware completeness
+        run: |
+          cd packages/@mikrojs/firmware
+          missing=0
+          for chip in $(jq -r '.chips[]' chips.json); do
+            for f in flasher_args.json bootloader/bootloader.bin partition_table/partition-table.bin mikrojs.bin; do
+              if [ ! -f "prebuilds/$chip/$f" ]; then
+                echo "Missing: prebuilds/$chip/$f"
+                missing=1
+              fi
+            done
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Aborting publish: firmware artifacts incomplete."
+            exit 1
+          fi
 
       - name: Pack tarballs (preview)
         run: pnpm -r --filter '!mikrojs-workspace' --filter '!@repo/*' pack --pack-destination /tmp

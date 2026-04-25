@@ -108,9 +108,8 @@
     "build:native": "cmake-js compile --directory addon && node scripts/copy-prebuild.js",
     "build:native:debug": "cmake-js compile --debug --directory addon && node scripts/copy-prebuild.js",
     "build:ts": "tsc -p tsconfig.build.json",
-    "clean": "cmake-js clean --directory addon",
-    "compare-minifiers": "node scripts/compare-minifiers.js --open",
     "clean": "cmake-js clean --directory addon && rm -rf prebuilds",
+    "compare-minifiers": "node scripts/compare-minifiers.js --open",
     "publint": "publint",
     "typecheck": "tsc --noEmit -p tsconfig.addon.json && tsc --noEmit -p tsconfig.runtime.json",
     "watch": "node --experimental-strip-types watch.ts"

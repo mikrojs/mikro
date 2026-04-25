@@ -426,6 +426,9 @@ importers:
       '@mikrojs/esptool':
         specifier: workspace:*
         version: link:../@mikrojs/esptool
+      '@mikrojs/firmware':
+        specifier: workspace:*
+        version: link:../@mikrojs/firmware
       '@mikrojs/native':
         specifier: workspace:*
         version: link:../@mikrojs/native

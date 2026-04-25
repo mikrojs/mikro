@@ -200,6 +200,7 @@
   "dependencies": {
     "@mikrojs/analyze-imports": "workspace:*",
     "@mikrojs/esptool": "workspace:*",
+    "@mikrojs/firmware": "workspace:*",
     "@mikrojs/native": "workspace:*",
     "@mikrojs/quickjs": "workspace:*",
     "@optique/core": "^1.0.2",
