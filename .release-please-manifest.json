@@ -1,11 +1,11 @@
 {
-  "packages/mikrojs": "0.0.6",
-  "packages/@mikrojs/native": "0.0.6",
-  "packages/@mikrojs/quickjs": "0.0.6",
-  "packages/@mikrojs/firmware": "0.0.6",
-  "packages/@mikrojs/analyze-imports": "0.0.6",
-  "packages/@mikrojs/esptool": "0.0.6",
-  "packages/@mikrojs/eslint-plugin": "0.0.6",
-  "packages/create-mikrojs": "0.0.6",
-  "packages/create-mikro": "0.0.6"
+  "packages/mikrojs": "0.0.7",
+  "packages/@mikrojs/native": "0.0.7",
+  "packages/@mikrojs/quickjs": "0.0.7",
+  "packages/@mikrojs/firmware": "0.0.7",
+  "packages/@mikrojs/analyze-imports": "0.0.7",
+  "packages/@mikrojs/esptool": "0.0.7",
+  "packages/@mikrojs/eslint-plugin": "0.0.7",
+  "packages/create-mikrojs": "0.0.7",
+  "packages/create-mikro": "0.0.7"
 }

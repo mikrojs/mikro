@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.7](https://github.com/mikrojs/mikrojs/compare/analyze-imports-v0.0.6...analyze-imports-v0.0.7) (2026-04-25)
+
+
+### Miscellaneous Chores
+
+* **release:** force release main ([9f56d94](https://github.com/mikrojs/mikrojs/commit/9f56d9467459a593973e21eee9f1883d9d7e49af))
+
 ## [0.0.6](https://github.com/mikrojs/mikrojs/compare/analyze-imports-v0.0.1...analyze-imports-v0.0.6) (2026-04-25)
 
 
