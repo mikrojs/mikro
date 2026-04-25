@@ -48,7 +48,14 @@ set(QUICKJS_SOURCES
 # the storage, so it reloads from memory and the code behaves as
 # intended. Small codegen cost, predictable correctness — worth it for
 # third-party code we don't audit exhaustively.
-set(QUICKJS_COMPILE_OPTIONS -Wno-implicit-fallthrough -Wno-sign-compare -fno-strict-aliasing)
+# MSVC understands neither GCC-style -W flags nor -fno-strict-aliasing; its
+# default codegen also doesn't strict-alias (no /Oa equivalent in cl), so
+# leaving the options empty for MSVC is the right call.
+if(MSVC)
+    set(QUICKJS_COMPILE_OPTIONS "")
+else()
+    set(QUICKJS_COMPILE_OPTIONS -Wno-implicit-fallthrough -Wno-sign-compare -fno-strict-aliasing)
+endif()
 
 # qjsc executable path (built by postinstall)
 if(WIN32)
@@ -68,8 +75,9 @@ if(NOT ESP_PLATFORM)
 
     # cutils.h has inline functions with C-style void* implicit conversions that are
     # errors in C++. -fpermissive (GCC) downgrades them to warnings, then SYSTEM suppresses.
-    # Clang doesn't need this since QuickJS headers are SYSTEM includes.
-    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Clang doesn't need this since QuickJS headers are SYSTEM includes; MSVC doesn't
+    # ship the flag and is silent on these anyway.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         target_compile_options(quickjs INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-fpermissive>)
     endif()
 endif()
