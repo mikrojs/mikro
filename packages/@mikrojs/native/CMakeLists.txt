@@ -91,14 +91,17 @@ target_link_libraries(mikrojs PUBLIC quickjs)
 # - ESP-IDF firmware: mikrojs_force_include_modules() in firmware CMakeLists
 # - Host tests: target_link_options on mikrojs_tests below
 
-# Suppress warnings from QuickJS headers in our code
-target_compile_options(mikrojs PRIVATE -Wall -Wextra -Wno-unused-parameter)
-
-# Emit per-function/data sections so the linker can dead-strip unreferenced
-# symbols at executable link time. This matches ESP-IDF's default toolchain
-# flags and lets us measure flash-size effects of source-level changes
-# (e.g. intrinsic stripping) on the host build.
-target_compile_options(mikrojs PRIVATE -ffunction-sections -fdata-sections)
+# Suppress warnings from QuickJS headers in our code. MSVC uses /W3 by default
+# and doesn't understand the -W flags. The dead-stripping flags below are
+# similarly GCC/Clang-only; MSVC's linker dead-strips by default with /OPT:REF.
+if(NOT MSVC)
+    target_compile_options(mikrojs PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    # Emit per-function/data sections so the linker can dead-strip unreferenced
+    # symbols at executable link time. This matches ESP-IDF's default toolchain
+    # flags and lets us measure flash-size effects of source-level changes
+    # (e.g. intrinsic stripping) on the host build.
+    target_compile_options(mikrojs PRIVATE -ffunction-sections -fdata-sections)
+endif()
 
 # Version metadata for sys.version()
 execute_process(

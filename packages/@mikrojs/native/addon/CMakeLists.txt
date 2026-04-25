@@ -60,8 +60,10 @@ target_compile_definitions(mikrojs_node PRIVATE
     NODE_ADDON_API_DISABLE_DEPRECATED
 )
 
-# Suppress warnings from QuickJS headers
-target_compile_options(mikrojs_node PRIVATE -Wall -Wextra -Wno-unused-parameter)
+# Suppress warnings from QuickJS headers (GCC/Clang only; MSVC uses /W3)
+if(NOT MSVC)
+    target_compile_options(mikrojs_node PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()
 
 # On macOS, Node-API symbols are resolved at runtime from the Node.js executable
 if(APPLE)
