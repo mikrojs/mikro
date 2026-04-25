@@ -28,7 +28,10 @@
   },
   "files": [
     "dist",
-    "runtime.d.ts"
+    "runtime.d.ts",
+    "!**/__test__",
+    "!**/*.test.js",
+    "!**/*.test.d.ts"
   ],
   "type": "module",
   "sideEffects": false,
@@ -197,6 +200,7 @@
   "dependencies": {
     "@mikrojs/analyze-imports": "workspace:*",
     "@mikrojs/esptool": "workspace:*",
+    "@mikrojs/firmware": "workspace:*",
     "@mikrojs/native": "workspace:*",
     "@mikrojs/quickjs": "workspace:*",
     "@optique/core": "^1.0.2",

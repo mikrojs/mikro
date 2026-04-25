@@ -6,8 +6,6 @@ import * as path from 'node:path'
 import {pipeline} from 'node:stream/promises'
 import {promisify} from 'node:util'
 
-import {VERSION} from '../../version.js'
-
 const execFileAsync = promisify(execFile)
 
 const GITHUB_REPO = 'mikrojs/mikrojs'
@@ -32,10 +30,6 @@ function getAssetName(chip: Chip): string {
 
 function getBoardAssetName(boardName: string): string {
   return `mikrojs-firmware-${boardName}.tar.gz`
-}
-
-function getReleaseTag(): string {
-  return `v${VERSION}`
 }
 
 /** Returns true if the version string looks like a release tag (starts with "v" followed by a digit). */
@@ -430,6 +424,11 @@ async function resolveViaActions(
  * 2. Contains `/` → external repo (user/repo or user/repo@ref)
  * 3. Starts with `v` + digit → release tag on mikrojs/mikrojs (fallback to Actions)
  * 4. Everything else → resolve as ref (branch/tag/SHA) on mikrojs/mikrojs via Actions
+ *
+ * Note: for mikrojs/mikrojs, versioned firmware (vX.Y.Z) is bundled in the
+ * @mikrojs/firmware npm package and used by the default flash path. The
+ * release-asset code path here is exercised by external repos that ship
+ * firmware tarballs as GitHub Release assets.
  */
 export async function resolveFrom(options: ResolveFromOptions): Promise<string> {
   const {from, chip, board, onProgress} = options
@@ -506,69 +505,4 @@ export async function resolveFrom(options: ResolveFromOptions): Promise<string> 
     const trailStr = trail.map((s) => `  ${s}`).join('\n')
     throw new Error(`${msg}\n\nResolution trail:\n${trailStr}`)
   }
-}
-
-/**
- * Resolve firmware for the current CLI version (default, no --from flag).
- * Downloads from GitHub Releases if not already cached.
- */
-export async function resolveFirmware(chip: Chip, tag?: string): Promise<string> {
-  tag ??= getReleaseTag()
-  const extractedDir = path.join(CACHE_DIR, `${chip}-${tag}`)
-  const flasherArgsPath = path.join(extractedDir, 'flasher_args.json')
-
-  // Check if already cached
-  try {
-    await fs.access(flasherArgsPath)
-    return extractedDir
-  } catch {
-    // Not cached
-  }
-
-  const token = requireGitHubToken(await getGitHubToken())
-  const release = await fetchRelease(token, GITHUB_REPO, tag)
-  const asset = release.assets.find((a) => a.name === getAssetName(chip))
-
-  if (!asset) {
-    throw new Error(
-      `No pre-built firmware found for ${chip} in release ${tag}.\n` +
-        `Available assets: ${release.assets.map((a) => a.name).join(', ') || 'none'}`,
-    )
-  }
-
-  await downloadAndExtractReleaseAsset(token, asset, extractedDir)
-  return extractedDir
-}
-
-/**
- * Resolve board-specific firmware for the current CLI version (default, no --from flag).
- * Falls back to generic chip firmware if no board-specific asset exists.
- */
-export async function resolveBoardFirmware(
-  boardName: string,
-  chip: Chip,
-  tag?: string,
-): Promise<string> {
-  tag ??= getReleaseTag()
-  const extractedDir = path.join(CACHE_DIR, `${boardName}-${tag}`)
-  const flasherArgsPath = path.join(extractedDir, 'flasher_args.json')
-
-  try {
-    await fs.access(flasherArgsPath)
-    return extractedDir
-  } catch {
-    // Not cached
-  }
-
-  const token = requireGitHubToken(await getGitHubToken())
-  const release = await fetchRelease(token, GITHUB_REPO, tag)
-  const boardAsset = release.assets.find((a) => a.name === getBoardAssetName(boardName))
-
-  if (!boardAsset) {
-    // No board-specific firmware; fall back to generic chip firmware
-    return resolveFirmware(chip, tag)
-  }
-
-  await downloadAndExtractReleaseAsset(token, boardAsset, extractedDir)
-  return extractedDir
 }

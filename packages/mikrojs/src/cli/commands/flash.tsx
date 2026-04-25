@@ -1,4 +1,5 @@
 import {getEsptoolPath} from '@mikrojs/esptool'
+import {hasPrebuiltFirmware, prebuiltFirmwareDir} from '@mikrojs/firmware'
 import {command, constant, message, object, optional} from '@optique/core'
 import type {InferValue} from '@optique/core/parser'
 import {flag, option} from '@optique/core/primitives'
@@ -12,7 +13,7 @@ import type {Observable} from 'rxjs'
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {type BoardInfo, discoverBoards} from '../lib/boards.js'
 import {type FlasherArgs, getWriteFlashMultiArgs, readFlasherArgs} from '../lib/esptool.js'
-import {type Chip, resolveBoardFirmware, resolveFirmware, resolveFrom} from '../lib/firmware.js'
+import {type Chip, resolveFrom} from '../lib/firmware.js'
 import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
@@ -194,7 +195,8 @@ export default function FlashCmd(props: Props) {
         const flasherArgs = await readFlasherArgs(firmwareDir)
         setInitState({status: 'ready', flasherArgs, esptoolPath})
       } else {
-        // Default: pre-built firmware for the current CLI version
+        // Default: bundled prebuilt firmware shipped inside @mikrojs/firmware,
+        // matched to this CLI's version via the lockstep release group.
         setInitState({status: 'loading', message: 'Resolving esptool…'})
         const esptoolPath = await resolveEsptool()
 
@@ -210,20 +212,15 @@ export default function FlashCmd(props: Props) {
           resolvedChip = await detectChip(esptoolPath, devicePath!)
         }
 
-        const boardLabel = board ? ` (${board.name})` : ''
-        setInitState({
-          status: 'loading',
-          message: `Downloading firmware for ${resolvedChip}${boardLabel}…`,
-        })
-
-        let firmwareDir: string
-        if (board) {
-          firmwareDir = await resolveBoardFirmware(board.name, resolvedChip)
-        } else {
-          firmwareDir = await resolveFirmware(resolvedChip)
+        if (!hasPrebuiltFirmware(resolvedChip)) {
+          throw new Error(
+            `No bundled firmware for ${resolvedChip}. ` +
+              `Build a custom firmware locally and flash with --build-dir, ` +
+              `or fetch a CI artifact with --from=mikrojs/mikrojs:<sha>.`,
+          )
         }
 
-        const flasherArgs = await readFlasherArgs(firmwareDir)
+        const flasherArgs = await readFlasherArgs(prebuiltFirmwareDir(resolvedChip))
         setInitState({status: 'ready', flasherArgs, esptoolPath})
       }
     }

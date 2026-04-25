@@ -1,0 +1,117 @@
+name: Firmware build (reusable)
+
+# Reusable workflow shared by `firmware.yml` (per-commit artifacts for
+# `mikro flash --from=mikrojs/mikrojs:<sha>`) and `release.yml`'s
+# build-firmware matrix (bundled into the published @mikrojs/firmware npm
+# package). Pack format differs because the CLI's --from path expects a
+# tar.gz inside the GitHub artifact zip, while the npm bundle ships files
+# unpacked.
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: 'ESP32 chip target (esp32, esp32c3, esp32c6, esp32s3)'
+        required: true
+        type: string
+      pack-format:
+        description: 'How to lay out the uploaded artifact: tarball | unpacked'
+        required: true
+        type: string
+      artifact-name:
+        description: 'Name to upload the artifact under'
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v6.0
+    steps:
+      - name: Validate inputs
+        env:
+          PACK_FORMAT: ${{ inputs.pack-format }}
+        run: |
+          case "$PACK_FORMAT" in
+            unpacked|tarball) ;;
+            *)
+              echo "Invalid pack-format: '$PACK_FORMAT' (must be 'unpacked' or 'tarball')"
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Init required submodules
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@v4
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/ccache
+          key: ccache-firmware-${{ inputs.target }}-${{ github.sha }}
+          restore-keys: ccache-firmware-${{ inputs.target }}-
+
+      - name: Set up ccache
+        run: |
+          which ccache || apt-get update && apt-get install -y ccache
+          ccache --zero-stats
+          ccache --set-config=max_size=500M
+          ccache --set-config=cache_dir=$HOME/.cache/ccache
+
+      - name: Build firmware
+        working-directory: esp32
+        env:
+          IDF_CCACHE_ENABLE: '1'
+          TARGET: ${{ inputs.target }}
+        run: |
+          . $IDF_PATH/export.sh
+          rm -f sdkconfig
+          idf.py set-target $TARGET
+          idf.py build
+          ccache --show-stats
+
+      - name: Firmware stats
+        working-directory: esp32
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py size
+
+      - name: Stage artifact (unpacked)
+        if: inputs.pack-format == 'unpacked'
+        run: |
+          mkdir -p firmware-out/bootloader firmware-out/partition_table
+          cp esp32/build/flasher_args.json firmware-out/
+          cp esp32/build/bootloader/bootloader.bin firmware-out/bootloader/
+          cp esp32/build/partition_table/partition-table.bin firmware-out/partition_table/
+          cp esp32/build/mikrojs.bin firmware-out/
+
+      - name: Stage artifact (tarball)
+        if: inputs.pack-format == 'tarball'
+        working-directory: esp32/build
+        run: |
+          mkdir -p ../../firmware-out
+          tar czf ../../firmware-out/${{ inputs.artifact-name }}.tar.gz \
+            flasher_args.json \
+            bootloader/bootloader.bin \
+            partition_table/partition-table.bin \
+            mikrojs.bin
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: firmware-out/
+          if-no-files-found: error
+          retention-days: 7

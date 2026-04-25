@@ -1,0 +1,225 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build prebuilds and pack tarballs but do not publish to npm'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build-prebuilds:
+    needs: [release-please]
+    if: |
+      always() && (
+        needs.release-please.outputs.releases_created == 'true' ||
+        github.event_name == 'workflow_dispatch'
+      )
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+          - os: macos-13
+            platform: darwin
+            arch: x64
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+          - os: windows-2022
+            platform: win32
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Init submodules
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build native addon
+        run: pnpm -C packages/@mikrojs/native build:native
+
+      - name: Verify prebuild output
+        shell: bash
+        run: |
+          path="packages/@mikrojs/native/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/mikrojs.napi.node"
+          if [ ! -f "$path" ]; then
+            echo "Expected prebuild not found at $path"
+            exit 1
+          fi
+          ls -lh "$path"
+
+      - name: Upload prebuild artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ matrix.platform }}-${{ matrix.arch }}
+          path: packages/@mikrojs/native/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  firmware-setup:
+    needs: [release-please]
+    if: |
+      always() && (
+        needs.release-please.outputs.releases_created == 'true' ||
+        github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      chips: ${{ steps.read.outputs.chips }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: read
+        run: echo "chips=$(jq -c .chips packages/@mikrojs/firmware/chips.json)" >> "$GITHUB_OUTPUT"
+
+  build-firmware:
+    needs: [firmware-setup]
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.firmware-setup.outputs.chips) }}
+    uses: ./.github/workflows/firmware-build.yml
+    with:
+      target: ${{ matrix.target }}
+      pack-format: unpacked
+      artifact-name: firmware-${{ matrix.target }}
+
+  publish:
+    needs: [release-please, build-prebuilds, build-firmware]
+    if: |
+      always()
+      && needs.build-prebuilds.result == 'success'
+      && needs.build-firmware.result == 'success'
+      && (
+        needs.release-please.outputs.releases_created == 'true' ||
+        github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Init submodules
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # --ignore-scripts: this runner has no C++ toolchain installed for
+      # the native addon. Dev deps with postinstall hooks (cmake-js etc.)
+      # would fail otherwise. We only need to build the pure-TS dists here.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - run: pnpm -r --if-present run build:ts
+
+      - name: Download all platform prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          path: packages/@mikrojs/native/prebuilds/
+          pattern: prebuild-*
+          merge-multiple: false
+
+      # download-artifact v4 places each artifact in its own subdir named
+      # after the artifact. We want prebuilds/<platform>-<arch>/mikrojs.napi.node
+      # — strip the "prebuild-" prefix from each dir.
+      - name: Normalize prebuild layout
+        run: |
+          cd packages/@mikrojs/native/prebuilds
+          for dir in prebuild-*; do
+            if [ -d "$dir" ]; then
+              mv "$dir" "${dir#prebuild-}"
+            fi
+          done
+          echo "Final prebuilds layout:"
+          find . -type f | sort
+
+      - name: Download all firmware prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          path: packages/@mikrojs/firmware/prebuilds/
+          pattern: firmware-*
+          merge-multiple: false
+
+      - name: Normalize firmware layout
+        run: |
+          cd packages/@mikrojs/firmware/prebuilds
+          for dir in firmware-*; do
+            if [ -d "$dir" ]; then
+              mv "$dir" "${dir#firmware-}"
+            fi
+          done
+          echo "Final firmware prebuilds layout:"
+          find . -type f | sort
+
+      - name: Verify firmware completeness
+        run: |
+          cd packages/@mikrojs/firmware
+          missing=0
+          for chip in $(jq -r '.chips[]' chips.json); do
+            for f in flasher_args.json bootloader/bootloader.bin partition_table/partition-table.bin mikrojs.bin; do
+              if [ ! -f "prebuilds/$chip/$f" ]; then
+                echo "Missing: prebuilds/$chip/$f"
+                missing=1
+              fi
+            done
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Aborting publish: firmware artifacts incomplete."
+            exit 1
+          fi
+
+      - name: Pack tarballs (preview)
+        run: pnpm -r --filter '!mikrojs-workspace' --filter '!@repo/*' pack --pack-destination /tmp
+
+      - name: Publish to npm
+        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+        run: pnpm -r --filter '!mikrojs-workspace' --filter '!@repo/*' publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+
+      - name: Dry run notice
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
+        run: echo "Dry run complete. Prebuilds built and tarballs packed but nothing was published. Re-run with dry_run=false to publish."

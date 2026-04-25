@@ -11,6 +11,7 @@ export default [
       'esp32/managed_components/**',
       'packages/@mikrojs/quickjs/deps/**',
       'packages/@mikrojs/analyze-imports/test/**',
+      'packages/@mikrojs/firmware/index.d.ts',
       '**/dist/**',
       '**/build/**',
       '**/.mikro/**',
@@ -22,6 +23,7 @@ export default [
       'docs/.vitepress/cache/**',
       'coverage/**',
       'temp/**',
+      'pack-test/**',
     ],
   },
 
@@ -77,7 +79,12 @@ export default [
 
   // Examples, dev apps, and build tooling use console as their primary output API
   {
-    files: ['examples/**/app/**', 'dev/**/app/**', 'bench-site/**/*.ts'],
+    files: [
+      'examples/**/app/**',
+      'dev/**/app/**',
+      'bench-site/**/*.ts',
+      'packages/@mikrojs/firmware/scripts/**',
+    ],
     rules: {
       'no-console': 'off',
     },

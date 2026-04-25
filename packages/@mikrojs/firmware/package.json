@@ -24,24 +24,33 @@
   "files": [
     "components",
     "default-app",
+    "prebuilds",
     "sdkconfig.defaults",
     "sdkconfig.defaults.*",
     "partitions.csv",
-    "test",
     "bin",
+    "chips.json",
     "cmake.js",
     "discover.js",
     "index.js",
+    "index.d.ts",
     "project.cmake",
     "resolve.js"
   ],
   "type": "module",
   "sideEffects": false,
+  "types": "./index.d.ts",
   "exports": {
-    ".": "./index.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
     "./cmake": "./cmake.js",
     "./discover": "./discover.js",
     "./package.json": "./package.json"
+  },
+  "scripts": {
+    "prepublishOnly": "node scripts/verify-prebuilds.js"
   },
   "dependencies": {
     "@mikrojs/native": "workspace:*",
