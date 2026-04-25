@@ -77,9 +77,13 @@ try {
   // Not a git repo (e.g. published package), skip commit tracking
 }
 
+// On Windows the C compiler appends .exe automatically.
+const exeSuffix = process.platform === 'win32' ? '.exe' : ''
+const qjscPath = join(binDir, `qjsc${exeSuffix}`)
+
 // Skip rebuild if qjsc exists and source hasn't changed
 const stampFile = join(binDir, '.commit')
-if (existsSync(join(binDir, 'qjsc'))) {
+if (existsSync(qjscPath)) {
   if (!currentCommit) {
     // No git info (npm install): qjsc exists, sources are static, skip rebuild
     process.exit(0)
@@ -100,7 +104,7 @@ try {
 
 mkdirSync(binDir, {recursive: true})
 
-const output = join(binDir, 'qjsc')
+const output = qjscPath
 const sources = [
   'quickjs.c',
   'dtoa.c',

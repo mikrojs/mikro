@@ -51,7 +51,11 @@ set(QUICKJS_SOURCES
 set(QUICKJS_COMPILE_OPTIONS -Wno-implicit-fallthrough -Wno-sign-compare -fno-strict-aliasing)
 
 # qjsc executable path (built by postinstall)
-set(QJSC_EXECUTABLE "${_QUICKJS_CMAKE_DIR}/bin/qjsc")
+if(WIN32)
+    set(QJSC_EXECUTABLE "${_QUICKJS_CMAKE_DIR}/bin/qjsc.exe")
+else()
+    set(QJSC_EXECUTABLE "${_QUICKJS_CMAKE_DIR}/bin/qjsc")
+endif()
 
 # ── Target mode: create a static library ────────────────────────────
 # Only create the target if not in ESP-IDF component context

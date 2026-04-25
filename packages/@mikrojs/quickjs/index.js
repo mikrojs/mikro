@@ -10,4 +10,4 @@ export const cmakePath = join(__dirname, 'quickjs.cmake')
 export const includePath = join(__dirname, 'deps', 'quickjs')
 
 /** Path to the qjsc bytecode compiler binary */
-export const qjscPath = join(__dirname, 'bin', 'qjsc')
+export const qjscPath = join(__dirname, 'bin', process.platform === 'win32' ? 'qjsc.exe' : 'qjsc')
