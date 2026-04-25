@@ -10,6 +10,14 @@
   <a href="https://mikrojs.dev">Documentation</a> · <a href="https://mikrojs.dev/getting-started">Getting Started</a> · <a href="https://mikrojs.dev/api/">API Reference</a> · <a href="https://mikrojs.dev/examples/">Examples</a>
 </p>
 
+<div align="center">
+
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/name/mikrojs)](https://npmx.dev/package/mikrojs)
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/version/mikrojs)](https://npmx.dev/package/mikrojs)
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/updated/mikrojs)](https://npmx.dev/package/mikrojs)
+
+</div>
+
 > [!NOTE]
 > Mikro.js is in early development. APIs may change.
 
