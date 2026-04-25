@@ -95,20 +95,7 @@ For long strips (>8 LEDs), power the strip from an external 5V supply, not the b
       'Count wake-ups from deep sleep using RTC memory. The counter survives deep sleep but resets on power loss.',
     hardware: 'Any ESP32 board.',
   },
-  {
-    name: 't-display',
-    description:
-      'Bouncing DVD logo on a LilyGo T-Display ST7789 LCD. The logo changes color on each bounce; buttons nudge the speed.',
-    hardware: [
-      '- LilyGo T-Display (ESP32 with built-in 1.14" ST7789 LCD and two buttons)',
-      '- Display and pin config from `@mikrojs/lilygo/t-display`',
-    ].join('\n'),
-  },
 ] as const
-
-const EXTRA_DEPENDENCIES: Partial<Record<string, Record<string, string>>> = {
-  't-display': {'@mikrojs/lilygo': 'latest'},
-}
 
 export interface ScaffoldOptions {
   targetDir: string
@@ -143,7 +130,7 @@ export function scaffold(options: ScaffoldOptions) {
     path.join(targetDir, 'package.json'),
     JSON.stringify(
       packageJson(projectName, {
-        dependencies: {...dependencies, mikrojs: mikrojsVersion, ...EXTRA_DEPENDENCIES[template]},
+        dependencies: {...dependencies, mikrojs: mikrojsVersion},
         devDependencies: typescript ? devDependencies : undefined,
         typescript,
       }),

@@ -10,7 +10,7 @@ This section covers building Mikro.js firmware from source, creating driver pack
 ## What you can contribute
 
 - **Driver packages** (`@mikrojs/driver-xxx`): Native C/C++ modules paired with TypeScript wrappers for sensors, displays, motor controllers, and other peripherals.
-- **Board packages** (e.g. `@mikrojs/waveshare`): Pin maps, sdkconfig defaults, and pre-configured driver re-exports for specific development boards.
+- **Board packages**: Pin maps, sdkconfig defaults, and pre-configured driver re-exports for specific development boards.
 - **Core runtime**: Bug fixes, performance improvements, and new platform APIs in `packages/@mikrojs/native/`.
 
 ## Prerequisites

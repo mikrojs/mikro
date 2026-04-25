@@ -216,9 +216,9 @@ extern mik_module_desc_t* mik__module_registry_head;
     }
 /* Self-registration for bytecode builtins (board/driver JS runtime modules).
  * Driver packages use MIK_REGISTER_BUILTIN() to embed their JS wrappers as
- * firmware builtins, resolved by the real npm package name (e.g. "@mikrojs/driver-st7789"). */
+ * firmware builtins, resolved by the real npm package name (e.g. "@mikrojs/your-driver"). */
 typedef struct mik_ext_builtin_t {
-    const char* name;         /* module name, e.g. "@mikrojs/driver-st7789" */
+    const char* name;         /* module name, e.g. "@mikrojs/your-driver" */
     const uint8_t* data;      /* compiled bytecode */
     uint32_t data_size;
     struct mik_ext_builtin_t* next;

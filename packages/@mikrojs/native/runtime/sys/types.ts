@@ -72,7 +72,7 @@ export declare function gc(): void
 export declare const version: string
 
 export interface BoardInfo {
-  /** Board name (e.g. "waveshare-esp32c6") or "generic" */
+  /** Board name from the firmware build (e.g. "xiao-esp32c6") or "generic" */
   name: string
   /** Chip target (e.g. "esp32c6") or "host" */
   chip: string

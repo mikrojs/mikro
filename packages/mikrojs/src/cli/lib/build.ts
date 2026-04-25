@@ -85,7 +85,7 @@ function mikrojsExternalsPlugin(): import('esbuild').Plugin {
  * Firmware builtins export ./cmake which provides ESP-IDF component paths. */
 const firmwareBuiltinCache = new Map<string, boolean>()
 function isFirmwareBuiltin(id: string): boolean {
-  // Extract package name from import specifier (e.g. "@mikrojs/waveshare/t-display" -> "@mikrojs/waveshare")
+  // Extract package name from import specifier (e.g. "@mikrojs/some-board/some-variant" -> "@mikrojs/some-board")
   const parts = id.split('/')
   const pkgName =
     parts.length >= 2 && parts[0]!.startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0]!

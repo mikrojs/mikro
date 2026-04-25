@@ -17,9 +17,6 @@ const config = {
       ignoreDependencies: ['@mikrojs/native', '@mikrojs/quickjs', 'esbuild'],
       ignore: ['resolve.js'],
     },
-    esp32: {
-      ignoreDependencies: ['@mikrojs/driver-sh8601', '@mikrojs/waveshare'],
-    },
     'packages/mikrojs': {
       entry: ['src/cli/cliWrapper.ts', 'src/cli/cli.ts', 'src/_exports/*.ts'],
       project: ['src/**/*.{ts,tsx}'],
@@ -52,8 +49,7 @@ const config = {
     // sim stubs are loaded dynamically by mikro dev --sim, not imported
     '**/*.stub.ts',
   ],
-  // 'native' is misdetected from native:* protocol imports (native module bindings)
-  ignoreDependencies: ['unbarrelify', 'native', 'taze'],
+  ignoreDependencies: ['unbarrelify', 'taze'],
   ignoreBinaries: ['cmake', 'ctest'],
   // Knip can't trace `import * as` namespace member access or type-only re-exports
   // through barrel files. All remaining "unused" exports/types have been manually

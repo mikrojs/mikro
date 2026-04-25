@@ -42,14 +42,14 @@ my-firmware/
 }
 ```
 
-Add board or driver packages as needed:
+Add board or driver packages as needed (board/driver packages export `cmake.js` and are picked up automatically by `project.cmake`):
 
 ```json
 {
   "dependencies": {
     "@mikrojs/firmware": "^0.1.0",
-    "@mikrojs/waveshare": "^0.1.0",
-    "@mikrojs/driver-sh8601": "^0.1.0"
+    "@mikrojs/your-board": "^0.1.0",
+    "@mikrojs/your-driver": "^0.1.0"
   }
 }
 ```

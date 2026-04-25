@@ -256,7 +256,7 @@ static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_n
         return NULL;
     }
 
-    /* Check external builtins for board/driver packages (e.g. "@mikrojs/driver-st7789").
+    /* Check external builtins for board/driver packages (e.g. "@mikrojs/your-driver").
      * These are registered via MIK_REGISTER_BUILTIN() and resolved by package name
      * before falling through to filesystem resolution. */
     {

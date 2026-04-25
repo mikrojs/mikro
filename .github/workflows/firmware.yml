@@ -51,10 +51,6 @@ jobs:
           - target: esp32s3
             board: generic
             asset: mikrojs-firmware-esp32s3
-          # Board-specific firmware (includes board drivers + sdkconfig)
-          - target: esp32s3
-            board: esp32-s3-knob-touch-lcd-1.8
-            asset: mikrojs-firmware-esp32-s3-knob-touch-lcd-1.8
     env:
       TARGET: ${{ matrix.target }}
       MIKROJS_BOARD: ${{ matrix.board }}

@@ -7,7 +7,7 @@ description: Scaffold a mikrojs driver package for a hardware peripheral. Use th
 
 Generate all files for a new driver package that exposes hardware functionality to JavaScript via a native C/C++ module and TypeScript wrapper.
 
-When this skill triggers, gather the required information from the user, then generate all files listed below. Use the existing `@mikrojs/driver-sh8601` package as a working reference (read its files if you need to check patterns). After generating files, guide the user through building and testing.
+When this skill triggers, gather the required information from the user, then generate all files listed below. The repo's `docs/develop/creating-drivers.md` walks through the file layout and the `MIK_REGISTER_MODULE` / `MIK_REGISTER_BUILTIN` registration pattern; refer to it for the canonical structure. After generating files, guide the user through building and testing.
 
 ## What you need from the user
 

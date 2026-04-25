@@ -11,10 +11,10 @@ This page explains how the pieces fit together. The goal is "enough to understan
 
 ```
  ┌─────────────────────────────────────────────┐
- │  Board packages  (@mikrojs/waveshare, etc.) │
+ │  Board packages                             │
  │  Pin maps, sdkconfig, re-export drivers     │
  ├─────────────────────────────────────────────┤
- │  Driver packages  (@mikrojs/driver-*)       │
+ │  Driver packages                            │
  │  Native C or pure JS hardware abstractions  │
  ├─────────────────────────────────────────────┤
  │  Core runtime  (@mikrojs/native)            │
@@ -26,10 +26,10 @@ This page explains how the pieces fit together. The goal is "enough to understan
 
 **Driver packages** come in two flavors:
 
-- **Native drivers** (e.g. `@mikrojs/driver-sh8601`): ESP-IDF components with C/C++ code, registered via `MIK_REGISTER_MODULE` and `MIK_REGISTER_BUILTIN`. Compiled into firmware.
-- **Pure JS drivers** (e.g. `@mikrojs/driver-st7789`): Regular npm packages that use core APIs like `mikrojs/spi`. Bundled and deployed with the user's app. No native code, no `cmake.js`.
+- **Native drivers**: ESP-IDF components with C/C++ code, registered via `MIK_REGISTER_MODULE` and `MIK_REGISTER_BUILTIN`. Compiled into firmware. Use for QSPI displays and other peripherals needing direct hardware access.
+- **Pure JS drivers**: Regular npm packages that use core APIs like `mikrojs/spi`. Bundled and deployed with the user's app. No native code, no `cmake.js`.
 
-**Board packages** are thin layers that depend on drivers and provide board-specific pin assignments. Native boards (e.g. `@mikrojs/waveshare`) include sdkconfig and ESP-IDF components. Pure JS boards (e.g. `@mikrojs/lilygo`) are just TypeScript re-exports.
+**Board packages** are thin layers that depend on drivers and provide board-specific pin assignments. Native boards include sdkconfig and ESP-IDF components. Pure JS boards are just TypeScript re-exports.
 
 ## Native module registration
 

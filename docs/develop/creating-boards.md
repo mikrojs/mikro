@@ -9,9 +9,9 @@ A board package bundles driver dependencies with board-specific pin assignments 
 
 Board packages come in two styles depending on their drivers:
 
-1. **Native boards** use drivers with native C code. They need `cmake.js`, ESP-IDF components, and `MIK_REGISTER_BUILTIN`. The board's runtime is compiled to firmware bytecode. Example: `@mikrojs/waveshare` (SH8601 QSPI display).
+1. **Native boards** use drivers with native C code. They need `cmake.js`, ESP-IDF components, and `MIK_REGISTER_BUILTIN`. The board's runtime is compiled to firmware bytecode. Use this for QSPI displays and other peripherals that need direct hardware access.
 
-2. **Pure JS boards** use drivers that are regular JavaScript (via `mikrojs/spi`, `mikrojs/i2c`, etc.). No `cmake.js`, no ESP-IDF component. The board is bundled and deployed with the user's app. Example: `@mikrojs/lilygo` (ST7789 SPI display).
+2. **Pure JS boards** use drivers that are regular JavaScript (via `mikrojs/spi`, `mikrojs/i2c`, etc.). No `cmake.js`, no ESP-IDF component. The board is bundled and deployed with the user's app. Use this when the existing core APIs are sufficient.
 
 ## What a board package provides
 

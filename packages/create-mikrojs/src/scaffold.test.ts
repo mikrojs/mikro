@@ -15,9 +15,7 @@ const createMikrojsPkgDir = path.resolve(__dirname, '..')
 const tscBin = path.resolve(createMikrojsPkgDir, 'node_modules', '.bin', 'tsc')
 
 // Extra packages needed for type-checking specific templates
-const EXTRA_TYPE_DEPS: Record<string, Record<string, string>> = {
-  't-display': {'@mikrojs/lilygo': path.resolve(__dirname, '..', '..', '@mikrojs', 'lilygo')},
-}
+const EXTRA_TYPE_DEPS: Record<string, Record<string, string>> = {}
 
 describe.each(TEMPLATES)('template: $name', ({name}) => {
   let tempDir: string

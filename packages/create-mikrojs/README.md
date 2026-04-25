@@ -18,7 +18,6 @@ npm create mikrojs my-project
 | `wifi-access-point` | WiFi hotspot                |
 | `sntp`              | NTP time sync               |
 | `rtc-counter`       | RTC counter with deep sleep |
-| `t-display`         | LilyGo T-Display demo       |
 
 ## Usage
 

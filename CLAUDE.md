@@ -96,7 +96,7 @@ The project is a pnpm workspace (pnpm 10.30.1, Node >= 24). Key areas:
   - `components/mikrojs/` — ESP-IDF adapter (compiles standalone lib + ESP-specific modules)
 - **`esp32/`** — Thin consumer of `@mikrojs/firmware`; contains `CMakeLists.txt`, `package.json`, `.envrc`, `.gitignore`, `main/main.cpp`, and `test/`
 - **`packages/mikrojs/`** — CLI tool (`mikro`/`mikrojs` commands) built with Ink/React for terminal UI
-- **`packages/@mikrojs/`** — Shared packages: `analyze-imports`, `eslint-plugin`, `esptool`, and vendor board/driver packages (`waveshare`, `lilygo`, `seeedstudio`, `driver-sh8601`, `driver-st7789`)
+- **`packages/@mikrojs/`** — Shared packages: `analyze-imports`, `eslint-plugin`, `esptool`. Board and driver packages can be added here as workspace members.
 - **`scripts/`** — Workspace package (`@repo/scripts`) for repo tooling (agent detection, etc.)
 - **`packages/create-mikrojs/`** — Project scaffolding tool (`npm create mikrojs`)
 - **`examples/`** — Example projects (`blank`, `blinky`, `neopixel`, `pwm-led`, `schema`, `sntp`, `uart`, `wifi-fetch`, `wifi-access-point`, and more)
@@ -225,12 +225,12 @@ my-firmware/
     └── main.cpp        # calls MIK_Main() or custom logic
 ```
 
-The `@mikrojs/firmware` package provides `project.cmake` which handles ESP-IDF version validation, component discovery (scans dependencies for board/driver packages), and sdkconfig/partition defaults. Native board and driver packages (e.g. `@mikrojs/waveshare`, `@mikrojs/driver-sh8601`) are discovered automatically from `package.json` dependencies via their `cmake.js` exports.
+The `@mikrojs/firmware` package provides `project.cmake` which handles ESP-IDF version validation, component discovery (scans dependencies for board/driver packages), and sdkconfig/partition defaults. Native board and driver packages are discovered automatically from `package.json` dependencies via their `cmake.js` exports.
 
 Driver and board packages come in two flavors:
 
-- **Native** (e.g. `@mikrojs/driver-sh8601`, `@mikrojs/waveshare`): Have C/C++ code, export `cmake.js`, compile into firmware via `MIK_REGISTER_MODULE`/`MIK_REGISTER_BUILTIN`.
-- **Pure JS** (e.g. `@mikrojs/driver-st7789`, `@mikrojs/lilygo`, `@mikrojs/seeedstudio`): Regular npm packages using `mikrojs/spi`, `mikrojs/i2c`, etc. No native code, no `cmake.js`. Bundled and deployed with the user's app.
+- **Native**: Have C/C++ code, export `cmake.js`, compile into firmware via `MIK_REGISTER_MODULE`/`MIK_REGISTER_BUILTIN`. Use this for QSPI displays, custom peripherals, anything needing direct hardware access.
+- **Pure JS**: Regular npm packages using `mikrojs/spi`, `mikrojs/i2c`, etc. No native code, no `cmake.js`. Bundled and deployed with the user's app.
 
 The `esp32/` directory in this repo is itself a thin consumer of `@mikrojs/firmware`, dogfooding the same workflow.
 

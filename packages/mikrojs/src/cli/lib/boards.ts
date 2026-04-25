@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
 export interface BoardInfo {
-  /** Board name (e.g. "esp32-s3-knob-touch-lcd-1.8") */
+  /** Board name (e.g. "xiao-esp32c6") */
   name: string
   /** Target chip (e.g. "esp32s3") */
   chip: string
@@ -12,9 +12,9 @@ export interface BoardInfo {
   runtimePath?: string
   /** Path to sdkconfig defaults file (absolute) */
   sdkconfigPath?: string
-  /** Package that provides this board (e.g. "@mikrojs/waveshare") */
+  /** Package that provides this board (e.g. "@mikrojs/some-board") */
   packageName: string
-  /** Import specifier (e.g. "@mikrojs/waveshare/esp32-s3-knob-touch-lcd-1.8") */
+  /** Import specifier (e.g. "@mikrojs/some-board/some-variant") */
   importSpecifier: string
 }
 
@@ -36,7 +36,7 @@ interface PkgJson {
 /**
  * Discover boards from the current project's package.json dependencies.
  * Scans all dependencies for packages with a `mikrojs.boards` field.
- * Board keys are subpath exports (e.g. "./esp32-s3-knob-touch-lcd-1.8").
+ * Board keys are subpath exports (e.g. "./xiao-esp32c6").
  */
 export async function discoverBoards(projectDir: string): Promise<BoardInfo[]> {
   const pkgPath = path.join(projectDir, 'package.json')

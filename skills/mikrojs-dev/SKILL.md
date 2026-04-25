@@ -268,10 +268,10 @@ When in doubt, prefer inlining small utilities over importing packages. Every im
 | `sys`      | `mikrojs/sys`          | System info, gc, restart    |
 | `test`     | `mikrojs/test`         | On-device test framework    |
 
-Board packages (e.g. `@mikrojs/waveshare`) re-export drivers with pre-configured pins:
+Board packages re-export drivers with pre-configured pins, so user code imports from the board rather than wiring pins manually:
 
 ```typescript
-import {display} from '@mikrojs/waveshare/esp32-s3-knob-touch-lcd-1.8'
+import {display} from '@mikrojs/your-board/your-variant'
 display.fillRect(0, 0, 360, 360, 0xf800)
 ```
 

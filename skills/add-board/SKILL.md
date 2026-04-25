@@ -7,12 +7,12 @@ description: Scaffold a mikrojs board package for a development board. Use this 
 
 Generate all files for a new board package that provides pin maps, sdkconfig defaults, and pre-configured driver re-exports for a specific development board.
 
-When this skill triggers, gather the required information from the user, then generate all files listed below. Use the existing `@mikrojs/waveshare` package as a working reference (read its files if you need to check patterns). If the user has a demo/example code or schematic for the board, read it to extract pin mappings and hardware details. After generating files, guide the user through building and testing.
+When this skill triggers, gather the required information from the user, then generate all files listed below. The repo's `docs/develop/creating-boards.md` describes the architecture (native vs pure-JS boards, pin maps, sdkconfig). If the user has a demo/example code or schematic for the board, read it to extract pin mappings and hardware details. After generating files, guide the user through building and testing.
 
 ## What you need from the user
 
-1. **Board name** (e.g. `esp32-s3-knob-touch-lcd-1.8`)
-2. **Vendor/package name** (e.g. `@mikrojs/waveshare` for a vendor with multiple boards, or `@mikrojs/my-board` for a single board)
+1. **Board name** (e.g. `xiao-esp32c6`)
+2. **Vendor/package name** (e.g. `@mikrojs/some-vendor` for a vendor with multiple boards, or `@mikrojs/my-board` for a single board)
 3. **Chip** (e.g. `esp32s3`, `esp32c6`)
 4. **Pin map** (GPIO assignments for the board's peripherals)
 5. **What drivers the board needs** (e.g. display driver, sensor driver)
@@ -147,7 +147,7 @@ target_include_directories(${COMPONENT_LIB} PRIVATE "${gen_{vendor_safe}_{board_
 mikrojs_force_include_builtins({builtin_id})
 ```
 
-The `REQUIRES` field lists the ESP-IDF component names for all drivers this board uses. The component name is the driver's component directory name (e.g. `driver_sh8601`).
+The `REQUIRES` field lists the ESP-IDF component names for all drivers this board uses. The component name is the driver's component directory name (typically `driver_<chipset>`, e.g. `driver_bme280`).
 
 ### 5. Per-board builtins.cpp
 

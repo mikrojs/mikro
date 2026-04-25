@@ -12,8 +12,6 @@
     "test:protocol": "npx tsx test-protocol.ts"
   },
   "dependencies": {
-    "@mikrojs/driver-sh8601": "workspace:*",
-    "@mikrojs/firmware": "workspace:*",
-    "@mikrojs/waveshare": "workspace:*"
+    "@mikrojs/firmware": "workspace:*"
   }
 }

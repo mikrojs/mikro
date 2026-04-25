@@ -7,11 +7,11 @@ description: Build a native driver package for a sensor or peripheral
 
 Drivers come in two flavors:
 
-1. **Native drivers** have a C/C++ module compiled into firmware as an ESP-IDF component. They export `./cmake` and use `MIK_REGISTER_MODULE` / `MIK_REGISTER_BUILTIN`. Use this when you need direct hardware access (QSPI, DMA, custom peripherals). Example: `@mikrojs/driver-sh8601`.
+1. **Native drivers** have a C/C++ module compiled into firmware as an ESP-IDF component. They export `./cmake` and use `MIK_REGISTER_MODULE` / `MIK_REGISTER_BUILTIN`. Use this when you need direct hardware access (QSPI, DMA, custom peripherals).
 
-2. **Pure JS drivers** are regular npm packages that use existing APIs like `mikrojs/spi` or `mikrojs/i2c`. No native code, no `cmake.js`, no ESP-IDF component. They're bundled and deployed with the user's app. Use this when existing APIs are sufficient. Example: `@mikrojs/driver-st7789`.
+2. **Pure JS drivers** are regular npm packages that use existing APIs like `mikrojs/spi` or `mikrojs/i2c`. No native code, no `cmake.js`, no ESP-IDF component. They're bundled and deployed with the user's app. Use this when existing APIs are sufficient.
 
-This walkthrough covers a **native driver**. For pure JS drivers, create a regular npm package that imports from `mikrojs/spi`, `mikrojs/i2c`, etc., and export a factory function. See `@mikrojs/driver-st7789` for an example.
+This walkthrough covers a **native driver**. For pure JS drivers, create a regular npm package that imports from `mikrojs/spi`, `mikrojs/i2c`, etc., and export a factory function.
 
 ## Package structure
 

@@ -14,7 +14,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/**/*.test.ts', 'runtime/**/*.test.ts'],
+    include: ['addon/**/*.test.ts', 'src/**/*.test.ts', 'runtime/**/*.test.ts'],
     typecheck: {
       enabled: true,
       include: ['runtime/**/*.test-d.ts'],

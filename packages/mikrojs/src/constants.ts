@@ -17,7 +17,7 @@ export const BUILTINS = [
  * bundle-runtime.js (CMake build context) and must be kept in sync manually there.
  * Note: @mikrojs/* packages are NOT automatically builtins. Only packages with native
  * code (those that export ./cmake) are firmware builtins. Pure JS @mikrojs/* packages
- * (like @mikrojs/driver-st7789) are bundled and deployed with the user's app. */
+ * are bundled and deployed with the user's app. */
 export const BUILTIN_EXTERNALS = ['mikrojs', 'mikrojs/*', '@mikrojs/*']
 
 /** Check if a module specifier matches a firmware builtin pattern.

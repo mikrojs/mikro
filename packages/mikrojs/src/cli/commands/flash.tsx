@@ -44,7 +44,7 @@ export const args = command(
     ),
     board: optional(
       option('--board', string({metavar: 'BOARD'}), {
-        description: message`Board name (e.g. esp32-s3-knob-touch-lcd-1.8). Discovered from package.json if omitted.`,
+        description: message`Board name (e.g. xiao-esp32c6). Discovered from package.json if omitted.`,
       }),
     ),
     target: optional(
