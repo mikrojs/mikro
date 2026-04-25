@@ -36,10 +36,8 @@ jobs:
         needs.release-please.outputs.releases_created == 'true' ||
         github.event_name == 'workflow_dispatch'
       )
-    # GitHub-hosted macos-13 (Intel) runners have severely degraded
-    # availability post-deprecation; jobs queue for 30+ min and often
-    # never start. darwin-x64 users fall back to a source build via
-    # node-gyp-build. Re-add (or use macos-14-large) once we hear demand.
+    # darwin-x64 dropped: macos-13 runner availability is poor.
+    # win32-x64 dropped: the C++ runtime is POSIX-only.
     strategy:
       fail-fast: false
       matrix:
@@ -53,9 +51,6 @@ jobs:
           - os: ubuntu-24.04-arm
             platform: linux
             arch: arm64
-          - os: windows-2022
-            platform: win32
-            arch: x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6

@@ -34,6 +34,10 @@
     "!**/*.test.tsx",
     "!**/*.test-d.ts"
   ],
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "type": "module",
   "sideEffects": false,
   "exports": {
