@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/mikrojs/mikrojs/compare/firmware-v0.0.3...firmware-v0.0.4) (2026-04-25)
+
+
+### Miscellaneous Chores
+
+* **firmware:** Synchronize core versions
+
 ## [0.0.3](https://github.com/mikrojs/mikrojs/compare/firmware-v0.0.2...firmware-v0.0.3) (2026-04-25)
 
 

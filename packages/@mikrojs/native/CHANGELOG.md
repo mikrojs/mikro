@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/mikrojs/mikrojs/compare/native-v0.0.3...native-v0.0.4) (2026-04-25)
+
+
+### Bug Fixes
+
+* **build:** gate mikrojs warning and dead-strip flags behind non-MSVC ([c3cdcb9](https://github.com/mikrojs/mikrojs/commit/c3cdcb9b30db002e1c200a479c233a9c9542c660))
+
 ## [0.0.3](https://github.com/mikrojs/mikrojs/compare/native-v0.0.2...native-v0.0.3) (2026-04-25)
 
 
