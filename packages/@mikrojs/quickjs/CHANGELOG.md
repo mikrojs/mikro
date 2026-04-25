@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/mikrojs/mikrojs/compare/quickjs-v0.0.2...quickjs-v0.0.3) (2026-04-25)
+
+
+### Bug Fixes
+
+* **build:** drop GCC-only quickjs flags when compiling with MSVC ([996c1ed](https://github.com/mikrojs/mikrojs/commit/996c1ed3c0817ede0127c4decaaf4a18bda41175))
+
 ## [0.0.2](https://github.com/mikrojs/mikrojs/compare/quickjs-v0.0.1...quickjs-v0.0.2) (2026-04-25)
 
 

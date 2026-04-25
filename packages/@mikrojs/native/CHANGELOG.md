@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/mikrojs/mikrojs/compare/native-v0.0.2...native-v0.0.3) (2026-04-25)
+
+
+### Miscellaneous Chores
+
+* **native:** Synchronize core versions
+
 ## [0.0.2](https://github.com/mikrojs/mikrojs/compare/native-v0.0.1...native-v0.0.2) (2026-04-25)
 
 
