@@ -1,8 +1,6 @@
 name: Build Firmware
 
 on:
-  push:
-    branches: [main]
   pull_request:
     types: [labeled, synchronize]
   workflow_dispatch:
