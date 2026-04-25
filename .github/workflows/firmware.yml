@@ -38,7 +38,7 @@ jobs:
     outputs:
       chips: ${{ steps.read.outputs.chips }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
       - id: read
         env:
           TARGET: ${{ inputs.target }}
