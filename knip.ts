@@ -10,7 +10,7 @@ const config = {
       project: ['src/**/*.ts'],
     },
     docs: {
-      ignoreDependencies: ['mikrojs'],
+      ignoreDependencies: ['mikrojs', 'wrangler'],
     },
     'packages/@mikrojs/firmware': {
       ignoreDependencies: ['@mikrojs/native', '@mikrojs/quickjs', 'esbuild'],

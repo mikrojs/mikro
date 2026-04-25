@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Top-level configuration
+  "name": "mikrojs",
+  // Set this to today's date
+  "compatibility_date": "2026-04-25",
+  "assets": {
+    "directory": "./.vitepress/dist",
+  },
+}
