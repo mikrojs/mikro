@@ -2,9 +2,7 @@ import type {KnipConfig} from 'knip'
 
 const config = {
   workspaces: {
-    '.': {
-      ignoreDependencies: ['@vitest/coverage-v8'],
-    },
+    '.': {},
     'bench-site': {
       // app.ts is the browser entry, bundled by esbuild via build.ts (knip
       // can't see esbuild entrypoints on its own)
@@ -29,7 +27,7 @@ const config = {
       ignoreDependencies: ['@mikrojs/quickjs', 'terser', '@swc/core'],
     },
     'packages/@mikrojs/analyze-imports': {
-      ignore: ['test/unit/**', 'test/symlink/**'],
+      ignore: ['test/unit/**', 'test/symlink/**', 'dist/**'],
     },
     'packages/@mikrojs/native': {
       // bundle-runtime.js + generate-symbol-map.js are invoked by CMake during
