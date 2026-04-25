@@ -1,6 +1,11 @@
-[submodule "esp-idf"]
-	path = esp-idf
-	url = https://github.com/espressif/esp-idf.git
-[submodule "components/quickjs/quickjs"]
-	path = components/quickjs/quickjs
+[submodule "packages/@mikrojs/quickjs/deps/quickjs"]
+	path = packages/@mikrojs/quickjs/deps/quickjs
 	url = https://github.com/quickjs-ng/quickjs.git
+	# Local patches in packages/@mikrojs/quickjs/patches/ are applied to
+	# the submodule's working tree at install time. `ignore = dirty`
+	# silences the resulting working-tree noise in `git status` while
+	# still flagging any change to the pinned submodule commit.
+	ignore = dirty
+[submodule "packages/@mikrojs/native/deps/nanocbor"]
+	path = packages/@mikrojs/native/deps/nanocbor
+	url = https://github.com/bergzand/nanocbor.git

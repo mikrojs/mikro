@@ -1,0 +1,37 @@
+packages:
+  - bench-site
+  - dev/*
+  - examples/*
+  - docs
+  - esp32
+  - packages/@mikrojs/*
+  - packages/*
+  - scripts
+
+blockExoticSubdeps: true
+
+catalog:
+  eslint: ^10.2.0
+  eslint-plugin-import: ^2.32.0
+  eslint-plugin-package-json: ^0.91.1
+  eslint-plugin-react-hooks: canary
+  eslint-plugin-simple-import-sort: ^12.1.1
+  typescript: ^6.0.2
+  typescript-eslint: 8.58.0
+  vite: ^8.0.3
+  vitest: ^4.1.2
+
+catalogs:
+  node24:
+    '@types/node': ^24.12.2
+
+ignoreWorkspaceRootCheck: true
+
+minimumReleaseAge: 1440
+
+trustPolicy: no-downgrade
+
+trustPolicyExclude:
+  - vite@5.4.21
+
+trustPolicyIgnoreAfter: 1051200

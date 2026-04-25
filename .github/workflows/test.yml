@@ -1,0 +1,49 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Init submodules
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:ts
+      - run: pnpm build:native
+      - run: pnpm test:js -- --coverage --coverage.reporter=json-summary --coverage.reporter=text
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "
+              const c = require('./coverage/coverage-summary.json').total;
+              const fmt = (m) => m.pct + '%';
+              const lines = [
+                '## Test Coverage',
+                '',
+                '| Metric | Coverage |',
+                '|--------|----------|',
+                '| Statements | ' + fmt(c.statements) + ' |',
+                '| Branches | ' + fmt(c.branches) + ' |',
+                '| Functions | ' + fmt(c.functions) + ' |',
+                '| Lines | ' + fmt(c.lines) + ' |',
+              ];
+              console.log(lines.join('\n'));
+            " >> "$GITHUB_STEP_SUMMARY"
+          fi

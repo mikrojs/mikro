@@ -1,0 +1,10 @@
+{
+  "name":  "@b/c",
+  "type": "module",
+  "exports": {
+    ".": "./b-c.js"
+  },
+  "dependencies": {
+    "nested-dep": "0.0.0"
+  }
+}

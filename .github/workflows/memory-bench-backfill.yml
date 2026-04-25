@@ -1,0 +1,106 @@
+name: Memory Benchmark Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      range:
+        description: 'Git range (e.g. "main~200..main" or "abc1234..main")'
+        required: true
+        default: 'main~100..main'
+      step:
+        description: 'Sample every Nth commit'
+        required: false
+        default: '5'
+      skip_existing:
+        description: 'Skip commits already in data.js'
+        type: boolean
+        default: true
+      dry_run:
+        description: 'Do not push to gh-pages (inspect the diff in job logs)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: memory-bench-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout main (for bench-site source)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Run backfill
+        # Route user-controlled inputs (range, step) through env rather than
+        # interpolating them into the shell, for the same context-injection
+        # reason as the main bench workflow.
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
+          RANGE: ${{ inputs.range }}
+          STEP: ${{ inputs.step }}
+          SKIP_EXISTING: ${{ inputs.skip_existing }}
+          REPO: ${{ github.repository }}
+          WORKDIR: ${{ runner.temp }}/bench-backfill
+        run: |
+          mkdir -p "$CCACHE_DIR"
+          skip_flag=""
+          if [ "$SKIP_EXISTING" = "true" ]; then skip_flag="--skip-existing"; fi
+          pnpm --filter @repo/bench-site exec tsx src/backfill.ts \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --range "$RANGE" \
+            --step "$STEP" \
+            $skip_flag \
+            --out "$GITHUB_WORKSPACE/gh-pages/dev/bench/data.js" \
+            --repo-url "https://github.com/$REPO" \
+            --workdir "$WORKDIR"
+
+      - name: Build and deploy updated site
+        if: ${{ !inputs.dry_run }}
+        run: |
+          pnpm --filter @repo/bench-site build
+          cp -f bench-site/dist/index.html gh-pages/dev/bench/index.html
+          cp -f bench-site/dist/bench.js gh-pages/dev/bench/bench.js
+          cp -f bench-site/dist/bench.css gh-pages/dev/bench/bench.css
+
+      - name: Show diff
+        working-directory: gh-pages
+        run: |
+          git status
+          git diff --stat
+
+      - name: Commit and push
+        if: ${{ !inputs.dry_run }}
+        working-directory: gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dev/bench/
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "bench: backfill ${{ inputs.range }} (step=${{ inputs.step }})"
+            git push
+          fi

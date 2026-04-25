@@ -1,0 +1,8 @@
+{
+  "esp32c6": {
+    "heapDelta": 30450
+  },
+  "simulator": {
+    "heapDelta": 54916
+  }
+}

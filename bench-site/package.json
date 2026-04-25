@@ -1,0 +1,29 @@
+{
+  "name": "@repo/bench-site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Static site and CLIs for tracking mikrojs memory benchmarks on gh-pages",
+  "bin": {
+    "bench-check-regression": "./src/check-regression.ts",
+    "bench-update": "./src/update.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "backfill": "tsx src/backfill.ts",
+    "build": "tsx src/build.ts",
+    "check-regression": "tsx src/check-regression.ts",
+    "dev": "tsx src/dev.ts",
+    "size-report": "tsx src/size-report.ts",
+    "typecheck": "tsc --noEmit",
+    "update": "tsx src/update.ts"
+  },
+  "dependencies": {
+    "@observablehq/plot": "^0.6.17"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:node24",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.21.0",
+    "typescript": "catalog:"
+  }
+}

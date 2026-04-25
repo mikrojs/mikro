@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["runtime.d.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  }
+}

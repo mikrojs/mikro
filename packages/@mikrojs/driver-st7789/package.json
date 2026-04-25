@@ -1,0 +1,27 @@
+{
+  "name": "@mikrojs/driver-st7789",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ST7789 SPI display driver for Mikro.js",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./dist/index.js",
+      "development": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": "./dist/index.js",
+      "./package.json": "./package.json"
+    }
+  },
+  "scripts": {
+    "build:ts": "tsc -p tsconfig.build.json",
+    "publint": "publint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "watch": "tsc -p tsconfig.build.json --watch --preserveWatchOutput"
+  }
+}

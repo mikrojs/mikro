@@ -1,0 +1,54 @@
+output:
+  - meta
+  - summary
+  - success
+  - failure
+  - execution
+  - execution_out
+  - execution_info
+
+pre-commit:
+  commands:
+    # Human: fast staged-file checks
+    lint:
+      skip:
+        - run: node scripts/is-agent.js
+      glob: '*.{js,ts,tsx,md,json}'
+      run: pnpm lint -- {staged_files}
+    fmt:
+      skip:
+        - run: node scripts/is-agent.js
+      glob: '*.{js,ts,tsx,md,json}'
+      run: pnpm fmt:check -- {staged_files}
+
+    # Agent: full project checks
+    build-cpp:
+      only:
+        - run: node scripts/is-agent.js
+      run: pnpm build:cpp
+    build-ts:
+      only:
+        - run: node scripts/is-agent.js
+      run: pnpm build:ts
+    lint-all:
+      only:
+        - run: node scripts/is-agent.js
+      glob: '*.{js,ts,tsx,md,json}'
+      run: pnpm lint -- {staged_files}
+    fmt-all:
+      only:
+        - run: node scripts/is-agent.js
+      glob: '*.{js,ts,tsx,md,json}'
+      run: pnpm fmt:check -- {staged_files}
+    knip:
+      only:
+        - run: node scripts/is-agent.js
+      run: pnpm knip
+    test-js:
+      only:
+        - run: node scripts/is-agent.js
+      run: pnpm test:js
+    test-lib:
+      only:
+        - run: node scripts/is-agent.js
+      run: pnpm test:lib

@@ -1,0 +1,11 @@
+# ESP32-S3: route ESP-IDF stdio/ESP_LOG to UART0; mikrojs owns the
+# USB-Serial/JTAG peripheral directly via the driver API (see
+# components/mikrojs/mik_serial_io.cpp).
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=n
+
+# Enable PSRAM if present. Default mode is quad; octal boards need
+# CONFIG_SPIRAM_MODE_OCT=y. Falls back to internal SRAM if init fails.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y

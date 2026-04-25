@@ -1,0 +1,95 @@
+declare type FormatString = string & {}
+
+declare module '*.txt' {
+  declare const mod: string
+  export default mod
+}
+
+declare interface LogFn {
+  (fmt: FormatString, ...args: any[]): void
+
+  (...args: any[]): void
+}
+
+declare function setInterval(
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+  handler: string | Function,
+  timeout?: number,
+  ...arguments: any[]
+): number
+declare function setTimeout(
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+  handler: string | Function,
+  timeout?: number,
+  ...arguments: any[]
+): number
+declare function clearInterval(id: number | undefined): void
+declare function clearTimeout(id: number | undefined): void
+
+declare function btoa(data: string): string
+declare function atob(data: string): string
+
+declare let global: typeof globalThis
+declare let console: {
+  debug: LogFn
+  log: LogFn
+  info: LogFn
+  error: LogFn
+  warn: LogFn
+}
+
+declare class AbortError extends Error {
+  constructor(message?: string)
+  readonly name: 'AbortError'
+}
+
+declare class TimeoutError extends Error {
+  constructor(message?: string)
+  readonly name: 'TimeoutError'
+}
+
+declare class AbortSignal {
+  readonly aborted: boolean
+  readonly reason: unknown
+  throwIfAborted(): void
+  onabort: (() => void) | null
+  addEventListener(type: 'abort', fn: () => void): void
+  removeEventListener(type: 'abort', fn: () => void): void
+  static abort(reason?: unknown): AbortSignal
+  static timeout(ms: number): AbortSignal
+  static any(signals: AbortSignal[]): AbortSignal
+}
+
+declare class AbortController {
+  readonly signal: AbortSignal
+  abort(reason?: unknown): void
+}
+
+declare interface ImportMetaEnv {
+  [key: string]: string | undefined
+}
+
+declare interface ImportMeta {
+  readonly env: Readonly<ImportMetaEnv>
+  /**
+   * Evict a module from the runtime's module cache, recursively freeing
+   * any transitive dependency whose only importer was the unloaded module.
+   * Builtin modules (native:*, mikrojs/*, @mikrojs/*) are anchored
+   * and cannot be unloaded.
+   *
+   * Intended for use with dynamic imports: a static `import` at the top of
+   * the module creates a binding that pins the imported module's exports,
+   * so unloading it while the binding is live reclaims nothing. Prefer
+   * `const x = await import(spec)` + local scope + `import.meta.unload(spec)`.
+   */
+  unload(specifier: string): Promise<number>
+}
+
+declare class TextEncoder {
+  encode(input?: string): Uint8Array
+}
+
+declare class TextDecoder {
+  constructor(label?: 'utf-8' | 'utf8')
+  decode(input?: ArrayBufferView | ArrayBuffer, options?: {stream?: boolean}): string
+}

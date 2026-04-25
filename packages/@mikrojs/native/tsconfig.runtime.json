@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": ["./runtime/**/*.ts"],
+  "compilerOptions": {
+    "types": [],
+    "noEmit": true,
+    "moduleDetection": "auto",
+    "customConditions": ["development"]
+  }
+}

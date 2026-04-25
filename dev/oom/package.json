@@ -1,0 +1,20 @@
+{
+  "name": "mikrojs-oom-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mikro.js dev fixture: out-of-memory via unbounded async recursion",
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "dev": "mikro dev"
+  },
+  "dependencies": {
+    "mikrojs": "workspace:*"
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "name": "@mikrojs/native",
+  "version": "0.0.0",
+  "description": "Mikro.js C++ runtime library and Node.js native addon",
+  "keywords": [
+    "esp32",
+    "mikrojs",
+    "native",
+    "quickjs",
+    "runtime"
+  ],
+  "homepage": "https://github.com/mikrojs/mikrojs#readme",
+  "bugs": {
+    "url": "https://github.com/mikrojs/mikrojs/issues"
+  },
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikrojs/mikrojs.git"
+  },
+  "files": [
+    "dist",
+    "build/Release",
+    "cmake",
+    "cmake.js",
+    "CMakeLists.txt",
+    "include",
+    "runtime",
+    "scripts",
+    "src"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "development": "./addon/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./cmake": "./cmake.js",
+    "./package.json": "./package.json",
+    "./runtime/ble/types": "./runtime/ble/types.ts",
+    "./runtime/cbor/types": "./runtime/cbor/types.ts",
+    "./runtime/console/types": "./runtime/console/types.ts",
+    "./runtime/env/types": "./runtime/env/types.ts",
+    "./runtime/format/types": "./runtime/format/types.ts",
+    "./runtime/fs/types": "./runtime/fs/types.ts",
+    "./runtime/http/helpers": "./runtime/http/helpers.ts",
+    "./runtime/i2c/types": "./runtime/i2c/types.ts",
+    "./runtime/inspect/types": "./runtime/inspect/types.ts",
+    "./runtime/kv/shared": "./runtime/kv/shared.ts",
+    "./runtime/kv/types": "./runtime/kv/types.ts",
+    "./runtime/neopixel/types": "./runtime/neopixel/types.ts",
+    "./runtime/pin/types": "./runtime/pin/types.ts",
+    "./runtime/pwm/types": "./runtime/pwm/types.ts",
+    "./runtime/reader/types": "./runtime/reader/types.ts",
+    "./runtime/result/types": "./runtime/result/types.ts",
+    "./runtime/schema/types": "./runtime/schema/types.ts",
+    "./runtime/sleep/types": "./runtime/sleep/types.ts",
+    "./runtime/sntp/types": "./runtime/sntp/types.ts",
+    "./runtime/spi/types": "./runtime/spi/types.ts",
+    "./runtime/stdio/types": "./runtime/stdio/types.ts",
+    "./runtime/stream/types": "./runtime/stream/types.ts",
+    "./runtime/sys/types": "./runtime/sys/types.ts",
+    "./runtime/test/types": "./runtime/test/types.ts",
+    "./runtime/uart/types": "./runtime/uart/types.ts",
+    "./runtime/wifi/types": "./runtime/wifi/types.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": "./dist/index.js",
+      "./cmake": "./cmake.js",
+      "./package.json": "./package.json",
+      "./runtime/ble/types": "./runtime/ble/types.ts",
+      "./runtime/cbor/types": "./runtime/cbor/types.ts",
+      "./runtime/console/types": "./runtime/console/types.ts",
+      "./runtime/env/types": "./runtime/env/types.ts",
+      "./runtime/format/types": "./runtime/format/types.ts",
+      "./runtime/http/helpers": "./runtime/http/helpers.ts",
+      "./runtime/fs/types": "./runtime/fs/types.ts",
+      "./runtime/i2c/types": "./runtime/i2c/types.ts",
+      "./runtime/inspect/types": "./runtime/inspect/types.ts",
+      "./runtime/kv/shared": "./runtime/kv/shared.ts",
+      "./runtime/kv/types": "./runtime/kv/types.ts",
+      "./runtime/neopixel/types": "./runtime/neopixel/types.ts",
+      "./runtime/pin/types": "./runtime/pin/types.ts",
+      "./runtime/pwm/types": "./runtime/pwm/types.ts",
+      "./runtime/reader/types": "./runtime/reader/types.ts",
+      "./runtime/result/types": "./runtime/result/types.ts",
+      "./runtime/schema/types": "./runtime/schema/types.ts",
+      "./runtime/sleep/types": "./runtime/sleep/types.ts",
+      "./runtime/sntp/types": "./runtime/sntp/types.ts",
+      "./runtime/spi/types": "./runtime/spi/types.ts",
+      "./runtime/stdio/types": "./runtime/stdio/types.ts",
+      "./runtime/stream/types": "./runtime/stream/types.ts",
+      "./runtime/sys/types": "./runtime/sys/types.ts",
+      "./runtime/test/types": "./runtime/test/types.ts",
+      "./runtime/uart/types": "./runtime/uart/types.ts",
+      "./runtime/wifi/types": "./runtime/wifi/types.ts"
+    }
+  },
+  "scripts": {
+    "bench": "cmake -B build -DBUILD_TESTING=ON && cmake --build build --target memory_bench &&./build/memory_bench",
+    "build:native": "cmake-js compile --directory addon",
+    "build:native:debug": "cmake-js compile --debug --directory addon",
+    "build:ts": "tsc -p tsconfig.build.json",
+    "clean": "cmake-js clean --directory addon",
+    "compare-minifiers": "node scripts/compare-minifiers.js --open",
+    "publint": "publint",
+    "typecheck": "tsc --noEmit -p tsconfig.addon.json && tsc --noEmit -p tsconfig.runtime.json",
+    "watch": "node --experimental-strip-types watch.ts"
+  },
+  "dependencies": {
+    "@mikrojs/quickjs": "workspace:*",
+    "cmake-js": "^8.0.0",
+    "node-addon-api": "^8.7.0",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.15.24",
+    "@types/node": "catalog:node24",
+    "esbuild": "^0.28.0",
+    "terser": "^5.46.1"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

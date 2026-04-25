@@ -1,0 +1,60 @@
+{
+  "name": "@mikrojs/analyze-imports",
+  "version": "0.0.0",
+  "description": "ESM import analyzer for Mikro.js bundling",
+  "keywords": [
+    "analyzer",
+    "esm",
+    "imports",
+    "mikrojs"
+  ],
+  "homepage": "https://github.com/mikrojs/mikrojs#readme",
+  "bugs": {
+    "url": "https://github.com/mikrojs/mikrojs/issues"
+  },
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikrojs/mikrojs.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": "./dist/index.js",
+      "./package.json": "./package.json"
+    }
+  },
+  "scripts": {
+    "build:ts": "tsc -p tsconfig.build.json",
+    "publint": "publint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "watch": "tsc -p tsconfig.build.json --watch --preserveWatchOutput"
+  },
+  "dependencies": {
+    "@sveltejs/acorn-typescript": "^1.0.9",
+    "acorn": "^8.16.0",
+    "async-sema": "^3.1.1",
+    "estree-walker": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/estree": "^1.0.8",
+    "@types/node": "catalog:node24",
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

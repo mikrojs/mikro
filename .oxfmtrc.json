@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "ignorePatterns": [
+    "esp32/*",
+    "packages/@mikrojs/quickjs/deps/",
+    "packages/@mikrojs/analyze-imports/test/*"
+  ],
+  "semi": false,
+  "experimentalSortPackageJson": true,
+  "bracketSpacing": false,
+  "singleQuote": true
+}

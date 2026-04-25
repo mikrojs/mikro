@@ -1,0 +1,55 @@
+menu "mikrojs console"
+
+    config MIKROJS_CONSOLE_FALLBACK_UART
+        bool "Install UART0 as fallback console on chips with USB-Serial/JTAG"
+        default n
+        depends on SOC_USB_SERIAL_JTAG_SUPPORTED
+        help
+            When enabled, mikrojs brings up both USB-Serial/JTAG and UART0
+            at boot and latches to whichever receives the first byte.
+            Convenient for dev: plug in either cable type and it just
+            works. Costs ~4 KB DRAM (UART RX ring buffer), a UART ISR
+            in IRAM, and keeps UART0 clocks powered — meaningful on
+            RAM-constrained apps (e.g. ones that push large SPI DMA
+            frames and already run the system heap close to full).
+
+            Defaults off to keep RAM available for the application.
+            Enable if you want the auto-detect dev experience on a board
+            where you sometimes connect a USB-TTL adapter instead of
+            (or in addition to) the native USB port. On chips without
+            USB-Serial/JTAG hardware (plain ESP32), UART0 is always
+            installed regardless of this option.
+
+endmenu
+
+menu "mikrojs Test Configuration"
+
+    config MIKROJS_TEST_GPIO_PIN
+        int "GPIO pin for output/input tests"
+        default 15 if IDF_TARGET_ESP32C6
+        default 8 if IDF_TARGET_ESP32C3
+        default 2
+        help
+            GPIO pin used by the hardware test suite for digital write/read tests.
+            Should be a safe, general-purpose pin on the target board (ideally an LED).
+
+    config MIKROJS_TEST_PWM_PIN
+        int "GPIO pin for PWM/LEDC tests"
+        default 15 if IDF_TARGET_ESP32C6
+        default 8 if IDF_TARGET_ESP32C3
+        default 2
+        help
+            GPIO pin used by the hardware test suite for PWM (LEDC) tests.
+            Should be a safe, general-purpose pin on the target board (ideally an LED).
+
+    config MIKROJS_TEST_ADC_PIN
+        int "GPIO pin for ADC tests"
+        default 0 if IDF_TARGET_ESP32C6
+        default 0 if IDF_TARGET_ESP32C3
+        default 1 if IDF_TARGET_ESP32S3
+        default 34
+        help
+            GPIO pin used by the hardware test suite for ADC read tests.
+            Must be connected to an ADC1 channel on the target chip.
+
+endmenu

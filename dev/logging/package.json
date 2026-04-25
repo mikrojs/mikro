@@ -1,0 +1,21 @@
+{
+  "name": "mikrojs-logging-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dev fixture for testing build-time log level elimination via --loglevel.",
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "deploy": "mikro deploy --console",
+    "dev": "mikro dev"
+  },
+  "dependencies": {
+    "mikrojs": "workspace:*"
+  }
+}

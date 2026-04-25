@@ -1,0 +1,33 @@
+{
+  "name": "mikrojs-fetch-wifi",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mikro.js fetch over WiFi example",
+  "homepage": "https://github.com/mikrojs/mikrojs#readme",
+  "bugs": {
+    "url": "https://github.com/mikrojs/mikrojs/issues"
+  },
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikrojs/mikrojs.git"
+  },
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "dev": "mikro dev app/main.ts"
+  },
+  "dependencies": {
+    "mikrojs": "workspace:*"
+  },
+  "mikrojs": {
+    "predeploy": [
+      "tsc --noEmit --pretty"
+    ]
+  }
+}

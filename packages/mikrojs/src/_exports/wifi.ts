@@ -1,0 +1,20 @@
+export type {
+  ApEventMap,
+  ApStartOptions,
+  ApStationInfo,
+  AuthMode,
+  IpConfig,
+  PowerSaveMode,
+  ScanOptions,
+  ScanResult,
+  StaticIpConfig,
+  Wifi,
+  WifiAp,
+  WifiConnectionInfo,
+  WifiCountryCode,
+  WifiDisconnectReason,
+  WifiError,
+  WifiEventMap,
+  WifiStatus,
+} from '@mikrojs/native/runtime/wifi/types'
+export {wifi} from '@mikrojs/native/runtime/wifi/types'

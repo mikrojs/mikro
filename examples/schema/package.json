@@ -1,0 +1,28 @@
+{
+  "name": "mikrojs-schema-example",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mikro.js schema validation example",
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "dev": "mikro dev"
+  },
+  "dependencies": {
+    "mikrojs": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  },
+  "mikrojs": {
+    "predeploy": [
+      "tsc --noEmit --pretty"
+    ]
+  }
+}

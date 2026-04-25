@@ -1,0 +1,26 @@
+# ESP32-C6: route ESP-IDF stdio/ESP_LOG to UART0 rather than the
+# built-in USB Serial/JTAG. This prevents ESP-IDF's startup code from
+# registering the USB-JTAG VFS and pulling it into newlib's stdio
+# before app_main() runs — an early-boot init sequence heavy enough
+# to tip marginal battery supplies past brown-out on some boards.
+#
+# mikrojs still exposes USB-Serial/JTAG as a REPL/TLV transport — see
+# mik_serial_io.cpp, which installs the USB-Serial/JTAG driver through
+# the public API and bypasses VFS entirely. Auto-detection picks
+# whichever interface receives the first byte, same UX as before.
+#
+# ESP_LOG going to UART is harmless in production (we ship with
+# CONFIG_LOG_DEFAULT_LEVEL_NONE=y); for dev, plug a USB-TTL onto
+# UART0 TX/RX to see logs — or re-enable the USB-JTAG console per
+# project if a given board isn't battery-boot-constrained.
+#
+# Secondary console on USB-Serial/JTAG: keeps panic dumps + bootloader
+# messages reachable via the USB monitor even though the primary
+# console is UART0. Without this, a panic is invisible to anyone
+# monitoring over USB (which is most dev boards), because the panic
+# handler writes to the primary console only. During a panic ESP-IDF
+# writes directly to the USB-JTAG hardware registers — it doesn't
+# conflict with mikrojs's driver-level USB-JTAG use for REPL traffic.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=n
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y

@@ -1,0 +1,13 @@
+{
+  "name": "@repo/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "End-to-end smoke tests that run on the device",
+  "type": "module",
+  "scripts": {
+    "test": "mikro test"
+  },
+  "dependencies": {
+    "mikrojs": "workspace:*"
+  }
+}

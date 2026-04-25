@@ -1,0 +1,8 @@
+# ESP32: uses UART for console I/O
+# No overrides needed — base sdkconfig.defaults handles UART targets.
+
+# Enable PSRAM if present (e.g. WROVER modules with 4-8 MB).
+# IGNORE_NOTFOUND: fall back to internal SRAM if not present.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y

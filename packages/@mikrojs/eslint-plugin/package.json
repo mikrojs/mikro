@@ -1,0 +1,32 @@
+{
+  "name": "@mikrojs/eslint-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ESLint plugin for Mikro.js projects",
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build:ts": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@typescript-eslint/utils": "^8.58.0",
+    "typescript-eslint": "catalog:"
+  },
+  "devDependencies": {
+    "@typescript-eslint/rule-tester": "^8.58.0",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "eslint": "^10.0.0",
+    "typescript": "^6.0.0"
+  }
+}

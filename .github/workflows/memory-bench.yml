@@ -1,0 +1,101 @@
+name: Memory Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Init submodules
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build memory benchmark
+        run: |
+          cmake -B packages/@mikrojs/native/build packages/@mikrojs/native -DBUILD_TESTING=ON
+          cmake --build packages/@mikrojs/native/build --target memory_bench
+
+      - name: Run memory benchmark
+        run: packages/@mikrojs/native/build/memory_bench > bench-results.json
+
+      - name: Strip memory_bench binary
+        run: strip packages/@mikrojs/native/build/memory_bench
+
+      - name: Append binary-size metrics
+        run: pnpm --filter @repo/bench-site exec tsx src/size-report.ts --results ../bench-results.json
+
+      - name: Check for regression vs. gh-pages baseline
+        if: github.event_name == 'pull_request'
+        run: pnpm --filter @repo/bench-site exec tsx src/check-regression.ts --results ../bench-results.json --threshold 1.10
+
+      - name: Build bench site
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: pnpm --filter @repo/bench-site build
+
+      - name: Checkout gh-pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Deploy site + append run
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        # User-controlled fields (commit message, author name/email) are routed
+        # through env, not interpolated into the shell, to prevent context
+        # injection via a crafted commit message (e.g. a message containing "`").
+        env:
+          REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          AUTHOR_NAME: ${{ github.event.head_commit.author.name }}
+          AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
+        run: |
+          mkdir -p gh-pages/dev/bench
+          cp -f bench-site/dist/index.html gh-pages/dev/bench/index.html
+          cp -f bench-site/dist/bench.js gh-pages/dev/bench/bench.js
+          cp -f bench-site/dist/bench.css gh-pages/dev/bench/bench.css
+          pnpm --filter @repo/bench-site exec tsx src/update.ts \
+            --results ../bench-results.json \
+            --out ../gh-pages/dev/bench/data.js \
+            --repo-url "https://github.com/$REPO" \
+            --commit-sha "$COMMIT_SHA" \
+            --commit-message "$COMMIT_MESSAGE" \
+            --commit-url "https://github.com/$REPO/commit/$COMMIT_SHA" \
+            --author-name "$AUTHOR_NAME" \
+            --author-email "$AUTHOR_EMAIL"
+
+      - name: Commit and push to gh-pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dev/bench/
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "bench: ${{ github.sha }}"
+            git push
+          fi
+
+      - name: Log benchmark URL
+        run: |
+          echo "Benchmark results: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/dev/bench/"

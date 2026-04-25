@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/templates/*/app/**"],
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true
+  }
+}

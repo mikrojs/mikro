@@ -1,0 +1,50 @@
+{
+  "name": "@mikrojs/esptool",
+  "version": "0.0.0",
+  "description": "Download and cache standalone esptool binaries from Espressif",
+  "keywords": [
+    "esp32",
+    "esptool",
+    "mikrojs"
+  ],
+  "homepage": "https://github.com/mikrojs/mikrojs#readme",
+  "bugs": {
+    "url": "https://github.com/mikrojs/mikrojs/issues"
+  },
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikrojs/mikrojs.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": "./dist/index.js",
+      "./package.json": "./package.json"
+    }
+  },
+  "scripts": {
+    "build:ts": "tsc -p tsconfig.build.json",
+    "publint": "publint",
+    "typecheck": "tsc --noEmit",
+    "watch": "tsc -p tsconfig.build.json --watch --preserveWatchOutput"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:node24"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": ["watch.ts", "vitest.config.ts", "addon/**/*.ts", "runtime/**/*.ts"],
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true,
+    "moduleDetection": "auto",
+    "customConditions": ["development"]
+  }
+}

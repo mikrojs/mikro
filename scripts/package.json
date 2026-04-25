@@ -1,0 +1,10 @@
+{
+  "name": "@repo/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace tooling scripts",
+  "type": "module",
+  "dependencies": {
+    "@vercel/detect-agent": "^1.2.1"
+  }
+}

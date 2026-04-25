@@ -1,0 +1,25 @@
+{
+  "name": "mikrojs-neopixel-example",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mikro.js NeoPixel WS2812 ring example",
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "dev": "mikro dev"
+  },
+  "dependencies": {
+    "mikrojs": "workspace:*"
+  },
+  "mikrojs": {
+    "predeploy": [
+      "tsc --noEmit --pretty"
+    ]
+  }
+}

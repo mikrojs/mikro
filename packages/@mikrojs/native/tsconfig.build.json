@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.addon.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "rootDir": "addon",
+    "outDir": "dist"
+  }
+}

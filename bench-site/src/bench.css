@@ -1,0 +1,280 @@
+:root {
+  color-scheme: light dark;
+  --bg: #fafafa;
+  --fg: #111;
+  --muted: #666;
+  --border: #e0e0e0;
+  --accent: #2563eb;
+  --bad: #dc2626;
+  --good: #16a34a;
+  --card: #fff;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0b0c;
+    --fg: #e7e7e9;
+    --muted: #9a9a9e;
+    --border: #26262a;
+    --accent: #60a5fa;
+    --card: #141418;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    14px/1.4 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+header {
+  padding: 24px 32px;
+  border-bottom: 1px solid var(--border);
+}
+header h1 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 0;
+  align-items: start;
+}
+aside {
+  border-right: 1px solid var(--border);
+  padding: 20px;
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+aside h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 16px 0 8px;
+  font-weight: 600;
+}
+aside h2:first-child {
+  margin-top: 0;
+}
+.controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 13px;
+}
+.controls input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+.controls input[type='search'] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+}
+.controls .metric-list {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--card);
+}
+.spacer {
+  height: 8px;
+}
+main {
+  padding: 24px 32px;
+  overflow: visible;
+}
+.chart-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px 20px;
+  margin-bottom: 20px;
+  position: relative;
+  z-index: 1;
+}
+/* Lift the hovered card so its Plot.tip tooltip can bleed over the next
+ * card's box without being occluded. */
+.chart-card:hover,
+.chart-card:focus-within {
+  z-index: 10;
+}
+.chart-card svg {
+  overflow: visible;
+  cursor: crosshair;
+}
+dialog#detail {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--fg);
+  padding: 0;
+  max-width: min(640px, 92vw);
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+dialog#detail::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+dialog#detail header {
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+dialog#detail h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+dialog#detail header p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+dialog#detail .detail-metric {
+  padding: 16px 24px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+dialog#detail .detail-metric .value {
+  font-size: 20px;
+  font-weight: 600;
+}
+dialog#detail .detail-metric .delta-bad {
+  color: var(--bad);
+}
+dialog#detail .detail-metric .delta-good {
+  color: var(--good);
+}
+dialog#detail .detail-extra {
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+}
+dialog#detail .detail-extra h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 600;
+}
+dialog#detail .detail-extra pre {
+  margin: 0;
+  font:
+    12px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+dialog#detail footer {
+  padding: 14px 24px;
+  text-align: right;
+}
+dialog#detail footer a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+}
+dialog#detail footer a:hover {
+  text-decoration: underline;
+}
+dialog#detail .detail-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 2;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+dialog#detail .detail-close:hover {
+  color: var(--fg);
+  background: var(--bg);
+}
+.chart-card h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.chart-card h3 .dir-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 6px;
+}
+.chart-card .meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  display: flex;
+  gap: 16px;
+}
+.chart-card .meta .delta-bad {
+  color: var(--bad);
+}
+.chart-card .meta .delta-good {
+  color: var(--good);
+}
+.empty {
+  color: var(--muted);
+  padding: 40px;
+  text-align: center;
+}
+.unit-heading {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 8px 0;
+}
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+button.ghost:hover {
+  border-color: var(--accent);
+}
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

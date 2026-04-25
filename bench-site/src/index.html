@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>mikrojs memory benchmarks</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="./bench.css" />
+  </head>
+  <body>
+    <header>
+      <h1>mikrojs memory benchmarks</h1>
+      <p id="subtitle">Loading…</p>
+    </header>
+    <div class="layout">
+      <aside class="controls">
+        <h2>Metrics</h2>
+        <input type="search" id="filter" placeholder="Filter metrics…" />
+        <div class="spacer"></div>
+        <div class="row">
+          <button class="ghost" id="selectAll">All</button>
+          <button class="ghost" id="selectNone">None</button>
+        </div>
+        <div class="spacer"></div>
+        <div class="metric-list" id="metricList"></div>
+
+        <h2>Display</h2>
+        <label><input type="checkbox" id="logScale" /> Log scale (y)</label>
+        <label><input type="checkbox" id="percent" /> % change from first</label>
+        <label><input type="checkbox" id="groupByUnit" checked /> Group charts by unit</label>
+
+        <h2>Range</h2>
+        <label><input type="radio" name="range" value="all" checked /> All history</label>
+        <label><input type="radio" name="range" value="50" /> Last 50</label>
+        <label><input type="radio" name="range" value="20" /> Last 20</label>
+      </aside>
+      <main id="charts">
+        <div class="empty">Loading benchmark data…</div>
+      </main>
+    </div>
+    <dialog id="detail" aria-labelledby="detail-title">
+      <header>
+        <button type="button" class="detail-close" aria-label="Close" title="Close">×</button>
+        <h2 id="detail-title"></h2>
+        <p id="detail-meta"></p>
+      </header>
+      <section class="detail-metric" id="detail-metric"></section>
+      <section class="detail-extra">
+        <h3>Breakdown</h3>
+        <pre id="detail-extra"></pre>
+      </section>
+      <footer>
+        <a id="detail-commit-link" target="_blank" rel="noopener">View commit on GitHub →</a>
+      </footer>
+    </dialog>
+    <script type="module" src="./bench.js"></script>
+  </body>
+</html>

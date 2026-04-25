@@ -1,0 +1,64 @@
+diff --git a/quickjs.c b/quickjs.c
+index 04886e3..53a3101 100644
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -29037,6 +29037,33 @@ static void js_free_module_def(JSContext *ctx, JSModuleDef *m)
+     js_free(ctx, m);
+ }
+ 
++/* mikrojs patch: public wrapper to free a single module (remove it from
++ * the context's loaded-modules cache and release all its resources).
++ * Callers must ensure the module is not mid-linking or mid-evaluating and
++ * that no other modules hold live import bindings to its exports (or accept
++ * that such bindings remain valid via refcounted JSVarRefs). */
++void JS_FreeModule(JSContext *ctx, JSModuleDef *m)
++{
++    js_free_module_def(ctx, m);
++}
++
++static JSModuleDef *js_find_loaded_module(JSContext *ctx, JSAtom name);
++
++/* mikrojs patch: lookup a module in the context cache by name atom.
++ * Returns NULL if no module with that name is loaded. */
++JSModuleDef *JS_FindLoadedModule(JSContext *ctx, JSAtom name)
++{
++    return js_find_loaded_module(ctx, name);
++}
++
++/* mikrojs patch: return the module's current status as an integer.
++ * 0=UNLINKED, 1=LINKING, 2=LINKED, 3=EVALUATING, 4=EVALUATING_ASYNC, 5=EVALUATED. */
++int JS_GetModuleStatus(JSContext *ctx, JSModuleDef *m)
++{
++    (void)ctx;
++    return (int)m->status;
++}
++
+ #ifndef QJS_DISABLE_PARSER
+ 
+ static int add_req_module_entry(JSContext *ctx, JSModuleDef *m,
+diff --git a/quickjs.h b/quickjs.h
+index a44b456..f9e6c3b 100644
+--- a/quickjs.h
++++ b/quickjs.h
+@@ -1198,6 +1198,21 @@ JS_EXTERN JSValue JS_GetImportMeta(JSContext *ctx, JSModuleDef *m);
+ JS_EXTERN JSAtom JS_GetModuleName(JSContext *ctx, JSModuleDef *m);
+ JS_EXTERN JSValue JS_GetModuleNamespace(JSContext *ctx, JSModuleDef *m);
+ 
++/* mikrojs patch: evict a module from the context, releasing all its
++ * resources. Caller is responsible for ensuring the module is in a safe
++ * state (not linking, not evaluating). */
++JS_EXTERN void JS_FreeModule(JSContext *ctx, JSModuleDef *m);
++
++/* mikrojs patch: lookup a module in the context cache by name atom.
++ * Returns NULL if no module with that name is loaded. */
++JS_EXTERN JSModuleDef *JS_FindLoadedModule(JSContext *ctx, JSAtom name);
++
++/* mikrojs patch: return the module's current status.
++ * 0=UNLINKED, 1=LINKING, 2=LINKED, 3=EVALUATING, 4=EVALUATING_ASYNC, 5=EVALUATED.
++ * Constants deliberately omitted here because the internal QuickJS enum
++ * reuses the same symbol names; callers define their own mirrored names. */
++JS_EXTERN int JS_GetModuleStatus(JSContext *ctx, JSModuleDef *m);
++
+ /* associate a JSValue to a C module */
+ JS_EXTERN int JS_SetModulePrivateValue(JSContext *ctx, JSModuleDef *m, JSValue val);
+ JS_EXTERN JSValue JS_GetModulePrivateValue(JSContext *ctx, JSModuleDef *m);

@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["runtime.d.ts", "test/*.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "compilerOptions": {
+    "types": [],
+    "typeRoots": [],
+    "jsx": "react-jsx",
+    "noEmit": true
+  }
+}

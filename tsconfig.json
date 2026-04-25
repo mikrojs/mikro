@@ -1,0 +1,21 @@
+{
+  "include": ["vitest.config.ts", "taze.config.ts", "knip.ts"],
+  "compilerOptions": {
+    "module": "nodenext",
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "types": [],
+    "noEmit": true,
+    "sourceMap": true,
+    "skipDefaultLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "strict": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+    "customConditions": ["development"]
+  }
+}

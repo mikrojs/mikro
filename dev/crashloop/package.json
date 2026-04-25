@@ -1,0 +1,22 @@
+{
+  "name": "mikrojs-crashloop-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dev fixture that crash-loops on boot. Used to verify mikro ... --recover on a device that can't be reached by a normal connect.",
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "deploy": "mikro deploy",
+    "dev": "mikro dev",
+    "recover": "mikro clean --recover"
+  },
+  "dependencies": {
+    "mikrojs": "workspace:*"
+  }
+}

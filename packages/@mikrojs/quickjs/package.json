@@ -1,0 +1,41 @@
+{
+  "name": "@mikrojs/quickjs",
+  "version": "0.0.0",
+  "description": "QuickJS-NG engine source, shared CMake module, and qjsc bytecode compiler",
+  "keywords": [
+    "bytecode",
+    "compiler",
+    "mikrojs",
+    "quickjs"
+  ],
+  "homepage": "https://github.com/mikrojs/mikrojs#readme",
+  "bugs": {
+    "url": "https://github.com/mikrojs/mikrojs/issues"
+  },
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikrojs/mikrojs.git"
+  },
+  "files": [
+    "deps/quickjs/*.c",
+    "deps/quickjs/*.h",
+    "deps/quickjs/LICENSE",
+    "index.js",
+    "postinstall.js",
+    "quickjs.cmake"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

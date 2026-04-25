@@ -1,0 +1,19 @@
+{
+  "name": "@mikrojs/firmware-dev",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Mikro.js firmware dev project",
+  "scripts": {
+    "build": "idf.py build",
+    "flash": "idf.py build flash monitor",
+    "test": "cd test && idf.py build partition-table partition-table-flash flash monitor",
+    "test:protocol": "npx tsx test-protocol.ts"
+  },
+  "dependencies": {
+    "@mikrojs/firmware": "workspace:*",
+    "@mikrojs/driver-sh8601": "workspace:*",
+    "@mikrojs/waveshare": "workspace:*"
+  }
+}

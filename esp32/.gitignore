@@ -1,0 +1,10 @@
+build/
+test/build/
+managed_components/
+dependencies.lock
+sdkconfig
+sdkconfig.old
+test/sdkconfig
+test/sdkconfig.old
+test/littlefs_partition.csv
+test/managed_components/
