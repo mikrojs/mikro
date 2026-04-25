@@ -133,14 +133,6 @@ function(mikrojs_generate_bytecode)
     set(${ARG_TARGET}_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR} PARENT_SCOPE)
 endfunction()
 
-# ── Linker helpers for self-registering modules/builtins ─────────────
-# Without -u flags, the linker strips objects from static libraries when
-# no other symbol references them, silently breaking module registration.
-#
-# Usage:
-#   mikrojs_force_include_modules(pin i2c spi ...)
-#   mikrojs_force_include_builtins(sh8601 waveshare_knob ...)
-
 function(mikrojs_force_include_modules)
     foreach(id ${ARGN})
         target_link_libraries(${COMPONENT_LIB} INTERFACE "-u mik__mod_desc_${id}")
