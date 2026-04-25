@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/mikrojs/mikrojs/compare/mikrojs-v0.0.4...mikrojs-v0.0.5) (2026-04-25)
+
+
+### Miscellaneous Chores
+
+* **mikrojs:** Synchronize core versions
+
 ## [0.0.4](https://github.com/mikrojs/mikrojs/compare/mikrojs-v0.0.3...mikrojs-v0.0.4) (2026-04-25)
 
 

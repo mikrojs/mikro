@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/mikrojs/mikrojs/compare/native-v0.0.4...native-v0.0.5) (2026-04-25)
+
+
+### Bug Fixes
+
+* **build:** add windows endian shim to unblock nanocbor on MSVC ([c996f37](https://github.com/mikrojs/mikrojs/commit/c996f374d3ff0d58e586909915379b0a5695b724))
+
 ## [0.0.4](https://github.com/mikrojs/mikrojs/compare/native-v0.0.3...native-v0.0.4) (2026-04-25)
 
 
