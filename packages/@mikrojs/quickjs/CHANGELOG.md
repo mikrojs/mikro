@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/mikrojs/mikrojs/compare/quickjs-v0.0.4...quickjs-v0.0.5) (2026-04-25)
+
+
+### Miscellaneous Chores
+
+* **quickjs:** Synchronize core versions
+
 ## [0.0.4](https://github.com/mikrojs/mikrojs/compare/quickjs-v0.0.3...quickjs-v0.0.4) (2026-04-25)
 
 
