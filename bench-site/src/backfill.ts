@@ -10,7 +10,7 @@
 //     --repo-root /path/to/mikrojs \
 //     --range main~200..main \
 //     --step 5 \
-//     --out /path/to/gh-pages/dev/bench/data.js \
+//     --out /path/to/bench-data/dev/bench/data.js \
 //     --repo-url https://github.com/owner/mikrojs \
 //     --skip-existing
 

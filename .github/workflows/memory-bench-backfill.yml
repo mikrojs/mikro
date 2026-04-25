@@ -16,7 +16,7 @@ on:
         type: boolean
         default: true
       dry_run:
-        description: 'Do not push to gh-pages (inspect the diff in job logs)'
+        description: 'Do not push to bench-data (inspect the diff in job logs)'
         type: boolean
         default: false
 
@@ -47,11 +47,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Checkout gh-pages
+      - name: Checkout bench-data
         uses: actions/checkout@v6
         with:
-          ref: gh-pages
-          path: gh-pages
+          ref: bench-data
+          path: bench-data
 
       - name: Run backfill
         # Route user-controlled inputs (range, step) through env rather than
@@ -68,32 +68,29 @@ jobs:
           mkdir -p "$CCACHE_DIR"
           skip_flag=""
           if [ "$SKIP_EXISTING" = "true" ]; then skip_flag="--skip-existing"; fi
+          mkdir -p "$GITHUB_WORKSPACE/bench-data/dev/bench"
           pnpm --filter @repo/bench-site exec tsx src/backfill.ts \
             --repo-root "$GITHUB_WORKSPACE" \
             --range "$RANGE" \
             --step "$STEP" \
             $skip_flag \
-            --out "$GITHUB_WORKSPACE/gh-pages/dev/bench/data.js" \
+            --out "$GITHUB_WORKSPACE/bench-data/dev/bench/data.js" \
             --repo-url "https://github.com/$REPO" \
             --workdir "$WORKDIR"
 
-      - name: Build and deploy updated site
+      - name: Build bench site
         if: ${{ !inputs.dry_run }}
-        run: |
-          pnpm --filter @repo/bench-site build
-          cp -f bench-site/dist/index.html gh-pages/dev/bench/index.html
-          cp -f bench-site/dist/bench.js gh-pages/dev/bench/bench.js
-          cp -f bench-site/dist/bench.css gh-pages/dev/bench/bench.css
+        run: pnpm --filter @repo/bench-site build
 
       - name: Show diff
-        working-directory: gh-pages
+        working-directory: bench-data
         run: |
           git status
           git diff --stat
 
-      - name: Commit and push
+      - name: Commit and push to bench-data
         if: ${{ !inputs.dry_run }}
-        working-directory: gh-pages
+        working-directory: bench-data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -104,3 +101,16 @@ jobs:
             git commit -m "bench: backfill ${{ inputs.range }} (step=${{ inputs.step }})"
             git push
           fi
+
+      - name: Stage data.js into bench-site/dist
+        if: ${{ !inputs.dry_run }}
+        run: cp -f bench-data/dev/bench/data.js bench-site/dist/data.js
+
+      - name: Deploy bench site to Cloudflare
+        if: ${{ !inputs.dry_run }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: bench-site
+          command: deploy

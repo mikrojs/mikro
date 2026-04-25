@@ -8,6 +8,7 @@ const config = {
       // can't see esbuild entrypoints on its own)
       entry: ['src/app.ts'],
       project: ['src/**/*.ts'],
+      ignoreDependencies: ['wrangler'],
     },
     docs: {
       ignoreDependencies: ['mikrojs', 'wrangler'],

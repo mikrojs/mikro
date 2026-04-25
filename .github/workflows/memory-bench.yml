@@ -41,7 +41,7 @@ jobs:
       - name: Append binary-size metrics
         run: pnpm --filter @repo/bench-site exec tsx src/size-report.ts --results ../bench-results.json
 
-      - name: Check for regression vs. gh-pages baseline
+      - name: Check for regression vs. baseline
         if: github.event_name == 'pull_request'
         run: pnpm --filter @repo/bench-site exec tsx src/check-regression.ts --results ../bench-results.json --threshold 1.10
 
@@ -49,14 +49,14 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: pnpm --filter @repo/bench-site build
 
-      - name: Checkout gh-pages
+      - name: Checkout bench-data
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/checkout@v6
         with:
-          ref: gh-pages
-          path: gh-pages
+          ref: bench-data
+          path: bench-data
 
-      - name: Deploy site + append run
+      - name: Append run to data.js
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         # User-controlled fields (commit message, author name/email) are routed
         # through env, not interpolated into the shell, to prevent context
@@ -68,13 +68,10 @@ jobs:
           AUTHOR_NAME: ${{ github.event.head_commit.author.name }}
           AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
         run: |
-          mkdir -p gh-pages/dev/bench
-          cp -f bench-site/dist/index.html gh-pages/dev/bench/index.html
-          cp -f bench-site/dist/bench.js gh-pages/dev/bench/bench.js
-          cp -f bench-site/dist/bench.css gh-pages/dev/bench/bench.css
+          mkdir -p bench-data/dev/bench
           pnpm --filter @repo/bench-site exec tsx src/update.ts \
             --results ../bench-results.json \
-            --out ../gh-pages/dev/bench/data.js \
+            --out ../bench-data/dev/bench/data.js \
             --repo-url "https://github.com/$REPO" \
             --commit-sha "$COMMIT_SHA" \
             --commit-message "$COMMIT_MESSAGE" \
@@ -82,9 +79,9 @@ jobs:
             --author-name "$AUTHOR_NAME" \
             --author-email "$AUTHOR_EMAIL"
 
-      - name: Commit and push to gh-pages
+      - name: Commit and push to bench-data
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        working-directory: gh-pages
+        working-directory: bench-data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -96,6 +93,15 @@ jobs:
             git push
           fi
 
-      - name: Log benchmark URL
-        run: |
-          echo "Benchmark results: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/dev/bench/"
+      - name: Stage data.js into bench-site/dist
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: cp -f bench-data/dev/bench/data.js bench-site/dist/data.js
+
+      - name: Deploy bench site to Cloudflare
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: bench-site
+          command: deploy

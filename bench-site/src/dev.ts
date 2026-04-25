@@ -1,7 +1,8 @@
 #!/usr/bin/env -S node --experimental-strip-types
 // Local dev server: watches src/ with esbuild, serves dist/, and fetches the
-// live gh-pages data.js on demand so you can iterate on the UI against real
-// history. Override the data source with --data-url <url> or --data-file <path>.
+// live data.js from the bench-data branch on demand so you can iterate on the
+// UI against real history. Override the data source with --data-url <url> or
+// --data-file <path>.
 
 import {copyFileSync, existsSync, mkdirSync, readFileSync} from 'node:fs'
 import {createServer} from 'node:http'
@@ -20,7 +21,10 @@ function arg(name: string, fallback?: string): string | undefined {
 }
 
 const port = parseInt(arg('port', '5178')!, 10)
-const dataUrl = arg('data-url', 'https://mikrojs.github.io/mikrojs/dev/bench/data.js')!
+const dataUrl = arg(
+  'data-url',
+  'https://raw.githubusercontent.com/mikrojs/mikrojs/bench-data/dev/bench/data.js',
+)!
 const dataFile = arg('data-file')
 
 mkdirSync(outDir, {recursive: true})

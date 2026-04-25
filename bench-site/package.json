@@ -2,7 +2,7 @@
   "name": "@repo/bench-site",
   "version": "0.0.0",
   "private": true,
-  "description": "Static site and CLIs for tracking mikrojs memory benchmarks on gh-pages",
+  "description": "Static site and CLIs for tracking mikrojs memory benchmarks",
   "bin": {
     "bench-check-regression": "./src/check-regression.ts",
     "bench-update": "./src/update.ts"
@@ -24,6 +24,7 @@
     "@types/node": "catalog:node24",
     "esbuild": "^0.28.0",
     "tsx": "^4.21.0",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "wrangler": "^4.85.0"
   }
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env -S node --experimental-strip-types
 // Fail the build if any metric in --results is worse than the last main-branch
-// run (fetched from gh-pages) by more than --threshold (e.g. 1.10 = +10%).
+// run (fetched from the bench-data branch) by more than --threshold (e.g. 1.10 = +10%).
 
 import {readFileSync} from 'node:fs'
 
@@ -34,7 +34,9 @@ if (!owner || !repo) {
   process.exit(0)
 }
 
-const url = args['data-url'] ?? `https://${owner}.github.io/${repo}/dev/bench/data.js`
+const url =
+  args['data-url'] ??
+  `https://raw.githubusercontent.com/${owner}/${repo}/bench-data/dev/bench/data.js`
 
 const res = await fetch(url).catch((e: unknown) => ({
   ok: false,
@@ -44,7 +46,7 @@ const res = await fetch(url).catch((e: unknown) => ({
 }))
 
 if (!res.ok) {
-  // 404 is the only "expected" absence: gh-pages not yet published. Anything
+  // 404 is the only "expected" absence: bench-data not yet seeded. Anything
   // else (DNS failure, 5xx, network error) is suspicious and should fail the
   // build so we notice instead of silently passing every PR.
   if (res.status === 404) {
