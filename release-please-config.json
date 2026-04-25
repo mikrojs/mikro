@@ -20,18 +20,13 @@
   "plugins": [
     {
       "type": "linked-versions",
-      "groupName": "mikrojs",
-      "components": [
-        "mikrojs",
-        "native",
-        "quickjs",
-        "firmware",
-        "analyze-imports",
-        "esptool",
-        "eslint-plugin",
-        "create-mikrojs",
-        "create-mikro"
-      ]
+      "groupName": "core",
+      "components": ["mikrojs", "native", "quickjs", "firmware"]
+    },
+    {
+      "type": "linked-versions",
+      "groupName": "create",
+      "components": ["create-mikrojs", "create-mikro"]
     }
   ]
 }
