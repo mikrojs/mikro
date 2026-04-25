@@ -8,7 +8,7 @@ export default [
   // Ignore patterns
   {
     ignores: [
-      'esp32/**',
+      'esp32/managed_components/**',
       'packages/@mikrojs/quickjs/deps/**',
       'packages/@mikrojs/analyze-imports/test/**',
       '**/dist/**',
