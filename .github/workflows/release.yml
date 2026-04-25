@@ -36,6 +36,10 @@ jobs:
         needs.release-please.outputs.releases_created == 'true' ||
         github.event_name == 'workflow_dispatch'
       )
+    # GitHub-hosted macos-13 (Intel) runners have severely degraded
+    # availability post-deprecation; jobs queue for 30+ min and often
+    # never start. darwin-x64 users fall back to a source build via
+    # node-gyp-build. Re-add (or use macos-14-large) once we hear demand.
     strategy:
       fail-fast: false
       matrix:
@@ -43,9 +47,6 @@ jobs:
           - os: macos-14
             platform: darwin
             arch: arm64
-          - os: macos-13
-            platform: darwin
-            arch: x64
           - os: ubuntu-24.04
             platform: linux
             arch: x64
