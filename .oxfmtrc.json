@@ -2,9 +2,11 @@
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "ignorePatterns": [
     "esp32/*",
+    "packages/@mikrojs/native/deps/",
     "packages/@mikrojs/quickjs/deps/",
     "packages/@mikrojs/analyze-imports/test/*",
-    "pack-test/"
+    "pack-test/",
+    "**/CHANGELOG.md"
   ],
   "semi": false,
   "experimentalSortPackageJson": true,

@@ -14,11 +14,13 @@ pre-commit:
       skip:
         - run: node scripts/is-agent.js
       glob: '*.{js,ts,tsx,md,json}'
+      exclude: '(^|/)CHANGELOG\.md$'
       run: pnpm lint -- {staged_files}
     fmt:
       skip:
         - run: node scripts/is-agent.js
       glob: '*.{js,ts,tsx,md,json}'
+      exclude: '(^|/)CHANGELOG\.md$'
       run: pnpm fmt:check -- {staged_files}
 
     # Agent: full project checks
@@ -34,11 +36,13 @@ pre-commit:
       only:
         - run: node scripts/is-agent.js
       glob: '*.{js,ts,tsx,md,json}'
+      exclude: '(^|/)CHANGELOG\.md$'
       run: pnpm lint -- {staged_files}
     fmt-all:
       only:
         - run: node scripts/is-agent.js
       glob: '*.{js,ts,tsx,md,json}'
+      exclude: '(^|/)CHANGELOG\.md$'
       run: pnpm fmt:check -- {staged_files}
     knip:
       only:
