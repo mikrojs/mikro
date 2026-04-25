@@ -214,7 +214,8 @@ jobs:
         run: pnpm -r --filter '!mikrojs-workspace' --filter '!@repo/*' publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
+          # Provenance requires a public source repo; re-enable once mikrojs/mikrojs is public.
+          # NPM_CONFIG_PROVENANCE: true
 
       - name: Dry run notice
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
