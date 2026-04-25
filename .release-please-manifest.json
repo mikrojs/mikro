@@ -1,8 +1,8 @@
 {
-  "packages/mikrojs": "0.0.1",
-  "packages/@mikrojs/native": "0.0.1",
-  "packages/@mikrojs/quickjs": "0.0.1",
-  "packages/@mikrojs/firmware": "0.0.1",
+  "packages/mikrojs": "0.0.2",
+  "packages/@mikrojs/native": "0.0.2",
+  "packages/@mikrojs/quickjs": "0.0.2",
+  "packages/@mikrojs/firmware": "0.0.2",
   "packages/@mikrojs/analyze-imports": "0.0.1",
   "packages/@mikrojs/esptool": "0.0.1",
   "packages/@mikrojs/eslint-plugin": "0.0.1",
