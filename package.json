@@ -56,17 +56,17 @@
   },
   "devDependencies": {
     "@mikrojs/eslint-plugin": "workspace:*",
-    "@vitest/coverage-v8": "^4.1.2",
+    "@vitest/coverage-v8": "^4.1.5",
     "eslint": "catalog:",
     "eslint-plugin-import": "catalog:",
     "eslint-plugin-package-json": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
     "eslint-plugin-simple-import-sort": "catalog:",
-    "knip": "^6.3.0",
-    "lefthook": "^2.1.4",
+    "knip": "^6.6.2",
+    "lefthook": "^2.1.6",
     "mikrojs": "workspace:*",
     "npm-run-all2": "^8.0.4",
-    "oxfmt": "^0.43.0",
+    "oxfmt": "^0.46.0",
     "publint": "^0.3.18",
     "taze": "^19.11.0",
     "tsx": "^4.21.0",
@@ -78,5 +78,5 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "packageManager": "pnpm@10.30.1"
+  "packageManager": "pnpm@10.33.2"
 }

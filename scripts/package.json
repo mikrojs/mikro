@@ -5,6 +5,6 @@
   "description": "Workspace tooling scripts",
   "type": "module",
   "dependencies": {
-    "@vercel/detect-agent": "^1.2.1"
+    "@vercel/detect-agent": "^1.2.3"
   }
 }

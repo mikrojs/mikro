@@ -51,13 +51,13 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",
-    "@optique/core": "^0.10.7",
-    "@optique/run": "^0.10.7",
-    "type-fest": "^5.5.0"
+    "@optique/core": "^1.0.2",
+    "@optique/run": "^1.0.2",
+    "type-fest": "^5.6.0"
   },
   "devDependencies": {
     "@types/node": "catalog:node24",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=24.0.0"

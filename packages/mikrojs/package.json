@@ -199,16 +199,16 @@
     "@mikrojs/esptool": "workspace:*",
     "@mikrojs/native": "workspace:*",
     "@mikrojs/quickjs": "workspace:*",
-    "@optique/core": "^0.10.7",
-    "@optique/run": "^0.10.7",
-    "@vercel/detect-agent": "^1.2.1",
+    "@optique/core": "^1.0.2",
+    "@optique/run": "^1.0.2",
+    "@vercel/detect-agent": "^1.2.3",
     "cbor2": "^2.3.0",
     "cli-spinners": "^3.4.0",
     "figures": "^6.1.0",
-    "ink": "^7.0.0",
+    "ink": "^7.0.1",
     "ink-select-input": "^6.2.0",
     "open": "^11.0.0",
-    "react": "^19.2.4",
+    "react": "^19.2.5",
     "rxjs": "^7.8.2",
     "rxjs-exhaustmap-with-trailing": "^2.1.1",
     "semver": "^7.7.4",
@@ -217,12 +217,12 @@
     "which-pm-runs": "^2.0.0"
   },
   "devDependencies": {
-    "@swc/core": "^1.15.24",
+    "@swc/core": "^1.15.30",
     "@types/react": "^19.2.14",
     "@types/semver": "^7.7.1",
     "esbuild": "^0.28.0",
     "ink-testing-library": "^4.0.0",
-    "terser": "^5.46.1"
+    "terser": "^5.46.2"
   },
   "peerDependencies": {
     "@swc/core": "^1.0.0",

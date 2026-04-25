@@ -107,7 +107,7 @@ for (let i = 0; i < rawArgs.length; i++) {
 
 const config = run(prog, {
   help: 'both',
-  version: {value: pkg.version, mode: 'both'},
+  version: {value: pkg.version, command: true, option: true},
   args: filteredArgs,
 })
 
