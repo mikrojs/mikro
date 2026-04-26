@@ -438,6 +438,11 @@ void MIK_SetErrorHandler(MIKRuntime* mik_rt, MIKErrorHandlerFn fn, void* opaque)
     mik_rt->error_handler_opaque = opaque;
 }
 
+void MIK_SetTestEmitHandler(MIKRuntime* mik_rt, MIKTestEmitHandlerFn fn, void* opaque) {
+    mik_rt->test_emit_fn = fn;
+    mik_rt->test_emit_opaque = opaque;
+}
+
 void MIK_RegisterNativeModuleInit(MIKRuntime* mik_rt, const char* name,
                                   MIKNativeModuleInitFn init_fn) {
     mik_rt->native_modules.push_back({name, init_fn});

@@ -135,6 +135,14 @@ struct MIKRuntime {
     bool oom_flagged = false;
     MIKOOMHandlerFn oom_handler_fn = nullptr;
     void* oom_handler_opaque = nullptr;
+    /* Optional handler for __testEmit when not running in protocol mode.
+     * The firmware uses protocol mode + mik__repl_proto_send_output to
+     * deliver MSG_TEST frames; the Node addon registers a handler here
+     * that pushes the same payload onto the host bridge so vitest-style
+     * test runners (mikro sim test) can receive events without going
+     * through the wire protocol. NULL means __testEmit is a no-op. */
+    void (*test_emit_fn)(const char* json, size_t len, void* opaque) = nullptr;
+    void* test_emit_opaque = nullptr;
 };
 
 void mik__pub_fs_register(JSContext* ctx);

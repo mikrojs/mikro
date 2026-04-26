@@ -376,6 +376,14 @@ static JSValue mik__test_emit(JSContext* ctx, JSValue /*this_val*/, int argc, JS
     if (!str) return JS_EXCEPTION;
     if (mik__repl_is_protocol_mode()) {
         mik__repl_proto_send_output(MIK_MSG_TEST, str, len);
+    } else {
+        /* Non-protocol mode (e.g. Node addon for the simulator): if the host
+         * registered a handler via MIK_SetTestEmitHandler, route the payload
+         * there. Without a handler, this is a no-op — same as before. */
+        MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+        if (mik_rt && mik_rt->test_emit_fn) {
+            mik_rt->test_emit_fn(str, len, mik_rt->test_emit_opaque);
+        }
     }
     JS_FreeCString(ctx, str);
     return JS_UNDEFINED;

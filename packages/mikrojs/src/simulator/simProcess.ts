@@ -385,19 +385,13 @@ async function bootRuntime(
     profile: profileOutput !== undefined,
   })
 
-  // Override __testEmit: the C-level one is a no-op in the addon (not in protocol mode).
-  // We replace it with a function that sends test events directly through the host
-  // message system, bypassing console.log (which wraps args in inspect() quotes).
-  // Set up sim-specific globals for test events and directives
-  runner.runtime.registerModuleSource(
-    'native:sim_bridge',
-    `import { send } from 'native:host'\n` +
-      `import { memoryUsage, gc } from 'native:sys'\n` +
-      `globalThis.__testEmit = (data) => send('test', data)\n` +
-      `globalThis.__simMemoryUsage = memoryUsage\n` +
-      `globalThis.__simGc = gc\n`,
-  )
-  runner.runtime.evalModuleContent('native:sim_init', "import 'native:sim_bridge'")
+  /* Test-mode boot (i.e. driven by the supervisor in runTestManifest, which
+   * passes a composer): install the C-level __testEmit / __testFileDone
+   * globals. Mirrors the firmware supervisor's per-file MIK_EnableTestHelpers
+   * call. Skipping it for ordinary dev runs keeps globalThis unpolluted. */
+  if (composeMessages) {
+    runner.runtime.enableTestHelpers()
+  }
 
   /* Subscribe BEFORE start() so messages fired during initial module
    * evaluation (fatal throws at TLA, etc.) reach the pipeline. When a
@@ -545,7 +539,7 @@ function processEvalQueue(): void {
     const code = evalQueue.shift()!
     const t0 = showTime ? performance.now() : 0
     try {
-      const result = runner.runtime.evalScript(code)
+      const result = runner.runtime.evalForRepl(code)
       forwardPendingMessages()
       if (result !== undefined) {
         send(MSG_RESULT, result)
@@ -554,7 +548,10 @@ function processEvalQueue(): void {
       }
     } catch (err) {
       forwardPendingMessages()
-      const text = err instanceof Error ? (err.stack ?? err.message) : String(err)
+      // Prefer err.message: the addon's evalForRepl already builds the full
+      // "Name: message\nstack" string from the QuickJS exception. err.stack
+      // would prepend "Error: " plus the Node-side frames we don't want.
+      const text = err instanceof Error ? err.message : String(err)
       send(MSG_EVAL_ERROR, text)
     }
     send(MSG_PROMPT, showTime ? `${(performance.now() - t0).toFixed(1)}ms` : '')
@@ -788,39 +785,22 @@ function handleDirective(payload: Buffer): void {
         send(MSG_INFO, 'No runtime active')
         break
       }
-      try {
-        const json = runner.runtime.evalScript(`JSON.stringify(__simMemoryUsage())`)
-        if (json) {
-          const m = JSON.parse(json) as {heapUsed: number; heapTotal: number}
-          send(
-            MSG_INFO,
-            `Heap used: ${m.heapUsed} / ${m.heapTotal} bytes ` +
-              `(${m.heapTotal > 0 ? ((m.heapUsed / m.heapTotal) * 100).toFixed(1) : 0}%)`,
-          )
-        }
-      } catch {
-        send(MSG_INFO, 'Memory info unavailable')
-      }
+      const m = runner.runtime.memoryUsage()
+      send(
+        MSG_INFO,
+        `Heap used: ${m.heapUsed} / ${m.heapTotal} bytes ` +
+          `(${m.heapTotal > 0 ? ((m.heapUsed / m.heapTotal) * 100).toFixed(1) : 0}%)`,
+      )
       break
     }
 
     case '/gc':
     case 'gc': {
       if (!runner) break
-      try {
-        const beforeJson = runner.runtime.evalScript(`JSON.stringify(__simMemoryUsage())`)
-        runner.runtime.evalScript(`__simGc()`)
-        const afterJson = runner.runtime.evalScript(`JSON.stringify(__simMemoryUsage())`)
-        if (beforeJson && afterJson) {
-          const before = (JSON.parse(beforeJson) as {heapUsed: number}).heapUsed
-          const after = (JSON.parse(afterJson) as {heapUsed: number}).heapUsed
-          send(MSG_INFO, `GC collected ${before - after} bytes (${before} -> ${after})`)
-        } else {
-          send(MSG_INFO, 'GC done')
-        }
-      } catch {
-        send(MSG_INFO, 'GC done')
-      }
+      const before = runner.runtime.memoryUsage().heapUsed
+      runner.runtime.gc()
+      const after = runner.runtime.memoryUsage().heapUsed
+      send(MSG_INFO, `GC collected ${before - after} bytes (${before} -> ${after})`)
       break
     }
 
@@ -850,18 +830,11 @@ function handleDirective(payload: Buffer): void {
     case '/info': {
       const lines: string[] = ['Chip: simulator']
       if (runner) {
-        try {
-          const json = runner.runtime.evalScript(`JSON.stringify(__simMemoryUsage())`)
-          if (json) {
-            const m = JSON.parse(json) as {heapUsed: number; heapTotal: number}
-            lines.push(
-              `JS heap: ${m.heapUsed} / ${m.heapTotal} bytes ` +
-                `(${m.heapTotal > 0 ? ((m.heapUsed / m.heapTotal) * 100).toFixed(1) : 0}% used)`,
-            )
-          }
-        } catch {
-          // skip
-        }
+        const m = runner.runtime.memoryUsage()
+        lines.push(
+          `JS heap: ${m.heapUsed} / ${m.heapTotal} bytes ` +
+            `(${m.heapTotal > 0 ? ((m.heapUsed / m.heapTotal) * 100).toFixed(1) : 0}% used)`,
+        )
       }
       try {
         const total = fsDiskUsage(appDir)

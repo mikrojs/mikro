@@ -115,6 +115,15 @@ void MIK_SetPreprocessor(MIKRuntime* mik_rt, MIKPreprocessFn fn, void* opaque);
  * the mikrojs/test built-in falls back to a console.log path when absent. */
 void MIK_EnableTestHelpers(MIKRuntime* mik_rt);
 
+/* Optional handler called by __testEmit when the runtime is NOT in protocol
+ * mode (i.e. the firmware UART/USJ wire path is inactive). The handler
+ * receives the JSON event payload and is responsible for routing it to
+ * whatever channel the host expects. Used by the Node addon to forward
+ * MSG_TEST events to the host bridge so `mikro sim test` can deliver them
+ * over its own transport without going through the wire protocol. */
+typedef void (*MIKTestEmitHandlerFn)(const char* json, size_t len, void* opaque);
+void MIK_SetTestEmitHandler(MIKRuntime* mik_rt, MIKTestEmitHandlerFn fn, void* opaque);
+
 /* Memory profiling — records per-module QuickJS heap growth. Storage lives
  * outside the tracked runtime heap so instrumentation does not pollute the
  * numbers being measured. Enable before loading user code; read entries at

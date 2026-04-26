@@ -299,6 +299,7 @@ Napi::Object RuntimeWrap::Init(Napi::Env env, Napi::Object exports) {
                                           InstanceMethod("evalModule", &RuntimeWrap::EvalModule),
                                           InstanceMethod("evalModuleContent", &RuntimeWrap::EvalModuleContent),
                                           InstanceMethod("evalScript", &RuntimeWrap::EvalScript),
+                                          InstanceMethod("evalForRepl", &RuntimeWrap::EvalForRepl),
                                           InstanceMethod("loop", &RuntimeWrap::Loop),
                                           InstanceMethod("loopOnce", &RuntimeWrap::LoopOnce),
                                           InstanceMethod("stop", &RuntimeWrap::Stop),
@@ -311,6 +312,10 @@ Napi::Object RuntimeWrap::Init(Napi::Env env, Napi::Object exports) {
                                           InstanceMethod("enableProfiling", &RuntimeWrap::EnableProfiling),
                                           InstanceMethod("getProfile", &RuntimeWrap::GetProfile),
                                           InstanceMethod("getProfileBaseline", &RuntimeWrap::GetProfileBaseline),
+                                          InstanceMethod("memoryUsage", &RuntimeWrap::MemoryUsage),
+                                          InstanceMethod("gc", &RuntimeWrap::Gc),
+                                          InstanceMethod("enableTestHelpers",
+                                                         &RuntimeWrap::EnableTestHelpers),
                                       });
 
     Napi::FunctionReference* constructor = new Napi::FunctionReference();
@@ -362,6 +367,12 @@ RuntimeWrap::RuntimeWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<Runt
     MIK_RegisterLoopConsumer(mik_rt_, mik__host_consume, mik__host_destroy);
     MIK_SetErrorHandler(mik_rt_, ErrorHandlerCallback, this);
     MIK_SetOOMHandler(mik_rt_, OOMHandlerCallback, this);
+    /* Route __testEmit through the host bridge as a `test` host message
+     * when test helpers are enabled. Setting the handler is cheap (two
+     * pointer assignments) and harmless if the helpers are never installed
+     * — mik__test_emit only invokes it when the C-level globals exist and
+     * something calls __testEmit. */
+    MIK_SetTestEmitHandler(mik_rt_, TestEmitHandlerCallback, this);
 
     /* Apply one-time options that must be set before evalModule */
     if (!opts.IsEmpty()) {
@@ -673,6 +684,135 @@ Napi::Value RuntimeWrap::EvalScript(const Napi::CallbackInfo& info) {
     return ret;
 }
 
+Napi::Value RuntimeWrap::EvalForRepl(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    current_env_ = env;
+    if (host_bridge_) host_bridge_->current_env = env;
+
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "code must be a string").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    std::string code = info[0].As<Napi::String>().Utf8Value();
+    int depth = 2;
+    if (info.Length() >= 2 && info[1].IsNumber()) {
+        depth = info[1].As<Napi::Number>().Int32Value();
+    }
+
+    JSContext* ctx = MIK_GetJSContext(mik_rt_);
+    /* JS_EVAL_FLAG_ASYNC enables top-level await — the user can type
+     * `await Promise.resolve(42)` or `await "foo"` at the REPL. The result
+     * is a Promise we pump until it settles. JS_EVAL_FLAG_BACKTRACE_BARRIER
+     * keeps the user's stack from leaking into eval-induced exceptions. */
+    JSValue result = JS_Eval(ctx, code.c_str(), code.size(), "<eval>",
+                             JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_ASYNC |
+                                 JS_EVAL_FLAG_BACKTRACE_BARRIER);
+
+    /* If async eval, drain microtasks until the wrapper Promise settles.
+     * `mik__execute_jobs` runs all queued microtasks per call; the iteration
+     * cap is a safety net against a script that builds an infinite chain
+     * without hitting a real await. Real timer-driven awaits won't settle
+     * here (timers run on the outer loop) — for those the eval will appear
+     * to hang then time out, matching device REPL semantics. */
+    if (!JS_IsException(result) && JS_IsPromise(result)) {
+        const int MAX_PUMP_ITERATIONS = 1000;
+        for (int i = 0; i < MAX_PUMP_ITERATIONS; i++) {
+            JSPromiseStateEnum state = JS_PromiseState(ctx, result);
+            if (state == JS_PROMISE_FULFILLED) {
+                JSValue pr = JS_PromiseResult(ctx, result);
+                JS_FreeValue(ctx, result);                /* JS_EVAL_FLAG_ASYNC always wraps the eval result in
+                 * `{value: actualResult}`; unwrap it. Mirrors what device's
+                 * repl_eval_and_pump does in mik_repl.cpp. */
+                if (JS_IsObject(pr)) {
+                    JSValue value = JS_GetPropertyStr(ctx, pr, "value");
+                    JS_FreeValue(ctx, pr);
+                    result = value;
+                } else {
+                    result = pr;
+                }
+                break;
+            }
+            if (state == JS_PROMISE_REJECTED) {
+                JSValue reason = JS_PromiseResult(ctx, result);
+                JS_FreeValue(ctx, result);
+                JS_Throw(ctx, reason);
+                result = JS_EXCEPTION;
+                break;
+            }
+            mik__execute_jobs(ctx);
+        }
+        /* If we exited the loop without settling, the promise is stuck. */
+        if (!JS_IsException(result) && JS_IsPromise(result)) {
+            JS_FreeValue(ctx, result);
+            Napi::Error::New(env, "REPL eval did not settle (timer-driven await?)")
+                .ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+    }
+
+    if (JS_IsException(result)) {
+        JSValue exc = JS_GetException(ctx);
+        /* QuickJS's `stack` is just the frames (no leading "Name: message"),
+         * so we reassemble the full text the way the firmware does for
+         * forwarded MSG_EVAL_ERROR — header from name+message, then stack.
+         * Without this, the user sees a bare frame list with no clue what
+         * actually went wrong. */
+        JSValue name_val = JS_GetPropertyStr(ctx, exc, "name");
+        JSValue msg_val = JS_GetPropertyStr(ctx, exc, "message");
+        JSValue stack_val = JS_GetPropertyStr(ctx, exc, "stack");
+        const char* name = JS_IsString(name_val) ? JS_ToCString(ctx, name_val) : nullptr;
+        const char* msg = JS_IsString(msg_val) ? JS_ToCString(ctx, msg_val) : nullptr;
+        const char* stack = JS_IsString(stack_val) ? JS_ToCString(ctx, stack_val) : nullptr;
+
+        std::string header;
+        if (name && name[0] && msg && msg[0]) {
+            header = name;
+            header += ": ";
+            header += msg;
+        } else if (name && name[0]) {
+            header = name;
+        } else if (msg && msg[0]) {
+            header = msg;
+        } else {
+            const char* str = JS_ToCString(ctx, exc);
+            header = str ? str : "EvalForRepl failed";
+            if (str) JS_FreeCString(ctx, str);
+        }
+
+        std::string err_msg = header;
+        if (stack && stack[0]) {
+            err_msg += "\n";
+            err_msg += stack;
+        }
+
+        if (name) JS_FreeCString(ctx, name);
+        if (msg) JS_FreeCString(ctx, msg);
+        if (stack) JS_FreeCString(ctx, stack);
+        JS_FreeValue(ctx, name_val);
+        JS_FreeValue(ctx, msg_val);
+        JS_FreeValue(ctx, stack_val);
+        JS_FreeValue(ctx, exc);
+        Napi::Error::New(env, err_msg).ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    if (JS_IsUndefined(result)) {
+        JS_FreeValue(ctx, result);
+        return env.Undefined();
+    }
+
+    /* Mirror the firmware REPL: stash the value as `globalThis._` so users
+     * can refer to the previous result, and inspect it (instead of toString)
+     * so objects don't print as "[object Object]". */
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "_", JS_DupValue(ctx, result));
+    JS_FreeValue(ctx, global);
+
+    std::string inspected = mik_inspect(ctx, result, depth, false, false);
+    JS_FreeValue(ctx, result);
+    return Napi::String::New(env, inspected);
+}
+
 Napi::Value RuntimeWrap::Loop(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -772,6 +912,40 @@ Napi::Value RuntimeWrap::GetProfileBaseline(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (!mik_rt_) return Napi::Number::New(env, 0);
     return Napi::Number::New(env, (double)MIK_GetProfileBaseline(mik_rt_));
+}
+
+Napi::Value RuntimeWrap::MemoryUsage(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (!mik_rt_) {
+        Napi::Error::New(env, "runtime disposed").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    JSContext* ctx = MIK_GetJSContext(mik_rt_);
+    JSMemoryUsage mem;
+    JS_ComputeMemoryUsage(JS_GetRuntime(ctx), &mem);
+    Napi::Object out = Napi::Object::New(env);
+    out.Set("heapUsed", Napi::Number::New(env, (double)mem.malloc_size));
+    out.Set("heapTotal", Napi::Number::New(env, (double)mem.malloc_limit));
+    return out;
+}
+
+void RuntimeWrap::Gc(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (!mik_rt_) {
+        Napi::Error::New(env, "runtime disposed").ThrowAsJavaScriptException();
+        return;
+    }
+    JSContext* ctx = MIK_GetJSContext(mik_rt_);
+    JS_RunGC(JS_GetRuntime(ctx));
+}
+
+void RuntimeWrap::EnableTestHelpers(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (!mik_rt_) {
+        Napi::Error::New(env, "runtime disposed").ThrowAsJavaScriptException();
+        return;
+    }
+    MIK_EnableTestHelpers(mik_rt_);
 }
 
 void RuntimeWrap::PostMessage(const Napi::CallbackInfo& info) {
@@ -943,4 +1117,14 @@ void RuntimeWrap::OOMHandlerCallback(const MIKOOMEvent* event, void* opaque) {
     json += "}";
 
     self->host_bridge_->outbound_messages.emplace_back("oom", json);
+}
+
+/* Forwards __testEmit() payloads from QuickJS to the host bridge. The
+ * payload is already a JSON-stringified test event (e.g. {"e":2,...}) so we
+ * push it as-is under the `test` host-message type; consumers (simProcess)
+ * map that to the same MSG_TEST TLV the firmware emits in protocol mode. */
+void RuntimeWrap::TestEmitHandlerCallback(const char* json, size_t len, void* opaque) {
+    auto* self = static_cast<RuntimeWrap*>(opaque);
+    if (!self->host_bridge_) return;
+    self->host_bridge_->outbound_messages.emplace_back("test", std::string(json, len));
 }

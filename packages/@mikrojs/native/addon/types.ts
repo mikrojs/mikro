@@ -37,6 +37,10 @@ export interface NativeMikroRuntime {
   enableProfiling(): void
   getProfile(): ProfileEntry[]
   getProfileBaseline(): number
+  memoryUsage(): {heapUsed: number; heapTotal: number}
+  gc(): void
+  enableTestHelpers(): void
+  evalForRepl(code: string, depth?: number): string | undefined
 }
 
 export interface NativeBindings {

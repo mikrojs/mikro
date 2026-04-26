@@ -51,6 +51,14 @@ export class MikroRuntime {
     return this.native.evalScript(code)
   }
 
+  /** Evaluate a script as the REPL would: inspect the result (so objects
+   *  render as `{...}` instead of `[object Object]`) and stash the value
+   *  as `globalThis._` for follow-up expressions. Mirrors the firmware
+   *  REPL's eval path. Returns undefined for `undefined` results. */
+  evalForRepl(code: string, depth = 2): string | undefined {
+    return this.native.evalForRepl(code, depth)
+  }
+
   loop(): Promise<void> {
     return this.native.loop()
   }
@@ -119,6 +127,27 @@ export class MikroRuntime {
    * any user modules are loaded. */
   getProfileBaseline(): number {
     return this.native.getProfileBaseline()
+  }
+
+  /** Snapshot the QuickJS heap. Mirrors the firmware's `/mem` directive
+   *  which calls JS_ComputeMemoryUsage directly. `heapTotal` is
+   *  `malloc_limit` (or 0 if no limit is set). */
+  memoryUsage(): {heapUsed: number; heapTotal: number} {
+    return this.native.memoryUsage()
+  }
+
+  /** Trigger QuickJS garbage collection. Mirrors the firmware's `/gc`
+   *  directive (JS_RunGC on the underlying JSRuntime). */
+  gc(): void {
+    this.native.gc()
+  }
+
+  /** Install the test-helper globals (`__testEmit`, `__testFileDone`) on
+   *  this runtime. Opt-in so ordinary dev/REPL runs don't carry them.
+   *  Mirrors `MIK_EnableTestHelpers` — call it per test-file the same way
+   *  the firmware supervisor does. */
+  enableTestHelpers(): void {
+    this.native.enableTestHelpers()
   }
 }
 

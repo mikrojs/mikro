@@ -38,6 +38,7 @@ class RuntimeWrap : public Napi::ObjectWrap<RuntimeWrap> {
     Napi::Value EvalModule(const Napi::CallbackInfo& info);
     Napi::Value EvalModuleContent(const Napi::CallbackInfo& info);
     Napi::Value EvalScript(const Napi::CallbackInfo& info);
+    Napi::Value EvalForRepl(const Napi::CallbackInfo& info);
     Napi::Value Loop(const Napi::CallbackInfo& info);
     Napi::Value LoopOnce(const Napi::CallbackInfo& info);
     void Stop(const Napi::CallbackInfo& info);
@@ -57,6 +58,18 @@ class RuntimeWrap : public Napi::ObjectWrap<RuntimeWrap> {
     void EnableProfiling(const Napi::CallbackInfo& info);
     Napi::Value GetProfile(const Napi::CallbackInfo& info);
     Napi::Value GetProfileBaseline(const Napi::CallbackInfo& info);
+
+    /* Memory inspection / GC trigger — mirrors what the firmware's REPL
+     * directives do directly via JS_ComputeMemoryUsage / JS_RunGC. Lets the
+     * sim's /mem and /gc directives run without polluting globalThis with
+     * __simMemoryUsage / __simGc shims. */
+    Napi::Value MemoryUsage(const Napi::CallbackInfo& info);
+    void Gc(const Napi::CallbackInfo& info);
+
+    /* Install the test-helper globals (__testEmit / __testFileDone). Opt-in
+     * so ordinary dev runs don't carry the bindings. Mirrors what the
+     * firmware's mikro_main.cpp supervisor does per test file. */
+    void EnableTestHelpers(const Napi::CallbackInfo& info);
 
     MIKRuntime* mik_rt_ = nullptr;
     std::string fs_base_path_;
@@ -78,6 +91,11 @@ class RuntimeWrap : public Napi::ObjectWrap<RuntimeWrap> {
      * dedicated `oom` message. Does not touch QuickJS memory; safe to
      * invoke while the JS heap is exhausted. */
     static void OOMHandlerCallback(const MIKOOMEvent* event, void* opaque);
+
+    /* Test-emit handler — routes __testEmit() payloads to the host bridge
+     * as `test` messages, replacing the JS-side globalThis.__testEmit shim
+     * the simulator used to install. */
+    static void TestEmitHandlerCallback(const char* json, size_t len, void* opaque);
 
     /* Forward declare — defined in runtime_wrap.cpp */
     class LoopWorker* loop_worker_ = nullptr;
