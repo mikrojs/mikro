@@ -75,9 +75,9 @@ More useful (the motivation is implicit in the phrasing):
 
 If you can't articulate a _why_ beyond "I changed it", that's a signal the commit may want to be squashed into a neighbour, dropped, or split.
 
-## Body (use sparingly)
+## Body
 
-Add a body only when the _why_ won't fit on the subject line, or when there's context a future debugger will thank you for: a non-obvious tradeoff, a workaround, a measured perf delta, a related incident or ticket. Don't paraphrase the diff. Don't list files touched.
+Default to subject-only. Add a body only when a future debugger genuinely needs context the diff can't show: a non-obvious tradeoff, a workaround, a measured perf delta, a related incident or ticket. If you're tempted to add a body to explain the change, the subject is probably wrong — fix the subject instead. Don't paraphrase the diff. Don't list files touched.
 
 Wrap the body at 72 chars. Separate it from the subject with one blank line.
 
