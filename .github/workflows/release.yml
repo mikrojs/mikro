@@ -37,11 +37,13 @@ jobs:
       should_run: ${{ steps.plan.outputs.should_run }}
       npm_tag: ${{ steps.plan.outputs.npm_tag }}
       pr: ${{ steps.plan.outputs.pr }}
+      version: ${{ steps.plan.outputs.version }}
     steps:
-      # Shallow checkout: `releaser plan --context release` only reads the
-      # GitHub event payload (no git history). If plan ever needs git lookups,
-      # add `with: fetch-depth: 0` here.
+      # `releaser plan` computes the version too — it needs git history for
+      # conventional-recommended-bump. fetch-depth: 0 is required.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-pnpm
       - id: plan
         env:
@@ -134,6 +136,9 @@ jobs:
           target: ${{ matrix.target }}
           pack-format: unpacked
           artifact-name: firmware-${{ matrix.target }}
+          # Apply the planned version so sys.version embedded in the firmware
+          # matches what we publish to npm.
+          version: ${{ needs.plan.outputs.version }}
 
   publish:
     needs: [plan, build-prebuilds, build-firmware]
@@ -157,20 +162,11 @@ jobs:
           ignore-scripts: 'true' # no C++ toolchain on this runner; pure-TS dists only
           registry-url: https://registry.npmjs.org
 
-      # `--use-current` is critical for `release` mode: the release PR has
-      # already bumped package.json before merging. Re-running bump here would
-      # double-increment (e.g. 0.2.0 → 0.3.0) and publish the wrong version.
-      # Other modes always compute a fresh version from the current root.
-      - name: Bump version
-        id: bump
-        run: |
-          pnpm --silent releaser bump \
-            --mode ${{ needs.plan.outputs.mode }} \
-            ${{ needs.plan.outputs.mode == 'release' && '--use-current' || '' }} \
-            ${{ needs.plan.outputs.pr && format('--pr {0}', needs.plan.outputs.pr) || '' }} \
-            --json > /tmp/bump.json
-          version=$(jq -r .version /tmp/bump.json)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+      # Apply the version computed by plan. Same value also written by the
+      # firmware-build action — using one source of truth ensures sys.version
+      # in the firmware matches the version published to npm.
+      - name: Set version
+        run: pnpm --silent releaser bump --mode release --set ${{ needs.plan.outputs.version }}
 
       - run: pnpm -r --if-present run build:ts
 
@@ -245,7 +241,7 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          pnpm --silent releaser tag --version ${{ steps.bump.outputs.version }}
+          pnpm --silent releaser tag --version ${{ needs.plan.outputs.version }}
 
       - name: Comment on PR (pr-preview only)
         if: needs.plan.outputs.mode == 'pr-preview' && inputs.dry_run != true
@@ -255,5 +251,5 @@ jobs:
         run: |
           pnpm --silent releaser comment-pr \
             --pr ${{ needs.plan.outputs.pr }} \
-            --version ${{ steps.bump.outputs.version }} \
+            --version ${{ needs.plan.outputs.version }} \
             --tag ${{ needs.plan.outputs.npm_tag }}

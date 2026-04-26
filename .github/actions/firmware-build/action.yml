@@ -15,6 +15,15 @@ inputs:
   artifact-name:
     description: Name to upload the artifact under
     required: true
+  version:
+    description: |
+      Optional version to write into all publishable package.json files before
+      building. The firmware embeds this via sys.version, so the firmware
+      must be built against the same version that gets published. Leave empty
+      to build against whatever is currently in package.json (used by the
+      ad-hoc firmware.yml workflow).
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -43,6 +52,14 @@ runs:
 
     - shell: bash
       run: pnpm install --frozen-lockfile
+
+    # Apply the planned version BEFORE idf.py builds, so sys.version
+    # embedded in the firmware matches the version that gets published.
+    # `--mode release` is a placeholder; `--set` bypasses the mode-specific
+    # compute path entirely.
+    - if: inputs.version != ''
+      shell: bash
+      run: pnpm --silent releaser bump --mode release --set ${{ inputs.version }}
 
     - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # ratchet:actions/cache@v5
       with:

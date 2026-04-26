@@ -6,8 +6,12 @@ import {flag, option} from '@optique/core/primitives'
 import {choice} from '@optique/core/valueparser'
 
 import {PREVIEW_LABEL, RELEASE_BRANCH} from '../util/constants.js'
+import {readGitInfo} from '../util/git.js'
 import {type EventPayload, hasLabel, isSameRepoPr, readGitHubEvent} from '../util/githubEvent.js'
 import {octokit, repoSlug} from '../util/octokit.js'
+import {getRecommendedBump} from '../util/version.js'
+import {readCanonicalVersion} from '../util/workspace.js'
+import {computeBumpPure} from './bump.js'
 
 export type Mode = 'release' | 'next' | 'canary' | 'pr-preview' | 'create-release-pr' | 'skip'
 
@@ -17,6 +21,7 @@ export interface Plan {
   npmTag: string | null
   pr: number | null
   reason: string
+  version: string | null
 }
 
 export const args = command(
@@ -43,6 +48,7 @@ const SKIP = (reason: string, pr: number | null = null): Plan => ({
   npmTag: null,
   pr,
   reason,
+  version: null,
 })
 
 // Pure: given an event name + payload, return the plan.
@@ -57,6 +63,7 @@ export function decideReleasePure(eventName: string | undefined, payload: EventP
         npmTag: mode === 'release' ? 'latest' : mode,
         pr: null,
         reason: `workflow_dispatch mode=${mode}`,
+        version: null,
       }
     }
     return SKIP(`workflow_dispatch with unknown mode: ${mode ?? '<none>'}`)
@@ -77,6 +84,7 @@ export function decideReleasePure(eventName: string | undefined, payload: EventP
         npmTag: 'latest',
         pr: pr.number,
         reason: `release PR ${pr.number} merged`,
+        version: null,
       }
     }
 
@@ -95,6 +103,7 @@ export function decideReleasePure(eventName: string | undefined, payload: EventP
         npmTag: `pr-${pr.number}`,
         pr: pr.number,
         reason: `${PREVIEW_LABEL} label added on PR ${pr.number}`,
+        version: null,
       }
     }
 
@@ -138,7 +147,36 @@ async function decideCreateReleasePr(): Promise<Plan> {
     npmTag: null,
     pr: null,
     reason: 'regular push to main',
+    version: null,
   }
+}
+
+// Compute the version a downstream job will publish. Computed once in the
+// plan job so all downstream jobs (firmware, prebuilds, publish) write
+// the exact same string — critical for pr-preview where the timestamp
+// would otherwise drift between runs.
+async function computePlannedVersion(plan: Plan): Promise<string | null> {
+  if (!plan.shouldRun) return null
+  if (
+    plan.mode !== 'release' &&
+    plan.mode !== 'next' &&
+    plan.mode !== 'canary' &&
+    plan.mode !== 'pr-preview'
+  ) {
+    return null
+  }
+  const result = computeBumpPure({
+    mode: plan.mode,
+    pr: plan.pr ?? undefined,
+    // For release mode the canonical version IS the publish version (the
+    // release PR has already bumped). For other modes, append a suffix.
+    useCurrent: plan.mode === 'release',
+    currentVersion: readCanonicalVersion(),
+    semverIncrement: await getRecommendedBump(),
+    git: readGitInfo(),
+    now: new Date(),
+  })
+  return result.version
 }
 
 export async function run(opts: PlanArgs): Promise<void> {
@@ -149,6 +187,8 @@ export async function run(opts: PlanArgs): Promise<void> {
     const {eventName, payload} = readGitHubEvent()
     plan = decideReleasePure(eventName, payload)
   }
+
+  plan.version = await computePlannedVersion(plan)
 
   if (opts.json) {
     console.log(JSON.stringify(plan))
@@ -163,5 +203,6 @@ export async function run(opts: PlanArgs): Promise<void> {
   console.log(`should_run=${plan.shouldRun}`)
   console.log(`npm_tag=${plan.npmTag ?? ''}`)
   console.log(`pr=${plan.pr ?? ''}`)
+  console.log(`version=${plan.version ?? ''}`)
   console.log(`reason=${plan.reason}`)
 }

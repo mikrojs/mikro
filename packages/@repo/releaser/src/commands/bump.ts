@@ -3,7 +3,8 @@ import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import {flag, option} from '@optique/core/primitives'
-import {choice, integer} from '@optique/core/valueparser'
+import {choice, integer, string} from '@optique/core/valueparser'
+import semver from 'semver'
 
 import {readGitInfo} from '../util/git.js'
 import {
@@ -33,6 +34,11 @@ export const args = command(
     useCurrent: optional(
       flag('--use-current', {
         description: message`Use the version already in package.json without recomputing (release mode only). Use this in the publish job after a release PR has merged.`,
+      }),
+    ),
+    set: optional(
+      option('--set', string({metavar: 'VERSION'}), {
+        description: message`Write the given version to all publishable packages, no computation. Used in firmware/publish jobs to apply the version computed by plan.`,
       }),
     ),
     dryRun: optional(
@@ -141,6 +147,28 @@ function emit(result: BumpResult, json: boolean): void {
 }
 
 export async function run(opts: BumpArgs): Promise<void> {
+  // --set <VERSION>: write-only path. Used in firmware/publish jobs to apply
+  // a version computed once by `releaser plan` (one source of truth).
+  if (opts.set) {
+    if (!semver.valid(opts.set)) {
+      throw new Error(`--set: invalid semver: ${opts.set}`)
+    }
+    const npmTag = semver.prerelease(opts.set) ? 'prerelease' : 'latest'
+    const result: BumpResult = {version: opts.set, npmTag, mode: opts.mode}
+    if (opts.dryRun) {
+      console.error(`[dry-run] Would write ${result.version}`)
+      emit(result, opts.json === true)
+      return
+    }
+    const packages = getPublishablePackages()
+    console.error(`Setting ${packages.length} publishable packages to ${result.version}`)
+    for (const pkg of packages) {
+      writeVersion(pkg.path, result.version)
+    }
+    emit(result, opts.json === true)
+    return
+  }
+
   const inputs = await gather(opts)
   const result = computeBumpPure(inputs)
 
