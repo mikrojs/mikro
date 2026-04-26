@@ -45,7 +45,7 @@ async function main(config: InferValue<typeof args>): Promise<void> {
 
   printLogo()
 
-  p.intro('Create a new Mikro.js project')
+  p.intro(`Create a new Mikro.js project (v${pkg.version})`)
 
   const projectName =
     config.name ||
@@ -97,8 +97,8 @@ async function main(config: InferValue<typeof args>): Promise<void> {
     process.exit(0)
   }
 
-  const isCwd = projectName === '.'
-  const targetDir = isCwd ? process.cwd() : path.resolve(process.cwd(), projectName)
+  const targetDir = path.resolve(process.cwd(), projectName)
+  const isCwd = targetDir === process.cwd()
   const pkgName = isCwd ? path.basename(targetDir) : projectName
 
   if (isCwd) {
@@ -127,6 +127,7 @@ async function main(config: InferValue<typeof args>): Promise<void> {
   const steps: string[] = []
   if (!isCwd) steps.push(`cd ${projectName}`)
   steps.push(installCommand(pm))
+  steps.push('# connect your ESP32 via USB')
   steps.push(mikroCommand(pm, 'flash'))
   if (templateMeta?.wifiSetup) {
     steps.push('# set WIFI_SSID and WIFI_PASSPHRASE — see README.md')
