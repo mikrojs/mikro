@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.9](https://github.com/mikrojs/mikrojs/compare/mikrojs-v0.0.8...mikrojs-0.0.9) (2026-04-26)
+
+
+### Features
+
+* **cli:** notify users of new mikro versions ([53b56f8](https://github.com/mikrojs/mikrojs/commit/53b56f83f9befdbbfe01f6f2c1b9c4a0cd378d81))
+* **cli:** show update notice when device firmware lags CLI ([1fed116](https://github.com/mikrojs/mikrojs/commit/1fed116b0cd48b7829e9409bb379db287570c371))
+
 ## [0.0.8](https://github.com/mikrojs/mikrojs/compare/mikrojs-v0.0.7...mikrojs-v0.0.8) (2026-04-26)
 
 
