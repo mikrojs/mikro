@@ -37,23 +37,6 @@ describe('prepareBody', () => {
     const {body} = prepareBody({body: raw})
     expect(body).toBe(raw)
   })
-
-  it('serializes json body and sets content-type when absent', () => {
-    const {body, headers} = prepareBody({json: {temperature: 12.3, deviceId: 'dev-1'}})
-    const ct = headers.find(([k]) => k.toLowerCase() === 'content-type')?.[1]
-    expect(ct).toBe('application/json')
-    const decoded = new TextDecoder().decode(body!)
-    expect(JSON.parse(decoded)).toEqual({temperature: 12.3, deviceId: 'dev-1'})
-  })
-
-  it('does not override explicit content-type on json body', () => {
-    const {headers} = prepareBody({
-      headers: {'Content-Type': 'application/vnd.custom+json'},
-      json: {a: 1},
-    })
-    const ct = headers.find(([k]) => k.toLowerCase() === 'content-type')?.[1]
-    expect(ct).toBe('application/vnd.custom+json')
-  })
 })
 
 function bodyFromBytes(bytes: Uint8Array): AsyncIterable<Uint8Array> {

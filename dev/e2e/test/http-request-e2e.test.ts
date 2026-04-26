@@ -106,7 +106,7 @@ describe.runIf(hasWifi && !isSim)('http request e2e', () => {
     const result = await request('https://httpbingo.org/post', {
       method: 'POST',
       headers: {'content-type': 'application/json'},
-      json: {hello: 'mikro', n: 42},
+      body: JSON.stringify({hello: 'mikro', n: 42}),
     })
     assert.ok(result)
     assert.equal(result.value.status, 200)

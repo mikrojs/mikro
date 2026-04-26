@@ -63,11 +63,12 @@ import {request} from 'mikrojs/http/request'
 // ---cut---
 const result = await request('https://api.example.com/data', {
   method: 'POST',
-  json: {temperature: 23.5},
+  headers: {'content-type': 'application/json'},
+  body: JSON.stringify({temperature: 23.5}),
 })
 ```
 
-`json:` serialises the value as JSON and sets `content-type: application/json` unless you override it. For raw bytes or UTF-8 text use `body:` instead.
+`body` accepts a `Uint8Array` or a UTF-8 string. There is no `json:` shortcut: stringify the value yourself and set `content-type` if your endpoint needs it.
 
 ### Request with timeout
 
@@ -94,7 +95,6 @@ On ESP32, cancelling a request terminates the underlying HTTP task between read 
 interface RequestOptions {
   method?: string
   headers?: [string, string][] | Record<string, string>
-  json?: unknown
   body?: Uint8Array | string
   timeoutMs?: number
   signal?: AbortSignal

@@ -297,28 +297,6 @@ describe('createRequestFromNative', () => {
     expect(native.cancelCalls.length).toBe(1)
   })
 
-  it('propagates json body through to the native module', async () => {
-    const native = createFakeNative({messages: [{kind: 'end'}]})
-    let captured: {body?: Uint8Array; headers?: [string, string][]} = {}
-    const wrapped: NativeHttpModule = {
-      ...native,
-      request(url, opts) {
-        captured = {body: opts?.body, headers: opts?.headers}
-        return native.request(url, opts)
-      },
-    }
-    const request = createRequestFromNative(wrapped)
-
-    const result = await request('https://example.test/', {
-      method: 'POST',
-      json: {temperature: 12.3},
-    })
-    expect(result.ok).toBe(true)
-    const ct = captured.headers?.find(([k]) => k.toLowerCase() === 'content-type')?.[1]
-    expect(ct).toBe('application/json')
-    expect(JSON.parse(new TextDecoder().decode(captured.body!))).toEqual({temperature: 12.3})
-  })
-
   it('uppercases the method', async () => {
     const native = createFakeNative({messages: [{kind: 'end'}]})
     let capturedMethod: string | undefined

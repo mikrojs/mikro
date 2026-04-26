@@ -9,9 +9,7 @@ export interface RequestOptions {
   method?: string
   /** Headers as pairs or a record. Keys used as-is (no implicit case change). */
   headers?: [string, string][] | Record<string, string>
-  /** Shortcut: stringify as JSON and set `content-type: application/json`. */
-  json?: unknown
-  /** Raw body. Mutually exclusive with `json`. */
+  /** Raw body. */
   body?: Uint8Array | string
   /** Total wallclock deadline; transport enforces. */
   timeoutMs?: number
@@ -87,21 +85,14 @@ const textEncoder = new TextEncoder()
 
 /**
  * Normalize `RequestOptions` into the byte-oriented shape a transport actually
- * sends: final body bytes (or null) and header pairs. Applies the `json`
- * shortcut (encodes + sets content-type unless already present) and
- * UTF-8-encodes string bodies.
+ * sends: final body bytes (or null) and header pairs. UTF-8-encodes string
+ * bodies.
  */
 export function prepareBody(opts: RequestOptions): {
   body: Uint8Array | null
   headers: [string, string][]
 } {
   const headers = normalizeHeaders(opts.headers)
-  if (opts.json !== undefined) {
-    if (!hasHeader(headers, 'content-type')) {
-      headers.push(['content-type', 'application/json'])
-    }
-    return {body: textEncoder.encode(JSON.stringify(opts.json)), headers}
-  }
   if (opts.body === undefined) return {body: null, headers}
   if (typeof opts.body === 'string') return {body: textEncoder.encode(opts.body), headers}
   return {body: opts.body, headers}
@@ -184,14 +175,6 @@ function normalizeHeaders(
   const out: [string, string][] = []
   for (const key of Object.keys(input)) out.push([key, input[key]!])
   return out
-}
-
-function hasHeader(headers: [string, string][], name: string): boolean {
-  const lower = name.toLowerCase()
-  for (const [k] of headers) {
-    if (k.toLowerCase() === lower) return true
-  }
-  return false
 }
 
 async function drain(source: AsyncIterable<Uint8Array>): Promise<Uint8Array> {

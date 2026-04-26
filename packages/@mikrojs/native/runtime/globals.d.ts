@@ -53,6 +53,10 @@ declare class AbortController {
   abort(reason?: unknown): void
 }
 
+declare interface JSON {
+  parse(text: string, reviver?: (this: any, key: string, value: any) => any): unknown
+}
+
 declare interface ImportMeta {
   readonly url: string
   readonly main: boolean
