@@ -1046,5 +1046,70 @@ describe('replStateMachine', () => {
 
       sub.unsubscribe()
     })
+
+    test('Ctrl+R re-subscribes to awaitReady$ so a fresh ready can recover the connection', async () => {
+      const {Subject, Observable} = await import('rxjs')
+      const messages$ = new Subject<Extract<ReplAction, {type: 'deviceEvent'}>['event']>()
+      let awaitReadySubscriptions = 0
+      const mockSession = {
+        messages$,
+        eval: () => {},
+        directive: () => {},
+        complete: () => {},
+        exit: () => {},
+        restart: () => {},
+        close: () => {},
+        ready$: messages$,
+        // Each subscription represents a fresh HELLO-poll cycle: the real
+        // session.awaitReady$ polls CMD_HELLO until MSG_READY arrives, so
+        // counting subscriptions is the closest proxy for "is the handshake
+        // being driven right now?"
+        awaitReady$: () =>
+          new Observable(() => {
+            awaitReadySubscriptions++
+            return () => {}
+          }),
+        deploy: () => messages$,
+        config: {list: async () => [], set: async () => {}, delete: async () => {}},
+      }
+
+      const {createRepl: create} = await import('../serial/replStateMachine.js')
+      const repl = create({
+        session: mockSession as any,
+        port: '/dev/test',
+        onEnd: () => {},
+        loadHistory: () => [],
+        saveHistory: () => {},
+      })
+
+      const states: ReplMachineState[] = []
+      const sub = repl.state$.subscribe((s) => states.push(s))
+
+      // Initial subscription kicks awaitReady$ once on REPL start.
+      expect(awaitReadySubscriptions).toBe(1)
+
+      // Drive the device to ready.
+      messages$.next({type: 'ready', chip: 'ESP32', id: null, version: null})
+      expect(states.at(-1)!.connection.type).toBe('ready')
+
+      // User hits Ctrl+R.
+      repl.keyInput('r', {...NO_KEY, ctrl: true})
+
+      // Connection drops to 'connecting' with 'Restarting…' and the handshake
+      // is re-driven (otherwise the device — which only emits MSG_READY in
+      // response to CMD_HELLO — would never report ready and the state would
+      // be stuck on 'Restarting…' forever).
+      expect(states.at(-1)!.connection).toEqual({
+        type: 'connecting',
+        message: 'Restarting…',
+      })
+      expect(awaitReadySubscriptions).toBe(2)
+
+      // A fresh post-restart ready event flips the state back to ready.
+      messages$.next({type: 'ready', chip: 'ESP32', id: null, version: null})
+      expect(states.at(-1)!.connection.type).toBe('ready')
+
+      sub.unsubscribe()
+    })
   })
 })

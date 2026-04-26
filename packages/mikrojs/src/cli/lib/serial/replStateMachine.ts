@@ -11,6 +11,7 @@ import {
   scan,
   shareReplay,
   startWith,
+  switchMap,
   takeUntil,
 } from 'rxjs/operators'
 
@@ -731,6 +732,7 @@ export function createRepl(options: {
   const saveHistoryFn = options.saveHistory ?? appendHistory
   const actions$ = new Subject<ReplAction>()
   const deploys$ = new Subject<{force: boolean}>()
+  const restarts$ = new Subject<void>()
   const initial = createInitialState(port, loadHistoryFn())
 
   const sessionActions$: Observable<ReplAction> = session.messages$.pipe(
@@ -768,12 +770,22 @@ export function createRepl(options: {
     ignoreElements(),
   )
 
+  // After a user-triggered restart (Ctrl+R) the device reboots and stops
+  // emitting MSG_READY until something polls CMD_HELLO again. Re-subscribe
+  // to awaitReady$ on each restart so the handshake resumes; without this
+  // the connection state stays in 'Restarting…' forever.
+  const restartHandshakeDriver$: Observable<ReplAction> = restarts$.pipe(
+    switchMap(() => session.awaitReady$(timeoutMs).pipe(catchError(() => EMPTY))),
+    ignoreElements(),
+  )
+
   const state$ = merge(
     sessionActions$,
     actions$,
     troubleshootingTimer$,
     connectionTimeout$,
     handshakeDriver$,
+    restartHandshakeDriver$,
   ).pipe(
     scan((state: ReplMachineState, action: ReplAction): ReplMachineState => {
       const [nextState, effects] = reduce(state, action)
@@ -799,6 +811,7 @@ export function createRepl(options: {
         break
       case 'restart':
         session.restart()
+        restarts$.next()
         break
       case 'end':
         onEnd()
