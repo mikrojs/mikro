@@ -6,6 +6,7 @@ import {defineProgram} from '@optique/core/program'
 import {run} from '@optique/run'
 import {render} from 'ink'
 import {type ComponentType, createElement} from 'react'
+import updateNotifier from 'update-notifier'
 
 import pkg from '../../package.json' with {type: 'json'}
 import * as buildCommand from './commands/build.js'
@@ -110,6 +111,12 @@ const config = run(prog, {
   version: {value: pkg.version, command: true, option: true},
   args: filteredArgs,
 })
+
+// Skip the update banner for non-interactive invocations (pipes, AI agents);
+// CI / NO_UPDATE_NOTIFIER are handled internally by update-notifier.
+if (process.stdout.isTTY && !isAgentMode()) {
+  updateNotifier({pkg}).notify()
+}
 
 switch (config.command.action) {
   case 'dev': {
