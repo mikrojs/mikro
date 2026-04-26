@@ -123,8 +123,8 @@ export function getWriteFlashMultiArgs(options: WriteFlashMultiOptions) {
     typeof options.connectAttempts === 'number'
       ? ['--connect-attempts', String(options.connectAttempts)]
       : [],
-    typeof options.flashMode === 'string' ? ['--flash_mode', String(options.flashMode)] : [],
-    typeof options.flashSize === 'string' ? ['--flash_size', String(options.flashSize)] : [],
+    typeof options.flashMode === 'string' ? ['--flash-mode', String(options.flashMode)] : [],
+    typeof options.flashSize === 'string' ? ['--flash-size', String(options.flashSize)] : [],
     options.verify ? ['--verify'] : [],
     ...options.files.flatMap((f) => [[String(f.address)], [f.filename]]),
   ]
