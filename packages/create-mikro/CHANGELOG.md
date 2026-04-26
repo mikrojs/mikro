@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.8](https://github.com/mikrojs/mikrojs/compare/create-mikro-v0.0.7...create-mikro-v0.0.8) (2026-04-26)
+
+
+### Miscellaneous Chores
+
+* **create-mikro:** Synchronize create versions
+
 ## [0.0.7](https://github.com/mikrojs/mikrojs/compare/create-mikro-v0.0.6...create-mikro-v0.0.7) (2026-04-25)
 
 

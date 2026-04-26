@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.8](https://github.com/mikrojs/mikrojs/compare/native-v0.0.7...native-v0.0.8) (2026-04-26)
+
+
+### Bug Fixes
+
+* **inspect:** stop signing positive zero in console output ([b3b08ce](https://github.com/mikrojs/mikrojs/commit/b3b08ce69aa0eadd82c842e1f7538b17c3950006))
+
 ## [0.0.7](https://github.com/mikrojs/mikrojs/compare/native-v0.0.6...native-v0.0.7) (2026-04-25)
 
 

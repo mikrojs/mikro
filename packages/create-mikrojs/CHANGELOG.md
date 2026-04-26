@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.8](https://github.com/mikrojs/mikrojs/compare/create-mikrojs-v0.0.7...create-mikrojs-v0.0.8) (2026-04-26)
+
+
+### Features
+
+* **create-mikrojs:** scaffold eslint and editorconfig, remove bundled tseslint ([28416bd](https://github.com/mikrojs/mikrojs/commit/28416bd91bda167d83a5dfcfbbaf8f8f04b441ce))
+* **create-mikrojs:** use runCommand for next-steps dev hint ([96fceba](https://github.com/mikrojs/mikrojs/commit/96fceba09cbf7e86940ae63d305a563426671d5e))
+
 ## [0.0.7](https://github.com/mikrojs/mikrojs/compare/create-mikrojs-v0.0.6...create-mikrojs-v0.0.7) (2026-04-25)
 
 
