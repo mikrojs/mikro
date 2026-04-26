@@ -36,6 +36,7 @@ jobs:
         if: steps.release.outputs['packages/mikrojs--release_created'] == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.release.outputs['packages/mikrojs--tag_name'] }}
         run: gh release edit "$TAG" --latest
 
