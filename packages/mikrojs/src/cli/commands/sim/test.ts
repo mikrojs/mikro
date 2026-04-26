@@ -161,7 +161,7 @@ export async function run(config: RunConfig): Promise<void> {
   }
 
   const startTime = Date.now()
-  let results: TestFileResult[] = []
+  let results: TestFileResult[]
 
   try {
     results = await runTestManifest(session, testFiles, options, {

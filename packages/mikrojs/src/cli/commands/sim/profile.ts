@@ -251,7 +251,9 @@ async function runImpl(config: RunConfig): Promise<void> {
   } finally {
     try {
       rmSync(profilePath, {force: true})
-    } catch {}
+    } catch {
+      // best-effort cleanup
+    }
   }
 }
 

@@ -37,7 +37,9 @@ export function readPid(mikroDir: string): number | null {
     if (!isAlive(pid)) {
       try {
         unlinkSync(file)
-      } catch {}
+      } catch {
+        // stale pid file; nothing to clean
+      }
       return null
     }
     return pid
@@ -50,7 +52,9 @@ export function clearPid(mikroDir: string): void {
   const file = pidPath(mikroDir)
   try {
     unlinkSync(file)
-  } catch {}
+  } catch {
+    // already gone
+  }
 }
 
 export class SimAlreadyRunningError extends Error {
@@ -86,7 +90,9 @@ export async function claimPid(mikroDir: string): Promise<void> {
   if (existing !== null) {
     try {
       process.kill(existing, 'SIGTERM')
-    } catch {}
+    } catch {
+      // process already gone
+    }
     const deadline = Date.now() + 2000
     while (Date.now() < deadline && isAlive(existing)) {
       await new Promise((r) => setTimeout(r, 50))
@@ -94,7 +100,9 @@ export async function claimPid(mikroDir: string): Promise<void> {
     if (isAlive(existing)) {
       try {
         process.kill(existing, 'SIGKILL')
-      } catch {}
+      } catch {
+        // process already gone
+      }
       await new Promise((r) => setTimeout(r, 50))
     }
   }

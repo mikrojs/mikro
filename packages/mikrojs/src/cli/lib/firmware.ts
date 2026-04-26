@@ -532,6 +532,6 @@ export async function resolveFrom(options: ResolveFromOptions): Promise<string> 
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     const trailStr = trail.map((s) => `  ${s}`).join('\n')
-    throw new Error(`${msg}\n\nResolution trail:\n${trailStr}`)
+    throw new Error(`${msg}\n\nResolution trail:\n${trailStr}`, {cause: error})
   }
 }

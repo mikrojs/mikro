@@ -29,6 +29,7 @@ export async function evaluate(
 const UNKNOWN = Symbol()
 const FUNCTION = Symbol()
 const WILDCARD = '\x1a'
+// eslint-disable-next-line no-control-regex -- WILDCARD is the SUB control char used as a sentinel
 const wildcardRegEx = /\x1a/g
 
 function countWildcards(str: string) {

@@ -11,7 +11,7 @@
  */
 
 import {execSync} from 'node:child_process'
-import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs'
+import {existsSync, mkdirSync, rmSync, writeFileSync} from 'node:fs'
 import {join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 

@@ -93,7 +93,9 @@ async function getPkgCfg(pkgPath: string, job: Tracer): Promise<PkgCfg | undefin
   if (pjsonSource) {
     try {
       return JSON.parse(pjsonSource.toString())
-    } catch {}
+    } catch {
+      // invalid JSON → treat as missing config
+    }
   }
   return undefined
 }
