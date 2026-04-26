@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.8](https://github.com/mikrojs/mikrojs/compare/mikrojs-v0.0.7...mikrojs-v0.0.8) (2026-04-26)
+
+
+### Features
+
+* refactor sim dev command to use shared devSession state machine ([4012cb9](https://github.com/mikrojs/mikrojs/commit/4012cb9a70a05a343e186f2a12d797ca291e2c50))
+* **sim:** persist nvs_kv across mikro sim dev restarts ([7b3fb24](https://github.com/mikrojs/mikrojs/commit/7b3fb24723c121e9c73155a9ec2fdae867b391a4))
+
+
+### Bug Fixes
+
+* **cli:** make flash --from=&lt;sha&gt; work for release commits ([1ffc233](https://github.com/mikrojs/mikrojs/commit/1ffc23332aa7404b7e3cf730e67e77163fe8e4ec))
+* **cli:** resume ready handshake after Ctrl+R restart ([7d29770](https://github.com/mikrojs/mikrojs/commit/7d29770de25c62b6f812ab3704f8b8694c56f2d4))
+* **cli:** use kebab-case esptool flags to silence deprecation warnings ([5e3657a](https://github.com/mikrojs/mikrojs/commit/5e3657a4dc79d590c5c520dcd07287020b9380ac))
+
 ## [0.0.7](https://github.com/mikrojs/mikrojs/compare/mikrojs-v0.0.6...mikrojs-v0.0.7) (2026-04-25)
 
 

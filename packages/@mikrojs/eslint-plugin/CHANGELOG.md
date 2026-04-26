@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.8](https://github.com/mikrojs/mikrojs/compare/eslint-plugin-v0.0.7...eslint-plugin-v0.0.8) (2026-04-26)
+
+
+### Features
+
+* **create-mikrojs:** scaffold eslint and editorconfig, remove bundled tseslint ([28416bd](https://github.com/mikrojs/mikrojs/commit/28416bd91bda167d83a5dfcfbbaf8f8f04b441ce))
+
 ## [0.0.7](https://github.com/mikrojs/mikrojs/compare/eslint-plugin-v0.0.6...eslint-plugin-v0.0.7) (2026-04-25)
 
 
