@@ -8,6 +8,7 @@
 node_modules
 *.tsbuildinfo
 packages/@mikrojs/native/build/
+packages/@mikrojs/native/build-test/
 packages/@mikrojs/native/prebuilds/
 packages/@mikrojs/quickjs/build/
 packages/@mikrojs/quickjs/bin/
