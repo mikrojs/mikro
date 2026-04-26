@@ -212,6 +212,7 @@
     "ink": "^7.0.1",
     "ink-select-input": "^6.2.0",
     "open": "^11.0.0",
+    "preferred-pm": "^5.0.0",
     "react": "^19.2.5",
     "rxjs": "^7.8.2",
     "rxjs-exhaustmap-with-trailing": "^2.1.1",
@@ -241,7 +242,6 @@
     }
   },
   "engines": {
-    "@mikrojs/firmware": ">=0.0.0",
     "node": ">=24.0.0"
   }
 }

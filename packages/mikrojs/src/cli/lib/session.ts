@@ -35,7 +35,13 @@ import {
   timer,
 } from 'rxjs'
 
-import {checkFirmwareCompat} from './firmwareCompat.js'
+import {
+  checkFirmwareCompat,
+  type FirmwareCompatDirection,
+  formatAdvisory,
+  formatIncompatibleError,
+} from './firmwareCompat.js'
+import {detectPreferredPm} from './pkgManager.js'
 import {
   buildCompleteCommand,
   buildConfigDeleteCommand,
@@ -65,11 +71,17 @@ import type {Transport} from './transport.js'
 
 // ── Event types ────────────────────────────────────────────────────
 
+export interface FirmwareAdvisory {
+  kind: FirmwareCompatDirection
+  message: string
+}
+
 export interface ReadyEvent {
   type: 'ready'
   chip: string | null
   id: string | null
   version: string | null
+  advisory?: FirmwareAdvisory | null
 }
 
 export interface TextEvent {
@@ -361,6 +373,8 @@ export function connectRepl(
   let readySeq = 0
   let lastSeenRestartSeq = -1
   let lastRestartAt = 0
+  // Show the firmware "update available" notice at most once per session.
+  let advisoryShown = false
   const POST_RESTART_BLACKOUT_MS = 1000
   const readyWithMeta$ = messages$.pipe(
     filter((e): e is ReadyEvent => e.type === 'ready'),
@@ -426,14 +440,22 @@ export function connectRepl(
    * Errors if the device firmware version is incompatible.
    */
   function awaitReady$(timeoutMs = READY_TIMEOUT_MS): Observable<ReadyEvent> {
-    const checkVersion = (event: ReadyEvent) => {
+    const checkVersion = async (event: ReadyEvent): Promise<ReadyEvent> => {
       const compat = checkFirmwareCompat(event.version)
-      if (!compat.compatible) {
-        const got = compat.deviceVersion ?? 'unknown'
-        throw new Error(
-          `Device firmware (v${got}) is incompatible with this CLI (requires ${compat.requiredRange}). Reflash with \`npm run flash\`.`,
-        )
+      if (compat.status === 'match') {
+        return {...event, advisory: null}
       }
+      const pm = await detectPreferredPm()
+      if (compat.status === 'incompatible') {
+        throw new Error(formatIncompatibleError(compat, pm))
+      }
+      // status === 'update_available'
+      const message = formatAdvisory(compat, pm)
+      if (!advisoryShown) {
+        advisoryShown = true
+        process.stderr.write(message + '\n')
+      }
+      return {...event, advisory: {kind: compat.direction!, message}}
     }
 
     const mapTimeout = (context: string, ms: number) =>
@@ -473,7 +495,7 @@ export function connectRepl(
       first(),
       timeout(timeoutMs),
       mapTimeout('waiting for device ready', timeoutMs),
-      tap(checkVersion),
+      mergeMap(checkVersion),
     )
   }
 

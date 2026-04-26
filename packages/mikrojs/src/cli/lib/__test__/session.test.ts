@@ -1,3 +1,5 @@
+import {createRequire} from 'node:module'
+
 import {encode as encodeCbor} from 'cbor2'
 import {lastValueFrom, Subject} from 'rxjs'
 import {describe, expect, it} from 'vitest'
@@ -22,6 +24,9 @@ import {
 } from '../protocol.js'
 import {connectRepl, type ReplEvent} from '../session.js'
 import type {Transport} from '../transport.js'
+
+const require = createRequire(import.meta.url)
+const CLI_VERSION = (require('../../../../package.json') as {version: string}).version
 
 /** Create a mock transport for testing */
 function createMockTransport() {
@@ -205,11 +210,12 @@ describe('session', () => {
   })
 
   describe('request/response', () => {
-    /** Send MSG_READY so session.ready resolves (required before deploy/config) */
+    /** Send MSG_READY so session.ready resolves (required before deploy/config).
+     *  Uses the CLI's own version so the firmware-compat check passes. */
     function sendReady(sendFrame: (type: number, payload?: string | Buffer) => void) {
       sendFrame(
         MSG_READY,
-        Buffer.from(encodeCbor({chip: 'test', id: '00:00:00:00:00:00', v: '0.0.0'})),
+        Buffer.from(encodeCbor({chip: 'test', id: '00:00:00:00:00:00', v: CLI_VERSION})),
       )
     }
 
