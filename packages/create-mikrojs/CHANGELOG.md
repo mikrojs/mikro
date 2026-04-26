@@ -1,12 +1,5 @@
 # Changelog
 
-## [0.0.9](https://github.com/mikrojs/mikrojs/compare/create-mikrojs-v0.0.8...create-mikrojs-0.0.9) (2026-04-26)
-
-
-### Features
-
-* **create-mikrojs:** polish scaffold defaults ([a7a5c6e](https://github.com/mikrojs/mikrojs/commit/a7a5c6e9deb08df47ee96a9d38fc9f2b6040e3f6))
-
 ## [0.0.8](https://github.com/mikrojs/mikrojs/compare/create-mikrojs-v0.0.7...create-mikrojs-v0.0.8) (2026-04-26)
 
 
