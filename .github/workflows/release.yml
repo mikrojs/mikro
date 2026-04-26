@@ -29,6 +29,9 @@ permissions:
 jobs:
   plan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # for `releaser unlabel-preview` (removing the trigger label)
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       should_run: ${{ steps.plan.outputs.should_run }}
