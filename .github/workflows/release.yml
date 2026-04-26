@@ -29,6 +29,16 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      # release-please marks whichever release was created last as GitHub
+      # "Latest". Force the CLI release to be the latest so users landing
+      # on the repo see the version that matches `npm i -g mikrojs`.
+      - name: Mark mikrojs CLI release as latest
+        if: steps.release.outputs['packages/mikrojs--release_created'] == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs['packages/mikrojs--tag_name'] }}
+        run: gh release edit "$TAG" --latest
+
   build-prebuilds:
     needs: [release-please]
     if: |

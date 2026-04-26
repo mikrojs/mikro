@@ -2,18 +2,18 @@
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "node",
   "include-component-in-tag": true,
-  "include-v-in-tag": true,
-  "separator": "-",
+  "include-v-in-tag": false,
+  "separator": "@",
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
   "packages": {
     "packages/mikrojs": {"component": "mikrojs"},
-    "packages/@mikrojs/native": {"component": "native"},
-    "packages/@mikrojs/quickjs": {"component": "quickjs"},
-    "packages/@mikrojs/firmware": {"component": "firmware"},
-    "packages/@mikrojs/analyze-imports": {"component": "analyze-imports"},
-    "packages/@mikrojs/esptool": {"component": "esptool"},
-    "packages/@mikrojs/eslint-plugin": {"component": "eslint-plugin"},
+    "packages/@mikrojs/native": {"component": "@mikrojs/native"},
+    "packages/@mikrojs/quickjs": {"component": "@mikrojs/quickjs"},
+    "packages/@mikrojs/firmware": {"component": "@mikrojs/firmware"},
+    "packages/@mikrojs/analyze-imports": {"component": "@mikrojs/analyze-imports"},
+    "packages/@mikrojs/esptool": {"component": "@mikrojs/esptool"},
+    "packages/@mikrojs/eslint-plugin": {"component": "@mikrojs/eslint-plugin"},
     "packages/create-mikrojs": {"component": "create-mikrojs"},
     "packages/create-mikro": {"component": "create-mikro"}
   },
@@ -21,7 +21,7 @@
     {
       "type": "linked-versions",
       "groupName": "core",
-      "components": ["mikrojs", "native", "quickjs", "firmware"]
+      "components": ["mikrojs", "@mikrojs/native", "@mikrojs/quickjs", "@mikrojs/firmware"]
     },
     {
       "type": "linked-versions",
