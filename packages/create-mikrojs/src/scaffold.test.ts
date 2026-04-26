@@ -48,12 +48,13 @@ describe.each(TEMPLATES)('template: $name', ({name}) => {
       expect(pkg.name).toBe('test-project')
       expect(pkg.type).toBe('module')
       expect(pkg.main).toBe('./app/main.ts')
-      expect(pkg.dependencies.mikrojs).toBe('0.0.0')
+      expect(pkg.dependencies.mikrojs).toBe('^0.0.0')
       expect(pkg.devDependencies.typescript).toBeDefined()
-      expect(pkg.scripts.dev).toBe('mikro dev')
-      expect(pkg.scripts.build).toBeUndefined()
-      expect(pkg.scripts.deploy).toBeUndefined()
+      expect(pkg.scripts.lint).toBe('eslint .')
+      expect(pkg.scripts.typecheck).toBe('tsc --noEmit --pretty')
+      expect(pkg.scripts.dev).toBeUndefined()
       expect(pkg.scripts.flash).toBeUndefined()
+      expect(pkg.engines).toBeUndefined()
     })
 
     it('creates tsconfig.json with mikrojs runtime types', () => {
@@ -80,7 +81,6 @@ describe.each(TEMPLATES)('template: $name', ({name}) => {
       const pkg = JSON.parse(readFileSync(path.join(targetDir, 'package.json'), 'utf-8'))
       expect(pkg.devDependencies.eslint).toBeDefined()
       expect(pkg.devDependencies['@mikrojs/eslint-plugin']).toBeDefined()
-      expect(pkg.scripts.lint).toBe('eslint .')
     })
 
     it('creates app/main.ts', () => {

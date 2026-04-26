@@ -19,10 +19,14 @@ export function packageJson(
     private: true,
     type: 'module',
     main: './app/main.ts',
-    scripts: {
-      dev: 'mikro dev',
-      ...(typescript ? {lint: 'eslint .'} : {}),
-    },
+    ...(typescript
+      ? {
+          scripts: {
+            lint: 'eslint .',
+            typecheck: 'tsc --noEmit --pretty',
+          },
+        }
+      : {}),
     dependencies: dependencies as {},
     devDependencies: devDependencies as {},
     ...(typescript

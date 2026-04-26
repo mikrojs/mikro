@@ -136,12 +136,12 @@ export function scaffold(options: ScaffoldOptions) {
     path.join(targetDir, 'package.json'),
     JSON.stringify(
       packageJson(projectName, {
-        dependencies: {...dependencies, mikrojs: mikrojsVersion},
+        dependencies: {...dependencies, mikrojs: `^${mikrojsVersion}`},
         devDependencies: typescript
           ? {
               ...devDependencies,
               ...eslintDevDependencies,
-              '@mikrojs/eslint-plugin': mikrojsVersion,
+              '@mikrojs/eslint-plugin': `^${mikrojsVersion}`,
             }
           : undefined,
         typescript,

@@ -11,7 +11,7 @@ import {string} from '@optique/core/valueparser'
 import {run} from '@optique/run'
 
 import {printLogo} from './logo.js'
-import {detectPkgManager, installCommand, runCommand} from './pkg-manager.js'
+import {detectPkgManager, installCommand, mikroCommand} from './pkg-manager.js'
 import {scaffold, TEMPLATES} from './scaffold.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -97,9 +97,16 @@ async function main(config: InferValue<typeof args>): Promise<void> {
     process.exit(0)
   }
 
-  const targetDir = path.resolve(process.cwd(), projectName)
+  const isCwd = projectName === '.'
+  const targetDir = isCwd ? process.cwd() : path.resolve(process.cwd(), projectName)
+  const pkgName = isCwd ? path.basename(targetDir) : projectName
 
-  if (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0) {
+  if (isCwd) {
+    if (fs.existsSync(path.join(targetDir, 'package.json'))) {
+      p.cancel('Current directory already contains a package.json.')
+      process.exit(1)
+    }
+  } else if (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0) {
     p.cancel(`Directory "${projectName}" already exists and is not empty.`)
     process.exit(1)
   }
@@ -109,7 +116,7 @@ async function main(config: InferValue<typeof args>): Promise<void> {
   scaffold({
     targetDir,
     template,
-    projectName,
+    projectName: pkgName,
     mikrojsVersion: pkg.version,
     typescript,
     templatesDir,
@@ -117,15 +124,18 @@ async function main(config: InferValue<typeof args>): Promise<void> {
   })
 
   const templateMeta = TEMPLATES.find((t) => t.name === template)
-  const steps = [`cd ${projectName}`, installCommand(pm)]
+  const steps: string[] = []
+  if (!isCwd) steps.push(`cd ${projectName}`)
+  steps.push(installCommand(pm))
+  steps.push(mikroCommand(pm, 'flash'))
   if (templateMeta?.wifiSetup) {
     steps.push('# set WIFI_SSID and WIFI_PASSPHRASE — see README.md')
   }
-  steps.push(runCommand(pm, 'dev'))
+  steps.push(mikroCommand(pm, 'dev'))
 
   p.note(steps.join('\n'), 'Next steps')
 
-  p.outro(`Project created in ${projectName}/`)
+  p.outro(isCwd ? 'Project created in current directory.' : `Project created in ${projectName}/`)
 }
 
 const config = run(prog, {
