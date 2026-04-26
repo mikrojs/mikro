@@ -60,6 +60,10 @@ npm create mikrojs -- my-schema --template schema
 yarn create mikrojs my-schema --template schema
 ```
 
+```sh [bun]
+bun create mikrojs my-schema --template schema
+```
+
 :::
 
 ## Run it
@@ -83,6 +87,11 @@ npx mikro dev
 ```sh [yarn]
 yarn install
 yarn mikro dev
+```
+
+```sh [bun]
+bun install
+bunx mikro dev
 ```
 
 :::

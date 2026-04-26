@@ -63,6 +63,10 @@ npm create mikrojs -- my-pwm-led --template pwm-led
 yarn create mikrojs my-pwm-led --template pwm-led
 ```
 
+```sh [bun]
+bun create mikrojs my-pwm-led --template pwm-led
+```
+
 :::
 
 ## Run it
@@ -86,6 +90,11 @@ npx mikro dev
 ```sh [yarn]
 yarn install
 yarn mikro dev
+```
+
+```sh [bun]
+bun install
+bunx mikro dev
 ```
 
 :::

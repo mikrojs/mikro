@@ -74,6 +74,10 @@ npm create mikrojs -- my-uart --template uart
 yarn create mikrojs my-uart --template uart
 ```
 
+```sh [bun]
+bun create mikrojs my-uart --template uart
+```
+
 :::
 
 ## Run it
@@ -97,6 +101,11 @@ npx mikro dev
 ```sh [yarn]
 yarn install
 yarn mikro dev
+```
+
+```sh [bun]
+bun install
+bunx mikro dev
 ```
 
 :::

@@ -87,6 +87,13 @@ yarn install
 yarn mikro dev
 ```
 
+```sh [bun]
+bun create mikrojs my-blinky --template blinky
+cd my-blinky
+bun install
+bunx mikro dev
+```
+
 :::
 
 ## Learn more

@@ -82,6 +82,10 @@ npm create mikrojs -- my-blinky --template blinky
 yarn create mikrojs my-blinky --template blinky
 ```
 
+```sh [bun]
+bun create mikrojs my-blinky --template blinky
+```
+
 :::
 
 ## Run it
@@ -105,6 +109,11 @@ npx mikro dev
 ```sh [yarn]
 yarn install
 yarn mikro dev
+```
+
+```sh [bun]
+bun install
+bunx mikro dev
 ```
 
 :::

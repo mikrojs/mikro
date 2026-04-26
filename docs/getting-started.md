@@ -16,13 +16,9 @@ This guide walks you through creating a Mikro.js project, flashing firmware to a
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) >= 24
-- [pnpm](https://pnpm.io/installation) recommended, but npm and yarn work too
+- [pnpm](https://pnpm.io/installation) recommended, but npm, yarn, and bun work too
 - A USB-C cable
 - An ESP32 development board
-
-::: warning Bun is untested
-Bun has not been tested with Mikro.js. Use npm, pnpm, or yarn for now.
-:::
 
 ::: tip Which board should I use?
 Any ESP32, ESP32-C3, ESP32-S3, or ESP32-C6 board should work out of the box. We recommend the [Seeed Studio XIAO ESP32C6](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html): it's small, cheap (~$5), has USB-C, and is the primary board Mikro.js is developed and tested against.
@@ -48,6 +44,12 @@ npm install
 yarn create mikrojs my-app
 cd my-app
 yarn install
+```
+
+```sh [bun]
+bun create mikrojs my-app
+cd my-app
+bun install
 ```
 
 :::
@@ -82,6 +84,10 @@ npx mikro flash
 yarn mikro flash
 ```
 
+```sh [bun]
+bunx mikro flash
+```
+
 :::
 
 This writes the Mikro.js runtime firmware into the board's flash memory, setting up the environment your TypeScript code runs in. You only need to do this once per board (or when updating Mikro.js).
@@ -102,6 +108,10 @@ npx mikro dev
 
 ```sh [yarn]
 yarn mikro dev
+```
+
+```sh [bun]
+bunx mikro dev
 ```
 
 :::
@@ -143,6 +153,10 @@ npx mikro deploy
 
 ```sh [yarn]
 yarn mikro deploy
+```
+
+```sh [bun]
+bunx mikro deploy
 ```
 
 :::

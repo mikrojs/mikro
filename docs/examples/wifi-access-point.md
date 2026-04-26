@@ -86,6 +86,10 @@ npm create mikrojs -- my-wifi-ap --template wifi-access-point
 yarn create mikrojs my-wifi-ap --template wifi-access-point
 ```
 
+```sh [bun]
+bun create mikrojs my-wifi-ap --template wifi-access-point
+```
+
 :::
 
 ## Run it
@@ -109,6 +113,11 @@ npx mikro dev
 ```sh [yarn]
 yarn install
 yarn mikro dev
+```
+
+```sh [bun]
+bun install
+bunx mikro dev
 ```
 
 :::

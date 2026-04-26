@@ -34,6 +34,11 @@ yarn mikro env set WIFI_SSID YourNetworkName
 yarn mikro env set WIFI_PASSPHRASE --secret
 ```
 
+```sh [bun]
+bunx mikro env set WIFI_SSID YourNetworkName
+bunx mikro env set WIFI_PASSPHRASE --secret
+```
+
 :::
 
 ## Code
@@ -98,6 +103,10 @@ npm create mikrojs -- my-sntp --template sntp
 yarn create mikrojs my-sntp --template sntp
 ```
 
+```sh [bun]
+bun create mikrojs my-sntp --template sntp
+```
+
 :::
 
 ## Run it
@@ -121,6 +130,11 @@ npx mikro dev
 ```sh [yarn]
 yarn install
 yarn mikro dev
+```
+
+```sh [bun]
+bun install
+bunx mikro dev
 ```
 
 :::
