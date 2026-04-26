@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0](https://github.com/mikrojs/mikrojs/compare/create-mikrojs@0.0.7...create-mikrojs@0.1.0) (2026-04-26)
+
+
+### Features
+
+* **create-mikrojs:** USB hint, version label, robust cwd detect ([6fa8add](https://github.com/mikrojs/mikrojs/commit/6fa8add576cb0bc8e29dbbd23431b1cdf6904edd))
+
 ## [0.0.7](https://github.com/mikrojs/mikrojs/compare/create-mikrojs@0.0.8...create-mikrojs@0.0.7) (2026-04-26)
 
 
