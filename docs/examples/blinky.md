@@ -51,7 +51,7 @@ while (true) {
 <template #wiring>
 <BlinkyDiagram />
 
-Connect the LED's longer leg (anode) to GPIO 20 through a 220-ohm resistor. Connect the shorter leg (cathode) to GND. If your board has a built-in LED, check the board documentation for its pin number.
+Connect the LED's longer leg (anode) to GPIO 15 through a 220-ohm resistor. Connect the shorter leg (cathode) to GND. If your board has a built-in LED, check the board documentation for its pin number.
 
 </template>
 </CodeWiringTabs>
@@ -60,7 +60,7 @@ Connect the LED's longer leg (anode) to GPIO 20 through a 220-ohm resistor. Conn
 
 1. **Memory check.** `memoryUsage()` reports heap usage at startup. Useful for spotting leaks over time.
 
-2. **Pin setup.** `pinMode(PIN, 'OUTPUT')` configures GPIO 20 for output. `.orPanic()` crashes with a clear message if this fails (e.g., invalid pin number).
+2. **Pin setup.** `pinMode(PIN, 'OUTPUT')` configures the pin for output (GPIO 15 on XIAO ESP32C6). `.orPanic()` crashes with a clear message if this fails (e.g., invalid pin number).
 
 3. **Main loop.** Toggles the pin between HIGH and LOW every second. `digitalWrite` returns a [`Result`](/api/result), so the code checks `.ok` and logs the error variant name if it fails.
 

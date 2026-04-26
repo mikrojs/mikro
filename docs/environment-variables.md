@@ -92,9 +92,9 @@ API_URL=https://api.example.com
 Auto-loaded in this order, with later files overriding earlier ones:
 
 1. `.env`
-2. `.env.<mode>` — where `<mode>` matches the `MIKRO_ENV` value the command sets (see [Built-in variables](#mikro-env) below). For example: `.env.development` for `mikro dev`, `.env.production` for `mikro deploy`, `.env.test` for `mikro test`, `.env.simulator` for any `mikro sim …` command.
-3. `--env FILE` — extra file passed explicitly (additive)
-4. `--secrets FILE` — extra file passed explicitly, entries marked as secrets
+2. `.env.<mode>`: where `<mode>` matches the `MIKRO_ENV` value the command sets (see [Built-in variables](#mikro-env) below). For example: `.env.development` for `mikro dev`, `.env.production` for `mikro deploy`, `.env.test` for `mikro test`, `.env.simulator` for any `mikro sim …` command.
+3. `--env FILE`: extra file passed explicitly (additive)
+4. `--secrets FILE`: extra file passed explicitly, entries marked as secrets
 
 Auto-discovered files are silently skipped if missing. Explicit `--env` / `--secrets` paths error if the file doesn't exist.
 

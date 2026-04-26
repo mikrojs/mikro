@@ -152,13 +152,13 @@ The board module imports from driver packages and fills in the pin numbers. User
 Register the bytecode builtin so the runtime can resolve imports by package name:
 
 ```cpp
-#include <mikrojs/builtins.h>
+#include <mikrojs/mikrojs.h>
 
 // Generated during build
 #include "gen/acme-devboard.bytecode.h"
 
-MIK_REGISTER_BUILTIN("@mikrojs/acme/acme-devboard",
-                      qjsc_acme_devboard, qjsc_acme_devboard_size)
+MIK_REGISTER_BUILTIN(acme_devboard, "@mikrojs/acme/acme-devboard",
+                     qjsc_acme_devboard, qjsc_acme_devboard_size)
 ```
 
 ## Step 6: CMakeLists.txt
@@ -179,7 +179,8 @@ include(${MIKROJS_CMAKE_PATH})
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${CMAKE_CURRENT_LIST_DIR}/../runtime"
     MODULES acme-devboard/acme-devboard
-    OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/gen"
+    MODULE_PREFIX "@mikrojs/acme"
+    SYMBOL_PREFIX "acme_devboard"
 )
 
 mikrojs_force_include_builtins(${COMPONENT_LIB} acme_devboard)

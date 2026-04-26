@@ -2,7 +2,7 @@
 
 Empty starter project. Prints heap memory usage and exits.
 
-Good starting point for a new project — scaffold one with:
+Good starting point for a new project. Scaffold one with:
 
 ```sh
 npm create mikrojs my-app --template blank

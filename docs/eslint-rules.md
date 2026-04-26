@@ -28,10 +28,10 @@ This enables all rules below with their default severities.
 Flags `Result` return values that aren't handled. If a function returns `Result<T, E>` or `Promise<Result<T, E>>` and the call expression isn't assigned to a variable or used in an expression, the error is silently lost.
 
 ```typescript
-// Bad — error is silently ignored
+// Bad: error is silently ignored
 pinMode(4, 'OUTPUT')
 
-// Good — error is checked
+// Good: error is checked
 const result = pinMode(4, 'OUTPUT')
 if (!result.ok) return result
 ```
@@ -49,7 +49,7 @@ throw new Error('sensor failed')
 // Good
 return err(SensorError.ReadFailed('sensor failed'))
 
-// Good — for unrecoverable situations
+// Good (for unrecoverable situations)
 panic('sensor hardware is missing')
 ```
 
@@ -73,7 +73,7 @@ if (!result.ok) {
   console.error(result.error)
 }
 
-// Allowed — try/finally for cleanup
+// Allowed (try/finally for cleanup)
 try {
   doSomething()
 } finally {
@@ -88,14 +88,14 @@ try {
 Flags `Promise.reject()` calls and `reject()` callback invocations. Use `err()` from `mikrojs/result` instead.
 
 ```typescript
-// Bad — caller has to try/catch to handle this
+// Bad: caller has to try/catch to handle this
 async function readSensor(): Promise<number> {
   const result = analogRead(34)
   if (!result.ok) return Promise.reject(new Error('read failed'))
   return result.value
 }
 
-// Good — caller sees the error in the return type
+// Good: caller sees the error in the return type
 async function readSensor(): Promise<Result<number, PinError>> {
   const result = analogRead(34)
   if (!result.ok) return result
@@ -106,7 +106,7 @@ async function readSensor(): Promise<Result<number, PinError>> {
 When wrapping callback-based APIs, resolve with `ok()` and `err()` instead of using `reject`:
 
 ```typescript
-// Bad — reject leaks errors out of the type system
+// Bad: reject leaks errors out of the type system
 function onceConnected(): Promise<WifiConnectionInfo> {
   return new Promise((resolve, reject) => {
     wifi.on('connected', resolve)
@@ -114,7 +114,7 @@ function onceConnected(): Promise<WifiConnectionInfo> {
   })
 }
 
-// Good — both paths go through resolve, keeping errors typed
+// Good: both paths go through resolve, keeping errors typed
 function onceConnected(): Promise<Result<WifiConnectionInfo, WifiError>> {
   return new Promise((resolve) => {
     wifi.on('connected', (info) => resolve(ok(info)))

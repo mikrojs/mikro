@@ -18,14 +18,14 @@ hero:
       link: https://github.com/mikrojs/mikrojs
 
 features:
-  - title: Instant feedback
-    details: Save a file, see it running on your device in seconds. Live reload over serial.
+  - title: Fast feedback loop
+    details: Interactive dev console with watch mode and incremental builds that deploy to your device in a few seconds.
   - title: Full TypeScript
-    details: Type-checked hardware APIs with modern ES support. Errors are in the type signature, not hidden behind try/catch.
+    details: Type-checked hardware APIs with modern JavaScript support. Errors are in the type signature, not hidden behind try/catch.
   - title: Batteries included<span class="tip" data-tip="the metaphorical kind, not the kind you use to power your ESP32">*</span>
-    details: GPIO, PWM, I2C, SPI, UART, WiFi, <a href="/api/http-request">HTTP</a>, NeoPixel, <a href="/api/sleep">deep sleep</a>, <a href="/api/sntp">SNTP</a>, <a href="/api/cbor">CBOR</a>, <a href="/api/schema">schema validation</a>, <a href="/api/kv">key-value storage</a>, and more.
+    details: <a href="/api/pin">GPIO</a>, <a href="/api/pwm">PWM</a>, <a href="/api/i2c">I2C</a>, <a href="/api/spi">SPI</a>, <a href="/api/uart">UART</a>, <a href="/api/wifi">WiFi</a>, <a href="/api/http-request">HTTP</a>, <a href="/api/neopixel">NeoPixel</a>, <a href="/api/sleep">deep sleep</a>, <a href="/api/sntp">SNTP</a>, <a href="/api/cbor">CBOR</a>, <a href="/api/schema">schema validation</a>, <a href="/api/kv">key-value storage</a>, and more.
   - title: Host simulator
-    details: Run and test your code on your computer with mikro sim dev. No microcontroller needed.
+    details: Run and test your code on your computer with <code>mikro sim dev</code>. No microcontroller needed.
   - title: No exceptions
     details: Typed Result errors instead of try/catch. Every failure is visible in the type signature.
   - title: Built-in testing
@@ -98,7 +98,7 @@ bunx mikro dev
 
 ## Learn more
 
-- [Getting Started](/getting-started) — set up your first project step by step
-- [Error Handling](/error-handling) — learn how Mikro.js uses typed Results instead of exceptions
-- [API Reference](/api/) — explore GPIO, WiFi, I2C, SPI, and more
-- [Examples](/examples/) — blinky, PWM, WiFi, NeoPixel, UART, and more
+- [Getting Started](/getting-started): set up your first project step by step
+- [Error Handling](/error-handling): learn how Mikro.js uses typed Results instead of exceptions
+- [API Reference](/api/): explore GPIO, WiFi, I2C, SPI, and more
+- [Examples](/examples/): blinky, PWM, WiFi, NeoPixel, UART, and more

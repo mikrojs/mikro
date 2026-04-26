@@ -23,7 +23,7 @@ declare class TextEncoder {
 
 declare class TextDecoder {
   constructor(label?: 'utf-8' | 'utf8')
-  decode(input?: ArrayBufferView | ArrayBuffer, options?: {stream?: boolean}): string
+  decode(input?: Uint8Array, options?: {stream?: boolean}): string
 }
 
 declare class AbortError extends Error {

@@ -23,14 +23,14 @@
 
 ## Features
 
-- **Instant feedback** — save a file, see it running on your device in seconds
-- **Full TypeScript** — type-checked hardware APIs with modern ES support
-- **Batteries included** — GPIO, PWM, I2C, SPI, UART, WiFi, fetch, NeoPixel, deep sleep, SNTP, CBOR, schema validation, key-value storage, and more
-- **Host simulator** — run and test your code on your computer with `mikro dev --sim`
-- **No exceptions** — typed Result errors instead of try/catch
-- **Built-in testing** — write tests with familiar describe/it syntax, run on-device or in the simulator
+- **Instant feedback**: save a file, see it running on your device in seconds
+- **Full TypeScript**: type-checked hardware APIs with modern JavaScript support
+- **Batteries included**: GPIO, PWM, I2C, SPI, UART, WiFi, fetch, NeoPixel, deep sleep, SNTP, CBOR, schema validation, key-value storage, and more
+- **Host simulator**: run and test your code on your computer with `mikro sim dev`
+- **No exceptions**: typed Result errors instead of try/catch
+- **Built-in testing**: write tests with familiar describe/it syntax, run on-device or in the simulator
 
-## Quick start
+## Quickstart
 
 ```sh
 npm create mikrojs my-app

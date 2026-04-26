@@ -24,8 +24,9 @@ typedef struct MIKPlatform {
 
     // Memory info
     size_t (*get_free_system_mem)(void);
-    size_t (*get_min_free_system_mem)(void);  // Low watermark
+    size_t (*get_min_free_system_mem)(void);     // Low watermark
     size_t (*get_total_system_mem)(void);
+    size_t (*get_largest_free_system_mem)(void); // Largest contiguous free block
 
     // Filesystem info
     bool (*get_fs_info)(const char* label, size_t* total, size_t* used);

@@ -85,7 +85,7 @@ const prog = defineProgram({
  * and set MIK_LOG_LEVEL in the environment, which the simProcess
  * subprocess inherits and the Node addon reads on first log call.
  *
- * For `--sim` commands: takes effect immediately — subprocess picks it up.
+ * For `mikro sim` commands: takes effect immediately, since the subprocess picks it up.
  * For device commands (serial): has no effect on firmware-side logs (the
  * device's log level is controlled at compile time via
  * CONFIG_LOG_DEFAULT_LEVEL and at runtime via the NVS env var

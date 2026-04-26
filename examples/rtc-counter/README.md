@@ -1,6 +1,6 @@
 # RTC Counter
 
-Counts wake-ups from deep sleep using RTC memory. Prints `Wake #0`, `Wake #1`, ... — the counter survives deep sleep but resets on power loss.
+Counts wake-ups from deep sleep using RTC memory. Prints `Wake #0`, `Wake #1`, and so on. The counter survives deep sleep but resets on power loss.
 
 ```sh
 npm create mikrojs my-rtc-counter --template rtc-counter

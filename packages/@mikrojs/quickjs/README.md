@@ -11,7 +11,7 @@ QuickJS-NG engine wrapper for Mikro.js. Provides the engine source, a shared CMa
 ## JS exports
 
 ```js
-const {cmakePath, includePath, qjscPath} = require('@mikrojs/quickjs')
+import {cmakePath, includePath, qjscPath} from '@mikrojs/quickjs'
 ```
 
 - `cmakePath` - Path to `quickjs.cmake`

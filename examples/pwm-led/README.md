@@ -1,6 +1,6 @@
 # PWM LED
 
-Fades an LED in and out using PWM — the "breathing" effect.
+Fades an LED in and out using PWM. The "breathing" effect.
 
 ```sh
 npm create mikrojs my-pwm-led --template pwm-led

@@ -85,18 +85,18 @@ Flash the Mikro.js runtime firmware to a device. You only need to do this once p
 mikro flash
 ```
 
-| Option            | Description                                                                       |
-| ----------------- | --------------------------------------------------------------------------------- |
-| `-p, --port PORT` | Serial port (auto-detected if omitted)                                            |
-| `--target CHIP`   | Target chip (e.g. `esp32c6`). Auto-detected if omitted                            |
-| `--board BOARD`   | Board name. Discovered from `package.json` if omitted                             |
-| `--build-dir DIR` | Path to a local ESP-IDF build directory. If omitted, downloads pre-built firmware |
-| `--release REF`   | Firmware release tag (e.g. `v0.2.0`) or git commit SHA                            |
-| `--baud BAUD`     | Baud rate for flashing (default: `460800`)                                        |
-| `-y, --yes`       | Skip confirmation prompt                                                          |
+| Option            | Description                                                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `-p, --port PORT` | Serial port (auto-detected if omitted)                                                                                                     |
+| `--target CHIP`   | Target chip (e.g. `esp32c6`). Auto-detected if omitted                                                                                     |
+| `--board BOARD`   | Board name. Discovered from `package.json` if omitted                                                                                      |
+| `--build-dir DIR` | Path to a local ESP-IDF build directory. If omitted, downloads pre-built firmware                                                          |
+| `--from REF`      | Firmware source: a release tag (`v0.2.0`), branch, commit SHA, GitHub repo (`user/repo` or `user/repo@ref`), or URL to a `.tar.gz` archive |
+| `--baud BAUD`     | Baud rate for flashing (default: `460800`)                                                                                                 |
+| `-y, --yes`       | Skip confirmation prompt                                                                                                                   |
 
 ::: tip
-`--build-dir` and `--release` are mutually exclusive. Use `--build-dir` if you built firmware from source; use `--release` to pin a specific version.
+`--build-dir` and `--from` are mutually exclusive. Use `--build-dir` if you built firmware from source; use `--from` to pin a specific version.
 :::
 
 ## mikro list

@@ -46,7 +46,7 @@ const config = {
     'packages/create-mikrojs/src/templates/**',
     // mikro.config.ts is discovered at runtime by the CLI, not imported
     '**/mikro.config.ts',
-    // sim stubs are loaded dynamically by mikro dev --sim, not imported
+    // sim stubs are loaded dynamically by mikro sim dev, not imported
     '**/*.stub.ts',
   ],
   ignoreDependencies: ['unbarrelify', 'taze'],

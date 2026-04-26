@@ -21,7 +21,7 @@ Demonstrates connect/disconnect events, notifications, write dispatch, and the d
 import {ble, peripheral} from 'mikrojs/ble'
 import {sleep} from 'mikrojs/sleep'
 
-ble.name = 'mikrojs-gatt'
+ble.name = 'mikrojs-hello'
 
 peripheral.on('connect', (info) => {
   console.log('connected: %s mtu: %d', info.address, info.mtu)
@@ -32,7 +32,7 @@ peripheral.on('disconnect', async (info) => {
   // NimBLE stops advertising on connect. Re-advertise so the device stays
   // discoverable once the peer hangs up.
   const r = await peripheral.advertise({
-    name: 'mikrojs-gatt',
+    name: 'mikrojs-hello',
     connectable: true,
     interval: {min: 100, max: 150},
     services: currentServices,
@@ -78,7 +78,7 @@ const currentServices = [
 ]
 
 const result = await peripheral.advertise({
-  name: 'mikrojs-gatt',
+  name: 'mikrojs-hello',
   connectable: true,
   interval: {min: 100, max: 150},
   services: currentServices,
@@ -104,7 +104,7 @@ if (!result.ok) {
 
 ## What you'll see
 
-1. **Scan in nRF Connect**, find `mikrojs-gatt`, tap **Connect**. The serial console logs `connected: aa:bb:cc:dd:ee:ff mtu: 23` and shortly after `mtu renegotiated to 256`.
+1. **Scan in nRF Connect**, find `mikrojs-hello`, tap **Connect**. The serial console logs `connected: aa:bb:cc:dd:ee:ff mtu: 23` and shortly after `mtu renegotiated to 256`.
 
 2. **Expand Battery Service** (`180f`). Tap the **subscribe** icon (double-down arrow) next to Battery Level (`2a19`). The value starts ticking down every 2 seconds as the simulated battery drains from 87% toward 0%, then wraps to 100%.
 

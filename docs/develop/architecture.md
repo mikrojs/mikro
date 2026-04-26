@@ -93,7 +93,8 @@ The `mikrojs_generate_bytecode()` CMake function orchestrates both steps:
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${CMAKE_CURRENT_LIST_DIR}/../runtime"
     MODULES bme280/bme280
-    OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/gen"
+    MODULE_PREFIX "@mikrojs/driver-bme280"
+    SYMBOL_PREFIX "driver_bme280"
 )
 ```
 

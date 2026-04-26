@@ -16,7 +16,7 @@ peripheral.on('disconnect', async (info) => {
   // NimBLE stops advertising on connect. Re-advertise so the device stays
   // discoverable once the peer goes away.
   const r = await peripheral.advertise({
-    name: 'mikrojs-gatt',
+    name: 'mikrojs-hello',
     connectable: true,
     interval: {min: 100, max: 150},
     includeTxPower: true,
@@ -69,7 +69,7 @@ const currentServices = [
 ]
 
 const result = await peripheral.advertise({
-  name: 'mikrojs-gatt',
+  name: 'mikrojs-hello',
   connectable: true,
   interval: {min: 100, max: 150},
   includeTxPower: true,

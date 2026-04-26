@@ -1,6 +1,6 @@
 # @mikrojs/native
 
-Standalone, platform-independent C++ runtime library for mikrojs, powered by QuickJS-NG. Zero ESP-IDF dependencies — runs on any POSIX host for development and testing, and on ESP32 via a thin platform adapter.
+Standalone, platform-independent C++ runtime library for Mikro.js, powered by QuickJS-NG. Zero ESP-IDF dependencies. Runs on any POSIX host for development and testing, and on ESP32 via a thin platform adapter.
 
 ## Directory structure
 

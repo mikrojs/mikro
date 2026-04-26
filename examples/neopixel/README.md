@@ -9,7 +9,7 @@ npm create mikrojs my-neopixel --template neopixel
 ## Hardware
 
 - WS2812/NeoPixel strip (e.g. https://www.adafruit.com/product/1586) on GPIO 8
-- Configured for 24 LEDs at 20% brightness — edit `PIN`, `NUM_LEDS`, `BRIGHTNESS` in `main.ts`
+- Configured for 24 LEDs at 20% brightness. Edit `PIN`, `NUM_LEDS`, `BRIGHTNESS` in `main.ts` to change.
 
 ## Hardware diagram
 
