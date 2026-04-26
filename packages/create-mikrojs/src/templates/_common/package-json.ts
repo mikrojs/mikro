@@ -21,6 +21,7 @@ export function packageJson(
     main: './app/main.ts',
     scripts: {
       dev: 'mikro dev',
+      ...(typescript ? {lint: 'eslint .'} : {}),
     },
     dependencies: dependencies as {},
     devDependencies: devDependencies as {},

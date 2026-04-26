@@ -55,6 +55,7 @@
     "watch": "pnpm dev"
   },
   "devDependencies": {
+    "@eslint/js": "catalog:",
     "@mikrojs/eslint-plugin": "workspace:*",
     "@vitest/coverage-v8": "^4.1.5",
     "eslint": "catalog:",
@@ -62,6 +63,7 @@
     "eslint-plugin-package-json": "catalog:",
     "eslint-plugin-react-hooks": "catalog:",
     "eslint-plugin-simple-import-sort": "catalog:",
+    "globals": "catalog:",
     "knip": "^6.6.2",
     "lefthook": "^2.1.6",
     "mikrojs": "workspace:*",
@@ -71,6 +73,7 @@
     "taze": "^19.11.0",
     "tsx": "^4.21.0",
     "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
     "unbarrelify": "^1.1.1",
     "vite": "catalog:",
     "vitest": "catalog:"

@@ -68,6 +68,21 @@ describe.each(TEMPLATES)('template: $name', ({name}) => {
       expect(content).toContain('.mikro')
     })
 
+    it('creates .editorconfig', () => {
+      const content = readFileSync(path.join(targetDir, '.editorconfig'), 'utf-8')
+      expect(content).toContain('root = true')
+      expect(content).toContain('indent_style')
+    })
+
+    it('creates eslint.config.js with mikrojs plugin', () => {
+      const content = readFileSync(path.join(targetDir, 'eslint.config.js'), 'utf-8')
+      expect(content).toContain('@mikrojs/eslint-plugin')
+      const pkg = JSON.parse(readFileSync(path.join(targetDir, 'package.json'), 'utf-8'))
+      expect(pkg.devDependencies.eslint).toBeDefined()
+      expect(pkg.devDependencies['@mikrojs/eslint-plugin']).toBeDefined()
+      expect(pkg.scripts.lint).toBe('eslint .')
+    })
+
     it('creates app/main.ts', () => {
       const content = readFileSync(path.join(targetDir, 'app', 'main.ts'), 'utf-8')
       expect(content.length).toBeGreaterThan(0)
@@ -117,6 +132,14 @@ describe.each(TEMPLATES)('template: $name', ({name}) => {
 
     it('does not create tsconfig.json', () => {
       expect(existsSync(path.join(targetDir, 'tsconfig.json'))).toBe(false)
+    })
+
+    it('does not create eslint config', () => {
+      expect(existsSync(path.join(targetDir, 'eslint.config.js'))).toBe(false)
+    })
+
+    it('still creates .editorconfig', () => {
+      expect(existsSync(path.join(targetDir, '.editorconfig'))).toBe(true)
     })
   })
 })

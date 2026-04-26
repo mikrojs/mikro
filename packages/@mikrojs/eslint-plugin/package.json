@@ -39,8 +39,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@typescript-eslint/utils": "^8.59.0",
-    "typescript-eslint": "catalog:"
+    "@typescript-eslint/utils": "^8.59.0"
   },
   "devDependencies": {
     "@typescript-eslint/rule-tester": "^8.59.0",

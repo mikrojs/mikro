@@ -2,8 +2,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import {mikroCommand, type PkgManager} from './pkg-manager.js'
-import {dependencies, devDependencies} from './templates/_common/dependencies.js'
+import {
+  dependencies,
+  devDependencies,
+  eslintDevDependencies,
+} from './templates/_common/dependencies.js'
+import {editorconfig} from './templates/_common/editorconfig.js'
 import {envExample} from './templates/_common/env-example.js'
+import {eslintConfig} from './templates/_common/eslint-config.js'
 import {gitignore} from './templates/_common/gitignore.js'
 import {packageJson} from './templates/_common/package-json.js'
 import {readme} from './templates/_common/readme.js'
@@ -131,7 +137,13 @@ export function scaffold(options: ScaffoldOptions) {
     JSON.stringify(
       packageJson(projectName, {
         dependencies: {...dependencies, mikrojs: mikrojsVersion},
-        devDependencies: typescript ? devDependencies : undefined,
+        devDependencies: typescript
+          ? {
+              ...devDependencies,
+              ...eslintDevDependencies,
+              '@mikrojs/eslint-plugin': mikrojsVersion,
+            }
+          : undefined,
         typescript,
       }),
       null,
@@ -147,7 +159,9 @@ export function scaffold(options: ScaffoldOptions) {
       path.join(targetDir, 'tsconfig.json'),
       JSON.stringify(tsconfigWithIncludes, null, 2) + '\n',
     )
+    fs.writeFileSync(path.join(targetDir, 'eslint.config.js'), eslintConfig)
   }
+  fs.writeFileSync(path.join(targetDir, '.editorconfig'), editorconfig)
   fs.writeFileSync(path.join(targetDir, '.gitignore'), gitignore)
   fs.writeFileSync(path.join(targetDir, '.env.example'), envExample)
 

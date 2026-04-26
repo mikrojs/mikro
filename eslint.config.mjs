@@ -1,8 +1,11 @@
+import js from '@eslint/js'
 import mikrojs from '@mikrojs/eslint-plugin'
 import importPlugin from 'eslint-plugin-import'
 import packageJson from 'eslint-plugin-package-json'
 import reactHooks from 'eslint-plugin-react-hooks'
 import simpleImportSort from 'eslint-plugin-simple-import-sort'
+import globals from 'globals'
+import tseslint from 'typescript-eslint'
 
 export default [
   // Ignore patterns
@@ -26,6 +29,48 @@ export default [
       'temp/**',
       'pack-test/**',
     ],
+  },
+
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+
+  // Plain .js files are Node scripts (build tooling). TS files get globals
+  // from @types/node via the compiler; this block covers everything else.
+  {
+    files: ['**/*.js'],
+    languageOptions: {globals: globals.node},
+  },
+
+  // TypeScript-specific tweaks (parser options, type-aware rules, relaxations)
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+      },
+    },
+    rules: {
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {argsIgnorePattern: '^_', varsIgnorePattern: '^_'},
+      ],
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        {
+          prefer: 'type-imports',
+          fixStyle: 'inline-type-imports',
+          disallowTypeAnnotations: false,
+        },
+      ],
+      '@typescript-eslint/no-import-type-side-effects': 'error',
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/no-unused-expressions': 'off',
+      '@typescript-eslint/no-empty-object-type': 'off',
+      '@typescript-eslint/ban-ts-comment': 'off',
+    },
   },
 
   ...mikrojs.configs.recommended,
