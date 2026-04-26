@@ -10,7 +10,6 @@ const execFileAsync = promisify(execFile)
 
 const GITHUB_REPO = 'mikrojs/mikrojs'
 const CACHE_DIR = path.join(os.homedir(), '.cache', 'mikrojs', 'firmware')
-const FIRMWARE_WORKFLOW = 'firmware.yml'
 
 /** Chip identifier (e.g. "esp32c3", "esp32c6"). Not hardcoded — any chip with a matching firmware release asset will work. */
 export type Chip = string
@@ -173,10 +172,10 @@ async function fetchWorkflowArtifacts(
   repo: string,
   sha: string,
 ): Promise<WorkflowArtifact[]> {
-  // Find successful workflow runs for this SHA
-  const runsUrl =
-    `https://api.github.com/repos/${repo}` +
-    `/actions/workflows/${FIRMWARE_WORKFLOW}/runs?head_sha=${sha}&status=success`
+  // Find all successful workflow runs for this SHA (any workflow). Firmware
+  // artifacts may come from `firmware.yml` (PR/dispatch builds, tarball pack)
+  // or `release.yml` (release commits, unpacked pack) — we accept both.
+  const runsUrl = `https://api.github.com/repos/${repo}/actions/runs?head_sha=${sha}&status=success&per_page=100`
   const runsRes = await fetch(runsUrl, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -194,29 +193,43 @@ async function fetchWorkflowArtifacts(
     workflow_runs: {id: number}[]
   }
 
-  if (runs.total_count === 0 || runs.workflow_runs.length === 0) {
+  if (runs.workflow_runs.length === 0) {
     throw new Error(
-      `No firmware build found for commit ${sha.slice(0, 8)} in ${repo}.\n` +
-        `The firmware build may have failed, not been triggered, or the artifact may have expired.`,
+      `No successful workflow runs found for commit ${sha.slice(0, 8)} in ${repo}.\n` +
+        `The build may have failed, not been triggered, or the artifact may have expired.`,
     )
   }
 
-  const runId = runs.workflow_runs[0]!.id
-  const artifactsUrl = `https://api.github.com/repos/${repo}/actions/runs/${runId}/artifacts`
-  const artifactsRes = await fetch(artifactsUrl, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github.v3+json',
-    },
-  })
+  const artifactArrays = await Promise.all(
+    runs.workflow_runs.map(async (run) => {
+      const url = `https://api.github.com/repos/${repo}/actions/runs/${run.id}/artifacts`
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+        },
+      })
+      if (!res.ok) {
+        await res.text()
+        return []
+      }
+      const data = (await res.json()) as {artifacts: WorkflowArtifact[]}
+      return data.artifacts
+    }),
+  )
 
-  if (!artifactsRes.ok) {
-    await artifactsRes.text()
-    throw new Error(`GitHub API error: ${artifactsRes.status} ${artifactsRes.statusText}`)
-  }
+  return artifactArrays.flat()
+}
 
-  const result = (await artifactsRes.json()) as {artifacts: WorkflowArtifact[]}
-  return result.artifacts
+// Artifact names produced by firmware-build.yml: `mikrojs-firmware-<x>` (tarball
+// pack, used by firmware.yml) or `firmware-<x>` (unpacked pack, used by
+// release.yml). We accept either.
+function artifactNameCandidates(suffix: string): string[] {
+  return [`mikrojs-firmware-${suffix}`, `firmware-${suffix}`]
+}
+
+function isFirmwareArtifact(name: string): boolean {
+  return /^(mikrojs-)?firmware(-|$)/.test(name)
 }
 
 function selectWorkflowArtifact(
@@ -227,18 +240,20 @@ function selectWorkflowArtifact(
 ): WorkflowArtifact {
   // Try board-specific
   if (board) {
-    const boardArtifact = artifacts.find((a) => a.name === `mikrojs-firmware-${board}`)
+    const names = artifactNameCandidates(board)
+    const boardArtifact = artifacts.find((a) => names.includes(a.name))
     if (boardArtifact) return boardArtifact
   }
 
   // Try chip-specific
   if (chip) {
-    const chipArtifact = artifacts.find((a) => a.name === `mikrojs-firmware-${chip}`)
+    const names = artifactNameCandidates(chip)
+    const chipArtifact = artifacts.find((a) => names.includes(a.name))
     if (chipArtifact) return chipArtifact
   }
 
   // Auto: single firmware artifact
-  const firmwareArtifacts = artifacts.filter((a) => a.name.includes('firmware'))
+  const firmwareArtifacts = artifacts.filter((a) => isFirmwareArtifact(a.name))
   if (firmwareArtifacts.length === 1) return firmwareArtifacts[0]!
 
   if (firmwareArtifacts.length === 0) {
@@ -309,7 +324,13 @@ async function downloadAndExtractWorkflowArtifact(
   await fs.mkdir(path.dirname(zipPath), {recursive: true})
   await pipeline(downloadRes.body, createWriteStream(zipPath))
 
-  // Two-step extraction: unzip outer (GitHub artifact zip) → extract inner tar.gz
+  // Unzip the outer GitHub artifact zip into a temp dir, then handle two
+  // possible layouts: tarball pack (zip contains a single .tar.gz to extract)
+  // or unpacked pack (zip contains firmware files directly — flasher_args.json
+  // alongside bootloader/, partition_table/, mikrojs.bin).
+  // Wipe extractedDir first so a partial previous attempt can't trip up
+  // fs.rename below (ENOTEMPTY on existing subdirectories).
+  await fs.rm(extractedDir, {recursive: true, force: true})
   await fs.mkdir(extractedDir, {recursive: true})
   const tmpDir = `${extractedDir}-tmp`
   await fs.mkdir(tmpDir, {recursive: true})
@@ -317,12 +338,20 @@ async function downloadAndExtractWorkflowArtifact(
 
   const files = await fs.readdir(tmpDir)
   const tarball = files.find((f) => f.endsWith('.tar.gz'))
-  if (!tarball) {
+  if (tarball) {
+    await execFileAsync('tar', ['xzf', path.join(tmpDir, tarball), '-C', extractedDir])
+  } else if (files.includes('flasher_args.json')) {
+    for (const file of files) {
+      await fs.rename(path.join(tmpDir, file), path.join(extractedDir, file))
+    }
+  } else {
     await fs.rm(tmpDir, {recursive: true})
     await fs.rm(zipPath)
-    throw new Error(`No .tar.gz archive found inside artifact '${artifact.name}'`)
+    throw new Error(
+      `Artifact '${artifact.name}' has no recognized firmware layout ` +
+        `(expected a .tar.gz or flasher_args.json at the top level).`,
+    )
   }
-  await execFileAsync('tar', ['xzf', path.join(tmpDir, tarball), '-C', extractedDir])
 
   await fs.rm(zipPath)
   await fs.rm(tmpDir, {recursive: true})

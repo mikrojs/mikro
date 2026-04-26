@@ -24,7 +24,7 @@ concurrency:
 # firmware-build workflow and bundles the binaries into the published
 # @mikrojs/firmware npm package. This workflow only produces artifacts for
 # ad-hoc / PR / dispatch builds, consumed via
-# `mikro flash --from=mikrojs/mikrojs:<sha>`.
+# `mikro flash --from=mikrojs/mikrojs@<sha>`.
 
 permissions:
   contents: read

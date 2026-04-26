@@ -1,11 +1,10 @@
 name: Firmware build (reusable)
 
 # Reusable workflow shared by `firmware.yml` (per-commit artifacts for
-# `mikro flash --from=mikrojs/mikrojs:<sha>`) and `release.yml`'s
+# `mikro flash --from=mikrojs/mikrojs@<sha>`) and `release.yml`'s
 # build-firmware matrix (bundled into the published @mikrojs/firmware npm
-# package). Pack format differs because the CLI's --from path expects a
-# tar.gz inside the GitHub artifact zip, while the npm bundle ships files
-# unpacked.
+# package). Pack format differs per caller: firmware.yml uses tarball,
+# release.yml uses unpacked. The CLI's --from path accepts either layout.
 
 on:
   workflow_call:

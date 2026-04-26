@@ -216,7 +216,7 @@ export default function FlashCmd(props: Props) {
           throw new Error(
             `No bundled firmware for ${resolvedChip}. ` +
               `Build a custom firmware locally and flash with --build-dir, ` +
-              `or fetch a CI artifact with --from=mikrojs/mikrojs:<sha>.`,
+              `or fetch a CI artifact with --from=mikrojs/mikrojs@<sha>.`,
           )
         }
 
