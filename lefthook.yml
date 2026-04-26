@@ -48,6 +48,10 @@ pre-commit:
       only:
         - run: node scripts/is-agent.js
       run: pnpm knip
+    publint:
+      only:
+        - run: node scripts/is-agent.js
+      run: pnpm publint
     test-js:
       only:
         - run: node scripts/is-agent.js

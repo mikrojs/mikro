@@ -26,7 +26,7 @@
     "build:ts": "pnpm -r --if-present run build:ts",
     "build:watch": "pnpm -r --parallel --if-present run build:watch",
     "check": "run-s build:cpp build:ts check:lint test",
-    "check:lint": "run-p typecheck lint fmt:check knip",
+    "check:lint": "run-p typecheck lint fmt:check knip publint",
     "clean": "run-p clean:*",
     "clean:dist": "pnpm -r exec rm -rf dist",
     "clean:examples": "pnpm --filter './examples/*' exec rm -rf build",
