@@ -24,7 +24,10 @@ export const args = command(
 type Args = InferValue<typeof args>
 
 export async function run(opts: Args): Promise<void> {
-  const lastTag = findLastReleaseTag() ?? `v${opts.base}`
+  // findLastReleaseTag returns null when no v* tag is reachable from HEAD;
+  // pass that through so getCommitsSince walks all commits. Don't synthesize
+  // `v${opts.base}` — that tag may not exist (e.g. before the first release).
+  const lastTag = findLastReleaseTag()
   const commits = getCommitsSince(lastTag)
 
   const lines = [
