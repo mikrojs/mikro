@@ -4,7 +4,7 @@ description: Set up your first Mikro.js project and blink an LED
 ---
 
 ::: warning Early development
-Mikro.js is in its early days and not intended for safety-critical or production applications. APIs may change, and you should expect (and [report](https://github.com/anthropics/mikrojs/issues)!) bugs.
+Mikro.js is in its early days and not intended for safety-critical or production applications. APIs may change, and you should expect (and [report](https://github.com/mikrojs/mikrojs/issues)!) bugs.
 :::
 
 # Getting Started
