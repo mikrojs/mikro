@@ -14,6 +14,7 @@ export default [
       'packages/@mikrojs/firmware/index.d.ts',
       '**/dist/**',
       '**/build/**',
+      '**/build-test/**',
       '**/.mikro/**',
       '**/node_modules/**',
       'packages/create-mikrojs/src/templates/**',
