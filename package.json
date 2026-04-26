@@ -64,7 +64,7 @@
     "eslint-plugin-react-hooks": "catalog:",
     "eslint-plugin-simple-import-sort": "catalog:",
     "globals": "catalog:",
-    "knip": "^6.6.2",
+    "knip": "^6.7.0",
     "lefthook": "^2.1.6",
     "mikrojs": "workspace:*",
     "npm-run-all2": "^8.0.4",

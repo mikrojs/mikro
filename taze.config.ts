@@ -5,4 +5,12 @@ export default defineConfig({
   ignorePaths: ['**/node_modules/**', '**/test/**'],
   // ignore package.json that in other workspaces (with their own .git,pnpm-workspace.yaml,etc.)
   ignoreOtherWorkspaces: true,
+
+  // Note: keep in sync with minimumReleaseAge in pnpm-workspace.yaml
+  maturityPeriod: 1, // days
+
+  packageMode: {
+    node: 'minor',
+    '@types/node': 'minor',
+  },
 })

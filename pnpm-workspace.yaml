@@ -25,11 +25,12 @@ catalog:
 
 catalogs:
   node24:
-    '@types/node': ^24.14.0
+    '@types/node': ^24.12.2
 
 ignoreWorkspaceRootCheck: true
 
-minimumReleaseAge: 1440
+# Note: keep in sync with maturityPeriod in taze.config.ts
+minimumReleaseAge: 1440 # minutes
 
 trustPolicy: no-downgrade
 
