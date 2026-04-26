@@ -20,11 +20,10 @@ concurrency:
   group: firmware-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Tagged releases are handled by release.yml, which calls the same reusable
-# firmware-build workflow and bundles the binaries into the published
-# @mikrojs/firmware npm package. This workflow only produces artifacts for
-# ad-hoc / PR / dispatch builds, consumed via
-# `mikro flash --from=mikrojs/mikrojs@<sha>`.
+# Tagged releases are handled by release.yml, which uses the same firmware-build
+# composite action and bundles the binaries into the published @mikrojs/firmware
+# npm package. This workflow only produces artifacts for ad-hoc / PR / dispatch
+# builds, consumed via `mikro flash --from=mikrojs/mikrojs@<sha>`.
 
 permissions:
   contents: read
@@ -55,8 +54,15 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.setup.outputs.chips) }}
-    uses: ./.github/workflows/firmware-build.yml
-    with:
-      target: ${{ matrix.target }}
-      pack-format: tarball
-      artifact-name: mikrojs-firmware-${{ matrix.target }}
+    runs-on: ubuntu-latest
+    container: espressif/idf:v6.0
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/firmware-build
+        with:
+          target: ${{ matrix.target }}
+          pack-format: tarball
+          artifact-name: mikrojs-firmware-${{ matrix.target }}

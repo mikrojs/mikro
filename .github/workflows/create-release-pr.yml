@@ -1,0 +1,102 @@
+name: Create Release PR
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: create-release-pr
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  create-or-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: ./.github/actions/setup-pnpm
+
+      - name: Plan (skip if this push is a release-PR merge)
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm --silent releaser plan --context create-release-pr >> "$GITHUB_OUTPUT"
+
+      # The mikrodroid GitHub App must have these repo permissions:
+      #   - Contents: Read and write   (push the ci/release-main branch)
+      #   - Pull requests: Read and write   (create/update the rolling PR)
+      #   - Issues: Read and write   (PR conversation comments use the issues API)
+      # Using GITHUB_TOKEN here would prevent the merge of the resulting PR
+      # from triggering downstream workflows (release.yml). The App token
+      # workaround is required, not optional.
+      - name: Generate GitHub App token
+        if: steps.plan.outputs.should_run == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@a6a7028141e74a1b023a3f84bfd7402dd5e4731c # ratchet:actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.MIKRODROID_APP_ID }}
+          private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
+
+      - name: Configure git
+        if: steps.plan.outputs.should_run == 'true'
+        run: |
+          git config --global user.name 'mikrodroid[bot]'
+          git config --global user.email '${{ secrets.MIKRODROID_APP_ID }}+mikrodroid[bot]@users.noreply.github.com'
+
+      - name: Read current version
+        if: steps.plan.outputs.should_run == 'true'
+        id: base
+        run: echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version
+        if: steps.plan.outputs.should_run == 'true'
+        id: next
+        run: |
+          pnpm --silent releaser bump --mode release --json > /tmp/bump.json
+          echo "version=$(jq -r .version /tmp/bump.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Update CHANGELOGs
+        if: steps.plan.outputs.should_run == 'true'
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: pnpm --silent releaser changelog --version ${{ steps.next.outputs.version }}
+
+      - name: Sync workspace lockfile
+        if: steps.plan.outputs.should_run == 'true'
+        run: pnpm install --lockfile-only
+
+      - name: Generate PR body
+        if: steps.plan.outputs.should_run == 'true'
+        id: body
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          {
+            echo "body<<RELEASEPR_EOF"
+            pnpm --silent releaser release-pr-body \
+              --base ${{ steps.base.outputs.version }} \
+              --tentative ${{ steps.next.outputs.version }}
+            echo
+            echo "RELEASEPR_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update PR
+        if: steps.plan.outputs.should_run == 'true'
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # ratchet:peter-evans/create-pull-request@v8
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          title: 'chore(release): publish v${{ steps.next.outputs.version }}'
+          body: ${{ steps.body.outputs.body }}
+          commit-message: 'chore(release): publish v${{ steps.next.outputs.version }}'
+          branch: ci/release-main
+          base: main
+          draft: true
+          sign-commits: true

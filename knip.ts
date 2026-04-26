@@ -27,6 +27,15 @@ const config = {
     'packages/@mikrojs/analyze-imports': {
       ignore: ['test/unit/**', 'test/symlink/**', 'dist/**'],
     },
+    'packages/@repo/releaser': {
+      // bin/releaser.js is auto-detected from package.json bin. The .ts is
+      // invoked via tsx from the shim and dispatches to all command modules.
+      // conventional-changelog-conventionalcommits is the preset loaded
+      // dynamically by conventional-recommended-bump.
+      entry: ['bin/releaser.ts'],
+      project: ['src/**/*.ts', 'bin/**/*.ts'],
+      ignoreDependencies: ['conventional-changelog-conventionalcommits'],
+    },
     'packages/@mikrojs/native': {
       // bundle-runtime.js + generate-symbol-map.js are invoked by CMake during
       // the firmware build (see @mikrojs/firmware/components/mikrojs/CMakeLists.txt

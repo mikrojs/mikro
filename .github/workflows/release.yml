@@ -1,54 +1,53 @@
-name: release
+name: Release
 
 on:
-  push:
-    branches:
-      - main
+  # `synchronize` is intentionally NOT included: pr-preview is one-shot. Each
+  # preview is opted in by adding the `release:preview` label, then the label
+  # is removed after publish so subsequent pushes don't re-publish.
+  pull_request:
+    types: [closed, labeled]
   workflow_dispatch:
     inputs:
+      mode:
+        type: choice
+        options: [next, release, canary]
+        default: next
       dry_run:
-        description: 'Build prebuilds and pack tarballs but do not publish to npm'
         type: boolean
         default: true
 
+# Concurrency:
+#   - PR previews: serialize per PR (avoid out-of-order publishes from rapid pushes).
+#   - Latest releases / dispatches: serialize per mode.
+concurrency:
+  group: release-${{ github.event.pull_request.number || github.event.inputs.mode || 'manual' }}
+  cancel-in-progress: false
+
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
-  release-please:
-    if: github.event_name == 'push'
+  plan:
     runs-on: ubuntu-latest
     outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
+      mode: ${{ steps.plan.outputs.mode }}
+      should_run: ${{ steps.plan.outputs.should_run }}
+      npm_tag: ${{ steps.plan.outputs.npm_tag }}
+      pr: ${{ steps.plan.outputs.pr }}
     steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # ratchet:googleapis/release-please-action@v5
-        id: release
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-
-      # release-please marks whichever release was created last as GitHub
-      # "Latest". Force the CLI release to be the latest so users landing
-      # on the repo see the version that matches `npm i -g mikrojs`.
-      - name: Mark mikrojs CLI release as latest
-        if: steps.release.outputs['packages/mikrojs--release_created'] == 'true'
+      # Shallow checkout: `releaser plan --context release` only reads the
+      # GitHub event payload (no git history). If plan ever needs git lookups,
+      # add `with: fetch-depth: 0` here.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+      - uses: ./.github/actions/setup-pnpm
+      - id: plan
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.release.outputs['packages/mikrojs--tag_name'] }}
-        run: gh release edit "$TAG" --latest
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm --silent releaser plan --context release >> "$GITHUB_OUTPUT"
 
   build-prebuilds:
-    needs: [release-please]
-    if: |
-      always() && (
-        needs.release-please.outputs.releases_created == 'true' ||
-        github.event_name == 'workflow_dispatch'
-      )
-    # darwin-x64 dropped: macos-13 runner availability is poor.
-    # win32-x64 dropped: the C++ runtime is POSIX-only.
+    needs: plan
+    if: needs.plan.outputs.should_run == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -69,14 +68,7 @@ jobs:
       - name: Init submodules
         run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
 
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # ratchet:pnpm/action-setup@v4
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # ratchet:actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-pnpm
 
       - name: Build native addon
         run: pnpm -C packages/@mikrojs/native build:native
@@ -91,8 +83,7 @@ jobs:
           fi
           ls -lh "$path"
 
-      - name: Upload prebuild artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # ratchet:actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # ratchet:actions/upload-artifact@v4
         with:
           name: prebuild-${{ matrix.platform }}-${{ matrix.arch }}
           path: packages/@mikrojs/native/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/
@@ -100,12 +91,8 @@ jobs:
           retention-days: 7
 
   firmware-setup:
-    needs: [release-please]
-    if: |
-      always() && (
-        needs.release-please.outputs.releases_created == 'true' ||
-        github.event_name == 'workflow_dispatch'
-      )
+    needs: plan
+    if: needs.plan.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     outputs:
       chips: ${{ steps.read.outputs.chips }}
@@ -115,62 +102,71 @@ jobs:
         run: echo "chips=$(jq -c .chips packages/@mikrojs/firmware/chips.json)" >> "$GITHUB_OUTPUT"
 
   build-firmware:
-    needs: [firmware-setup]
+    needs: [plan, firmware-setup]
+    if: needs.plan.outputs.should_run == 'true'
     strategy:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.firmware-setup.outputs.chips) }}
-    uses: ./.github/workflows/firmware-build.yml
-    with:
-      target: ${{ matrix.target }}
-      pack-format: unpacked
-      artifact-name: firmware-${{ matrix.target }}
-
-  publish:
-    needs: [release-please, build-prebuilds, build-firmware]
-    if: |
-      always()
-      && needs.build-prebuilds.result == 'success'
-      && needs.build-firmware.result == 'success'
-      && (
-        needs.release-please.outputs.releases_created == 'true' ||
-        github.event_name == 'workflow_dispatch'
-      )
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
+    container: espressif/idf:v6.0
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/firmware-build
+        with:
+          target: ${{ matrix.target }}
+          pack-format: unpacked
+          artifact-name: firmware-${{ matrix.target }}
+
+  publish:
+    needs: [plan, build-prebuilds, build-firmware]
+    if: needs.plan.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # for `releaser tag` (push tag in release mode)
+      pull-requests: write # for `releaser comment-pr`
+      id-token: write # OIDC for npm trusted publishing
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Init submodules
         run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
 
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # ratchet:pnpm/action-setup@v4
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # ratchet:actions/setup-node@v6
+      - uses: ./.github/actions/setup-pnpm
         with:
-          node-version: 24
-          cache: pnpm
+          ignore-scripts: 'true' # no C++ toolchain on this runner; pure-TS dists only
           registry-url: https://registry.npmjs.org
 
-      # --ignore-scripts: this runner has no C++ toolchain installed for
-      # the native addon. Dev deps with postinstall hooks (cmake-js etc.)
-      # would fail otherwise. We only need to build the pure-TS dists here.
-      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # `--use-current` is critical for `release` mode: the release PR has
+      # already bumped package.json before merging. Re-running bump here would
+      # double-increment (e.g. 0.2.0 → 0.3.0) and publish the wrong version.
+      # Other modes always compute a fresh version from the current root.
+      - name: Bump version
+        id: bump
+        run: |
+          pnpm --silent releaser bump \
+            --mode ${{ needs.plan.outputs.mode }} \
+            ${{ needs.plan.outputs.mode == 'release' && '--use-current' || '' }} \
+            ${{ needs.plan.outputs.pr && format('--pr {0}', needs.plan.outputs.pr) || '' }} \
+            --json > /tmp/bump.json
+          version=$(jq -r .version /tmp/bump.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - run: pnpm -r --if-present run build:ts
 
-      - name: Download all platform prebuilds
+      - name: Download prebuilds
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # ratchet:actions/download-artifact@v4
         with:
           path: packages/@mikrojs/native/prebuilds/
           pattern: prebuild-*
           merge-multiple: false
 
-      # download-artifact v4 places each artifact in its own subdir named
-      # after the artifact. We want prebuilds/<platform>-<arch>/mikrojs.napi.node
-      # — strip the "prebuild-" prefix from each dir.
       - name: Normalize prebuild layout
         run: |
           cd packages/@mikrojs/native/prebuilds
@@ -179,10 +175,9 @@ jobs:
               mv "$dir" "${dir#prebuild-}"
             fi
           done
-          echo "Final prebuilds layout:"
           find . -type f | sort
 
-      - name: Download all firmware prebuilds
+      - name: Download firmware
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # ratchet:actions/download-artifact@v4
         with:
           path: packages/@mikrojs/firmware/prebuilds/
@@ -197,7 +192,6 @@ jobs:
               mv "$dir" "${dir#firmware-}"
             fi
           done
-          echo "Final firmware prebuilds layout:"
           find . -type f | sort
 
       - name: Verify firmware completeness
@@ -212,22 +206,49 @@ jobs:
               fi
             done
           done
-          if [ "$missing" -ne 0 ]; then
-            echo "Aborting publish: firmware artifacts incomplete."
-            exit 1
-          fi
+          [ "$missing" -eq 0 ]
 
-      - name: Pack tarballs (preview)
-        run: pnpm -r --filter '!mikrojs-workspace' --filter '!@repo/*' pack --pack-destination /tmp
-
-      - name: Publish to npm
-        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
-        run: pnpm -r --filter '!mikrojs-workspace' --filter '!@repo/*' publish --access public --no-git-checks
+      # `inputs.dry_run` is null on `pull_request` triggers; the GHA expression
+      # `null && X || ''` evaluates to '' there, which is the desired no-flag
+      # case. Don't "simplify" — the explicit truthy check is correct.
+      - name: Publish
+        run: |
+          pnpm --silent releaser publish \
+            --tag ${{ needs.plan.outputs.npm_tag }} \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # OIDC trusted publishing requires no token. Token fallback (commented out;
+          # uncomment if trusted publisher isn't configured for some package):
+          # NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           # Provenance requires a public source repo; re-enable once mikrojs/mikrojs is public.
-          # NPM_CONFIG_PROVENANCE: true
+          # NPM_CONFIG_PROVENANCE: 'true'
+          GITHUB_REPOSITORY: ${{ github.repository }}
 
-      - name: Dry run notice
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
-        run: echo "Dry run complete. Prebuilds built and tarballs packed but nothing was published. Re-run with dry_run=false to publish."
+      - name: Tag (release mode only)
+        if: needs.plan.outputs.mode == 'release' && inputs.dry_run != true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          pnpm --silent releaser tag --version ${{ steps.bump.outputs.version }}
+
+      - name: Comment on PR (pr-preview only)
+        if: needs.plan.outputs.mode == 'pr-preview' && inputs.dry_run != true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          pnpm --silent releaser comment-pr \
+            --pr ${{ needs.plan.outputs.pr }} \
+            --version ${{ steps.bump.outputs.version }} \
+            --tag ${{ needs.plan.outputs.npm_tag }}
+
+      # Remove the trigger label so the next preview requires explicit re-labeling.
+      # Runs even if the comment-pr step fails — the publish already happened.
+      - name: Remove preview label (pr-preview only)
+        if: always() && needs.plan.outputs.mode == 'pr-preview' && inputs.dry_run != true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: pnpm --silent releaser unlabel-preview --pr ${{ needs.plan.outputs.pr }}
