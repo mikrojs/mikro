@@ -7,15 +7,21 @@
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
   "packages": {
-    "packages/mikrojs": {"component": "mikrojs"},
-    "packages/@mikrojs/native": {"component": "@mikrojs/native"},
-    "packages/@mikrojs/quickjs": {"component": "@mikrojs/quickjs"},
-    "packages/@mikrojs/firmware": {"component": "@mikrojs/firmware"},
-    "packages/@mikrojs/analyze-imports": {"component": "@mikrojs/analyze-imports"},
-    "packages/@mikrojs/esptool": {"component": "@mikrojs/esptool"},
-    "packages/@mikrojs/eslint-plugin": {"component": "@mikrojs/eslint-plugin"},
-    "packages/create-mikrojs": {"component": "create-mikrojs"},
-    "packages/create-mikro": {"component": "create-mikro"}
+    "packages/mikrojs": {"component": "mikrojs", "release-as": "0.1.0"},
+    "packages/@mikrojs/native": {"component": "@mikrojs/native", "release-as": "0.1.0"},
+    "packages/@mikrojs/quickjs": {"component": "@mikrojs/quickjs", "release-as": "0.1.0"},
+    "packages/@mikrojs/firmware": {"component": "@mikrojs/firmware", "release-as": "0.1.0"},
+    "packages/@mikrojs/analyze-imports": {
+      "component": "@mikrojs/analyze-imports",
+      "release-as": "0.1.0"
+    },
+    "packages/@mikrojs/esptool": {"component": "@mikrojs/esptool", "release-as": "0.1.0"},
+    "packages/@mikrojs/eslint-plugin": {
+      "component": "@mikrojs/eslint-plugin",
+      "release-as": "0.1.0"
+    },
+    "packages/create-mikrojs": {"component": "create-mikrojs", "release-as": "0.1.0"},
+    "packages/create-mikro": {"component": "create-mikro", "release-as": "0.1.0"}
   },
   "plugins": [
     {
