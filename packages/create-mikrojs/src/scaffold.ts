@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type {PkgManager} from './pkg-manager.js'
+import {mikroCommand, type PkgManager} from './pkg-manager.js'
 import {dependencies, devDependencies} from './templates/_common/dependencies.js'
 import {envExample} from './templates/_common/env-example.js'
 import {gitignore} from './templates/_common/gitignore.js'
@@ -152,9 +152,8 @@ export function scaffold(options: ScaffoldOptions) {
   fs.writeFileSync(path.join(targetDir, '.env.example'), envExample)
 
   const templateMeta = TEMPLATES.find((t) => t.name === template)
-  const mikro = pkgManager === 'npm' ? 'npx mikro' : 'pnpm mikro'
   const setup = templateMeta?.wifiSetup
-    ? `Set your WiFi credentials on the device:\n\n\`\`\`sh\n${mikro} env set WIFI_SSID YourNetworkName\n${mikro} env set WIFI_PASSPHRASE --secret\n\`\`\``
+    ? `Set your WiFi credentials on the device:\n\n\`\`\`sh\n${mikroCommand(pkgManager, 'env set WIFI_SSID YourNetworkName')}\n${mikroCommand(pkgManager, 'env set WIFI_PASSPHRASE --secret')}\n\`\`\``
     : undefined
   fs.writeFileSync(
     path.join(targetDir, 'README.md'),

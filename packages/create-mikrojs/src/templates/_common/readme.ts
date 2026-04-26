@@ -1,9 +1,4 @@
-import type {PkgManager} from '../../pkg-manager.js'
-
-function mikro(pm: PkgManager, cmd: string) {
-  if (pm === 'npm') return `npx mikro ${cmd}`
-  return `pnpm mikro ${cmd}`
-}
+import {mikroCommand as mikro, type PkgManager} from '../../pkg-manager.js'
 
 export interface ReadmeOptions {
   projectName: string

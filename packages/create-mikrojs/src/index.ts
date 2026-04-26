@@ -11,7 +11,7 @@ import {string} from '@optique/core/valueparser'
 import {run} from '@optique/run'
 
 import {printLogo} from './logo.js'
-import {detectPkgManager, installCommand} from './pkg-manager.js'
+import {detectPkgManager, installCommand, runCommand} from './pkg-manager.js'
 import {scaffold, TEMPLATES} from './scaffold.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -116,8 +116,12 @@ async function main(config: InferValue<typeof args>): Promise<void> {
     pkgManager: pm,
   })
 
-  const mikro = pm === 'npm' ? 'npx mikro' : 'pnpm mikro'
-  const steps = [`cd ${projectName}`, installCommand(pm), `${mikro} dev`]
+  const templateMeta = TEMPLATES.find((t) => t.name === template)
+  const steps = [`cd ${projectName}`, installCommand(pm)]
+  if (templateMeta?.wifiSetup) {
+    steps.push('# set WIFI_SSID and WIFI_PASSPHRASE — see README.md')
+  }
+  steps.push(runCommand(pm, 'dev'))
 
   p.note(steps.join('\n'), 'Next steps')
 
