@@ -78,6 +78,10 @@ export function createDevSession(options: {
   envFile?: string
   secretsFile?: string
   noEnvFile?: boolean
+  /** Drives `MIKRO_ENV` and the `.env.<mode>` file picked up by
+   *  `loadEnvFiles`. `mikro dev` passes `'development'` (default);
+   *  `mikro sim dev` passes `'simulator'`. */
+  mode?: string
 }): DevSessionHandle {
   const {
     session,
@@ -95,6 +99,7 @@ export function createDevSession(options: {
     envFile,
     secretsFile,
     noEnvFile,
+    mode = 'development',
   } = options
   const buildDir = pathlib.join(getMikroDir(), 'build')
   const watchDir = process.cwd()
@@ -181,10 +186,10 @@ export function createDevSession(options: {
       defer(async () => {
         const files = await collectFiles(buildDir)
         const envVars = [
-          {key: 'MIKRO_ENV', value: 'development', secret: false},
+          {key: 'MIKRO_ENV', value: mode, secret: false},
           ...(await loadEnvFiles({
             cwd: projectRoot,
-            mode: 'development',
+            mode,
             envFile,
             secretsFile,
             noEnvFile,

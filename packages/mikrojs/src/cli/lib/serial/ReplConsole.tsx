@@ -337,12 +337,12 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
                     js
                   </Text>
                 </Box>
-                {conn.type === 'ready' && conn.deviceId ? (
+                {conn.type === 'ready' ? (
                   <Text
                     color="black"
                     backgroundColor={conn.chip === 'simulator' ? 'magenta' : 'blue'}
                   >
-                    {` ${conn.deviceId} `}
+                    {` ${conn.deviceId ?? conn.chip ?? 'device'} `}
                   </Text>
                 ) : (
                   <Text color="grey">

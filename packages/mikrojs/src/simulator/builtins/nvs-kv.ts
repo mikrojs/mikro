@@ -3,6 +3,7 @@ import type {BuiltinDefinition} from './types.js'
 export const nvsKvBuiltin: BuiltinDefinition = {
   source: `
 import {encode, decode} from 'native:cbor'
+import {ok} from 'mikrojs/result'
 
 const store = new Map()
 
@@ -10,7 +11,7 @@ export function set(key, value) {
   const result = encode(value)
   if (!result.ok) return result
   store.set(key, result.value)
-  return {ok: true}
+  return ok()
 }
 
 export function get(key) {

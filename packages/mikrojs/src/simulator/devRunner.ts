@@ -12,6 +12,31 @@ const DEFAULT_MEM_LIMIT = 300 * 1024 // 300 KB
 const DEFAULT_FS_ROOT = '.mikro/sim-fs'
 const DEFAULT_FS_LIMIT = 1024 * 1024 // 1 MB
 
+// Node-side handler for the http stub's host.call('http.fetch'). Uses Node's
+// global fetch so the simulator can hit real URLs without a device. Body is
+// base64-encoded for transport since RPC payloads are JSON strings.
+interface HttpFetchArgs {
+  url: string
+  method?: string
+  headers?: [string, string][]
+  body?: string // base64
+}
+interface HttpFetchResult {
+  status: number
+  headers: [string, string][]
+  body: string // base64
+}
+async function rpcHttpFetch(args: HttpFetchArgs): Promise<HttpFetchResult> {
+  const init: RequestInit = {method: args.method ?? 'GET'}
+  if (args.headers && args.headers.length > 0) init.headers = args.headers
+  if (args.body) init.body = Buffer.from(args.body, 'base64')
+  const res = await fetch(args.url, init)
+  const headers: [string, string][] = []
+  res.headers.forEach((v, k) => headers.push([k, v]))
+  const buf = Buffer.from(await res.arrayBuffer())
+  return {status: res.status, headers, body: buf.toString('base64')}
+}
+
 export interface DevRunnerOptions {
   script: string
   memLimit?: number
@@ -136,6 +161,17 @@ export function createDevRunner(options: DevRunnerOptions): DevRunner {
       return stripTypeScriptTypes(source, {mode: 'strip'})
     }
     return undefined
+  })
+
+  // RPC handler: bridges QuickJS host.call(...) to Node-side capabilities.
+  // The http stub uses 'http.fetch' to delegate real network IO to Node's
+  // global fetch, so wifi-fetch and similar examples work in the simulator
+  // without a device.
+  runtime.setRpcHandler(async (method, argsJson) => {
+    if (method === 'http.fetch') {
+      return JSON.stringify(await rpcHttpFetch(JSON.parse(argsJson)))
+    }
+    throw new Error(`Unknown sim RPC method: ${method}`)
   })
 
   const messages$ = new Subject<HostMessage>()

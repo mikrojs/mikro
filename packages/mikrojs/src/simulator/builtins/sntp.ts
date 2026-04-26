@@ -4,8 +4,10 @@ import type {BuiltinDefinition} from './types.js'
 // returns {ok, value: Promise<...>} which can't survive JSON serialization.
 export const sntpBuiltin: BuiltinDefinition = {
   source: `
+import {ok} from 'mikrojs/result'
+
 export function sync(_servers, _timezone, _background) {
-  return {ok: true, value: Promise.resolve({ok: true, value: {time: Date.now()}})}
+  return ok(Promise.resolve(ok({time: Date.now()})))
 }
 export function stop() {}
 export function setTimezone(_tz) {}

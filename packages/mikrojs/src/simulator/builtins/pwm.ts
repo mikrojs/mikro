@@ -4,6 +4,8 @@ import type {BuiltinDefinition} from './types.js'
 // {ok, value: Promise<void>} which can't survive JSON serialization.
 export const pwmBuiltin: BuiltinDefinition = {
   source: `
+import {ok} from 'mikrojs/result'
+
 export class Pwm {
   #freq
   #duty
@@ -13,17 +15,17 @@ export class Pwm {
   }
   duty(value) {
     if (value !== undefined) this.#duty = value
-    return {ok: true, value: this.#duty}
+    return ok(this.#duty)
   }
   freq(value) {
     if (value !== undefined) this.#freq = value
-    return {ok: true, value: this.#freq}
+    return ok(this.#freq)
   }
   fade(_target, _durationMs) {
-    return {ok: true, value: Promise.resolve()}
+    return ok(Promise.resolve())
   }
   end() {
-    return {ok: true}
+    return ok()
   }
 }
 `,

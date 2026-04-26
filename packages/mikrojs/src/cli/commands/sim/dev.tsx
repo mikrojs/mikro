@@ -6,31 +6,36 @@ import {argument, flag, option} from '@optique/core/primitives'
 import {string} from '@optique/core/valueparser'
 import {path} from '@optique/run'
 import spinners from 'cli-spinners'
-import {Text} from 'ink'
-import React from 'react'
-import {catchError, defer, EMPTY, exhaustMap, lastValueFrom} from 'rxjs'
+import {Text, useApp, useInput} from 'ink'
+import {useCallback, useEffect, useState} from 'react'
+import {filter, firstValueFrom, map, Subject, type Subscription} from 'rxjs'
 
-import type {Minifier, MinifyLevel} from '../../../_exports/index.js'
-import {agentEmit, agentError, agentResult, createAgentStdinReader} from '../../lib/agent.js'
-import {build} from '../../lib/build.js'
-import {collectFiles, loadEnvFiles} from '../../lib/deploy.js'
+import {
+  agentEmit,
+  agentError,
+  agentResult,
+  createAgentStdinReader,
+  forwardSessionToAgent,
+} from '../../lib/agent.js'
 import {openSim} from '../../lib/openSim.js'
-import {parseMinifier, parseMinifyLevel} from '../../lib/parseMinifier.js'
-import {getMikroDir, resolveProjectRoot} from '../../lib/projectRoot.js'
+import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../../lib/parseMinifier.js'
 import {resolveEntry} from '../../lib/resolveEntry.js'
-import {ReplConsole} from '../../lib/serial/ReplConsole.js'
+import {createDevSession, type DevSessionHandle} from '../../lib/serial/devSession.js'
+import {InkReplConsole} from '../../lib/serial/InkReplConsole.js'
 import {createRepl, type ReplHandle} from '../../lib/serial/replStateMachine.js'
 import type {ReplSession} from '../../lib/session.js'
 import {SimAlreadyRunningError} from '../../lib/simPid.js'
 import {Spinner} from '../../lib/Spinner.js'
 import type {Transport} from '../../lib/transport.js'
-import {createWatcher} from '../../lib/watcher.js'
 
 export const args = command(
   'dev',
   object({
     subcommand: constant('dev' as const),
     entry: optional(argument(path({metavar: 'ENTRY', mustExist: true, type: 'file'}))),
+    forceDeploy: optional(
+      flag('--force-deploy', {description: message`Force full deploy, ignoring cached checksums`}),
+    ),
     noMinify: optional(flag('--no-minify', {description: message`Skip minification`})),
     minifier: optional(
       option('--minifier', string({metavar: 'NAME'}), {
@@ -43,6 +48,16 @@ export const args = command(
       }),
     ),
     noBytecode: optional(flag('--no-bytecode', {description: message`Skip bytecode compilation`})),
+    noHooks: optional(
+      flag('--no-hooks', {
+        description: message`Skip mikrojs.predeploy hooks from package.json`,
+      }),
+    ),
+    logLevel: optional(
+      option('--loglevel', string({metavar: 'LEVEL'}), {
+        description: message`Log level: none, error, warn, info, debug. Console calls below this level are eliminated at build time.`,
+      }),
+    ),
     env: optional(
       option('--env', string({metavar: 'FILE'}), {
         description: message`Path to .env file with environment variables`,
@@ -58,6 +73,11 @@ export const args = command(
         description: message`Skip auto-loading of .env and .env.simulator from the project root`,
       }),
     ),
+    noWatch: optional(
+      flag('--no-watch', {
+        description: message`Deploy once, then drop into the REPL without watching for file changes`,
+      }),
+    ),
     agent: optional(flag('--agent', {description: message`NDJSON agent protocol over stdio`})),
   }),
   {description: message`Watch + build + deploy to simulator with REPL`},
@@ -65,29 +85,54 @@ export const args = command(
 
 interface DevConfig {
   entry?: string
+  forceDeploy?: boolean
   noMinify?: boolean
   minifier?: string
   minifyLevel?: string
   noBytecode?: boolean
+  noHooks?: boolean
+  logLevel?: string
   env?: string
   secrets?: string
   noEnvFile?: boolean
+  noWatch?: boolean
   agent?: boolean
 }
 
-export async function run(config: DevConfig): Promise<void> {
-  const entry = resolveEntry(config.entry)
-  const buildDir = pathlib.join(getMikroDir(), 'build')
-  const watchDir = process.cwd()
-  const minify = !config.noMinify
-  const minifier = parseMinifier(config.minifier)
-  const minifyLevel = parseMinifyLevel(config.minifyLevel)
-  const bytecode = !config.noBytecode
+/**
+ * Resolve the user's CLI args into the shape `createDevSession` expects.
+ * `mode: 'simulator'` drives `MIKRO_ENV` and the auto-loaded `.env.simulator`
+ * file, distinguishing sim runs from `mikro dev` (which defaults to
+ * `'development'`).
+ */
+function devSessionOptions(config: DevConfig) {
+  return {
+    entry: resolveEntry(config.entry),
+    forceDeploy: config.forceDeploy === true,
+    minify: !config.noMinify,
+    bytecode: !config.noBytecode,
+    watch: config.noWatch !== true,
+    noHooks: config.noHooks === true,
+    minifier: parseMinifier(config.minifier),
+    minifyLevel: parseMinifyLevel(config.minifyLevel),
+    logLevel: parseLogLevel(config.logLevel),
+    envFile: config.env,
+    secretsFile: config.secrets,
+    noEnvFile: config.noEnvFile === true,
+    mode: 'simulator' as const,
+  }
+}
 
+// ── Agent mode ─────────────────────────────────────────────────────
+
+export async function run(config: DevConfig): Promise<void> {
   let session: ReplSession
   let transport: Transport
   try {
-    const conn = await openSim({claim: true, startDir: pathlib.dirname(entry)})
+    const conn = await openSim({
+      claim: true,
+      startDir: pathlib.dirname(resolveEntry(config.entry)),
+    })
     session = conn.session
     transport = conn.transport
   } catch (err) {
@@ -98,70 +143,102 @@ export async function run(config: DevConfig): Promise<void> {
     throw err
   }
 
-  session.messages$.subscribe((event) => {
-    switch (event.type) {
-      case 'ready':
-        agentEmit({type: 'ready', chip: event.chip ?? null, id: event.id ?? null})
+  forwardSessionToAgent(session)
+
+  const opts = devSessionOptions(config)
+  const deploys$ = new Subject<{force: boolean}>()
+  const dev = createDevSession({
+    session,
+    entry: opts.entry,
+    forceDeploy: opts.forceDeploy,
+    minify: opts.minify,
+    bytecode: opts.bytecode,
+    watch: opts.watch,
+    noHooks: opts.noHooks,
+    minifier: opts.minifier,
+    minifyLevel: opts.minifyLevel,
+    logLevel: opts.logLevel,
+    envFile: opts.envFile,
+    secretsFile: opts.secretsFile,
+    noEnvFile: opts.noEnvFile,
+    externalDeploys$: deploys$.asObservable(),
+    mode: opts.mode,
+  })
+
+  // Translate DevSessionState transitions into agent NDJSON events. Mirrors
+  // mikro dev's run() so consumers (CI, scripts, AI agents) see the same
+  // event stream regardless of target.
+  const idleStatus = opts.watch ? 'watching' : 'idle'
+  let stateSub: Subscription | null = dev.state$.subscribe((state) => {
+    switch (state.status.type) {
+      case 'checking':
+        agentEmit({type: 'status', status: 'checking', command: state.status.command})
         break
-      case 'prompt':
-      case 'disconnect':
+      case 'building':
+      case 'rebuilding':
+        agentEmit({type: 'status', status: 'building'})
         break
-      default:
-        if ('text' in event) agentEmit({type: event.type, text: event.text})
+      case 'deploying': {
+        const event = state.status.event
+        if (event.type === 'uploading' || event.type === 'checking') {
+          agentEmit({
+            type: `deploy_${event.type}`,
+            file: event.file,
+            index: event.index,
+            total: event.total,
+          })
+        } else if (event.type === 'connecting') {
+          agentEmit({type: 'status', status: 'deploying'})
+        }
+        break
+      }
+      case 'watching':
+        agentEmit({type: 'status', status: idleStatus})
+        break
+      case 'error':
+        agentEmit({type: 'status', status: 'error', error: state.status.message})
         break
     }
   })
 
-  async function doBuildAndDeploy() {
-    agentEmit({type: 'status', status: 'building'})
-    await lastValueFrom(build(entry, buildDir, {minify, bytecode, minifier, minifyLevel}), {
-      defaultValue: undefined,
-    })
-
-    const allFiles = await collectFiles(buildDir)
-    const envVars = [
-      {key: 'MIKRO_ENV', value: 'simulator', secret: false},
-      ...(await loadEnvFiles({
-        cwd: resolveProjectRoot(),
-        mode: 'simulator',
-        envFile: config.env,
-        secretsFile: config.secrets,
-        noEnvFile: config.noEnvFile === true,
-      })),
-    ]
-
-    agentEmit({type: 'status', status: 'deploying'})
-    await lastValueFrom(session.deploy({files: allFiles, envVars, restart: true}))
-
-    agentEmit({type: 'status', status: 'watching'})
+  const dispose = () => {
+    stateSub?.unsubscribe()
+    stateSub = null
+    dev.close()
+    try {
+      session.close()
+    } catch {
+      // already closed
+    }
+    try {
+      transport.close()
+    } catch {
+      // already closed
+    }
   }
 
+  process.on('exit', dispose)
+  process.on('SIGINT', () => process.exit(0))
+  process.on('SIGTERM', () => process.exit(0))
+
+  // Await the first non-building state to detect initial-deploy failure.
+  // Match mikro dev's contract: error on the initial path is fatal, exits
+  // with non-zero so CI/scripts see a failure.
   try {
-    await doBuildAndDeploy()
+    await firstValueFrom(
+      dev.state$.pipe(
+        filter((s) => s.status.type === 'watching' || s.status.type === 'error'),
+        map((s) => {
+          if (s.status.type === 'error') throw new Error(s.status.message)
+          return s
+        }),
+      ),
+    )
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     agentError('sim dev', msg, {fix: 'Check entry file and try again'})
     process.exit(1)
   }
-
-  process.on('exit', () => session.close())
-  process.on('SIGINT', () => process.exit(0))
-  process.on('SIGTERM', () => process.exit(0))
-
-  const {changes$, close: closeWatcher} = createWatcher(watchDir)
-  changes$
-    .pipe(
-      exhaustMap(() =>
-        defer(() => doBuildAndDeploy()).pipe(
-          catchError((err) => {
-            const msg = err instanceof Error ? err.message : String(err)
-            agentEmit({type: 'status', status: 'error', error: msg})
-            return EMPTY
-          }),
-        ),
-      ),
-    )
-    .subscribe()
 
   for await (const cmd of createAgentStdinReader()) {
     switch (cmd.type) {
@@ -177,58 +254,90 @@ export async function run(config: DevConfig): Promise<void> {
       case 'restart':
         session.restart()
         break
+      case 'deploy':
+        deploys$.next({force: cmd.force === true})
+        break
       case 'exit':
         session.exit()
-        session.close()
-        closeWatcher()
-        transport.close()
+        dispose()
         agentResult('sim dev', null, [])
         process.exit(0)
     }
   }
+
+  // stdin closed without explicit 'exit' — clean shutdown.
+  dispose()
+  agentResult('sim dev', null, [])
+  process.exit(0)
 }
 
+// ── Ink (TUI) mode ─────────────────────────────────────────────────
+
 interface DevModeProps {
-  entry: string
-  minify: boolean
-  bytecode: boolean
-  minifier?: Minifier
-  minifyLevel?: MinifyLevel
-  envFile?: string
-  secretsFile?: string
-  noEnvFile?: boolean
+  config: DevConfig
 }
 
 export default function SimDev(props: {args: DevConfig}) {
-  const {args: cfg} = props
-  const entry = resolveEntry(cfg.entry)
-  return (
-    <SimDevMode
-      entry={entry}
-      minify={!cfg.noMinify}
-      bytecode={!cfg.noBytecode}
-      minifier={parseMinifier(cfg.minifier)}
-      minifyLevel={parseMinifyLevel(cfg.minifyLevel)}
-      envFile={cfg.env}
-      secretsFile={cfg.secrets}
-      noEnvFile={cfg.noEnvFile === true}
-    />
-  )
+  return <SimDevMode config={props.args} />
 }
 
+/**
+ * TUI counterpart of `run()`. Connects the simulator session, instantiates
+ * `createDevSession` (the same state machine `mikro dev` uses), and renders
+ * the REPL once the initial deploy completes.
+ *
+ * Initial-setup errors (sim subprocess fails to start, first build/deploy
+ * fails) are fatal — there's nothing for the watcher to fall back to.
+ * Watch-mode rebuild errors stay in the TUI so the user can fix the file
+ * and let the watcher retry.
+ */
 function SimDevMode(props: DevModeProps) {
-  const {entry, minify, bytecode, minifier, minifyLevel, envFile, secretsFile, noEnvFile} = props
-  const buildDir = pathlib.join(getMikroDir(), 'build')
-  const watchDir = process.cwd()
+  const {config} = props
+  const opts = devSessionOptions(config)
 
-  const replRef = React.useRef<ReplHandle | null>(null)
-  const [repl, setRepl] = React.useState<{
-    handle: ReplHandle
-    config: ReplSession['config']
+  // We mount the REPL UI as soon as the sim session+repl handle exist, BEFORE
+  // the first deploy completes. This matches the device-side InkReplMode flow
+  // and is required for correctness: the REPL state machine's awaitReady$
+  // / connectionTimeout$ only fire when `repl.state$` has a subscriber. If
+  // the REPL UI doesn't mount until after the first deploy, the state
+  // machine never gets to poll CMD_HELLO during the deploy window and
+  // ends up timing out the moment it does finally mount (because by then
+  // multiple restarts have happened).
+  const [conn, setConn] = useState<{
+    session: ReplSession
+    transport: Transport
+    repl: ReplHandle
+    dev: DevSessionHandle
   } | null>(null)
-  const [error, setError] = React.useState<Error | null>(null)
+  const [error, setError] = useState<Error | null>(null)
 
-  React.useEffect(() => {
+  const fatal = useCallback((err: unknown): never => {
+    const msg = err instanceof Error ? err.message : String(err)
+    process.stderr.write(`Error: ${msg}\n`)
+    process.exit(1)
+  }, [])
+
+  const handleEnd = useCallback(() => {
+    process.stdout.write('\x1b[<u')
+    process.exit(0)
+  }, [])
+
+  // Ink's `exitOnCtrlC` is disabled at the cli.ts render call; until the REPL
+  // is mounted (or while an error screen is showing), nothing else handles
+  // input — without this, ctrl-c is a black hole. Matches DevicePicker /
+  // InkReplMode / deploy convention (ctrl-c or ctrl-q).
+  const {exit: exitInk} = useApp()
+  useInput(
+    (input, key) => {
+      if (key.ctrl && (input === 'c' || input === 'q')) {
+        exitInk()
+        process.exit(error ? 1 : 0)
+      }
+    },
+    {isActive: !conn},
+  )
+
+  useEffect(() => {
     let disposed = false
     let cleanup: (() => void) | null = null
 
@@ -236,74 +345,80 @@ function SimDevMode(props: DevModeProps) {
       let session: ReplSession
       let transport: Transport
       try {
-        const conn = await openSim({claim: true, startDir: pathlib.dirname(entry)})
-        session = conn.session
-        transport = conn.transport
+        const handle = await openSim({
+          claim: true,
+          startDir: pathlib.dirname(opts.entry),
+        })
+        session = handle.session
+        transport = handle.transport
       } catch (err) {
-        if (!disposed) setError(err instanceof Error ? err : new Error(String(err)))
+        if (!disposed) fatal(err)
+        return
+      }
+      if (disposed) {
+        try {
+          session.close()
+          transport.close()
+        } catch {
+          // already closed
+        }
         return
       }
 
-      async function buildAndDeploy() {
-        if (disposed) return
-        if (replRef.current) replRef.current.setDisabled(true)
-        setError(null)
-
-        const envVars = [
-          {key: 'MIKRO_ENV', value: 'simulator', secret: false},
-          ...(await loadEnvFiles({
-            cwd: resolveProjectRoot(),
-            mode: 'simulator',
-            envFile,
-            secretsFile,
-            noEnvFile,
-          })),
-        ]
-
-        await lastValueFrom(build(entry, buildDir, {minify, bytecode, minifier, minifyLevel}), {
-          defaultValue: undefined,
-        })
-        if (disposed) return
-
-        const allFiles = await collectFiles(buildDir)
-
-        const handle = createRepl({
-          session,
-          port: 'simulator',
-          onEnd: () => process.exit(0),
-        })
-        handle.state$.subscribe()
-
-        await lastValueFrom(session.deploy({files: allFiles, envVars, restart: true}))
-        if (disposed) return
-
-        replRef.current = handle
-        if (!disposed) setRepl({handle, config: session.config})
-      }
-
-      buildAndDeploy().catch((err) => {
-        if (!disposed) setError(err instanceof Error ? err : new Error(String(err)))
+      const repl = createRepl({
+        session,
+        port: 'simulator',
+        onEnd: handleEnd,
+        deployEnabled: true,
       })
 
-      const {changes$, close} = createWatcher(watchDir)
-      const sub = changes$
-        .pipe(
-          exhaustMap(() =>
-            defer(() => buildAndDeploy()).pipe(
-              catchError((err) => {
-                if (!disposed) setError(err instanceof Error ? err : new Error(String(err)))
-                return EMPTY
-              }),
-            ),
-          ),
-        )
-        .subscribe()
+      const dev = createDevSession({
+        session,
+        repl,
+        entry: opts.entry,
+        forceDeploy: opts.forceDeploy,
+        minify: opts.minify,
+        bytecode: opts.bytecode,
+        watch: opts.watch,
+        noHooks: opts.noHooks,
+        minifier: opts.minifier,
+        minifyLevel: opts.minifyLevel,
+        logLevel: opts.logLevel,
+        envFile: opts.envFile,
+        secretsFile: opts.secretsFile,
+        noEnvFile: opts.noEnvFile,
+        mode: opts.mode,
+      })
+
+      // Mount the REPL UI immediately so the state machine starts polling
+      // CMD_HELLO and the `connectionTimeout$` can be cancelled by the first
+      // MSG_READY. createDevSession's run is kept alive by the stateSub
+      // subscription below; rendering the REPL is purely a UI concern.
+      setConn({session, transport, repl, dev})
+
+      const stateSub = dev.state$.subscribe((state) => {
+        if (state.status.type === 'error') {
+          // Surface in TUI; the watcher can recover by re-running on next
+          // file change, so we keep the session alive.
+          if (!disposed) setError(new Error(state.status.message))
+        } else if (state.status.type === 'watching' || state.status.type === 'deploying') {
+          if (!disposed) setError(null)
+        }
+      })
 
       cleanup = () => {
-        sub.unsubscribe()
-        close()
-        session.close()
-        transport.close()
+        stateSub.unsubscribe()
+        dev.close()
+        try {
+          session.close()
+        } catch {
+          // already closed
+        }
+        try {
+          transport.close()
+        } catch {
+          // already closed
+        }
       }
     })()
 
@@ -311,30 +426,44 @@ function SimDevMode(props: DevModeProps) {
       disposed = true
       cleanup?.()
     }
+    // opts is recomputed each render but its values are stable for a given
+    // config (which itself is stable for a session). Deps captured so React
+    // doesn't complain; effective re-runs only happen on real config change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    entry,
-    buildDir,
-    minify,
-    bytecode,
-    minifier,
-    minifyLevel,
-    envFile,
-    secretsFile,
-    noEnvFile,
-    watchDir,
+    opts.entry,
+    opts.forceDeploy,
+    opts.minify,
+    opts.bytecode,
+    opts.watch,
+    opts.noHooks,
+    opts.minifier,
+    opts.minifyLevel,
+    opts.logLevel,
+    opts.envFile,
+    opts.secretsFile,
+    opts.noEnvFile,
   ])
 
-  if (error) {
+  if (error && !conn) {
     return <Text color="red">Error: {error.message}</Text>
   }
 
-  if (!repl) {
+  if (!conn) {
     return (
       <Text>
-        <Spinner spinner={spinners.dots} /> Building…
+        <Spinner spinner={spinners.dots} /> Starting simulator…
       </Text>
     )
   }
 
-  return <ReplConsole repl={repl.handle} config={repl.config} />
+  return (
+    <InkReplConsole
+      session={conn.session}
+      devicePath="simulator"
+      logLevel={opts.logLevel}
+      repl={conn.repl}
+      watch={opts.watch}
+    />
+  )
 }

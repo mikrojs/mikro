@@ -59,7 +59,10 @@ import {
   CMD_DIRECTIVE,
   CMD_EVAL,
   CMD_EXIT,
+  CMD_HELLO,
   CMD_RESTART,
+  CMD_RUNTIME_PAUSE,
+  CMD_RUNTIME_RESUME,
   ENV_FLAG_SECRET,
   type Frame,
   HEADER_SIZE,
@@ -1043,9 +1046,29 @@ async function handleFrame(frame: Frame): Promise<void> {
     case CMD_EXIT:
       process.exit(0)
       break
-    case CMD_RESTART:
+    case CMD_HELLO:
+      // Match firmware contract: device only sends MSG_READY in response to
+      // CMD_HELLO. The CLI polls HELLO every 250ms after a restart, and uses
+      // a 1-second post-restart blackout (session.ts) to ignore stale READYs
+      // — answering HELLO here lets the CLI clear that blackout naturally.
       sendReady()
+      break
+    case CMD_RESTART:
+      // Don't sendReady() unprompted: the CLI's awaitReady$ filter discards
+      // any MSG_READY that arrives within 1s of CMD_RESTART (the blackout
+      // covers stale pre-reboot frames in flight from the device). Letting
+      // CMD_HELLO polling drive the post-restart handshake matches the
+      // firmware behavior and keeps the CLI's restart logic identical
+      // across sim and device.
       await bootOrRunManifest()
+      break
+    case CMD_RUNTIME_PAUSE:
+      if (runner) runner.paused = true
+      sendOk()
+      break
+    case CMD_RUNTIME_RESUME:
+      if (runner) runner.paused = false
+      sendOk()
       break
   }
 }
