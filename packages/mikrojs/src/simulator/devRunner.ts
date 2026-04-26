@@ -37,6 +37,28 @@ async function rpcHttpFetch(args: HttpFetchArgs): Promise<HttpFetchResult> {
   return {status: res.status, headers, body: buf.toString('base64')}
 }
 
+// Persistent NVS-backed kv for the simulator. Mirrors the firmware contract:
+// `mikrojs/kv/nvs` survives power cycles on device, so it must survive
+// `mikro sim dev` restarts here. Stored alongside `nvs.json` (env config) as
+// `nvs_kv.json` — values are base64-encoded CBOR blobs (the QuickJS-side
+// stub wraps user values via native:cbor before persistence).
+interface NvsKvStore {
+  entries: Record<string, string> // key → base64(cbor)
+}
+function nvsKvPath(fsRoot: string): string {
+  return pathlib.join(pathlib.dirname(fsRoot), 'nvs_kv.json')
+}
+function readNvsKvStore(fsRoot: string): NvsKvStore {
+  try {
+    return JSON.parse(nodeFs.readFileSync(nvsKvPath(fsRoot), 'utf-8')) as NvsKvStore
+  } catch {
+    return {entries: {}}
+  }
+}
+function writeNvsKvStore(fsRoot: string, store: NvsKvStore): void {
+  nodeFs.writeFileSync(nvsKvPath(fsRoot), JSON.stringify(store, null, 2) + '\n')
+}
+
 export interface DevRunnerOptions {
   script: string
   memLimit?: number
@@ -164,12 +186,37 @@ export function createDevRunner(options: DevRunnerOptions): DevRunner {
   })
 
   // RPC handler: bridges QuickJS host.call(...) to Node-side capabilities.
-  // The http stub uses 'http.fetch' to delegate real network IO to Node's
-  // global fetch, so wifi-fetch and similar examples work in the simulator
-  // without a device.
-  runtime.setRpcHandler(async (method, argsJson) => {
+  // Returns a string for sync methods (host.call resolves immediately on
+  // the QuickJS side) and a Promise for async ones (host.call returns a JS
+  // Promise). Keeping nvs_kv ops sync matches firmware NVS semantics —
+  // `set` is expected to be observable on the next read in the same tick.
+  runtime.setRpcHandler((method, argsJson) => {
     if (method === 'http.fetch') {
-      return JSON.stringify(await rpcHttpFetch(JSON.parse(argsJson)))
+      return rpcHttpFetch(JSON.parse(argsJson)).then((r) => JSON.stringify(r))
+    }
+    if (method === 'nvs_kv.list') {
+      return JSON.stringify(readNvsKvStore(fsRoot).entries)
+    }
+    if (method === 'nvs_kv.set') {
+      const {key, value} = JSON.parse(argsJson) as {key: string; value: string}
+      const store = readNvsKvStore(fsRoot)
+      store.entries[key] = value
+      writeNvsKvStore(fsRoot, store)
+      return '{}'
+    }
+    if (method === 'nvs_kv.remove') {
+      const {key} = JSON.parse(argsJson) as {key: string}
+      const store = readNvsKvStore(fsRoot)
+      const existed = key in store.entries
+      if (existed) {
+        const {[key]: _omit, ...rest} = store.entries
+        writeNvsKvStore(fsRoot, {entries: rest})
+      }
+      return JSON.stringify({existed})
+    }
+    if (method === 'nvs_kv.clear') {
+      writeNvsKvStore(fsRoot, {entries: {}})
+      return '{}'
     }
     throw new Error(`Unknown sim RPC method: ${method}`)
   })
