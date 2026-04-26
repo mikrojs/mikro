@@ -45,6 +45,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm --silent releaser plan --context release >> "$GITHUB_OUTPUT"
 
+      # Remove the trigger label immediately so a second click during the long
+      # publish (10–15 min) doesn't queue another run, and so the PR isn't
+      # left in a "still labeled" state if any downstream step fails. The
+      # label is a trigger, not a status — status lives in the Actions UI.
+      - name: Remove preview label
+        if: steps.plan.outputs.mode == 'pr-preview'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: pnpm --silent releaser unlabel-preview --pr ${{ steps.plan.outputs.pr }}
+
   build-prebuilds:
     needs: plan
     if: needs.plan.outputs.should_run == 'true'
@@ -243,12 +254,3 @@ jobs:
             --pr ${{ needs.plan.outputs.pr }} \
             --version ${{ steps.bump.outputs.version }} \
             --tag ${{ needs.plan.outputs.npm_tag }}
-
-      # Remove the trigger label so the next preview requires explicit re-labeling.
-      # Runs even if the comment-pr step fails — the publish already happened.
-      - name: Remove preview label (pr-preview only)
-        if: always() && needs.plan.outputs.mode == 'pr-preview' && inputs.dry_run != true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: pnpm --silent releaser unlabel-preview --pr ${{ needs.plan.outputs.pr }}
