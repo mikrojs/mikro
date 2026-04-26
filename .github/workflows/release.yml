@@ -233,7 +233,7 @@ jobs:
         env:
           # OIDC trusted publishing requires no token. Token fallback (commented out;
           # uncomment if trusted publisher isn't configured for some package):
-          # NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           # Provenance requires a public source repo; re-enable once mikrojs/mikrojs is public.
           # NPM_CONFIG_PROVENANCE: 'true'
           GITHUB_REPOSITORY: ${{ github.repository }}
