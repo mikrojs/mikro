@@ -309,8 +309,8 @@ static std::string inspect_number(JSContext* ctx, JSValue value, InspectOpts& op
     if (std::isnan(d)) return stylize("NaN", MIK_TOKEN_NUMBER, opts);
     if (d == INFINITY) return stylize("Infinity", MIK_TOKEN_NUMBER, opts);
     if (d == -INFINITY) return stylize("-Infinity", MIK_TOKEN_NUMBER, opts);
-    if (d == 0.0) {
-        return stylize(std::signbit(d) ? "-0" : "+0", MIK_TOKEN_NUMBER, opts);
+    if (d == 0.0 && std::signbit(d)) {
+        return stylize("-0", MIK_TOKEN_NUMBER, opts);
     }
 
     /* Use JS_ToCString which formats numbers correctly (integer or float) */
