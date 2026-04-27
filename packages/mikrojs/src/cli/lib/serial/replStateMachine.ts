@@ -85,7 +85,7 @@ export type ReplAction =
   | {type: 'deviceEvent'; event: ReplEvent}
   | {type: 'setDisabled'; disabled: boolean}
   | {type: 'setDeployStatus'; message: string | null}
-  | {type: 'setError'; message: string}
+  | {type: 'setError'; message: string; showTroubleshooting?: boolean}
   | {type: 'setFooterError'; message: string | null}
   | {type: 'showTroubleshooting'}
   | {type: 'ctrlCTimeout'}
@@ -263,8 +263,12 @@ export function reduce(
     case 'setError': {
       const connection: ConnectionState = {type: 'error', message: action.message}
       const errorEvent: ReplLogEvent = {type: 'error', text: action.message}
+      // Troubleshooting hints are only useful for connection-class errors
+      // (timeout, link gone). Build/deploy/hook errors carry their own
+      // actionable message — opt in via the action when relevant.
+      const showTroubleshooting = action.showTroubleshooting ?? false
       return [
-        {...state, connection, showTroubleshooting: true, events: [...state.events, errorEvent]},
+        {...state, connection, showTroubleshooting, events: [...state.events, errorEvent]},
         [],
       ]
     }
@@ -700,7 +704,7 @@ export interface ReplHandle {
   keyInput(ch: string, key: KeyInfo): void
   setDisabled(disabled: boolean): void
   setDeployStatus(message: string | null): void
-  setError(message: string): void
+  setError(message: string, opts?: {showTroubleshooting?: boolean}): void
   /** Pin an error message in the REPL footer until the next cycle
    *  starts. Use alongside `logEvent({type:'error', …})` for errors
    *  that should remain visible after the output scrolls past. */
@@ -756,6 +760,7 @@ export function createRepl(options: {
       (): ReplAction => ({
         type: 'setError',
         message: `Connection timed out after ${timeoutMs / 1000}s`,
+        showTroubleshooting: true,
       }),
     ),
   )
@@ -846,8 +851,8 @@ export function createRepl(options: {
     setDeployStatus(message: string | null) {
       actions$.next({type: 'setDeployStatus', message})
     },
-    setError(message: string) {
-      actions$.next({type: 'setError', message})
+    setError(message: string, opts?: {showTroubleshooting?: boolean}) {
+      actions$.next({type: 'setError', message, showTroubleshooting: opts?.showTroubleshooting})
     },
     setFooterError(message: string | null) {
       actions$.next({type: 'setFooterError', message})
