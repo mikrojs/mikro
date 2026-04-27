@@ -74,6 +74,16 @@ export function formatAdvisory(result: FirmwareCompatResult, pm: PkgManager): st
   ].join('\n')
 }
 
+/**
+ * Thrown when the device firmware version is incompatible with this CLI.
+ * Lets callers tell this apart from a generic transport/timeout failure
+ * (the message is self-explanatory and shouldn't be paired with generic
+ * troubleshooting hints).
+ */
+export class FirmwareIncompatibleError extends Error {
+  override name = 'FirmwareIncompatibleError'
+}
+
 /** Format the hard incompatibility error (status === 'incompatible'). */
 export function formatIncompatibleError(result: FirmwareCompatResult, pm: PkgManager): string {
   const got = result.deviceVersion ?? 'unknown'

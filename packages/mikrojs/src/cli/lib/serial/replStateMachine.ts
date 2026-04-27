@@ -1,7 +1,7 @@
 import {appendFileSync, readFileSync} from 'node:fs'
 import {join} from 'node:path'
 
-import {EMPTY, merge, type Observable, Subject, timer} from 'rxjs'
+import {EMPTY, merge, type Observable, of, Subject, timer} from 'rxjs'
 import {
   catchError,
   filter,
@@ -15,6 +15,7 @@ import {
   takeUntil,
 } from 'rxjs/operators'
 
+import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {getMikroDir} from '../projectRoot.js'
 import {isIncomplete} from '../protocol.js'
 import type {ReplEvent, ReplSession} from '../session.js'
@@ -765,23 +766,33 @@ export function createRepl(options: {
     ),
   )
 
+  // Surface firmware-incompat errors as a setError action so the user sees
+  // the actionable "run flash to update device" message. Other errors
+  // (notably rxjs TimeoutError) are swallowed because connectionTimeout$
+  // above handles the timeout case independently.
+  const driveHandshake$ = (): Observable<ReplAction> =>
+    session.awaitReady$(timeoutMs).pipe(
+      ignoreElements(),
+      catchError((err): Observable<ReplAction> => {
+        if (err instanceof FirmwareIncompatibleError) {
+          return of({type: 'setError', message: err.message})
+        }
+        return EMPTY
+      }),
+    )
+
   // The device only sends MSG_READY in reply to CMD_HELLO. awaitReady$
   // polls HELLO until a fresh ready arrives; we merge it as a side-effect
   // (no actions emitted) so the existing 'ready' deviceEvent flow drives
-  // the state machine. catchError swallows the timeout because
-  // connectionTimeout$ above already surfaces it as a 'setError' action.
-  const handshakeDriver$: Observable<ReplAction> = session.awaitReady$(timeoutMs).pipe(
-    catchError(() => EMPTY),
-    ignoreElements(),
-  )
+  // the state machine.
+  const handshakeDriver$ = driveHandshake$()
 
   // After a user-triggered restart (Ctrl+R) the device reboots and stops
   // emitting MSG_READY until something polls CMD_HELLO again. Re-subscribe
   // to awaitReady$ on each restart so the handshake resumes; without this
   // the connection state stays in 'Restarting…' forever.
   const restartHandshakeDriver$: Observable<ReplAction> = restarts$.pipe(
-    switchMap(() => session.awaitReady$(timeoutMs).pipe(catchError(() => EMPTY))),
-    ignoreElements(),
+    switchMap(() => driveHandshake$()),
   )
 
   const state$ = merge(

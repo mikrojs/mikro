@@ -38,6 +38,7 @@ import {
 import {
   checkFirmwareCompat,
   type FirmwareCompatDirection,
+  FirmwareIncompatibleError,
   formatAdvisory,
   formatIncompatibleError,
 } from './firmwareCompat.js'
@@ -447,7 +448,7 @@ export function connectRepl(
       }
       const pm = await detectPreferredPm()
       if (compat.status === 'incompatible') {
-        throw new Error(formatIncompatibleError(compat, pm))
+        throw new FirmwareIncompatibleError(formatIncompatibleError(compat, pm))
       }
       // status === 'update_available'
       const message = formatAdvisory(compat, pm)
