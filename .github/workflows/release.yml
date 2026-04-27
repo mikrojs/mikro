@@ -36,7 +36,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
-      pull-requests: write # for `releaser unlabel-preview` (removing the trigger label)
+      pull-requests: read # for `releaser plan` to read PR + commit data
     outputs:
       mode: ${{ steps.plan.outputs.mode }}
       should_run: ${{ steps.plan.outputs.should_run }}
@@ -50,6 +50,17 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-pnpm
+
+      # Mint mikrodroid App token so any user-visible side effect (label
+      # removal, PR comments, tag push, GitHub Release) is attributed to
+      # mikrodroid[bot] rather than github-actions[bot].
+      - name: Generate mikrodroid token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # ratchet:actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.MIKRODROID_APP_ID }}
+          private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
+
       - id: plan
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -62,7 +73,7 @@ jobs:
       - name: Remove preview label
         if: steps.plan.outputs.mode == 'pr-preview'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: pnpm --silent releaser unlabel-preview --pr ${{ steps.plan.outputs.pr }}
 
@@ -154,10 +165,21 @@ jobs:
       pull-requests: write # for `releaser comment-pr`
       id-token: write # OIDC for npm trusted publishing
     steps:
+      # Mint mikrodroid App token first so checkout uses it for the credential
+      # helper. That makes `git push` of the release tag attribute to
+      # mikrodroid[bot] instead of github-actions[bot].
+      - name: Generate mikrodroid token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # ratchet:actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.MIKRODROID_APP_ID }}
+          private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
         with:
           fetch-depth: 0
           fetch-tags: true
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Init submodules
         run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
@@ -242,16 +264,16 @@ jobs:
       - name: Tag (release mode only)
         if: needs.plan.outputs.mode == 'release' && inputs.dry_run != true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config --global user.name 'mikrodroid[bot]'
+          git config --global user.email '${{ secrets.MIKRODROID_APP_ID }}+mikrodroid[bot]@users.noreply.github.com'
           pnpm --silent releaser tag --version ${{ needs.plan.outputs.version }}
 
       - name: Create GitHub Release (release mode only)
         if: needs.plan.outputs.mode == 'release' && inputs.dry_run != true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           pnpm --silent releaser github-release \
@@ -262,7 +284,7 @@ jobs:
       - name: Comment on PR (pr-preview only)
         if: needs.plan.outputs.mode == 'pr-preview' && inputs.dry_run != true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           pnpm --silent releaser comment-pr \
