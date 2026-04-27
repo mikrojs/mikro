@@ -1,0 +1,208 @@
+/* eslint-disable no-console */
+import {command, constant, message, optional} from '@optique/core'
+import {object} from '@optique/core/constructs'
+import type {InferValue} from '@optique/core/parser'
+import {flag, option} from '@optique/core/primitives'
+import {choice} from '@optique/core/valueparser'
+
+import {PREVIEW_LABEL, RELEASE_BRANCH} from '../util/constants.js'
+import {readGitInfo} from '../util/git.js'
+import {type EventPayload, hasLabel, isSameRepoPr, readGitHubEvent} from '../util/githubEvent.js'
+import {octokit, repoSlug} from '../util/octokit.js'
+import {getRecommendedBump} from '../util/version.js'
+import {readCanonicalVersion} from '../util/workspace.js'
+import {computeBumpPure} from './bump.js'
+
+export type Mode = 'release' | 'next' | 'canary' | 'pr-preview' | 'create-release-pr' | 'skip'
+
+export interface Plan {
+  mode: Mode
+  shouldRun: boolean
+  npmTag: string | null
+  pr: number | null
+  reason: string
+  version: string | null
+}
+
+export const args = command(
+  'plan',
+  object({
+    action: constant('plan' as const),
+    context: option(
+      '--context',
+      choice(['release', 'create-release-pr'] as const, {metavar: 'CONTEXT'}),
+      {description: message`Which workflow is asking (default: release)`},
+    ),
+    json: optional(
+      flag('--json', {description: message`Emit Plan JSON instead of GitHub Actions outputs`}),
+    ),
+  }),
+  {description: message`Decide release mode from GitHub Actions event context`},
+)
+
+type PlanArgs = InferValue<typeof args>
+
+const SKIP = (reason: string, pr: number | null = null): Plan => ({
+  mode: 'skip',
+  shouldRun: false,
+  npmTag: null,
+  pr,
+  reason,
+  version: null,
+})
+
+// Pure: given an event name + payload, return the plan.
+// Exported for tests.
+export function decideReleasePure(eventName: string | undefined, payload: EventPayload): Plan {
+  if (eventName === 'workflow_dispatch') {
+    const mode = payload.inputs?.mode as Mode | undefined
+    if (mode === 'release' || mode === 'next' || mode === 'canary') {
+      return {
+        mode,
+        shouldRun: true,
+        npmTag: mode === 'release' ? 'latest' : mode,
+        pr: null,
+        reason: `workflow_dispatch mode=${mode}`,
+        version: null,
+      }
+    }
+    return SKIP(`workflow_dispatch with unknown mode: ${mode ?? '<none>'}`)
+  }
+
+  if (eventName === 'pull_request') {
+    const pr = payload.pull_request
+    if (!pr) return SKIP('pull_request event without payload')
+
+    if (!isSameRepoPr(payload)) {
+      return SKIP('fork PR — releases disabled', pr.number)
+    }
+
+    if (payload.action === 'closed' && pr.merged && pr.head?.ref === RELEASE_BRANCH) {
+      return {
+        mode: 'release',
+        shouldRun: true,
+        npmTag: 'latest',
+        pr: pr.number,
+        reason: `release PR ${pr.number} merged`,
+        version: null,
+      }
+    }
+
+    // One-shot: only `labeled` (with the matching label) triggers a preview
+    // publish. The label is removed after publish, so the next preview
+    // requires re-labeling.
+    if (
+      payload.action === 'labeled' &&
+      payload.label?.name === PREVIEW_LABEL &&
+      hasLabel(payload, PREVIEW_LABEL)
+    ) {
+      if (pr.state !== 'open') return SKIP('PR not open', pr.number)
+      return {
+        mode: 'pr-preview',
+        shouldRun: true,
+        npmTag: `pr-${pr.number}`,
+        pr: pr.number,
+        reason: `${PREVIEW_LABEL} label added on PR ${pr.number}`,
+        version: null,
+      }
+    }
+
+    return SKIP(`pull_request action=${payload.action} did not match`, pr.number)
+  }
+
+  return SKIP(`unsupported event: ${eventName ?? '<none>'}`)
+}
+
+// For create-release-pr.yml: skip when the push is the merge commit of a release PR.
+async function decideCreateReleasePr(): Promise<Plan> {
+  const {eventName} = readGitHubEvent()
+  if (eventName !== 'push') {
+    return SKIP(`create-release-pr context expects push event, got ${eventName ?? '<none>'}`)
+  }
+
+  const sha = process.env.GITHUB_SHA
+  if (!sha) return SKIP('GITHUB_SHA not set')
+
+  try {
+    const {owner, repo} = repoSlug()
+    const {data} = await octokit().repos.listPullRequestsAssociatedWithCommit({
+      owner,
+      repo,
+      commit_sha: sha,
+    })
+    const releasePr = data.find((p) => p.head?.ref === RELEASE_BRANCH)
+    if (releasePr) {
+      return SKIP(`push is merge of release PR #${releasePr.number}`, releasePr.number)
+    }
+  } catch (err) {
+    // Network/auth failures: don't block create-release-pr from running.
+    // We log to stderr so the failure surfaces in the Actions UI even though
+    // the workflow proceeds.
+    console.error(`[plan] gh lookup failed: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  return {
+    mode: 'create-release-pr',
+    shouldRun: true,
+    npmTag: null,
+    pr: null,
+    reason: 'regular push to main',
+    version: null,
+  }
+}
+
+// Compute the version a downstream job will publish. Computed once in the
+// plan job so all downstream jobs (firmware, prebuilds, publish) write
+// the exact same string — critical for pr-preview where the timestamp
+// would otherwise drift between runs.
+async function computePlannedVersion(plan: Plan): Promise<string | null> {
+  if (!plan.shouldRun) return null
+  if (
+    plan.mode !== 'release' &&
+    plan.mode !== 'next' &&
+    plan.mode !== 'canary' &&
+    plan.mode !== 'pr-preview'
+  ) {
+    return null
+  }
+  const result = computeBumpPure({
+    mode: plan.mode,
+    pr: plan.pr ?? undefined,
+    // For release mode the canonical version IS the publish version (the
+    // release PR has already bumped). For other modes, append a suffix.
+    useCurrent: plan.mode === 'release',
+    currentVersion: readCanonicalVersion(),
+    semverIncrement: await getRecommendedBump(),
+    git: readGitInfo(),
+    now: new Date(),
+  })
+  return result.version
+}
+
+export async function run(opts: PlanArgs): Promise<void> {
+  let plan: Plan
+  if (opts.context === 'create-release-pr') {
+    plan = await decideCreateReleasePr()
+  } else {
+    const {eventName, payload} = readGitHubEvent()
+    plan = decideReleasePure(eventName, payload)
+  }
+
+  plan.version = await computePlannedVersion(plan)
+
+  if (opts.json) {
+    console.log(JSON.stringify(plan))
+    return
+  }
+
+  // GitHub Actions outputs format. Empty string for null is intentional
+  // and load-bearing: downstream YAML uses `${{ ...pr && format('--pr {0}', ...pr) || '' }}`,
+  // and an empty string is falsy in GHA expressions, which is what omits
+  // the flag on non-PR triggers. Never emit '0' for null here.
+  console.log(`mode=${plan.mode}`)
+  console.log(`should_run=${plan.shouldRun}`)
+  console.log(`npm_tag=${plan.npmTag ?? ''}`)
+  console.log(`pr=${plan.pr ?? ''}`)
+  console.log(`version=${plan.version ?? ''}`)
+  console.log(`reason=${plan.reason}`)
+}

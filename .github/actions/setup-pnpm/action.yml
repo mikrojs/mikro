@@ -1,0 +1,30 @@
+name: Setup pnpm + Node
+description: Install pnpm and Node.js, then run pnpm install
+inputs:
+  node-version:
+    description: Node.js version
+    default: '24'
+  ignore-scripts:
+    description: Pass --ignore-scripts to pnpm install (skips postinstall hooks like cmake-js)
+    default: 'false'
+  registry-url:
+    description: Optional npm registry URL (sets up auth)
+    default: ''
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # ratchet:pnpm/action-setup@v5
+
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # ratchet:actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+        registry-url: ${{ inputs.registry-url }}
+
+    - shell: bash
+      run: |
+        if [ "${{ inputs.ignore-scripts }}" = "true" ]; then
+          pnpm install --frozen-lockfile --ignore-scripts
+        else
+          pnpm install --frozen-lockfile
+        fi

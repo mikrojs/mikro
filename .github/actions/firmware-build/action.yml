@@ -1,0 +1,120 @@
+name: Build firmware
+description: Build the mikrojs firmware for a single ESP32 chip target and upload as artifact
+# NOTE: Caller must:
+#   1. Set `runs-on: ubuntu-latest` and `container: espressif/idf:v6.0`
+#      (composite actions cannot set these themselves).
+#   2. Run `actions/checkout` before invoking this action so that the
+#      relative `uses: ./.github/actions/firmware-build` path resolves.
+inputs:
+  target:
+    description: ESP32 chip target (esp32, esp32c3, esp32c6, esp32s3)
+    required: true
+  pack-format:
+    description: 'How to lay out the uploaded artifact: tarball | unpacked'
+    required: true
+  artifact-name:
+    description: Name to upload the artifact under
+    required: true
+  version:
+    description: |
+      Optional version to write into all publishable package.json files before
+      building. The firmware embeds this via sys.version, so the firmware
+      must be built against the same version that gets published. Leave empty
+      to build against whatever is currently in package.json (used by the
+      ad-hoc firmware.yml workflow).
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PACK_FORMAT: ${{ inputs.pack-format }}
+      run: |
+        case "$PACK_FORMAT" in
+          unpacked|tarball) ;;
+          *)
+            echo "Invalid pack-format: '$PACK_FORMAT' (must be 'unpacked' or 'tarball')"
+            exit 1
+            ;;
+        esac
+
+    - shell: bash
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # ratchet:actions/setup-node@v6
+      with:
+        node-version: 24
+
+    - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # ratchet:pnpm/action-setup@v5
+
+    - shell: bash
+      run: pnpm install --frozen-lockfile
+
+    # Apply the planned version BEFORE idf.py builds, so sys.version
+    # embedded in the firmware matches the version that gets published.
+    # `--mode release` is a placeholder; `--set` bypasses the mode-specific
+    # compute path entirely.
+    - if: inputs.version != ''
+      shell: bash
+      run: pnpm --silent releaser bump --mode release --set ${{ inputs.version }}
+
+    - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # ratchet:actions/cache@v5
+      with:
+        path: ~/.cache/ccache
+        key: ccache-firmware-${{ inputs.target }}-${{ github.sha }}
+        restore-keys: ccache-firmware-${{ inputs.target }}-
+
+    - shell: bash
+      run: |
+        which ccache || apt-get update && apt-get install -y ccache
+        ccache --zero-stats
+        ccache --set-config=max_size=500M
+        ccache --set-config=cache_dir=$HOME/.cache/ccache
+
+    - shell: bash
+      working-directory: esp32
+      env:
+        IDF_CCACHE_ENABLE: '1'
+        TARGET: ${{ inputs.target }}
+      run: |
+        . $IDF_PATH/export.sh
+        rm -f sdkconfig
+        idf.py set-target $TARGET
+        idf.py build
+        ccache --show-stats
+
+    - shell: bash
+      working-directory: esp32
+      run: |
+        . $IDF_PATH/export.sh
+        idf.py size
+
+    - if: inputs.pack-format == 'unpacked'
+      shell: bash
+      run: |
+        mkdir -p firmware-out/bootloader firmware-out/partition_table
+        cp esp32/build/flasher_args.json firmware-out/
+        cp esp32/build/bootloader/bootloader.bin firmware-out/bootloader/
+        cp esp32/build/partition_table/partition-table.bin firmware-out/partition_table/
+        cp esp32/build/mikrojs.bin firmware-out/
+
+    - if: inputs.pack-format == 'tarball'
+      shell: bash
+      working-directory: esp32/build
+      run: |
+        mkdir -p ../../firmware-out
+        tar czf ../../firmware-out/${{ inputs.artifact-name }}.tar.gz \
+          flasher_args.json \
+          bootloader/bootloader.bin \
+          partition_table/partition-table.bin \
+          mikrojs.bin
+
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # ratchet:actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: firmware-out/
+        if-no-files-found: error
+        retention-days: 7

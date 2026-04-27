@@ -57,6 +57,7 @@
   "devDependencies": {
     "@eslint/js": "catalog:",
     "@mikrojs/eslint-plugin": "workspace:*",
+    "@repo/releaser": "workspace:*",
     "@vitest/coverage-v8": "^4.1.5",
     "eslint": "catalog:",
     "eslint-plugin-import": "catalog:",

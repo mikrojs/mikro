@@ -5,6 +5,7 @@ packages:
   - docs
   - esp32
   - packages/@mikrojs/*
+  - packages/@repo/*
   - packages/*
   - scripts
 
