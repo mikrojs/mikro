@@ -51,20 +51,22 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-pnpm
 
-      # Mint mikrodroid App token so any user-visible side effect (label
-      # removal, PR comments, tag push, GitHub Release) is attributed to
-      # mikrodroid[bot] rather than github-actions[bot].
-      - name: Generate mikrodroid token
-        id: app-token
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # ratchet:actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.MIKRODROID_APP_ID }}
-          private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
-
       - id: plan
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm --silent releaser plan --context release >> "$GITHUB_OUTPUT"
+
+      # Mint mikrodroid App token only for pr-preview, where we need to
+      # remove the trigger label as the bot. Other modes don't have
+      # side effects in this job. Required mikrodroid App permissions:
+      # Issues: Write (label removal goes through the issues API).
+      - name: Generate mikrodroid token
+        if: steps.plan.outputs.mode == 'pr-preview'
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # ratchet:actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.MIKRODROID_CLIENT_ID }}
+          private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
 
       # Remove the trigger label immediately so a second click during the long
       # publish (10–15 min) doesn't queue another run, and so the PR isn't
@@ -167,12 +169,14 @@ jobs:
     steps:
       # Mint mikrodroid App token first so checkout uses it for the credential
       # helper. That makes `git push` of the release tag attribute to
-      # mikrodroid[bot] instead of github-actions[bot].
+      # mikrodroid[bot] instead of github-actions[bot]. Required mikrodroid
+      # App permissions: Contents: Write (tag push + GitHub Release),
+      # Issues: Write (PR-preview comments use the issues API).
       - name: Generate mikrodroid token
         id: app-token
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # ratchet:actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.MIKRODROID_APP_ID }}
+          client-id: ${{ secrets.MIKRODROID_CLIENT_ID }}
           private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6

@@ -34,14 +34,9 @@ export interface GhEnv {
 export function readGitHubEvent(): GhEnv {
   const eventName = process.env.GITHUB_EVENT_NAME
   const eventPath = process.env.GITHUB_EVENT_PATH
-  let payload: EventPayload = {}
-  if (eventPath) {
-    try {
-      payload = JSON.parse(readFileSync(eventPath, 'utf-8'))
-    } catch {
-      payload = {}
-    }
-  }
+  const payload: EventPayload = eventPath
+    ? (JSON.parse(readFileSync(eventPath, 'utf-8')) as EventPayload)
+    : {}
   return {eventName, eventPath, payload}
 }
 

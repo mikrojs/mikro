@@ -102,22 +102,17 @@ export function decideReleasePure(eventName: string | undefined, payload: EventP
   return SKIP(`unsupported event: ${eventName ?? '<none>'}`)
 }
 
-// Find a release PR that the given commit is the merge of. Returns the PR
-// number if so. Network errors don't throw — releaser callers decide whether
-// missing data should fail open or closed.
+// Find a release PR that the given commit is the merge of. Errors propagate
+// — a transient API failure is real signal that something's wrong, not
+// something to paper over.
 async function findAssociatedReleasePr(sha: string): Promise<{number: number} | null> {
-  try {
-    const {owner, repo} = repoSlug()
-    const {data} = await octokit().repos.listPullRequestsAssociatedWithCommit({
-      owner,
-      repo,
-      commit_sha: sha,
-    })
-    return data.find((p) => p.head?.ref === RELEASE_BRANCH) ?? null
-  } catch (err) {
-    console.error(`[plan] gh lookup failed: ${err instanceof Error ? err.message : String(err)}`)
-    return null
-  }
+  const {owner, repo} = repoSlug()
+  const {data} = await octokit().repos.listPullRequestsAssociatedWithCommit({
+    owner,
+    repo,
+    commit_sha: sha,
+  })
+  return data.find((p) => p.head?.ref === RELEASE_BRANCH) ?? null
 }
 
 // For release.yml on `push`: only run when the head commit is the merge of a
@@ -138,21 +133,19 @@ async function decidePushReleaseMerge(): Promise<Plan> {
   }
 }
 
-// For create-release-pr.yml: skip when the push is the merge commit of a release PR.
+// For create-release-pr.yml: skip when the push is the merge commit of a
+// release PR.
 async function decideCreateReleasePr(): Promise<Plan> {
   const {eventName} = readGitHubEvent()
   if (eventName !== 'push') {
     return SKIP(`create-release-pr context expects push event, got ${eventName ?? '<none>'}`)
   }
-
   const sha = process.env.GITHUB_SHA
   if (!sha) return SKIP('GITHUB_SHA not set')
-
   const releasePr = await findAssociatedReleasePr(sha)
   if (releasePr) {
     return SKIP(`push is merge of release PR #${releasePr.number}`, releasePr.number)
   }
-
   return {
     mode: 'create-release-pr',
     shouldRun: true,

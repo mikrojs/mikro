@@ -97,8 +97,9 @@ function composeBody(version: string): string {
         `Run 'releaser changelog --version ${version}' to generate it before releasing.`,
     )
   }
-  return [INSTALL_LATEST, '', installPinned(version), '', '## Changelog', '', changelog, ''].join(
-    '\n',
+  return (
+    [INSTALL_LATEST, '', installPinned(version), '', '## Changelog', '', changelog].join('\n') +
+    '\n'
   )
 }
 
@@ -129,13 +130,16 @@ function packFirmwareAssets(firmwareDir: string): Array<{name: string; path: str
 
 // Idempotent create: if a release for the tag already exists (failed mid-run
 // of an earlier invocation), update it in place instead of erroring with 422.
-// Same for asset uploads — skip names that are already attached.
+// Returns existing-asset id-by-name so the caller can delete-then-re-upload
+// rather than skip — uploadReleaseAsset doesn't resume, so a partial upload
+// from a previous run leaves a same-named but truncated asset that we need
+// to replace, not preserve.
 async function createOrUpdateRelease(
   gh: ReturnType<typeof octokit>,
   owner: string,
   repo: string,
   params: {tag: string; body: string; isPrerelease: boolean; makeLatest: boolean},
-): Promise<{id: number; html_url: string; existingAssets: Set<string>}> {
+): Promise<{id: number; html_url: string; existingAssets: Map<string, number>}> {
   const {tag, body, isPrerelease, makeLatest} = params
   try {
     const {data} = await gh.repos.createRelease({
@@ -147,7 +151,7 @@ async function createOrUpdateRelease(
       make_latest: makeLatest ? 'true' : 'false',
       prerelease: isPrerelease,
     })
-    return {id: data.id, html_url: data.html_url, existingAssets: new Set()}
+    return {id: data.id, html_url: data.html_url, existingAssets: new Map()}
   } catch (err) {
     const status = (err as {status?: number}).status
     if (status !== 422) throw err
@@ -164,7 +168,7 @@ async function createOrUpdateRelease(
     return {
       id: updated.id,
       html_url: updated.html_url,
-      existingAssets: new Set(existing.assets.map((a) => a.name)),
+      existingAssets: new Map(existing.assets.map((a) => [a.name, a.id])),
     }
   }
 }
@@ -197,13 +201,18 @@ export async function run(opts: Args): Promise<void> {
 
   if (opts.firmwareDir) {
     const assets = packFirmwareAssets(opts.firmwareDir)
-    let uploaded = 0
     for (const asset of assets) {
-      if (release.existingAssets.has(asset.name)) {
-        console.error(`Skipping ${asset.name} (already uploaded)`)
-        continue
+      // Replace any existing asset with the same name. Possible cases:
+      //  - First run: existingAssets is empty, nothing to delete.
+      //  - Retry after partial upload: GitHub kept the truncated asset;
+      //    delete it before re-uploading so the result is complete.
+      const existingId = release.existingAssets.get(asset.name)
+      if (existingId !== undefined) {
+        console.error(`Replacing existing ${asset.name}…`)
+        await gh.repos.deleteReleaseAsset({owner, repo, asset_id: existingId})
+      } else {
+        console.error(`Uploading ${asset.name}…`)
       }
-      console.error(`Uploading ${asset.name}…`)
       const data = readFileSync(asset.path)
       await gh.repos.uploadReleaseAsset({
         owner,
@@ -214,9 +223,8 @@ export async function run(opts: Args): Promise<void> {
         // documented binary-upload path.
         data: data as unknown as string,
       })
-      uploaded++
     }
-    console.error(`Uploaded ${uploaded}/${assets.length} firmware assets`)
+    console.error(`Uploaded ${assets.length} firmware assets`)
   }
 
   console.error(`Release ready: ${release.html_url}`)

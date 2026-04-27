@@ -12,8 +12,14 @@ const SECTIONS: Array<{title: string; types: string[]}> = [
 // `cli: handle <Ctrl+C>` don't get HTML-interpreted by GitHub's markdown
 // renderer (which would silently swallow `<Ctrl+C>` as an unknown tag).
 // CommonMark/GFM treats `\<` and `\>` as literal characters.
-export function escapeMarkdown(s: string): string {
-  return s.replace(/[<>]/g, (m) => `\\${m}`)
+//
+// Scope is intentionally narrow: angle brackets are by far the most common
+// cause of disappearing text in commit subjects. Other markdown specials
+// (`*`, `_`, `[`) can also corrupt rendering but show up rarely enough in
+// real commit messages that the trade-off (uglier source in CHANGELOG.md)
+// isn't worth it. Broaden if/when those bite.
+export function escapeAngleBrackets(s: string): string {
+  return s.replace(/[<>]/g, '\\$&')
 }
 
 function repoUrl(): string {
@@ -22,8 +28,8 @@ function repoUrl(): string {
 }
 
 function commitLine(c: ParsedCommit): string {
-  const subject = escapeMarkdown(c.subject ?? c.header ?? c.shortHash)
-  const scope = c.scope ? `**${escapeMarkdown(c.scope)}:** ` : ''
+  const subject = escapeAngleBrackets(c.subject ?? c.header ?? c.shortHash)
+  const scope = c.scope ? `**${escapeAngleBrackets(c.scope)}:** ` : ''
   const url = repoUrl()
   const ref = url
     ? c.prNumber

@@ -52,6 +52,13 @@ export function readCanonicalVersion(): string {
       `Workspace is not in lockstep:\n${lines}\nFix all to the same version before releasing.`,
     )
   }
+  // High-signal CI log: makes it obvious which packages contributed to the
+  // canonical version. Past bug: we used to read from a marker version,
+  // which silently produced wrong releases.
+  // eslint-disable-next-line no-console
+  console.error(
+    `[releaser] canonical version ${rootVersion} (root + ${pkgs.length} publishable packages)`,
+  )
   return rootVersion
 }
 
