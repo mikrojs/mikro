@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.2 (2026-04-27)
+
+### Bug fixes
+
+- **release:** attribute release-side effects to mikrodroid[bot] ([1fc499a](https://github.com/mikrojs/mikrojs/commit/1fc499ad2bb5f973db69bdfecb765cf1c0717abd))
+- correct logo alignment by changing connector character ([a2654d2](https://github.com/mikrojs/mikrojs/commit/a2654d284cbe96502986680440fc945f9583de66))
+
+### Other
+
+- update github app token auth and improve release asset handling ([882b32d](https://github.com/mikrojs/mikrojs/commit/882b32d6b558a3b23c52e400cbeb20978cb32083))
+- clarify early development status and improve feature descriptions ([f953b4d](https://github.com/mikrojs/mikrojs/commit/f953b4d9aa58001df3778fd6acfb66220ae1c07a))
+- **release:** publish v0.3.1 ([#19](https://github.com/mikrojs/mikrojs/pull/19))
+
 ## 0.3.1 (2026-04-27)
 
 ### Bug fixes
