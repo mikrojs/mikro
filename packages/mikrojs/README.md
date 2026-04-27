@@ -19,16 +19,16 @@
 </div>
 
 > [!NOTE]
-> Mikro.js is in early development. APIs may change.
+> Mikro.js is in early development. Expect APIs to change.
 
 ## Features
 
-- **Instant feedback**: save a file, see it running on your device in seconds
-- **Full TypeScript**: type-checked hardware APIs with modern JavaScript support
-- **Batteries included**: GPIO, PWM, I2C, SPI, UART, WiFi, fetch, NeoPixel, deep sleep, SNTP, CBOR, schema validation, key-value storage, and more
-- **Host simulator**: run and test your code on your computer with `mikro sim dev`
-- **No exceptions**: typed Result errors instead of try/catch
-- **Built-in testing**: write tests with familiar describe/it syntax, run on-device or in the simulator
+- **Fast feedback loop**: interactive dev console with watch mode and incremental builds that deploy to your device in a few seconds
+- **Full TypeScript**: type-checked hardware APIs with modern JavaScript support. Errors are in the type signature, not hidden behind try/catch
+- **Batteries included**: GPIO, PWM, I2C, SPI, UART, WiFi, HTTP, NeoPixel, deep sleep, SNTP, CBOR, schema validation, key-value storage, and more
+- **Host simulator**: run and test your code on your computer with `mikro sim dev`. No microcontroller needed
+- **No exceptions**: typed Result errors instead of try/catch. Every failure is visible in the type signature
+- **Built-in testing**: write tests with familiar describe/it syntax. Run on-device, in the simulator, or against stubbed hardware modules
 
 ## Quickstart
 
