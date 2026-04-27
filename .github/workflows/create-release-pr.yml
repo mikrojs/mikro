@@ -24,6 +24,13 @@ jobs:
 
       - uses: ./.github/actions/setup-pnpm
 
+      # peter-evans/create-pull-request will `git commit` the version
+      # bumps, which fires our pre-commit hook. The hook runs eslint,
+      # whose flat config imports @mikrojs/eslint-plugin's built output —
+      # so build the plugin first.
+      - name: Build eslint-plugin
+        run: pnpm --filter @mikrojs/eslint-plugin build:ts
+
       - name: Plan (skip if this push is a release-PR merge)
         id: plan
         env:
