@@ -27,6 +27,15 @@ describe('checkFirmwareCompat', () => {
     expect(result.status).to.equal('incompatible')
   })
 
+  it('accepts a prerelease device version that falls within the CLI range', () => {
+    // Build a prerelease at the same major.minor as the CLI so the only thing
+    // that could exclude it is semver's default prerelease handling.
+    const [maj, min] = cliVersion.split('.')
+    const prerelease = `${maj}.${min}.99-pr-14.20260427170853+abc1234`
+    const result = checkFirmwareCompat(prerelease)
+    expect(result.status).to.not.equal('incompatible')
+  })
+
   it('exposes a required range derived from the CLI version', () => {
     const result = checkFirmwareCompat(cliVersion)
     expect(result.requiredRange).to.match(/^\^/)
@@ -81,7 +90,7 @@ describe('formatAdvisory', () => {
 })
 
 describe('formatIncompatibleError', () => {
-  it('formats a message with the pm-specific reflash command', () => {
+  it('formats a message with the pm-specific update command', () => {
     const result = checkFirmwareCompat('99.0.0')
     const msg = formatIncompatibleError(result, 'pnpm')
     expect(msg).to.contain('v99.0.0')

@@ -46,7 +46,7 @@ const requiredRange = `^${breakageFloor(cliVersion)}`
  *   - 'incompatible'       — device is outside the range, or didn't report a version
  */
 export function checkFirmwareCompat(deviceVersion: string | null): FirmwareCompatResult {
-  if (!deviceVersion || !satisfies(deviceVersion, requiredRange)) {
+  if (!deviceVersion || !satisfies(deviceVersion, requiredRange, {includePrerelease: true})) {
     return {status: 'incompatible', direction: null, deviceVersion, cliVersion, requiredRange}
   }
   if (deviceVersion === cliVersion) {
@@ -77,5 +77,5 @@ export function formatAdvisory(result: FirmwareCompatResult, pm: PkgManager): st
 /** Format the hard incompatibility error (status === 'incompatible'). */
 export function formatIncompatibleError(result: FirmwareCompatResult, pm: PkgManager): string {
   const got = result.deviceVersion ?? 'unknown'
-  return `Device is running mikrojs v${got}, which is not compatible with this CLI (v${result.cliVersion}). Run ${mikroCommand(pm, 'flash')} to reflash.`
+  return `Device is running mikrojs v${got}, which is not compatible with this CLI (v${result.cliVersion}). Run ${mikroCommand(pm, 'flash')} to update device.`
 }
