@@ -33,10 +33,7 @@ export async function run(opts: Args): Promise<void> {
   const lines = [
     `Releasing **v${opts.tentative}** (previous: \`v${opts.base}\`).`,
     '',
-    'Once this PR is merged, automation will:',
-    '',
-    `- Publish all coordinated packages at \`v${opts.tentative}\` to npm under the \`latest\` tag`,
-    `- Push the \`v${opts.tentative}\` git tag`,
+    `Merging this PR publishes \`v${opts.tentative}\` to npm and creates a GitHub Release.`,
     '',
     `### Pending changes (${commits.length} commits)`,
     '',
