@@ -248,6 +248,17 @@ jobs:
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
           pnpm --silent releaser tag --version ${{ needs.plan.outputs.version }}
 
+      - name: Create GitHub Release (release mode only)
+        if: needs.plan.outputs.mode == 'release' && inputs.dry_run != true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          pnpm --silent releaser github-release \
+            --version ${{ needs.plan.outputs.version }} \
+            --latest \
+            --firmware-dir packages/@mikrojs/firmware/prebuilds
+
       - name: Comment on PR (pr-preview only)
         if: needs.plan.outputs.mode == 'pr-preview' && inputs.dry_run != true
         env:

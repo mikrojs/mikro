@@ -9,6 +9,7 @@ import pkg from '../package.json' with {type: 'json'}
 import * as bumpCommand from '../src/commands/bump.js'
 import * as changelogCommand from '../src/commands/changelog.js'
 import * as commentPrCommand from '../src/commands/commentPr.js'
+import * as githubReleaseCommand from '../src/commands/githubRelease.js'
 import * as planCommand from '../src/commands/plan.js'
 import * as publishCommand from '../src/commands/publish.js'
 import * as releasePrBodyCommand from '../src/commands/releasePrBody.js'
@@ -24,6 +25,7 @@ const argsParser = or(
   object({command: commentPrCommand.args}),
   object({command: tagCommand.args}),
   object({command: unlabelPreviewCommand.args}),
+  object({command: githubReleaseCommand.args}),
 )
 
 const prog = defineProgram({
@@ -62,6 +64,9 @@ try {
       break
     case 'unlabel-preview':
       await unlabelPreviewCommand.run(parsed.command)
+      break
+    case 'github-release':
+      await githubReleaseCommand.run(parsed.command)
       break
   }
 } catch (err) {
