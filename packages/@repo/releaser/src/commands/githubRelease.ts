@@ -65,10 +65,8 @@ pnpm mikro flash
 
 // Extract the changelog section for `version` from CHANGELOG.md.
 // Matches `## <version>` (with optional `(date)` suffix), captures until the
-// next `## ` heading.
-function extractChangelogSection(version: string): string {
-  const path = join(MONOREPO_ROOT, 'CHANGELOG.md')
-  const content = readFileSync(path, 'utf-8')
+// next `## ` heading. Exported for tests.
+export function extractChangelogSection(content: string, version: string): string {
   const lines = content.split('\n')
   const headingRe = new RegExp(`^## ${version.replace(/\./g, '\\.')}(\\s|$)`)
   let inSection = false
@@ -86,13 +84,22 @@ function extractChangelogSection(version: string): string {
   return captured.join('\n').trim()
 }
 
+function readChangelog(version: string): string {
+  const path = join(MONOREPO_ROOT, 'CHANGELOG.md')
+  return extractChangelogSection(readFileSync(path, 'utf-8'), version)
+}
+
 function composeBody(version: string): string {
-  const changelog = extractChangelogSection(version)
-  const parts = [INSTALL_LATEST, '', installPinned(version)]
-  if (changelog) {
-    parts.push('', '## Changelog', '', changelog)
+  const changelog = readChangelog(version)
+  if (!changelog) {
+    throw new Error(
+      `No changelog section found for ${version} in CHANGELOG.md. ` +
+        `Run 'releaser changelog --version ${version}' to generate it before releasing.`,
+    )
   }
-  return parts.join('\n') + '\n'
+  return [INSTALL_LATEST, '', installPinned(version), '', '## Changelog', '', changelog, ''].join(
+    '\n',
+  )
 }
 
 // Tar each <chip>/ subdir under firmwareDir into a tmp file and return
@@ -120,32 +127,82 @@ function packFirmwareAssets(firmwareDir: string): Array<{name: string; path: str
   return out
 }
 
+// Idempotent create: if a release for the tag already exists (failed mid-run
+// of an earlier invocation), update it in place instead of erroring with 422.
+// Same for asset uploads — skip names that are already attached.
+async function createOrUpdateRelease(
+  gh: ReturnType<typeof octokit>,
+  owner: string,
+  repo: string,
+  params: {tag: string; body: string; isPrerelease: boolean; makeLatest: boolean},
+): Promise<{id: number; html_url: string; existingAssets: Set<string>}> {
+  const {tag, body, isPrerelease, makeLatest} = params
+  try {
+    const {data} = await gh.repos.createRelease({
+      owner,
+      repo,
+      tag_name: tag,
+      name: tag,
+      body,
+      make_latest: makeLatest ? 'true' : 'false',
+      prerelease: isPrerelease,
+    })
+    return {id: data.id, html_url: data.html_url, existingAssets: new Set()}
+  } catch (err) {
+    const status = (err as {status?: number}).status
+    if (status !== 422) throw err
+    console.error(`Release ${tag} already exists; updating in place`)
+    const {data: existing} = await gh.repos.getReleaseByTag({owner, repo, tag})
+    const {data: updated} = await gh.repos.updateRelease({
+      owner,
+      repo,
+      release_id: existing.id,
+      body,
+      make_latest: makeLatest ? 'true' : 'false',
+      prerelease: isPrerelease,
+    })
+    return {
+      id: updated.id,
+      html_url: updated.html_url,
+      existingAssets: new Set(existing.assets.map((a) => a.name)),
+    }
+  }
+}
+
 export async function run(opts: Args): Promise<void> {
   if (!semver.valid(opts.version)) {
     throw new Error(`Invalid semver: ${opts.version}`)
   }
-  const tag = `v${opts.version}`
   const isPrerelease = Boolean(semver.prerelease(opts.version))
-  const makeLatest = opts.latest === true && !isPrerelease
+  if (opts.latest && isPrerelease) {
+    // Defense in depth: the workflow only passes --latest in `release` mode
+    // (where `tag` already rejects prereleases), but the CLI is invokable
+    // manually. Refuse rather than silently downgrading make_latest.
+    throw new Error(`Refusing to mark prerelease ${opts.version} as latest`)
+  }
+  const tag = `v${opts.version}`
+  const makeLatest = opts.latest === true
 
   const {owner, repo} = repoSlug()
   const gh = octokit()
   const body = composeBody(opts.version)
 
   console.error(`Creating GitHub Release ${tag} (latest=${makeLatest}, prerelease=${isPrerelease})`)
-  const {data: release} = await gh.repos.createRelease({
-    owner,
-    repo,
-    tag_name: tag,
-    name: tag,
+  const release = await createOrUpdateRelease(gh, owner, repo, {
+    tag,
     body,
-    make_latest: makeLatest ? 'true' : 'false',
-    prerelease: isPrerelease,
+    isPrerelease,
+    makeLatest,
   })
 
   if (opts.firmwareDir) {
     const assets = packFirmwareAssets(opts.firmwareDir)
+    let uploaded = 0
     for (const asset of assets) {
+      if (release.existingAssets.has(asset.name)) {
+        console.error(`Skipping ${asset.name} (already uploaded)`)
+        continue
+      }
       console.error(`Uploading ${asset.name}…`)
       const data = readFileSync(asset.path)
       await gh.repos.uploadReleaseAsset({
@@ -157,8 +214,9 @@ export async function run(opts: Args): Promise<void> {
         // documented binary-upload path.
         data: data as unknown as string,
       })
+      uploaded++
     }
-    console.error(`Uploaded ${assets.length} firmware assets`)
+    console.error(`Uploaded ${uploaded}/${assets.length} firmware assets`)
   }
 
   console.error(`Release ready: ${release.html_url}`)
