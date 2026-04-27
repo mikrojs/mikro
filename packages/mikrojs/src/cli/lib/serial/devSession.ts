@@ -24,6 +24,7 @@ import type {LogLevel, Minifier, MinifyLevel} from '../../../_exports/index.js'
 import {build} from '../build.js'
 import {collectFiles, loadEnvFiles, validateNvsKeys} from '../deploy.js'
 import {formatDeployEvent} from '../deployProgress.js'
+import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {getMikroDir, resolveProjectRoot} from '../projectRoot.js'
 import {getPredeployCommands, runHooks} from '../runHooks.js'
 import type {DeployEvent, ReplSession} from '../session.js'
@@ -228,7 +229,11 @@ export function createDevSession(options: {
       }),
       catchError((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err)
-        repl?.setError(message)
+        // The REPL handshake driver already surfaces firmware-incompat
+        // errors; suppress here to avoid printing the same message twice.
+        if (!(err instanceof FirmwareIncompatibleError)) {
+          repl?.setError(message)
+        }
         repl?.setDisabled(false)
         return of({status: {type: 'error', message}} satisfies DevSessionState)
       }),
