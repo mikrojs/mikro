@@ -91,4 +91,17 @@ describe('formatChangelog', () => {
     expect(out).not.toContain('Bug fixes')
     expect(out).not.toContain('Performance')
   })
+
+  test('escapes angle brackets in subjects so GFM does not eat them', () => {
+    // Without escaping, `<Ctrl+C>` would be interpreted as an unknown HTML
+    // tag and visually swallowed by the GitHub markdown renderer.
+    const out = formatChangelog([commit({type: 'feat', subject: 'handle <Ctrl+C> gracefully'})])
+    expect(out).toContain('handle \\<Ctrl+C\\> gracefully')
+    expect(out).not.toContain('<Ctrl+C>')
+  })
+
+  test('escapes angle brackets in scopes too', () => {
+    const out = formatChangelog([commit({type: 'feat', scope: '<cli>', subject: 'thing'})])
+    expect(out).toContain('**\\<cli\\>:**')
+  })
 })

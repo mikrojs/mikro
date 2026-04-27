@@ -8,14 +8,22 @@ const SECTIONS: Array<{title: string; types: string[]}> = [
   {title: 'Other', types: ['refactor', 'docs', 'chore', 'build', 'ci', 'test', 'style', 'revert']},
 ]
 
+// Backslash-escape angle brackets so commit subjects like
+// `cli: handle <Ctrl+C>` don't get HTML-interpreted by GitHub's markdown
+// renderer (which would silently swallow `<Ctrl+C>` as an unknown tag).
+// CommonMark/GFM treats `\<` and `\>` as literal characters.
+export function escapeMarkdown(s: string): string {
+  return s.replace(/[<>]/g, (m) => `\\${m}`)
+}
+
 function repoUrl(): string {
   const slug = process.env.GITHUB_REPOSITORY
   return slug ? `https://github.com/${slug}` : ''
 }
 
 function commitLine(c: ParsedCommit): string {
-  const subject = c.subject ?? c.header ?? c.shortHash
-  const scope = c.scope ? `**${c.scope}:** ` : ''
+  const subject = escapeMarkdown(c.subject ?? c.header ?? c.shortHash)
+  const scope = c.scope ? `**${escapeMarkdown(c.scope)}:** ` : ''
   const url = repoUrl()
   const ref = url
     ? c.prNumber
