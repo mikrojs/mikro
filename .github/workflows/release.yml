@@ -18,7 +18,7 @@ permissions:
 jobs:
   release-please:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
     steps:
@@ -59,7 +59,7 @@ jobs:
           - os: ubuntu-24.04
             platform: linux
             arch: x64
-          - os: ubuntu-24.04-arm
+          - os: blacksmith-4vcpu-ubuntu-2404-arm
             platform: linux
             arch: arm64
     runs-on: ${{ matrix.os }}
@@ -106,7 +106,7 @@ jobs:
         needs.release-please.outputs.releases_created == 'true' ||
         github.event_name == 'workflow_dispatch'
       )
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       chips: ${{ steps.read.outputs.chips }}
     steps:
@@ -136,7 +136,7 @@ jobs:
         needs.release-please.outputs.releases_created == 'true' ||
         github.event_name == 'workflow_dispatch'
       )
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       id-token: write
