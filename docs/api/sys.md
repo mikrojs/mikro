@@ -6,7 +6,18 @@ description: 'System utilities: memory, uptime, GC, restart'
 # sys
 
 ```ts twoslash
-import {memoryUsage, uptime, gc, restart, exit, panic, board, firmware, deviceId} from 'mikrojs/sys'
+import {
+  memoryUsage,
+  uptime,
+  gc,
+  restart,
+  exit,
+  panic,
+  board,
+  firmware,
+  deviceId,
+  version,
+} from 'mikrojs/sys'
 ```
 
 System-level functions for memory monitoring, timing, garbage collection, device info, and environment variables.
@@ -128,6 +139,20 @@ console.log('Date: %s', firmware.date)
 | `hash`       | ELF SHA256 hash on ESP32, `"dev"` on host   |
 | `date`       | Build date and time                         |
 | `idfVersion` | ESP-IDF version string, `undefined` on host |
+
+### version
+
+```ts
+const version: string
+```
+
+The mikrojs firmware version, baked in at build time from the workspace `package.json` (e.g. `"0.1.0"`). Always a valid [semver](https://semver.org/) string. Falls back to `"0.0.0-dev"` if the build did not set `MIK_FW_VERSION`.
+
+```ts twoslash
+import {version} from 'mikrojs/sys'
+// ---cut---
+console.log('mikrojs %s', version)
+```
 
 ### deviceId
 
