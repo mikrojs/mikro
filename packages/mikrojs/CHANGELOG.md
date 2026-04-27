@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0 (2026-04-27)
+
+### Features
+
+- **release:** create GitHub Release with install instructions and firmware assets ([5654912](https://github.com/mikrojs/mikrojs/commit/5654912591df499dd0080a4c3956bde9a13cc174))
+
+### Bug fixes
+
+- **release:** track canonical version in workspace root package.json ([4760f46](https://github.com/mikrojs/mikrojs/commit/4760f46ba46177af8c640d8a0ace87b9c87a09a0))
+- **release:** escape angle brackets in commit subjects ([a7b17d5](https://github.com/mikrojs/mikrojs/commit/a7b17d5e1c781eb65ad5514f11440c8420f6c8bf))
+- **release:** make github-release idempotent and loud-fail on missing changelog ([bf39aee](https://github.com/mikrojs/mikrojs/commit/bf39aeecf5da77bf4f4dc41fd75289f9bd6e7a03))
+- **release:** grant pull-requests:read so plan can detect release-PR merges ([989f177](https://github.com/mikrojs/mikrojs/commit/989f17799e4a52975bd576dc960e1e1045a66f0e))
+- **release:** trigger on push so status lands on main's commit ([a9535ae](https://github.com/mikrojs/mikrojs/commit/a9535aeb227c7452ff05cdc3ee5d2c69ac0e38a2))
+
+### Other
+
+- **release:** mention GitHub Release step in rolling release PR body ([6f49a04](https://github.com/mikrojs/mikrojs/commit/6f49a040e5e4700a495015f6b77b8233b32fdd2b))
+- **deps:** bump ratchet-pinned action SHAs ([8be98ce](https://github.com/mikrojs/mikrojs/commit/8be98ce9c48de239aeb5097e883bbc82e651e189))
+- **ci:** migrate workflows to Blacksmith runners ([#17](https://github.com/mikrojs/mikrojs/pull/17))
+
 ## 0.2.0 (2026-04-27)
 
 ### Features
