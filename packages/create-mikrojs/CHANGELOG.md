@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 (2026-04-27)
+
+### Features
+
+- add error state indicator and use cli version in simulator ready message ([23a8ec2](https://github.com/mikrojs/mikrojs/commit/23a8ec2c0778529ef18cdc98bcadaaa427122d29))
+
 ## 0.3.2 (2026-04-27)
 
 ### Bug fixes
