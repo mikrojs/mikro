@@ -28,29 +28,31 @@ export function getPublishablePackages(): PnpmPackage[] {
   )
 }
 
-// The canonical version shared by all publishable packages. Throws if they
-// have diverged — lockstep is a hard invariant of the release flow.
+function readPackageVersion(packagePath: string): string {
+  const pkgJsonPath = join(packagePath, 'package.json')
+  return JSON.parse(readFileSync(pkgJsonPath, 'utf-8')).version
+}
+
+// Workspace root tracks the canonical version. `bump` keeps root in lockstep
+// with all publishable packages, so anyone inspecting `package.json` sees the
+// current shipped version even though root itself isn't published.
 export function readCanonicalVersion(): string {
+  const rootVersion = readPackageVersion(MONOREPO_ROOT)
   const pkgs = getPublishablePackages()
   if (pkgs.length === 0) {
     throw new Error('No publishable packages found in workspace')
   }
-  const version = pkgs[0]!.version
-  const diverged = pkgs.filter((p) => p.version !== version)
+  const diverged = pkgs.filter((p) => p.version !== rootVersion)
   if (diverged.length > 0) {
-    const lines = pkgs.map((p) => `  ${p.name}: ${p.version}`).join('\n')
+    const lines = [
+      `  <root>: ${rootVersion}`,
+      ...pkgs.map((p) => `  ${p.name}: ${p.version}`),
+    ].join('\n')
     throw new Error(
-      `Publishable packages are not in lockstep:\n${lines}\nFix all to the same version before releasing.`,
+      `Workspace is not in lockstep:\n${lines}\nFix all to the same version before releasing.`,
     )
   }
-  // High-signal log: makes it obvious in CI which packages contributed to
-  // the canonical version. Past bug: we used to read from workspace root
-  // (always 0.0.0), which silently produced wrong releases.
-  // eslint-disable-next-line no-console
-  console.error(
-    `[releaser] canonical version ${version} from ${pkgs.length} packages: ${pkgs.map((p) => p.name).join(', ')}`,
-  )
-  return version
+  return rootVersion
 }
 
 export function writeVersion(packagePath: string, newVersion: string): void {

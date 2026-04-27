@@ -7,6 +7,7 @@ import {choice, integer, string} from '@optique/core/valueparser'
 import semver from 'semver'
 
 import {readGitInfo} from '../util/git.js'
+import {MONOREPO_ROOT} from '../util/repo.js'
 import {
   computeVersion,
   formatTimestamp,
@@ -161,7 +162,10 @@ export async function run(opts: BumpArgs): Promise<void> {
       return
     }
     const packages = getPublishablePackages()
-    console.error(`Setting ${packages.length} publishable packages to ${result.version}`)
+    console.error(
+      `Setting workspace root + ${packages.length} publishable packages to ${result.version}`,
+    )
+    writeVersion(MONOREPO_ROOT, result.version)
     for (const pkg of packages) {
       writeVersion(pkg.path, result.version)
     }
@@ -187,9 +191,10 @@ export async function run(opts: BumpArgs): Promise<void> {
 
   const packages = getPublishablePackages()
   console.error(
-    `Bumping ${packages.length} publishable packages: ${inputs.currentVersion} → ${result.version}`,
+    `Bumping workspace root + ${packages.length} publishable packages: ${inputs.currentVersion} → ${result.version}`,
   )
 
+  writeVersion(MONOREPO_ROOT, result.version)
   for (const pkg of packages) {
     writeVersion(pkg.path, result.version)
   }
