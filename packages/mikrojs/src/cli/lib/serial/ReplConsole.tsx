@@ -344,6 +344,8 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
                   >
                     {` ${conn.deviceId ?? conn.chip ?? 'device'} `}
                   </Text>
+                ) : conn.type === 'error' ? (
+                  <Text color="red"> ✗ </Text>
                 ) : (
                   <Text color="grey">
                     <Spinner spinner={deviceIdSpinner} />

@@ -36,6 +36,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
+import {createRequire} from 'node:module'
 import * as pathlib from 'node:path'
 import {parseArgs} from 'node:util'
 
@@ -1069,8 +1070,11 @@ async function bootOrRunManifest(): Promise<void> {
 
 // ── Ready message ───────────────────────────────────────────────────
 
+const cliVersion = (createRequire(import.meta.url)('../../package.json') as {version: string})
+  .version
+
 function sendReady(): void {
-  const cbor = Buffer.from(encodeCbor({chip: 'simulator', id: null, v: '0.0.0'}))
+  const cbor = Buffer.from(encodeCbor({chip: 'simulator', id: null, v: cliVersion}))
   send(MSG_READY, cbor)
 }
 
