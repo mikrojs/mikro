@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       pull-requests: write # for `releaser unlabel-preview` (removing the trigger label)
@@ -74,7 +74,7 @@ jobs:
           - os: ubuntu-24.04
             platform: linux
             arch: x64
-          - os: ubuntu-24.04-arm
+          - os: blacksmith-4vcpu-ubuntu-2404-arm
             platform: linux
             arch: arm64
     runs-on: ${{ matrix.os }}
@@ -109,7 +109,7 @@ jobs:
   firmware-setup:
     needs: plan
     if: needs.plan.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       chips: ${{ steps.read.outputs.chips }}
     steps:
@@ -124,7 +124,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.firmware-setup.outputs.chips) }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     container: espressif/idf:v6.0
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
@@ -143,7 +143,7 @@ jobs:
   publish:
     needs: [plan, build-prebuilds, build-firmware]
     if: needs.plan.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write # for `releaser tag` (push tag in release mode)
       pull-requests: write # for `releaser comment-pr`
