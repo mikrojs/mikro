@@ -1,11 +1,16 @@
 name: Release
 
 on:
+  # `push` (instead of `pull_request: closed`) is what makes the release-mode
+  # status check appear on main's commit; pull_request runs are anchored to
+  # the closed PR's head ref. The plan job filters out non-release-PR pushes.
+  push:
+    branches: [main]
   # `synchronize` is intentionally NOT included: pr-preview is one-shot. Each
   # preview is opted in by adding the `release:preview` label, then the label
   # is removed after publish so subsequent pushes don't re-publish.
   pull_request:
-    types: [closed, labeled]
+    types: [labeled]
   workflow_dispatch:
     inputs:
       mode:
@@ -18,9 +23,9 @@ on:
 
 # Concurrency:
 #   - PR previews: serialize per PR (avoid out-of-order publishes from rapid pushes).
-#   - Latest releases / dispatches: serialize per mode.
+#   - Latest releases (push to main) / dispatches: serialize per mode/branch.
 concurrency:
-  group: release-${{ github.event.pull_request.number || github.event.inputs.mode || 'manual' }}
+  group: release-${{ github.event.pull_request.number || github.event.inputs.mode || 'main' }}
   cancel-in-progress: false
 
 permissions:

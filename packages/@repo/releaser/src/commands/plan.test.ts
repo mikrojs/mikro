@@ -59,37 +59,6 @@ describe('decideReleasePure: workflow_dispatch', () => {
   })
 })
 
-describe('decideReleasePure: pull_request release-PR merge', () => {
-  test('PR closed + merged + head=ci/release-main → release', () => {
-    const p = payload({
-      action: 'closed',
-      pull_request: pr({merged: true, head: {ref: 'ci/release-main', repo: {full_name: REPO}}}),
-    })
-    expect(decideReleasePure('pull_request', p)).toMatchObject({
-      mode: 'release',
-      shouldRun: true,
-      npmTag: 'latest',
-      pr: 42,
-    })
-  })
-
-  test('PR closed but NOT merged is skipped (closed without merge)', () => {
-    const p = payload({
-      action: 'closed',
-      pull_request: pr({merged: false, head: {ref: 'ci/release-main', repo: {full_name: REPO}}}),
-    })
-    expect(decideReleasePure('pull_request', p).mode).toBe('skip')
-  })
-
-  test('PR closed + merged but head ≠ ci/release-main is skipped', () => {
-    const p = payload({
-      action: 'closed',
-      pull_request: pr({merged: true, head: {ref: 'feature/x', repo: {full_name: REPO}}}),
-    })
-    expect(decideReleasePure('pull_request', p).mode).toBe('skip')
-  })
-})
-
 describe('decideReleasePure: pr-preview', () => {
   test('labeled with release:preview → pr-preview', () => {
     const p = payload({
@@ -145,26 +114,6 @@ describe('decideReleasePure: fork PR safety', () => {
         labels: [{name: 'release:preview'}],
       }),
     })
-    expect(decideReleasePure('pull_request', p)).toMatchObject({
-      mode: 'skip',
-      reason: expect.stringContaining('fork PR'),
-    })
-  })
-
-  test('fork PR closed + merged + head=ci/release-main is still skipped', () => {
-    // Defensive: even if a fork could somehow have a head ref of ci/release-main,
-    // we never trust merge-from-fork.
-    const p = payload({
-      action: 'closed',
-      pull_request: pr({
-        merged: true,
-        head: {ref: 'ci/release-main', repo: {full_name: 'attacker/mikrojs'}},
-        base: {repo: {full_name: REPO}},
-      }),
-    })
-    // Pin the reason: "skip" is the right outcome, but it must be for the
-    // fork-PR check (which runs first), not because the head/merge match
-    // failed. Catches a hypothetical reorder of the checks.
     expect(decideReleasePure('pull_request', p)).toMatchObject({
       mode: 'skip',
       reason: expect.stringContaining('fork PR'),

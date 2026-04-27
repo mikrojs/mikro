@@ -77,17 +77,6 @@ export function decideReleasePure(eventName: string | undefined, payload: EventP
       return SKIP('fork PR — releases disabled', pr.number)
     }
 
-    if (payload.action === 'closed' && pr.merged && pr.head?.ref === RELEASE_BRANCH) {
-      return {
-        mode: 'release',
-        shouldRun: true,
-        npmTag: 'latest',
-        pr: pr.number,
-        reason: `release PR ${pr.number} merged`,
-        version: null,
-      }
-    }
-
     // One-shot: only `labeled` (with the matching label) triggers a preview
     // publish. The label is removed after publish, so the next preview
     // requires re-labeling.
@@ -113,6 +102,42 @@ export function decideReleasePure(eventName: string | undefined, payload: EventP
   return SKIP(`unsupported event: ${eventName ?? '<none>'}`)
 }
 
+// Find a release PR that the given commit is the merge of. Returns the PR
+// number if so. Network errors don't throw — releaser callers decide whether
+// missing data should fail open or closed.
+async function findAssociatedReleasePr(sha: string): Promise<{number: number} | null> {
+  try {
+    const {owner, repo} = repoSlug()
+    const {data} = await octokit().repos.listPullRequestsAssociatedWithCommit({
+      owner,
+      repo,
+      commit_sha: sha,
+    })
+    return data.find((p) => p.head?.ref === RELEASE_BRANCH) ?? null
+  } catch (err) {
+    console.error(`[plan] gh lookup failed: ${err instanceof Error ? err.message : String(err)}`)
+    return null
+  }
+}
+
+// For release.yml on `push`: only run when the head commit is the merge of a
+// release PR. The push trigger (vs. pull_request: closed) is what makes the
+// resulting status check appear on main's commit instead of the closed PR.
+async function decidePushReleaseMerge(): Promise<Plan> {
+  const sha = process.env.GITHUB_SHA
+  if (!sha) return SKIP('GITHUB_SHA not set')
+  const releasePr = await findAssociatedReleasePr(sha)
+  if (!releasePr) return SKIP(`push ${sha.slice(0, 7)} is not a release-PR merge`)
+  return {
+    mode: 'release',
+    shouldRun: true,
+    npmTag: 'latest',
+    pr: releasePr.number,
+    reason: `push ${sha.slice(0, 7)} is merge of release PR #${releasePr.number}`,
+    version: null,
+  }
+}
+
 // For create-release-pr.yml: skip when the push is the merge commit of a release PR.
 async function decideCreateReleasePr(): Promise<Plan> {
   const {eventName} = readGitHubEvent()
@@ -123,22 +148,9 @@ async function decideCreateReleasePr(): Promise<Plan> {
   const sha = process.env.GITHUB_SHA
   if (!sha) return SKIP('GITHUB_SHA not set')
 
-  try {
-    const {owner, repo} = repoSlug()
-    const {data} = await octokit().repos.listPullRequestsAssociatedWithCommit({
-      owner,
-      repo,
-      commit_sha: sha,
-    })
-    const releasePr = data.find((p) => p.head?.ref === RELEASE_BRANCH)
-    if (releasePr) {
-      return SKIP(`push is merge of release PR #${releasePr.number}`, releasePr.number)
-    }
-  } catch (err) {
-    // Network/auth failures: don't block create-release-pr from running.
-    // We log to stderr so the failure surfaces in the Actions UI even though
-    // the workflow proceeds.
-    console.error(`[plan] gh lookup failed: ${err instanceof Error ? err.message : String(err)}`)
+  const releasePr = await findAssociatedReleasePr(sha)
+  if (releasePr) {
+    return SKIP(`push is merge of release PR #${releasePr.number}`, releasePr.number)
   }
 
   return {
@@ -185,7 +197,11 @@ export async function run(opts: PlanArgs): Promise<void> {
     plan = await decideCreateReleasePr()
   } else {
     const {eventName, payload} = readGitHubEvent()
-    plan = decideReleasePure(eventName, payload)
+    if (eventName === 'push') {
+      plan = await decidePushReleaseMerge()
+    } else {
+      plan = decideReleasePure(eventName, payload)
+    }
   }
 
   plan.version = await computePlannedVersion(plan)
