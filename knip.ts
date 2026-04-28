@@ -36,6 +36,13 @@ const config = {
       project: ['src/**/*.ts', 'bin/**/*.ts'],
       ignoreDependencies: ['conventional-changelog-conventionalcommits'],
     },
+    scripts: {
+      // trust-setup.ts is invoked from the root `trust:setup` script via
+      // shebang; knip can't see the entry through the package.json reference.
+      // `npm` is the binary invoked by trust-setup.ts via spawnSync.
+      entry: ['trust-setup.ts'],
+      ignoreDependencies: ['npm'],
+    },
     'packages/@mikrojs/native': {
       // bundle-runtime.js + generate-symbol-map.js are invoked by CMake during
       // the firmware build (see @mikrojs/firmware/components/mikrojs/CMakeLists.txt

@@ -4,7 +4,14 @@
   "private": true,
   "description": "Workspace tooling scripts",
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@vercel/detect-agent": "^1.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:node24",
+    "npm": "^11.13.0"
   }
 }

@@ -258,11 +258,11 @@ jobs:
             --tag ${{ needs.plan.outputs.npm_tag }} \
             ${{ inputs.dry_run && '--dry-run' || '' }}
         env:
-          # OIDC trusted publishing requires no token. Token fallback (commented out;
-          # uncomment if trusted publisher isn't configured for some package):
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          # Provenance requires a public source repo; re-enable once mikrojs/mikrojs is public.
-          # NPM_CONFIG_PROVENANCE: 'true'
+          # OIDC trusted publishing: no token needed. Trust relationships are
+          # configured per package via `pnpm trust:setup`. Token fallback
+          # (uncomment if a package's trusted publisher isn't yet configured):
+          # NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
           GITHUB_REPOSITORY: ${{ github.repository }}
 
       - name: Tag (release mode only)
