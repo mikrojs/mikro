@@ -9,6 +9,16 @@ packages:
   - packages/*
   - scripts
 
+# postinstall is usually not needed because these packages ship
+# native binaries via optionalDependencies
+allowBuilds:
+  '@serialport/bindings-cpp': false
+  '@swc/core': false
+  esbuild: false
+  lefthook: false
+  sharp: false
+  workerd: false
+
 blockExoticSubdeps: true
 
 catalog:
