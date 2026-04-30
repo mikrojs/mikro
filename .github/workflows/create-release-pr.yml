@@ -106,5 +106,5 @@ jobs:
           commit-message: 'chore(release): publish v${{ steps.next.outputs.version }}'
           branch: ci/release-main
           base: main
-          draft: true
+          draft: false
           sign-commits: true
