@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.2 (2026-04-30)
+
+### Bug fixes
+
+- use github-hosted runner for npm provenance signing ([58380a4](https://github.com/mikrojs/mikrojs/commit/58380a4d268ee87a0f2302456018a74ab01013e3))
+
+### Other
+
+- **ci:** publish release pr as non-draft by default ([da6f6a2](https://github.com/mikrojs/mikrojs/commit/da6f6a24438fb71ac079f38211d42be858210529))
+- **release:** publish v0.4.1 ([#22](https://github.com/mikrojs/mikrojs/pull/22))
+- upgrade to pnpm@11 + disable builds for native binary packages ([#23](https://github.com/mikrojs/mikrojs/pull/23))
+- **release:** switch to npm OIDC trusted publishing ([d631ded](https://github.com/mikrojs/mikrojs/commit/d631ded3e0c895a82e1e5040a508509a160e59cb))
+
 ## 0.4.1 (2026-04-29)
 
 ### Other
