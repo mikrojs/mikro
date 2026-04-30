@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 (2026-04-29)
+
+### Other
+
+- upgrade to pnpm@11 + disable builds for native binary packages ([#23](https://github.com/mikrojs/mikrojs/pull/23))
+- **release:** switch to npm OIDC trusted publishing ([d631ded](https://github.com/mikrojs/mikrojs/commit/d631ded3e0c895a82e1e5040a508509a160e59cb))
+
 ## 0.4.0 (2026-04-27)
 
 ### Features
