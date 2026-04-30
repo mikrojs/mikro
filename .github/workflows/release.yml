@@ -161,7 +161,10 @@ jobs:
   publish:
     needs: [plan, build-prebuilds, build-firmware]
     if: needs.plan.outputs.should_run == 'true'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # npm provenance requires a GitHub-hosted runner; self-hosted (blacksmith)
+    # runners are rejected by sigstore verification with "Unsupported GitHub
+    # Actions runner environment".
+    runs-on: ubuntu-latest
     permissions:
       contents: write # for `releaser tag` (push tag in release mode)
       pull-requests: write # for `releaser comment-pr`
