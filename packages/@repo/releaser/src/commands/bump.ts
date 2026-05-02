@@ -101,7 +101,13 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
   }
 
   if (mode === 'next') {
-    const suffix = `${git.commitCount}+${git.commitHash}`
+    // Use `.gSHA` (git-describe convention) instead of `+SHA` build
+    // metadata. npm's sigstore provenance validation rejects subjects
+    // that include semver build metadata; keeping the SHA inside the
+    // prerelease identifier sidesteps that. The `g` prefix guarantees
+    // the segment isn't all-digits-with-leading-zero, which would be
+    // an invalid numeric prerelease identifier.
+    const suffix = `${git.commitCount}.g${git.commitHash}`
     return {
       version: computeVersion({
         currentVersion,
@@ -116,7 +122,7 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
   }
 
   if (mode === 'canary') {
-    const suffix = `${git.commitCount}+${git.commitHash}`
+    const suffix = `${git.commitCount}.g${git.commitHash}`
     return {
       version: computeVersion({
         currentVersion,
@@ -134,7 +140,7 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
   if (typeof pr !== 'number') {
     throw new Error('--mode=pr-preview requires --pr <N>')
   }
-  const suffix = `${formatTimestamp(now)}+${git.commitHash}`
+  const suffix = `${formatTimestamp(now)}.g${git.commitHash}`
   const preid = `pr-${pr}`
   return {
     version: computeVersion({currentVersion, semverIncrement, preid, suffix, breakingIsMinorOn0x}),

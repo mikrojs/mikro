@@ -90,17 +90,17 @@ describe('computeBumpPure', () => {
     )
   })
 
-  test('next mode appends commits-ahead suffix and +sha', () => {
+  test('next mode appends commits-ahead suffix and .gsha', () => {
     expect(computeBumpPure({...baseInputs, mode: 'next'})).toEqual({
-      version: '0.3.0-next.7+abc1234',
+      version: '0.3.0-next.7.gabc1234',
       npmTag: 'next',
       mode: 'next',
     })
   })
 
-  test('canary mode appends commits-ahead suffix and +sha', () => {
+  test('canary mode appends commits-ahead suffix and .gsha', () => {
     expect(computeBumpPure({...baseInputs, mode: 'canary'})).toEqual({
-      version: '0.3.0-canary.7+abc1234',
+      version: '0.3.0-canary.7.gabc1234',
       npmTag: 'canary',
       mode: 'canary',
     })
@@ -108,7 +108,7 @@ describe('computeBumpPure', () => {
 
   test('pr-preview mode embeds PR number, timestamp, and sha', () => {
     expect(computeBumpPure({...baseInputs, mode: 'pr-preview', pr: 121})).toEqual({
-      version: '0.3.0-pr-121.20260427123456+abc1234',
+      version: '0.3.0-pr-121.20260427123456.gabc1234',
       npmTag: 'pr-121',
       mode: 'pr-preview',
     })
@@ -127,6 +127,6 @@ describe('computeBumpPure', () => {
       pr: 1,
       now: new Date(Date.UTC(2026, 0, 5, 7, 8, 9)), // Jan 5, 07:08:09 UTC
     }
-    expect(computeBumpPure(inputs).version).toBe('0.3.0-pr-1.20260105070809+abc1234')
+    expect(computeBumpPure(inputs).version).toBe('0.3.0-pr-1.20260105070809.gabc1234')
   })
 })
