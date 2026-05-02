@@ -195,7 +195,6 @@ async function computePlannedVersion(plan: Plan): Promise<string | null> {
     currentVersion: readCanonicalVersion(),
     semverIncrement: await getRecommendedBump(),
     git: readGitInfo(),
-    now: new Date(),
   })
   return result.version
 }

@@ -16,21 +16,6 @@ export async function getRecommendedBump(): Promise<ReleaseType> {
   return 'patch'
 }
 
-export function zeroPad(value: number | string, length: number): string {
-  return String(value).padStart(length, '0')
-}
-
-export function formatTimestamp(now: Date): string {
-  return [
-    zeroPad(now.getUTCFullYear(), 4),
-    zeroPad(now.getUTCMonth() + 1, 2),
-    zeroPad(now.getUTCDate(), 2),
-    zeroPad(now.getUTCHours(), 2),
-    zeroPad(now.getUTCMinutes(), 2),
-    zeroPad(now.getUTCSeconds(), 2),
-  ].join('')
-}
-
 export function computeVersion({
   currentVersion,
   semverIncrement,

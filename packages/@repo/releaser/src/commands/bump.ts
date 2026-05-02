@@ -8,12 +8,7 @@ import semver from 'semver'
 
 import {readGitInfo} from '../util/git.js'
 import {MONOREPO_ROOT} from '../util/repo.js'
-import {
-  computeVersion,
-  formatTimestamp,
-  getRecommendedBump,
-  type ReleaseType,
-} from '../util/version.js'
+import {computeVersion, getRecommendedBump, type ReleaseType} from '../util/version.js'
 import {getPublishablePackages, readCanonicalVersion, writeVersion} from '../util/workspace.js'
 
 export type Mode = 'release' | 'next' | 'canary' | 'pr-preview'
@@ -73,14 +68,12 @@ export interface BumpInputs {
   currentVersion: string
   semverIncrement: ReleaseType
   git: {commitHash: string; commitCount: string}
-  now: Date
 }
 
 // Pure: derives the version + npm tag from explicit inputs. No I/O.
 // Exported for tests.
 export function computeBumpPure(inputs: BumpInputs): BumpResult {
-  const {mode, pr, useCurrent, breakingIsMinorOn0x, currentVersion, semverIncrement, git, now} =
-    inputs
+  const {mode, pr, useCurrent, breakingIsMinorOn0x, currentVersion, semverIncrement, git} = inputs
 
   if (useCurrent) {
     if (mode !== 'release') {
@@ -140,7 +133,7 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
   if (typeof pr !== 'number') {
     throw new Error('--mode=pr-preview requires --pr <N>')
   }
-  const suffix = `${formatTimestamp(now)}.g${git.commitHash}`
+  const suffix = `g${git.commitHash}`
   const preid = `pr-${pr}`
   return {
     version: computeVersion({currentVersion, semverIncrement, preid, suffix, breakingIsMinorOn0x}),
@@ -162,7 +155,6 @@ async function gather(opts: BumpArgs): Promise<BumpInputs> {
     currentVersion: readCanonicalVersion(),
     semverIncrement: useCurrent ? 'patch' : await getRecommendedBump(),
     git: useCurrent ? {commitHash: '', commitCount: '0'} : readGitInfo(),
-    now: new Date(),
   }
 }
 

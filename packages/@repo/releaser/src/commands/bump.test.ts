@@ -7,7 +7,6 @@ const baseInputs: BumpInputs = {
   currentVersion: '0.2.0',
   semverIncrement: 'minor',
   git: {commitHash: 'abc1234', commitCount: '7'},
-  now: new Date(Date.UTC(2026, 3, 27, 12, 34, 56)),
 }
 
 describe('computeBumpPure', () => {
@@ -106,9 +105,9 @@ describe('computeBumpPure', () => {
     })
   })
 
-  test('pr-preview mode embeds PR number, timestamp, and sha', () => {
+  test('pr-preview mode embeds PR number and sha', () => {
     expect(computeBumpPure({...baseInputs, mode: 'pr-preview', pr: 121})).toEqual({
-      version: '0.3.0-pr-121.20260427123456.gabc1234',
+      version: '0.3.0-pr-121.gabc1234',
       npmTag: 'pr-121',
       mode: 'pr-preview',
     })
@@ -118,15 +117,5 @@ describe('computeBumpPure', () => {
     expect(() => computeBumpPure({...baseInputs, mode: 'pr-preview'})).toThrow(
       /--mode=pr-preview requires --pr/,
     )
-  })
-
-  test('pr-preview timestamps zero-pad correctly', () => {
-    const inputs: BumpInputs = {
-      ...baseInputs,
-      mode: 'pr-preview',
-      pr: 1,
-      now: new Date(Date.UTC(2026, 0, 5, 7, 8, 9)), // Jan 5, 07:08:09 UTC
-    }
-    expect(computeBumpPure(inputs).version).toBe('0.3.0-pr-1.20260105070809.gabc1234')
   })
 })
