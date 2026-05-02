@@ -4,12 +4,13 @@ on:
   push:
     branches: [main]
   # Manual trigger for cutting a release out of band of the regular push flow.
-  # `breaking_is_minor_on_0x` opts into the safety net that treats breaking
-  # changes as minor (downgrading recommended major bumps) while on 0.x.
+  # By default the bump applies the project's 0.x safety cap (breaking
+  # changes downgraded to minor). Set `cut_major` to true when you actually
+  # want a recommended major bump to land (e.g. cutting 1.0.0).
   workflow_dispatch:
     inputs:
-      breaking_is_minor_on_0x:
-        description: While on 0.x, treat breaking changes as minor (downgrade major bumps)
+      cut_major:
+        description: Allow a recommended major bump to land (override 0.x safety cap)
         type: boolean
         default: false
 
@@ -76,9 +77,14 @@ jobs:
       - name: Bump version
         if: steps.plan.outputs.should_run == 'true'
         id: next
+        # Project policy: apply the 0.x safety cap on every push. The
+        # workflow_dispatch `cut_major` input is the only way to drop the
+        # flag — that's how we'll cut 1.0.0 (and any future major).
+        # GHA expression: `inputs.cut_major` is null on push, so the
+        # negation is true → flag passed.
         run: |
           pnpm --silent releaser bump --mode release \
-            ${{ inputs.breaking_is_minor_on_0x && '--breaking-is-minor-on-0x' || '' }} \
+            ${{ !inputs.cut_major && '--breaking-is-minor-on-0x' || '' }} \
             --json > /tmp/bump.json
           echo "version=$(jq -r .version /tmp/bump.json)" >> "$GITHUB_OUTPUT"
 

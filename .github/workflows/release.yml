@@ -20,13 +20,6 @@ on:
       dry_run:
         type: boolean
         default: true
-      # While on 0.x, treat breaking changes as minor (downgrade recommended
-      # major bumps). Only meaningful for next/canary/pr-preview channels
-      # here; release mode reads --use-current from what the release PR
-      # already wrote, so this is a no-op there.
-      breaking_is_minor_on_0x:
-        type: boolean
-        default: false
 
 # Concurrency:
 #   - PR previews: serialize per PR (avoid out-of-order publishes from rapid pushes).
@@ -61,10 +54,7 @@ jobs:
       - id: plan
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          pnpm --silent releaser plan --context release \
-            ${{ inputs.breaking_is_minor_on_0x && '--breaking-is-minor-on-0x' || '' }} \
-            >> "$GITHUB_OUTPUT"
+        run: pnpm --silent releaser plan --context release >> "$GITHUB_OUTPUT"
 
       # Mint mikrodroid App token only for pr-preview, where we need to
       # remove the trigger label as the bot. Other modes don't have
