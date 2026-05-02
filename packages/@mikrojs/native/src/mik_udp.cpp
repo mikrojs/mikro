@@ -14,7 +14,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <unordered_set>
 #include <vector>
 
 /* ── Per-socket state ────────────────────────────────────────────────
@@ -47,10 +46,13 @@ static JSClassID udp_socket_class_id;
  * a time per runtime; sockets aren't shared across runtimes). */
 static std::vector<UdpSocketState*> g_open_sockets;
 
-/* Set of runtimes that have had the loop consumer registered. Tracking
- * per-runtime rather than process-global lets multiple runtimes coexist
- * and lets new runtimes get a fresh consumer after old ones are freed. */
-static std::unordered_set<MIKRuntime*> g_consumer_registered_runtimes;
+/* Runtimes that have had the loop consumer registered. Tracking per-
+ * runtime rather than process-global lets multiple runtimes coexist
+ * and lets new runtimes get a fresh consumer after old ones are freed.
+ * A vector with linear scan is sufficient: typical N=1, never more
+ * than a handful, and avoids pulling in std::unordered_set's hash-
+ * table machinery just for membership checks. */
+static std::vector<MIKRuntime*> g_consumer_registered_runtimes;
 
 /* Re-entrance guard for mik__udp_consume. A user onMessage callback can
  * synchronously trigger a UdpSocket finalizer (e.g. by dropping the last
@@ -621,10 +623,20 @@ static JSValue mik__udp_bind(JSContext* ctx, JSValue this_val, int argc, JSValue
     /* Install methods and properties directly on the object */
     mik__udp_install_methods(ctx, obj, s);
 
-    /* Register loop consumer once per runtime — first bind triggers it */
+    /* Register loop consumer once per runtime; first bind triggers it. */
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    if (mik_rt && g_consumer_registered_runtimes.insert(mik_rt).second) {
-        MIK_RegisterLoopConsumer(mik_rt, mik__udp_consume, mik__udp_destroy);
+    if (mik_rt) {
+        bool already = false;
+        for (auto* rt : g_consumer_registered_runtimes) {
+            if (rt == mik_rt) {
+                already = true;
+                break;
+            }
+        }
+        if (!already) {
+            g_consumer_registered_runtimes.push_back(mik_rt);
+            MIK_RegisterLoopConsumer(mik_rt, mik__udp_consume, mik__udp_destroy);
+        }
     }
 
     g_open_sockets.push_back(s);
@@ -725,7 +737,15 @@ static void mik__udp_consume(JSContext* ctx) {
 
 static void mik__udp_destroy(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    if (mik_rt) g_consumer_registered_runtimes.erase(mik_rt);
+    if (mik_rt) {
+        for (auto it = g_consumer_registered_runtimes.begin();
+             it != g_consumer_registered_runtimes.end(); ++it) {
+            if (*it == mik_rt) {
+                g_consumer_registered_runtimes.erase(it);
+                break;
+            }
+        }
+    }
 
     /* Close OS fds for sockets belonging to this runtime. The JS objects
      * are about to be freed by GC, which calls mik__udp_finalizer for each;
