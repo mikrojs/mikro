@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0 (2026-05-02)
+
+### Breaking changes
+
+- **cli:** make env vars secret by default ([9b7bf7c](https://github.com/mikrojs/mikrojs/commit/9b7bf7c50b612d1336446d75c5e2eb4406a48169))
+
+### Features
+
+- add UDP datagram socket support with IPv4/IPv6 and multicast ([#26](https://github.com/mikrojs/mikrojs/pull/26))
+- **releaser:** add --breaking-is-minor-on-0x for pre-major safety ([f5a1882](https://github.com/mikrojs/mikrojs/commit/f5a1882f155803db4666fbf58ee8748908d57965))
+- **examples:** standardize .env.example across examples + scaffold ([f05f154](https://github.com/mikrojs/mikrojs/commit/f05f154e5b1f2ac93d3e5e15ccafd08222a46f07))
+
+### Bug fixes
+
+- **releaser:** drop +SHA build metadata that breaks provenance ([d226812](https://github.com/mikrojs/mikrojs/commit/d22681240bf032e7bf0ecb338198032fad460269))
+- **release:** bump minor on breaking for pr releases too ([205e9c6](https://github.com/mikrojs/mikrojs/commit/205e9c6dde34856bca8759145033b7b9e14a3872))
+- **releaser:** include !-bang breaking commits in changelog ([8a7f205](https://github.com/mikrojs/mikrojs/commit/8a7f205ea60ef57b5493e30350d10b796028a143))
+- **test:** format Result errors with no message field ([d0cb080](https://github.com/mikrojs/mikrojs/commit/d0cb08010181de8d2aab3881248321ecc6a523a9))
+
+### Other
+
+- **releaser:** shorten pr-preview version to bare g\<sha\> ([12c8f45](https://github.com/mikrojs/mikrojs/commit/12c8f452cacd40c64d5a051012d8af2383f378ad))
+- **release:** cap pre-major bumps in mikrojs's own release flow ([6e63e29](https://github.com/mikrojs/mikrojs/commit/6e63e295eb76e7c7fcf277f9a1e7436a4566982b))
+
 ## 0.4.2 (2026-04-30)
 
 ### Bug fixes
