@@ -21,10 +21,18 @@ describe('loadEnvFiles', () => {
     expect(await loadEnvFiles({cwd, mode: 'development'})).to.deep.equal([])
   })
 
-  it('auto-loads .env from cwd', async () => {
+  it('marks .env entries as secret by default', async () => {
     writeFileSync(pathlib.join(cwd, '.env'), 'FOO=bar\n')
     expect(await loadEnvFiles({cwd, mode: 'development'})).to.deep.equal([
+      {key: 'FOO', value: 'bar', secret: true},
+    ])
+  })
+
+  it('honors @no-secret annotation in .env', async () => {
+    writeFileSync(pathlib.join(cwd, '.env'), '# @no-secret\nFOO=bar\nBAZ=qux\n')
+    expect(await loadEnvFiles({cwd, mode: 'development'})).to.deep.equal([
       {key: 'FOO', value: 'bar', secret: false},
+      {key: 'BAZ', value: 'qux', secret: true},
     ])
   })
 
@@ -36,19 +44,12 @@ describe('loadEnvFiles', () => {
     expect(byKey).to.deep.equal({FOO: 'prod', SHARED: 'base'})
   })
 
-  it('explicit envFile layers over auto-discovered', async () => {
+  it('explicit envFile layers over auto-discovered, marked secret by default', async () => {
     writeFileSync(pathlib.join(cwd, '.env'), 'FOO=base\n')
     const explicit = pathlib.join(cwd, 'override.env')
     writeFileSync(explicit, 'FOO=explicit\n')
     const vars = await loadEnvFiles({cwd, mode: 'development', envFile: explicit})
-    expect(vars).to.deep.equal([{key: 'FOO', value: 'explicit', secret: false}])
-  })
-
-  it('marks secretsFile entries as secret', async () => {
-    const secrets = pathlib.join(cwd, '.secrets')
-    writeFileSync(secrets, 'API_KEY=sekret\n')
-    const vars = await loadEnvFiles({cwd, mode: 'development', secretsFile: secrets})
-    expect(vars).to.deep.equal([{key: 'API_KEY', value: 'sekret', secret: true}])
+    expect(vars).to.deep.equal([{key: 'FOO', value: 'explicit', secret: true}])
   })
 
   it('skips auto-discovery when noEnvFile is true', async () => {
@@ -66,7 +67,7 @@ describe('loadEnvFiles', () => {
       envFile: explicit,
       noEnvFile: true,
     })
-    expect(vars).to.deep.equal([{key: 'FOO', value: 'explicit', secret: false}])
+    expect(vars).to.deep.equal([{key: 'FOO', value: 'explicit', secret: true}])
   })
 
   it('throws when explicit envFile is missing', async () => {

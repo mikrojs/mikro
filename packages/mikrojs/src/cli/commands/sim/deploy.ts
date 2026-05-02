@@ -28,11 +28,6 @@ export const args = command(
         description: message`Path to .env file with environment variables`,
       }),
     ),
-    secrets: optional(
-      option('--secrets', string({metavar: 'FILE'}), {
-        description: message`Path to .env.secrets file with secrets`,
-      }),
-    ),
     noEnvFile: optional(
       flag('--no-env-file', {
         description: message`Skip auto-loading of .env and .env.simulator from the project root`,
@@ -65,7 +60,6 @@ export const args = command(
 interface RunConfig {
   entry?: string
   env?: string
-  secrets?: string
   noEnvFile?: boolean
   erase?: boolean
   noRestart?: boolean
@@ -105,7 +99,6 @@ export async function run(config: RunConfig): Promise<void> {
         cwd: resolveProjectRoot(),
         mode: 'simulator',
         envFile: config.env,
-        secretsFile: config.secrets,
         noEnvFile: config.noEnvFile === true,
       })),
     ]

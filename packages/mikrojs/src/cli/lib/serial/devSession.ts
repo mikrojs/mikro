@@ -77,7 +77,6 @@ export function createDevSession(options: {
   minifyLevel?: MinifyLevel
   logLevel?: LogLevel
   envFile?: string
-  secretsFile?: string
   noEnvFile?: boolean
   /** Drives `MIKRO_ENV` and the `.env.<mode>` file picked up by
    *  `loadEnvFiles`. `mikro dev` passes `'development'` (default);
@@ -98,7 +97,6 @@ export function createDevSession(options: {
     minifyLevel,
     logLevel,
     envFile,
-    secretsFile,
     noEnvFile,
     mode = 'development',
   } = options
@@ -192,7 +190,6 @@ export function createDevSession(options: {
             cwd: projectRoot,
             mode,
             envFile,
-            secretsFile,
             noEnvFile,
           })),
         ]

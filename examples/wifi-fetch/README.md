@@ -20,8 +20,8 @@ WIFI_PASSPHRASE=YourPassword
 To set env vars on the device (persisted in NVS):
 
 ```sh
-npx mikro env set WIFI_SSID YourNetwork
-npx mikro env set --secret WIFI_PASSPHRASE   # prompts for value
+npx mikro env set WIFI_SSID YourNetwork --no-secret
+npx mikro env set WIFI_PASSPHRASE            # prompts for value (hidden)
 npx mikro env list                            # verify
 ```
 

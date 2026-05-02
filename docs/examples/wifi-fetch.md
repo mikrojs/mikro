@@ -20,23 +20,23 @@ Set your WiFi credentials as environment variables:
 ::: code-group
 
 ```sh [pnpm]
-pnpm mikro env set WIFI_SSID YourNetworkName
-pnpm mikro env set WIFI_PASSPHRASE --secret
+pnpm mikro env set WIFI_SSID YourNetworkName --no-secret
+pnpm mikro env set WIFI_PASSPHRASE
 ```
 
 ```sh [npm]
-npx mikro env set WIFI_SSID YourNetworkName
-npx mikro env set WIFI_PASSPHRASE --secret
+npx mikro env set WIFI_SSID YourNetworkName --no-secret
+npx mikro env set WIFI_PASSPHRASE
 ```
 
 ```sh [yarn]
-yarn mikro env set WIFI_SSID YourNetworkName
-yarn mikro env set WIFI_PASSPHRASE --secret
+yarn mikro env set WIFI_SSID YourNetworkName --no-secret
+yarn mikro env set WIFI_PASSPHRASE
 ```
 
 ```sh [bun]
-bunx mikro env set WIFI_SSID YourNetworkName
-bunx mikro env set WIFI_PASSPHRASE --secret
+bunx mikro env set WIFI_SSID YourNetworkName --no-secret
+bunx mikro env set WIFI_PASSPHRASE
 ```
 
 :::

@@ -30,7 +30,6 @@ export const args = command(
       }),
     ),
     env: optional(option('--env', string({metavar: 'FILE'}))),
-    secrets: optional(option('--secrets', string({metavar: 'FILE'}))),
     noEnvFile: optional(
       flag('--no-env-file', {
         description: message`Skip auto-loading of .env and .env.simulator from the project root`,
@@ -142,7 +141,6 @@ export async function run(config: RunConfig): Promise<void> {
     cwd: resolveProjectRoot(),
     mode: 'simulator',
     envFile: config.env,
-    secretsFile: config.secrets,
     noEnvFile: config.noEnvFile === true,
   })
   if (envVars.length > 0) log(`Loaded ${envVars.length} env var(s) from file`)

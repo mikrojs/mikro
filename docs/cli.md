@@ -20,7 +20,6 @@ mikro dev [ENTRY]
 | `ENTRY`            | Entry file (default: `main` field in package.json)                    |
 | `-p, --port PORT`  | Serial port (auto-detected if omitted)                                |
 | `--env FILE`       | Extra `.env` file, layered on top of auto-discovery                   |
-| `--secrets FILE`   | Extra secrets file, layered on top (entries marked secret)            |
 | `--no-env-file`    | Skip auto-loading of `.env` and `.env.development`                    |
 | `--force-deploy`   | Force full deploy, ignoring cached checksums                          |
 | `--no-minify`      | Skip minification                                                     |
@@ -45,7 +44,6 @@ mikro deploy [ENTRY]
 | `ENTRY`            | Entry file (default: `main` field in package.json)                                                               |
 | `-p, --port PORT`  | Serial port (auto-detected if omitted)                                                                           |
 | `--env FILE`       | Extra `.env` file, layered on top of auto-discovery                                                              |
-| `--secrets FILE`   | Extra secrets file, layered on top (entries marked secret)                                                       |
 | `--no-env-file`    | Skip auto-loading of `.env` and `.env.production`                                                                |
 | `--console`        | Attach console after deploy and restart device                                                                   |
 | `-e, --erase`      | Erase current app before uploading                                                                               |
@@ -152,7 +150,6 @@ mikro test [PATTERN]
 | `PATTERN`                 | Glob pattern to filter test files (default: `**/*.test.ts`) |
 | `-p, --port PORT`         | Serial port (auto-detected if omitted)                      |
 | `--env FILE`              | Extra `.env` file, layered on top of auto-discovery         |
-| `--secrets FILE`          | Extra secrets file, layered on top (entries marked secret)  |
 | `--no-env-file`           | Skip auto-loading of `.env` and `.env.test`                 |
 | `--no-minify`             | Skip minification                                           |
 | `--no-bytecode`           | Skip bytecode compilation                                   |
@@ -172,7 +169,7 @@ mikro test
 mikro test 'test/smoke.test.ts'
 
 # Run with env vars
-mikro test --env .env --secrets .env.secrets
+mikro test --env .env
 ```
 
 Test files import from `mikrojs/test`:
@@ -220,20 +217,24 @@ Set an environment variable on the device.
 mikro env set KEY [VALUE]
 ```
 
-| Option            | Description                                                   |
-| ----------------- | ------------------------------------------------------------- |
-| `KEY`             | Variable name (max 15 characters)                             |
-| `VALUE`           | Variable value. If omitted with `--secret`, prompts for input |
-| `-p, --port PORT` | Serial port (auto-detected if omitted)                        |
-| `--secret`        | Mark as a secret (write-only, never displayed)                |
+| Option            | Description                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| `KEY`             | Variable name (max 15 characters)                                                                           |
+| `VALUE`           | Variable value. Allowed only with `--no-secret`. Without it, omit `VALUE` and the CLI prompts you for it    |
+| `--no-secret`     | Pass `VALUE` as an argument and store it as non-secret (visible in `env list`). Requires a `VALUE` argument |
+| `-p, --port PORT` | Serial port (auto-detected if omitted)                                                                      |
+
+Secrets are entered via a hidden prompt so they don't leak into shell history or `ps` output. Plain values can be passed inline with `--no-secret`.
 
 ```sh
-# Set a plain variable
-mikro env set WIFI_SSID MyNetwork
+# Secret: prompts for value (hidden input)
+mikro env set API_KEY
 
-# Set a secret (prompts for value)
-mikro env set API_KEY --secret
+# Non-secret: pass VALUE inline
+mikro env set WIFI_SSID MyNetwork --no-secret
 ```
+
+You can also mark `.env` entries non-secret with a `# @no-secret` comment line above them.
 
 ### mikro env delete
 
@@ -301,14 +302,13 @@ Watch + build + deploy + REPL against the simulator. The sim equivalent of `mikr
 mikro sim dev [ENTRY]
 ```
 
-| Option           | Description                                                |
-| ---------------- | ---------------------------------------------------------- |
-| `ENTRY`          | Entry file (default: `main` field in package.json)         |
-| `--env FILE`     | Extra `.env` file, layered on top of auto-discovery        |
-| `--secrets FILE` | Extra secrets file, layered on top (entries marked secret) |
-| `--no-env-file`  | Skip auto-loading of `.env` and `.env.simulator`           |
-| `--no-minify`    | Skip minification                                          |
-| `--no-bytecode`  | Skip bytecode compilation                                  |
+| Option          | Description                                         |
+| --------------- | --------------------------------------------------- |
+| `ENTRY`         | Entry file (default: `main` field in package.json)  |
+| `--env FILE`    | Extra `.env` file, layered on top of auto-discovery |
+| `--no-env-file` | Skip auto-loading of `.env` and `.env.simulator`    |
+| `--no-minify`   | Skip minification                                   |
+| `--no-bytecode` | Skip bytecode compilation                           |
 
 ### mikro sim deploy
 
@@ -318,17 +318,16 @@ One-shot build + deploy to the simulator (no watch). The sim equivalent of `mikr
 mikro sim deploy [ENTRY]
 ```
 
-| Option           | Description                                                |
-| ---------------- | ---------------------------------------------------------- |
-| `ENTRY`          | Entry file (default: `main` field in package.json)         |
-| `--env FILE`     | Extra `.env` file, layered on top of auto-discovery        |
-| `--secrets FILE` | Extra secrets file, layered on top (entries marked secret) |
-| `--no-env-file`  | Skip auto-loading of `.env` and `.env.simulator`           |
-| `-e, --erase`    | Erase current app before uploading                         |
-| `--no-restart`   | Do not restart sim after deploy                            |
-| `--no-minify`    | Skip minification                                          |
-| `--no-bytecode`  | Skip bytecode compilation                                  |
-| `--json`         | Output as JSON                                             |
+| Option          | Description                                         |
+| --------------- | --------------------------------------------------- |
+| `ENTRY`         | Entry file (default: `main` field in package.json)  |
+| `--env FILE`    | Extra `.env` file, layered on top of auto-discovery |
+| `--no-env-file` | Skip auto-loading of `.env` and `.env.simulator`    |
+| `-e, --erase`   | Erase current app before uploading                  |
+| `--no-restart`  | Do not restart sim after deploy                     |
+| `--no-minify`   | Skip minification                                   |
+| `--no-bytecode` | Skip bytecode compilation                           |
+| `--json`        | Output as JSON                                      |
 
 ### mikro sim repl
 
@@ -350,7 +349,6 @@ mikro sim test [PATTERN]
 | ------------------------- | ----------------------------------------------------------- |
 | `PATTERN`                 | Glob pattern to filter test files (default: `**/*.test.ts`) |
 | `--env FILE`              | Extra `.env` file, layered on top of auto-discovery         |
-| `--secrets FILE`          | Extra secrets file, layered on top (entries marked secret)  |
 | `--no-env-file`           | Skip auto-loading of `.env` and `.env.simulator`            |
 | `--no-minify`             | Skip minification                                           |
 | `--no-bytecode`           | Skip bytecode compilation                                   |
@@ -366,7 +364,7 @@ Manage simulator environment variables. The sim equivalent of `mikro env`.
 ```sh
 mikro sim env list
 mikro sim env get KEY
-mikro sim env set KEY VALUE [--secret]
+mikro sim env set KEY [VALUE] [--no-secret]
 mikro sim env delete KEY
 ```
 

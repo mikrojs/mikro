@@ -89,15 +89,17 @@ export interface LoadEnvOptions {
   mode: string
   /** Explicit --env FILE path (additive, layered after auto-discovery). */
   envFile?: string
-  /** Explicit --secrets FILE path (additive, marked as secret). */
-  secretsFile?: string
   /** When true, skips auto-discovery of .env / .env.<mode>. Explicit files still load. */
   noEnvFile?: boolean
 }
 
-async function readDotenvFile(path: string, secret: boolean): Promise<EnvVar[]> {
+async function readDotenvFile(path: string): Promise<EnvVar[]> {
   const content = await readFile(path, 'utf-8')
-  return parseDotenv(content).map((entry) => ({...entry, secret}))
+  return parseDotenv(content).map(({key, value, noSecret}) => ({
+    key,
+    value,
+    secret: !noSecret,
+  }))
 }
 
 /**
@@ -105,10 +107,12 @@ async function readDotenvFile(path: string, secret: boolean): Promise<EnvVar[]> 
  *   1. <cwd>/.env                  (auto, skipped when noEnvFile)
  *   2. <cwd>/.env.<mode>           (auto, skipped when noEnvFile)
  *   3. opts.envFile                (explicit --env, error if missing)
- *   4. opts.secretsFile            (explicit --secrets, error if missing, marked secret)
  *
  * Auto-discovered files are silently skipped if missing.
  * Returned array is deduped by key with last-wins semantics.
+ *
+ * Vars are marked secret by default. Add a `# @no-secret` comment line
+ * directly above an entry to opt that one var out (visible in `mikro env list`).
  */
 export async function loadEnvFiles(opts: LoadEnvOptions): Promise<EnvVar[]> {
   const vars: EnvVar[] = []
@@ -116,11 +120,11 @@ export async function loadEnvFiles(opts: LoadEnvOptions): Promise<EnvVar[]> {
   if (!opts.noEnvFile) {
     const base = pathlib.join(opts.cwd, '.env')
     if (await fileExists(base)) {
-      vars.push(...(await readDotenvFile(base, false)))
+      vars.push(...(await readDotenvFile(base)))
     }
     const modeFile = pathlib.join(opts.cwd, `.env.${opts.mode}`)
     if (await fileExists(modeFile)) {
-      vars.push(...(await readDotenvFile(modeFile, false)))
+      vars.push(...(await readDotenvFile(modeFile)))
     }
   }
 
@@ -128,14 +132,7 @@ export async function loadEnvFiles(opts: LoadEnvOptions): Promise<EnvVar[]> {
     if (!(await fileExists(opts.envFile))) {
       throw new Error(`Env file not found: ${opts.envFile}`)
     }
-    vars.push(...(await readDotenvFile(opts.envFile, false)))
-  }
-
-  if (opts.secretsFile) {
-    if (!(await fileExists(opts.secretsFile))) {
-      throw new Error(`Secrets file not found: ${opts.secretsFile}`)
-    }
-    vars.push(...(await readDotenvFile(opts.secretsFile, true)))
+    vars.push(...(await readDotenvFile(opts.envFile)))
   }
 
   // Dedup by key, last wins.

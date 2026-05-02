@@ -175,7 +175,7 @@ export function scaffold(options: ScaffoldOptions) {
   fs.writeFileSync(path.join(targetDir, '.env'), envFileContent)
 
   const setup = templateMeta?.wifiSetup
-    ? `Set your WiFi credentials on the device:\n\n\`\`\`sh\n${mikroCommand(pkgManager, 'env set WIFI_SSID YourNetworkName')}\n${mikroCommand(pkgManager, 'env set WIFI_PASSPHRASE --secret')}\n\`\`\``
+    ? `Set your WiFi credentials on the device:\n\n\`\`\`sh\n${mikroCommand(pkgManager, 'env set WIFI_SSID YourNetworkName --no-secret')}\n${mikroCommand(pkgManager, 'env set WIFI_PASSPHRASE')}\n\`\`\``
     : undefined
   fs.writeFileSync(
     path.join(targetDir, 'README.md'),

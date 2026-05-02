@@ -39,11 +39,6 @@ export const args = command(
         description: message`Path to .env file`,
       }),
     ),
-    secrets: optional(
-      option('--secrets', string({metavar: 'FILE'}), {
-        description: message`Path to .env.secrets file`,
-      }),
-    ),
     noEnvFile: optional(
       flag('--no-env-file', {
         description: message`Skip auto-loading of .env and .env.test from the project root`,
@@ -157,7 +152,6 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
     cwd: resolveProjectRoot(),
     mode: 'test',
     envFile: config.env,
-    secretsFile: config.secrets,
     noEnvFile: config.noEnvFile === true,
   })
   validateNvsKeys(envVars)

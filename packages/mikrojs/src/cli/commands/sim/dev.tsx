@@ -63,11 +63,6 @@ export const args = command(
         description: message`Path to .env file with environment variables`,
       }),
     ),
-    secrets: optional(
-      option('--secrets', string({metavar: 'FILE'}), {
-        description: message`Path to .env.secrets file with secrets`,
-      }),
-    ),
     noEnvFile: optional(
       flag('--no-env-file', {
         description: message`Skip auto-loading of .env and .env.simulator from the project root`,
@@ -93,7 +88,6 @@ interface DevConfig {
   noHooks?: boolean
   logLevel?: string
   env?: string
-  secrets?: string
   noEnvFile?: boolean
   noWatch?: boolean
   agent?: boolean
@@ -117,7 +111,6 @@ function devSessionOptions(config: DevConfig) {
     minifyLevel: parseMinifyLevel(config.minifyLevel),
     logLevel: parseLogLevel(config.logLevel),
     envFile: config.env,
-    secretsFile: config.secrets,
     noEnvFile: config.noEnvFile === true,
     mode: 'simulator' as const,
   }
@@ -159,7 +152,6 @@ export async function run(config: DevConfig): Promise<void> {
     minifyLevel: opts.minifyLevel,
     logLevel: opts.logLevel,
     envFile: opts.envFile,
-    secretsFile: opts.secretsFile,
     noEnvFile: opts.noEnvFile,
     externalDeploys$: deploys$.asObservable(),
     mode: opts.mode,
@@ -385,7 +377,6 @@ function SimDevMode(props: DevModeProps) {
         minifyLevel: opts.minifyLevel,
         logLevel: opts.logLevel,
         envFile: opts.envFile,
-        secretsFile: opts.secretsFile,
         noEnvFile: opts.noEnvFile,
         mode: opts.mode,
       })
@@ -441,7 +432,6 @@ function SimDevMode(props: DevModeProps) {
     opts.minifyLevel,
     opts.logLevel,
     opts.envFile,
-    opts.secretsFile,
     opts.noEnvFile,
   ])
 

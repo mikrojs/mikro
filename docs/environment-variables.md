@@ -42,17 +42,20 @@ const ssid = import.meta.env.WIFI_SSID // string | undefined
 
 The `mikro env` command reads and writes environment variables directly on the connected device.
 
-**Set a variable:**
+**Set a secret** (prompts for the value, never echoes to your terminal):
 
 ```sh
-npx mikro env set API_URL https://api.example.com
+npx mikro env set API_KEY
+Enter value for API_KEY: ********
 ```
 
-**Set a secret** (prompts for the value, never displayed):
+**Set a non-secret** (visible in `env list`, safe to pass on the command line):
 
 ```sh
-npx mikro env set API_KEY --secret
+npx mikro env set API_URL https://api.example.com --no-secret
 ```
+
+Passing a `VALUE` without `--no-secret` errors. This keeps secrets out of shell history and `ps` output.
 
 **List all variables:**
 
@@ -60,11 +63,12 @@ npx mikro env set API_KEY --secret
 npx mikro env list
 ```
 
-Secret values are masked in the output:
+Secret values are masked in the output; values marked `# @no-secret` in a `.env` file remain visible:
 
 ```
-API_URL   https://api.example.com
-API_KEY   ********
+WIFI_SSID  MyNetwork
+API_URL    ********
+API_KEY    ********
 ```
 
 **Delete a variable:**
@@ -83,9 +87,15 @@ Variable names can be up to 15 characters (NVS key limit). Use short, descriptiv
 
 ```sh
 # .env
-WIFI_SSID=MyNetwork
 API_URL=https://api.example.com
+API_KEY=sk-…
+
+# Mark a value visible in `mikro env list` (e.g. for debugging):
+# @no-secret
+WIFI_SSID=MyNetwork
 ```
+
+Every entry is treated as a secret by default. Add a `# @no-secret` comment line directly above an entry to mark just that one variable as visible in `mikro env list`. A blank line breaks the association.
 
 #### Precedence
 
@@ -94,9 +104,8 @@ Auto-loaded in this order, with later files overriding earlier ones:
 1. `.env`
 2. `.env.<mode>`: where `<mode>` matches the `MIKRO_ENV` value the command sets (see [Built-in variables](#mikro-env) below). For example: `.env.development` for `mikro dev`, `.env.production` for `mikro deploy`, `.env.test` for `mikro test`, `.env.simulator` for any `mikro sim …` command.
 3. `--env FILE`: extra file passed explicitly (additive)
-4. `--secrets FILE`: extra file passed explicitly, entries marked as secrets
 
-Auto-discovered files are silently skipped if missing. Explicit `--env` / `--secrets` paths error if the file doesn't exist.
+Auto-discovered files are silently skipped if missing. An explicit `--env` path errors if the file doesn't exist.
 
 ::: warning .env files should never be committed
 The `create-mikrojs` scaffold gitignores `.env*`. Commit `.env.example` instead to share the shape of the variables your project expects.
@@ -108,7 +117,7 @@ Names must be 15 characters or fewer. The CLI errors with the full list of offen
 
 #### Opting out
 
-Pass `--no-env-file` to skip auto-discovery. Explicit `--env` / `--secrets` files still load:
+Pass `--no-env-file` to skip auto-discovery. An explicit `--env` file still loads:
 
 ```sh
 # Use only what's in the shell environment (CI scenarios)
@@ -147,18 +156,19 @@ If you explicitly set `MIKRO_ENV` in your `.env` file, your value takes preceden
 
 ## Secrets vs. regular variables
 
-The `--secret` flag describes the _intent_ of a value. It tells the CLI that the value is sensitive, so it prompts for the value instead of taking it as an argument and masks it in `env list` output. It does not change how or where the value is stored. All environment variables, secret or not, live in the same plaintext NVS storage and are equally available at runtime via [`mikrojs/env`](/api/env) and `import.meta.env`.
+The `secret` flag describes the _intent_ of a value. It controls whether the value is shown in `mikro env list`. It does not change how or where the value is stored. All environment variables, secret or not, live in the same plaintext NVS storage and are equally available at runtime via [`mikrojs/env`](/api/env) and `import.meta.env`.
 
-The difference:
+Variables are secret by default. To mark a `.env` entry as visible, add a `# @no-secret` comment line directly above it:
 
-|                           | Regular                   | Secret                       |
-| ------------------------- | ------------------------- | ---------------------------- |
-| Stored on device          | Yes                       | Yes                          |
-| Available at runtime      | Yes                       | Yes                          |
-| Shown in `mikro env list` | Value visible             | Masked (`********`)          |
-| Set via CLI               | `mikro env set KEY value` | `mikro env set KEY --secret` |
+```sh
+# .env
+API_KEY=sk-…       # secret (default)
 
-A variable name must be unique. Setting a variable with `--secret` overwrites any existing non-secret variable with the same name, and vice versa.
+# @no-secret
+WIFI_SSID=MyNet    # visible in `mikro env list`
+```
+
+`mikro env set KEY` (without `VALUE`) prompts for a secret value via hidden input. To set a non-secret value, pass `--no-secret` together with `VALUE`. You can also mark `.env` entries non-secret with `# @no-secret`.
 
 ## Simulator
 

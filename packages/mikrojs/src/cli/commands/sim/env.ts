@@ -7,6 +7,7 @@ import {string} from '@optique/core/valueparser'
 
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
 import {openSim} from '../../lib/openSim.js'
+import {readSecretValue} from '../../lib/secretInput.js'
 import type {ReplSession} from '../../lib/session.js'
 import {SimAlreadyRunningError} from '../../lib/simPid.js'
 
@@ -36,9 +37,9 @@ const setArgs = command(
   'set',
   objectConstruct({
     envSubcommand: constant('set' as const),
-    secret: optional(
-      flag('--secret', {
-        description: message`Mark value as a secret (write-only, never displayed)`,
+    noSecret: optional(
+      flag('--no-secret', {
+        description: message`Pass VALUE as an argument and store it as non-secret (visible in 'env list')`,
       }),
     ),
     key: argument(string({metavar: 'KEY'})),
@@ -146,7 +147,7 @@ export async function run(config: {envSub: EnvSub}): Promise<void> {
         break
       }
       case 'set': {
-        const {key, secret: isSecret} = sub
+        const {key, noSecret} = sub
         if (Buffer.byteLength(key, 'utf-8') > 15) {
           if (jsonOutput) {
             agentError('sim env set', `Key "${key}" exceeds NVS 15-char limit`, {
@@ -157,26 +158,62 @@ export async function run(config: {envSub: EnvSub}): Promise<void> {
           }
           process.exit(1)
         }
-        if (!sub.value) {
-          if (jsonOutput) {
-            agentError('sim env set', 'Missing VALUE', {
-              fix: 'Provide a value: mikro sim env set <KEY> <VALUE>',
-            })
-          } else {
-            console.error('Error: missing VALUE')
+
+        const isSecret = noSecret !== true
+        let value: string
+
+        if (isSecret) {
+          if (sub.value !== undefined) {
+            if (jsonOutput) {
+              agentError(
+                'sim env set',
+                'Pass VALUE only with --no-secret. For secrets, omit VALUE to enter it via hidden prompt.',
+                {fix: 'Run: mikro sim env set <KEY>  (then enter the value when prompted)'},
+              )
+            } else {
+              console.error(
+                'Error: pass VALUE only with --no-secret. For secrets, omit VALUE to enter it via hidden prompt.',
+              )
+            }
+            process.exit(1)
           }
-          process.exit(1)
-        }
-        await withSimSession(async (session) => {
-          await session.config.set(key, sub.value!, isSecret === true)
           if (jsonOutput) {
-            agentResult('sim env set', {key}, [
+            agentError(
+              'sim env set',
+              'Cannot read a secret value in --json mode (no interactive input)',
+              {fix: 'Run interactively, or pass --no-secret with VALUE for non-secret values'},
+            )
+            process.exit(1)
+          }
+          value = await readSecretValue(`Enter value for ${key}: `)
+          if (!value) {
+            console.error('Cancelled')
+            process.exit(1)
+          }
+        } else {
+          if (sub.value === undefined) {
+            if (jsonOutput) {
+              agentError('sim env set', '--no-secret requires a VALUE', {
+                fix: 'Provide a value: mikro sim env set <KEY> <VALUE> --no-secret',
+              })
+            } else {
+              console.error('Error: --no-secret requires a VALUE')
+            }
+            process.exit(1)
+          }
+          value = sub.value
+        }
+
+        await withSimSession(async (session) => {
+          await session.config.set(key, value, isSecret)
+          if (jsonOutput) {
+            agentResult('sim env set', {key, secret: isSecret}, [
               {command: 'mikro sim env list', description: 'List all env variables'},
             ])
           } else if (isSecret) {
-            console.log(`Set secret ${key}`)
+            console.log(`Set ${key}`)
           } else {
-            console.log(`Set ${key}=${sub.value}`)
+            console.log(`Set ${key}=${value}`)
           }
         })
         break

@@ -58,11 +58,6 @@ export const args = command(
         description: message`Path to .env file with environment variables`,
       }),
     ),
-    secrets: optional(
-      option('--secrets', string({metavar: 'FILE'}), {
-        description: message`Path to .env.secrets file with secrets`,
-      }),
-    ),
     noEnvFile: optional(
       flag('--no-env-file', {
         description: message`Skip auto-loading of .env and .env.development from the project root`,
@@ -103,7 +98,6 @@ export async function run(config: InferValue<typeof args>) {
           minifyLevel: parseMinifyLevel(config.minifyLevel),
           logLevel: parseLogLevel(config.logLevel),
           envFile: config.env,
-          secretsFile: config.secrets,
           noEnvFile: config.noEnvFile === true,
           externalDeploys$: deploys$.asObservable(),
         })
@@ -192,7 +186,6 @@ export default function Dev(props: Props) {
         minifyLevel,
         logLevel,
         envFile: props.args.env,
-        secretsFile: props.args.secrets,
         noEnvFile: props.args.noEnvFile === true,
       })
       return {run$: dev.state$, dispose: () => dev.close()}
@@ -208,7 +201,6 @@ export default function Dev(props: Props) {
       minifyLevel,
       logLevel,
       props.args.env,
-      props.args.secrets,
       props.args.noEnvFile,
     ],
   )
