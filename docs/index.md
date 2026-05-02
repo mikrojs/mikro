@@ -23,7 +23,7 @@ features:
   - title: Full TypeScript
     details: Type-checked hardware APIs with modern JavaScript support. Errors are in the type signature, not hidden behind try/catch.
   - title: Batteries included<span class="tip" data-tip="the metaphorical kind, not the kind you use to power your ESP32">*</span>
-    details: <a href="/api/pin">GPIO</a>, <a href="/api/pwm">PWM</a>, <a href="/api/i2c">I2C</a>, <a href="/api/spi">SPI</a>, <a href="/api/uart">UART</a>, <a href="/api/wifi">WiFi</a>, <a href="/api/http-request">HTTP</a>, <a href="/api/neopixel">NeoPixel</a>, <a href="/api/sleep">deep sleep</a>, <a href="/api/sntp">SNTP</a>, <a href="/api/cbor">CBOR</a>, <a href="/api/schema">schema validation</a>, <a href="/api/kv">key-value storage</a>, and more.
+    details: <a href="/api/pin">GPIO</a>, <a href="/api/pwm">PWM</a>, <a href="/api/i2c">I2C</a>, <a href="/api/spi">SPI</a>, <a href="/api/uart">UART</a>, <a href="/api/wifi">WiFi</a>, <a href="/api/http-request">HTTP</a>, <a href="/api/udp">UDP</a>, <a href="/api/neopixel">NeoPixel</a>, <a href="/api/sleep">deep sleep</a>, <a href="/api/sntp">SNTP</a>, <a href="/api/cbor">CBOR</a>, <a href="/api/schema">schema validation</a>, <a href="/api/kv">key-value storage</a>, and more.
   - title: Host simulator
     details: Run and test your code on your computer with <code>mikro sim dev</code>. No microcontroller needed.
   - title: No exceptions

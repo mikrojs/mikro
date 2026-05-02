@@ -150,6 +150,10 @@
       "development": "./src/_exports/uart.ts",
       "import": "./dist/_exports/uart.js"
     },
+    "./udp": {
+      "development": "./src/_exports/udp.ts",
+      "import": "./dist/_exports/udp.js"
+    },
     "./wifi": {
       "development": "./src/_exports/wifi.ts",
       "import": "./dist/_exports/wifi.js"
@@ -186,6 +190,7 @@
       "./sim": "./dist/_exports/sim.js",
       "./test": "./dist/_exports/test.js",
       "./uart": "./dist/_exports/uart.js",
+      "./udp": "./dist/_exports/udp.js",
       "./runtime": "./runtime.d.ts",
       "./package.json": "./package.json"
     }

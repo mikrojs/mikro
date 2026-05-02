@@ -14,6 +14,7 @@ Each example is a standalone project you can use as a starting point.
 | [Schema](/examples/schema)                       | Beginner     | Runtime data validation with typed schemas      |
 | [WiFi + Fetch](/examples/wifi-fetch)             | Intermediate | Connect to WiFi and fetch JSON from an API      |
 | [WiFi Access Point](/examples/wifi-access-point) | Intermediate | Turn the ESP32 into a WiFi hotspot              |
+| [UDP Discovery](/examples/udp-discovery)         | Intermediate | Find peer devices on the LAN via UDP multicast  |
 | [SNTP](/examples/sntp)                           | Intermediate | Sync the device clock via NTP                   |
 | [RTC Counter](/examples/rtc-counter)             | Intermediate | Count wake-ups from deep sleep using RTC memory |
 | [NeoPixel](/examples/neopixel)                   | Intermediate | Animated RGB LED patterns                       |
