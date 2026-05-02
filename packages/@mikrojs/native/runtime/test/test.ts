@@ -388,9 +388,11 @@ function formatThrown(e: unknown): string {
   if (e instanceof Error) return e.message
   if (e && typeof e === 'object') {
     const obj = e as {name?: unknown; message?: unknown}
-    if (typeof obj.message === 'string') {
-      return typeof obj.name === 'string' ? `${obj.name}: ${obj.message}` : obj.message
-    }
+    const name = typeof obj.name === 'string' ? obj.name : undefined
+    const message = typeof obj.message === 'string' ? obj.message : undefined
+    if (name && message) return `${name}: ${message}`
+    if (message) return message
+    if (name) return name
   }
   return String(e)
 }
