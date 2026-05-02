@@ -40,6 +40,7 @@ export const abbreviations: Record<string, string> = {
   SSID: 'Service Set Identifier',
   TLS: 'Transport Layer Security',
   UART: 'Universal Asynchronous Receiver-Transmitter',
+  UDP: 'User Datagram Protocol',
   USB: 'Universal Serial Bus',
   UTC: 'Coordinated Universal Time',
   WASM: 'WebAssembly',

@@ -304,6 +304,7 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
      * rt->result_proto being set. */
     mik__result_init(ctx);
     mik__cbor_init(ctx);
+    mik__udp_init(ctx);
 
     /* Native mikrojs modules (replace bytecode builtins) */
     mik__inspect_register(ctx);

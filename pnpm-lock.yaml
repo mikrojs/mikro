@@ -301,6 +301,16 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  examples/udp-discovery:
+    dependencies:
+      mikrojs:
+        specifier: workspace:*
+        version: link:../../packages/mikrojs
+    devDependencies:
+      '@types/node':
+        specifier: catalog:node24
+        version: 24.12.2
+
   examples/wifi-access-point:
     dependencies:
       mikrojs:

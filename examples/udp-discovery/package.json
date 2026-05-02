@@ -1,0 +1,37 @@
+{
+  "name": "mikrojs-udp-discovery",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mikro.js UDP multicast peer discovery example",
+  "homepage": "https://github.com/mikrojs/mikrojs#readme",
+  "bugs": {
+    "url": "https://github.com/mikrojs/mikrojs/issues"
+  },
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikrojs/mikrojs.git"
+  },
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "dev": "mikro dev app/main.ts",
+    "peer": "./scripts/peer.ts"
+  },
+  "dependencies": {
+    "mikrojs": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:node24"
+  },
+  "mikrojs": {
+    "predeploy": [
+      "tsc --noEmit --pretty"
+    ]
+  }
+}

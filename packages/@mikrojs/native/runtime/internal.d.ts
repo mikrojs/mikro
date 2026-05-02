@@ -454,3 +454,27 @@ declare module 'native:wifi' {
     new (): Wifi
   }
 }
+
+declare module 'native:udp' {
+  import type {
+    BindOptions,
+    PeerAddress,
+    UdpError,
+    UdpFamily,
+  } from '@mikrojs/native/runtime/udp/types'
+  import type {Result} from 'mikrojs/result'
+
+  export interface NativeUdpSocket {
+    readonly port: number
+    readonly family: UdpFamily | 'dual'
+    dropped: number
+
+    setOnMessage(fn: ((msg: Uint8Array, from: PeerAddress) => void) | null): void
+    send(data: Uint8Array, to: PeerAddress): Promise<Result<void, UdpError>>
+    joinMulticastGroup(address: string): Result<void, UdpError>
+    leaveMulticastGroup(address: string): Result<void, UdpError>
+    close(): void
+  }
+
+  export function bind(opts: BindOptions): Promise<Result<NativeUdpSocket, UdpError>>
+}
