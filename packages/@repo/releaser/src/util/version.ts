@@ -36,15 +36,27 @@ export function computeVersion({
   semverIncrement,
   preid,
   suffix,
+  breakingIsMinorOn0x,
 }: {
   currentVersion: string
   semverIncrement: ReleaseType
   preid: string | undefined
   suffix: string | undefined
+  breakingIsMinorOn0x?: boolean
 }): string {
-  const bumped = semver.inc(currentVersion, semverIncrement)
+  // Optional policy (analogous to release-please's `bump-minor-pre-major`,
+  // same default: off): when set, a recommended `major` bump from
+  // conventional-commits is downgraded to `minor` while the canonical
+  // version is on 0.x. Off by default so a `feat!:` commit produces 1.0.0
+  // from 0.x without ceremony — flip on if you want a safety net while
+  // pre-major. No-op once on 1.x or later.
+  const effectiveIncrement: ReleaseType =
+    semverIncrement === 'major' && breakingIsMinorOn0x && semver.major(currentVersion) === 0
+      ? 'minor'
+      : semverIncrement
+  const bumped = semver.inc(currentVersion, effectiveIncrement)
   if (!bumped) {
-    throw new Error(`Failed to compute ${semverIncrement} version from ${currentVersion}`)
+    throw new Error(`Failed to compute ${effectiveIncrement} version from ${currentVersion}`)
   }
   return preid ? `${bumped}-${preid}.${suffix}` : bumped
 }

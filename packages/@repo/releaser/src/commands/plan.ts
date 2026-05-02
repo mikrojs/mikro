@@ -33,6 +33,11 @@ export const args = command(
       choice(['release', 'create-release-pr'] as const, {metavar: 'CONTEXT'}),
       {description: message`Which workflow is asking (default: release)`},
     ),
+    breakingIsMinorOn0x: optional(
+      flag('--breaking-is-minor-on-0x', {
+        description: message`While on 0.x, treat breaking changes as minor (downgrade recommended major bumps). Off by default — a recommended major bump from 0.x will cut 1.0.0. No-op on 1.x and later.`,
+      }),
+    ),
     json: optional(
       flag('--json', {description: message`Emit Plan JSON instead of GitHub Actions outputs`}),
     ),
@@ -134,9 +139,20 @@ async function decidePushReleaseMerge(): Promise<Plan> {
 }
 
 // For create-release-pr.yml: skip when the push is the merge commit of a
-// release PR.
+// release PR. Manual workflow_dispatch always runs — useful for cutting a
+// release out of band of the regular push-driven flow.
 async function decideCreateReleasePr(): Promise<Plan> {
   const {eventName} = readGitHubEvent()
+  if (eventName === 'workflow_dispatch') {
+    return {
+      mode: 'create-release-pr',
+      shouldRun: true,
+      npmTag: null,
+      pr: null,
+      reason: 'workflow_dispatch',
+      version: null,
+    }
+  }
   if (eventName !== 'push') {
     return SKIP(`create-release-pr context expects push event, got ${eventName ?? '<none>'}`)
   }
@@ -160,7 +176,10 @@ async function decideCreateReleasePr(): Promise<Plan> {
 // plan job so all downstream jobs (firmware, prebuilds, publish) write
 // the exact same string — critical for pr-preview where the timestamp
 // would otherwise drift between runs.
-async function computePlannedVersion(plan: Plan): Promise<string | null> {
+async function computePlannedVersion(
+  plan: Plan,
+  breakingIsMinorOn0x: boolean,
+): Promise<string | null> {
   if (!plan.shouldRun) return null
   if (
     plan.mode !== 'release' &&
@@ -176,6 +195,7 @@ async function computePlannedVersion(plan: Plan): Promise<string | null> {
     // For release mode the canonical version IS the publish version (the
     // release PR has already bumped). For other modes, append a suffix.
     useCurrent: plan.mode === 'release',
+    breakingIsMinorOn0x,
     currentVersion: readCanonicalVersion(),
     semverIncrement: await getRecommendedBump(),
     git: readGitInfo(),
@@ -197,7 +217,7 @@ export async function run(opts: PlanArgs): Promise<void> {
     }
   }
 
-  plan.version = await computePlannedVersion(plan)
+  plan.version = await computePlannedVersion(plan, opts.breakingIsMinorOn0x === true)
 
   if (opts.json) {
     console.log(JSON.stringify(plan))

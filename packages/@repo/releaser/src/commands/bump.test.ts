@@ -25,8 +25,41 @@ describe('computeBumpPure', () => {
       npmTag: 'latest',
       mode: 'release',
     })
+    // Default: no pre-major cap. A `feat!:` from 0.x lands 1.0.0 directly.
     expect(computeBumpPure({...baseInputs, mode: 'release', semverIncrement: 'major'})).toEqual({
       version: '1.0.0',
+      npmTag: 'latest',
+      mode: 'release',
+    })
+  })
+
+  test('breakingIsMinorOn0x caps major→minor while on 0.x', () => {
+    // Opt-in safety net for projects that want to defer the 1.0.0 cut.
+    expect(
+      computeBumpPure({
+        ...baseInputs,
+        mode: 'release',
+        semverIncrement: 'major',
+        breakingIsMinorOn0x: true,
+      }),
+    ).toEqual({
+      version: '0.3.0',
+      npmTag: 'latest',
+      mode: 'release',
+    })
+  })
+
+  test('breakingIsMinorOn0x is a no-op once on 1.x or later', () => {
+    expect(
+      computeBumpPure({
+        ...baseInputs,
+        mode: 'release',
+        currentVersion: '1.4.2',
+        semverIncrement: 'major',
+        breakingIsMinorOn0x: true,
+      }),
+    ).toEqual({
+      version: '2.0.0',
       npmTag: 'latest',
       mode: 'release',
     })

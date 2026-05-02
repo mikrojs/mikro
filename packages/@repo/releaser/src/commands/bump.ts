@@ -42,6 +42,11 @@ export const args = command(
         description: message`Write the given version to all publishable packages, no computation. Used in firmware/publish jobs to apply the version computed by plan.`,
       }),
     ),
+    breakingIsMinorOn0x: optional(
+      flag('--breaking-is-minor-on-0x', {
+        description: message`While on 0.x, treat breaking changes as minor (downgrade recommended major bumps). Off by default — a recommended major bump from 0.x will cut 1.0.0. No-op on 1.x and later.`,
+      }),
+    ),
     dryRun: optional(
       flag('--dry-run', {description: message`Print the new version without writing files`}),
     ),
@@ -64,6 +69,7 @@ export interface BumpInputs {
   mode: Mode
   pr?: number
   useCurrent?: boolean
+  breakingIsMinorOn0x?: boolean
   currentVersion: string
   semverIncrement: ReleaseType
   git: {commitHash: string; commitCount: string}
@@ -73,7 +79,8 @@ export interface BumpInputs {
 // Pure: derives the version + npm tag from explicit inputs. No I/O.
 // Exported for tests.
 export function computeBumpPure(inputs: BumpInputs): BumpResult {
-  const {mode, pr, useCurrent, currentVersion, semverIncrement, git, now} = inputs
+  const {mode, pr, useCurrent, breakingIsMinorOn0x, currentVersion, semverIncrement, git, now} =
+    inputs
 
   if (useCurrent) {
     if (mode !== 'release') {
@@ -88,6 +95,7 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
       semverIncrement,
       preid: undefined,
       suffix: undefined,
+      breakingIsMinorOn0x,
     })
     return {version, npmTag: 'latest', mode}
   }
@@ -95,7 +103,13 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
   if (mode === 'next') {
     const suffix = `${git.commitCount}+${git.commitHash}`
     return {
-      version: computeVersion({currentVersion, semverIncrement, preid: 'next', suffix}),
+      version: computeVersion({
+        currentVersion,
+        semverIncrement,
+        preid: 'next',
+        suffix,
+        breakingIsMinorOn0x,
+      }),
       npmTag: 'next',
       mode,
     }
@@ -104,7 +118,13 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
   if (mode === 'canary') {
     const suffix = `${git.commitCount}+${git.commitHash}`
     return {
-      version: computeVersion({currentVersion, semverIncrement, preid: 'canary', suffix}),
+      version: computeVersion({
+        currentVersion,
+        semverIncrement,
+        preid: 'canary',
+        suffix,
+        breakingIsMinorOn0x,
+      }),
       npmTag: 'canary',
       mode,
     }
@@ -117,7 +137,7 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
   const suffix = `${formatTimestamp(now)}+${git.commitHash}`
   const preid = `pr-${pr}`
   return {
-    version: computeVersion({currentVersion, semverIncrement, preid, suffix}),
+    version: computeVersion({currentVersion, semverIncrement, preid, suffix, breakingIsMinorOn0x}),
     npmTag: preid,
     mode,
   }
@@ -132,6 +152,7 @@ async function gather(opts: BumpArgs): Promise<BumpInputs> {
     mode: opts.mode,
     pr: opts.pr,
     useCurrent,
+    breakingIsMinorOn0x: opts.breakingIsMinorOn0x === true,
     currentVersion: readCanonicalVersion(),
     semverIncrement: useCurrent ? 'patch' : await getRecommendedBump(),
     git: useCurrent ? {commitHash: '', commitCount: '0'} : readGitInfo(),
