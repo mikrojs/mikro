@@ -30,11 +30,8 @@ const config = {
     'packages/@repo/releaser': {
       // bin/releaser.js is auto-detected from package.json bin. The .ts is
       // invoked via tsx from the shim and dispatches to all command modules.
-      // conventional-changelog-conventionalcommits is the preset loaded
-      // dynamically by conventional-recommended-bump.
       entry: ['bin/releaser.ts'],
       project: ['src/**/*.ts', 'bin/**/*.ts'],
-      ignoreDependencies: ['conventional-changelog-conventionalcommits'],
     },
     scripts: {
       // trust-setup.ts is invoked from the root `trust:setup` script via
