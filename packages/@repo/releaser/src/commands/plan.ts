@@ -187,6 +187,11 @@ async function computePlannedVersion(plan: Plan): Promise<string | null> {
     // For release mode the canonical version IS the publish version (the
     // release PR has already bumped). For other modes, append a suffix.
     useCurrent: plan.mode === 'release',
+    // Match what create-release-pr.yml does: cap pre-major bumps so a
+    // `feat!:` on 0.x produces a 0.x.0 preview, not 1.0.0. Without this
+    // a PR preview would publish as 1.0.0-pr-N.* even though the eventual
+    // release will be 0.x.0.
+    breakingIsMinorOn0x: true,
     currentVersion: readCanonicalVersion(),
     semverIncrement: await getRecommendedBump(),
     git: readGitInfo(),
