@@ -22,6 +22,8 @@ interface TemplateMeta {
   wiring?: string
   /** true = generate WiFi credentials setup section */
   wifiSetup?: boolean
+  /** Env vars consumed by this template — listed in .env.example and .env */
+  envVars?: readonly string[]
 }
 
 export const TEMPLATES: readonly TemplateMeta[] = [
@@ -83,6 +85,7 @@ For long strips (>8 LEDs), power the strip from an external 5V supply, not the b
     description: 'Connect to WiFi and fetch JSON from an HTTP API.',
     hardware: 'Any ESP32 board with WiFi + a WiFi network with internet access.',
     wifiSetup: true,
+    envVars: ['WIFI_SSID', 'WIFI_PASSPHRASE'],
   },
   {
     name: 'wifi-access-point',
@@ -94,6 +97,7 @@ For long strips (>8 LEDs), power the strip from an external 5V supply, not the b
     description: 'Sync the device clock via NTP so `new Date()` returns real wall-clock time.',
     hardware: 'Any ESP32 board with WiFi + a WiFi network with internet access.',
     wifiSetup: true,
+    envVars: ['WIFI_SSID', 'WIFI_PASSPHRASE'],
   },
   {
     name: 'rtc-counter',
@@ -163,9 +167,13 @@ export function scaffold(options: ScaffoldOptions) {
   }
   fs.writeFileSync(path.join(targetDir, '.editorconfig'), editorconfig)
   fs.writeFileSync(path.join(targetDir, '.gitignore'), gitignore)
-  fs.writeFileSync(path.join(targetDir, '.env.example'), envExample)
-
   const templateMeta = TEMPLATES.find((t) => t.name === template)
+  const envFileContent = envExample(templateMeta?.envVars)
+  fs.writeFileSync(path.join(targetDir, '.env.example'), envFileContent)
+  // Also scaffold a .env (gitignored) so users can fill values in
+  // directly without copying from .env.example.
+  fs.writeFileSync(path.join(targetDir, '.env'), envFileContent)
+
   const setup = templateMeta?.wifiSetup
     ? `Set your WiFi credentials on the device:\n\n\`\`\`sh\n${mikroCommand(pkgManager, 'env set WIFI_SSID YourNetworkName')}\n${mikroCommand(pkgManager, 'env set WIFI_PASSPHRASE --secret')}\n\`\`\``
     : undefined
