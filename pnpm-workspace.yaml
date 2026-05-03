@@ -38,6 +38,8 @@ catalogs:
   node24:
     '@types/node': ^24.12.2
 
+enableGlobalVirtualStore: true
+
 ignoreWorkspaceRootCheck: true
 
 # Note: keep in sync with maturityPeriod in taze.config.ts
