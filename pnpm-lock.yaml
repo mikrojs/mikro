@@ -9,6 +9,9 @@ catalogs:
     '@eslint/js':
       specifier: ^10.0.1
       version: 10.0.1
+    eslint:
+      specifier: ^10.2.1
+      version: 10.3.0
     eslint-plugin-import:
       specifier: ^2.32.0
       version: 2.32.0
@@ -21,6 +24,9 @@ catalogs:
     eslint-plugin-simple-import-sort:
       specifier: ^13.0.0
       version: 13.0.0
+    globals:
+      specifier: ^17.5.0
+      version: 17.6.0
     typescript:
       specifier: ^6.0.3
       version: 6.0.3
@@ -74,7 +80,7 @@ importers:
         version: 17.6.0
       knip:
         specifier: ^6.7.0
-        version: 6.10.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+        version: 6.11.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       lefthook:
         specifier: ^2.1.6
         version: 2.1.6
@@ -4041,8 +4047,8 @@ packages:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
 
-  knip@6.10.0:
-    resolution: {integrity: sha512-u9EaTj17MYkTw2aojWSwMoRQ6pI/ZtjDexuhqkQ8uQuvMFJXeeHu6MhKDdSppijGaiNGtDSMFYs+w5iZLrb2Cg==}
+  knip@6.11.0:
+    resolution: {integrity: sha512-84PTlN8Q5smLpTbzs8smTVh8PMbTDXtw0tFksXq/m6auGFC/KSzJykKFmnYh3As38kiWDkoDBvdTTyKk5M1TAQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
@@ -8759,7 +8765,7 @@ snapshots:
 
   kleur@4.1.5: {}
 
-  knip@6.10.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
+  knip@6.11.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
     dependencies:
       fdir: 6.5.0(picomatch@4.0.4)
       formatly: 0.3.0
