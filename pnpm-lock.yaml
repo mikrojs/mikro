@@ -24,9 +24,6 @@ catalogs:
     eslint-plugin-simple-import-sort:
       specifier: ^13.0.0
       version: 13.0.0
-    globals:
-      specifier: ^17.5.0
-      version: 17.5.0
     typescript:
       specifier: ^6.0.3
       version: 6.0.3
@@ -74,7 +71,7 @@ importers:
         version: 13.0.0(eslint@10.2.1(jiti@2.6.1))
       globals:
         specifier: 'catalog:'
-        version: 17.5.0
+        version: 17.6.0
       knip:
         specifier: ^6.7.0
         version: 6.10.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
@@ -3659,8 +3656,8 @@ packages:
     resolution: {integrity: sha512-wHTUcDUoZ1H5/0iVqEudYW4/kAlN5cZ3j/bXn0Dpbizl9iaUVeWSHqiOjsgk6OW2bkLclbBjzewBz6weQ1zA2Q==}
     engines: {node: '>=18'}
 
-  globals@17.5.0:
-    resolution: {integrity: sha512-qoV+HK2yFl/366t2/Cb3+xxPUo5BuMynomoDmiaZBIdbs+0pYbjfZU+twLhGKp4uCZ/+NbtpVepH5bGCxRyy2g==}
+  globals@17.6.0:
+    resolution: {integrity: sha512-sepffkT8stwnIYbsMBpoCHJuJM5l98FUF2AnE07hfvE0m/qp3R586hw4jF4uadbhvg1ooIdzuu7CsfD2jzCaNA==}
     engines: {node: '>=18'}
 
   globalthis@1.0.4:
@@ -8407,7 +8404,7 @@ snapshots:
     dependencies:
       ini: 4.1.1
 
-  globals@17.5.0: {}
+  globals@17.6.0: {}
 
   globalthis@1.0.4:
     dependencies:
