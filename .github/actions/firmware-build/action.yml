@@ -48,7 +48,7 @@ runs:
       with:
         node-version: 24
 
-    - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # ratchet:pnpm/action-setup@v5
+    - uses: pnpm/action-setup@8912a9102ac27614460f54aedde9e1e7f9aec20d # v6
 
     - shell: bash
       run: pnpm install --frozen-lockfile
