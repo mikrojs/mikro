@@ -27,4 +27,4 @@ See the [Custom Firmware](https://mikrojs.dev/develop/custom-firmware) docs for 
 ## Requirements
 
 - Node.js >= 24
-- ESP-IDF >= 6.0 (installed via [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html))
+- ESP-IDF >= 6.0.1 (installed via [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html))

@@ -10,9 +10,10 @@
 #   project(my-firmware)
 
 # ── Validate ESP-IDF version ─────────────────────────────────────────
-if(IDF_VERSION_MAJOR LESS 6)
+if(IDF_VERSION_MAJOR LESS 6 OR
+   (IDF_VERSION_MAJOR EQUAL 6 AND IDF_VERSION_MINOR EQUAL 0 AND IDF_VERSION_PATCH LESS 1))
     message(FATAL_ERROR
-        "mikrojs requires ESP-IDF >= 6.0.0, found ${IDF_VERSION_MAJOR}.${IDF_VERSION_MINOR}.${IDF_VERSION_PATCH}. "
+        "mikrojs requires ESP-IDF >= 6.0.1, found ${IDF_VERSION_MAJOR}.${IDF_VERSION_MINOR}.${IDF_VERSION_PATCH}. "
         "Install a supported version via EIM: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html"
     )
 endif()
