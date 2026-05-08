@@ -20,7 +20,7 @@ catalogs:
       version: 0.91.2
     eslint-plugin-react-hooks:
       specifier: canary
-      version: 7.1.1-canary-dd453071-20260506
+      version: 7.1.1-canary-f4e0d4ed-20260429
     eslint-plugin-simple-import-sort:
       specifier: ^13.0.0
       version: 13.0.0
@@ -71,7 +71,7 @@ importers:
         version: 0.91.2(@types/estree@1.0.9)(eslint@10.3.0(jiti@2.7.0))(jsonc-eslint-parser@3.1.0)
       eslint-plugin-react-hooks:
         specifier: 'catalog:'
-        version: 7.1.1-canary-dd453071-20260506(eslint@10.3.0(jiti@2.7.0))
+        version: 7.1.1-canary-f4e0d4ed-20260429(eslint@10.3.0(jiti@2.7.0))
       eslint-plugin-simple-import-sort:
         specifier: 'catalog:'
         version: 13.0.0(eslint@10.3.0(jiti@2.7.0))
@@ -80,7 +80,7 @@ importers:
         version: 17.6.0
       knip:
         specifier: ^6.7.0
-        version: 6.12.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+        version: 6.12.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       lefthook:
         specifier: ^2.1.6
         version: 2.1.6
@@ -3550,8 +3550,8 @@ packages:
       eslint: '>=8.0.0'
       jsonc-eslint-parser: '>=2.0.0'
 
-  eslint-plugin-react-hooks@7.1.1-canary-dd453071-20260506:
-    resolution: {integrity: sha512-PuBz2XcBQa+rxVYtbguL79qU5EcxP0BIOhmaNXN25goAbyg/V8vPHl9JjFJT9ey9G9YCglU98tv7zKuvt8RKkA==}
+  eslint-plugin-react-hooks@7.1.1-canary-f4e0d4ed-20260429:
+    resolution: {integrity: sha512-owCmCBsGpoYmugCly//Z9DDTRyf6+mDupOCd5tyHF03jqf4cAbpHM+T+W/FwqjBSStbbPJM3oFHTushw6Q0uhw==}
     engines: {node: '>=18'}
     peerDependencies:
       eslint: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0 || ^10.0.0
@@ -4152,8 +4152,8 @@ packages:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
 
-  knip@6.12.0:
-    resolution: {integrity: sha512-nRg8+DOFcfBD6NjmNzu9+3D35QnEmMsnojJGOHQUqv+70r1aOx99wpSUXvEV7syQVOL5E6tNXXkoyG1Fuz8BWg==}
+  knip@6.12.1:
+    resolution: {integrity: sha512-9JRZB1mENe8xNMpP4jJRiFXkRVBHTWzD7YtiLywkO7aKXCefbvI+hA0YDl7H7dPvJt7gcVolgxKgABJQ31NL3w==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
@@ -8386,7 +8386,7 @@ snapshots:
     transitivePeerDependencies:
       - '@types/estree'
 
-  eslint-plugin-react-hooks@7.1.1-canary-dd453071-20260506(eslint@10.3.0(jiti@2.7.0)):
+  eslint-plugin-react-hooks@7.1.1-canary-f4e0d4ed-20260429(eslint@10.3.0(jiti@2.7.0)):
     dependencies:
       '@babel/core': 7.29.0
       '@babel/parser': 7.29.2
@@ -8986,7 +8986,7 @@ snapshots:
 
   kleur@4.1.5: {}
 
-  knip@6.12.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
+  knip@6.12.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
     dependencies:
       fdir: 6.5.0(picomatch@4.0.4)
       formatly: 0.3.0
