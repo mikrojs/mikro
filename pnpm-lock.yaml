@@ -33,6 +33,9 @@ catalogs:
     typescript-eslint:
       specifier: ^8.59.0
       version: 8.59.1
+    vite:
+      specifier: ^8.0.10
+      version: 8.0.11
     vitest:
       specifier: ^4.1.5
       version: 4.1.5
@@ -92,7 +95,7 @@ importers:
         version: 0.48.0
       publint:
         specifier: ^0.3.18
-        version: 0.3.19
+        version: 0.3.20
       taze:
         specifier: ^19.11.0
         version: 19.11.0
@@ -4706,8 +4709,8 @@ packages:
   proto-list@1.2.4:
     resolution: {integrity: sha512-vtK/94akxsTMhe0/cbfpR+syPuszcuwhqVjJq26CuNDgFGj682oRBXOP5MJpv2r7JtE8MsiepGIqvvOTBwn2vA==}
 
-  publint@0.3.19:
-    resolution: {integrity: sha512-J3p4GOocCRFyLLFRzGfIhAwWgk0Kkcdxj5iFspFvCYbyiJs5IhCM8gsIkcNeQL+tdpV671RtJQiTFSUKhl1Wjg==}
+  publint@0.3.20:
+    resolution: {integrity: sha512-UWqFYP7VBVCe9l/leEEGJrDs6Am4K4KapLmLi5qbt+9fA+Ny38ghdW+bw1nYfVqCK8/3kgsxjjhFjTYqYYRpyw==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -9549,7 +9552,7 @@ snapshots:
 
   proto-list@1.2.4: {}
 
-  publint@0.3.19:
+  publint@0.3.20:
     dependencies:
       '@publint/pack': 0.1.4
       package-manager-detector: 1.6.0
