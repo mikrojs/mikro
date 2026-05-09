@@ -20,7 +20,7 @@ catalogs:
       version: 0.91.2
     eslint-plugin-react-hooks:
       specifier: canary
-      version: 7.1.1-canary-f4e0d4ed-20260429
+      version: 7.1.1-canary-d5736f09-20260507
     eslint-plugin-simple-import-sort:
       specifier: ^13.0.0
       version: 13.0.0
@@ -71,7 +71,7 @@ importers:
         version: 0.91.2(@types/estree@1.0.9)(eslint@10.3.0(jiti@2.7.0))(jsonc-eslint-parser@3.1.0)
       eslint-plugin-react-hooks:
         specifier: 'catalog:'
-        version: 7.1.1-canary-f4e0d4ed-20260429(eslint@10.3.0(jiti@2.7.0))
+        version: 7.1.1-canary-d5736f09-20260507(eslint@10.3.0(jiti@2.7.0))
       eslint-plugin-simple-import-sort:
         specifier: 'catalog:'
         version: 13.0.0(eslint@10.3.0(jiti@2.7.0))
@@ -588,7 +588,7 @@ importers:
         version: 24.12.2
       npm:
         specifier: ^11.13.0
-        version: 11.14.0
+        version: 11.14.1
 
 packages:
 
@@ -3449,8 +3449,8 @@ packages:
       eslint: '>=8.0.0'
       jsonc-eslint-parser: '>=2.0.0'
 
-  eslint-plugin-react-hooks@7.1.1-canary-f4e0d4ed-20260429:
-    resolution: {integrity: sha512-owCmCBsGpoYmugCly//Z9DDTRyf6+mDupOCd5tyHF03jqf4cAbpHM+T+W/FwqjBSStbbPJM3oFHTushw6Q0uhw==}
+  eslint-plugin-react-hooks@7.1.1-canary-d5736f09-20260507:
+    resolution: {integrity: sha512-RQYy8OszUjO7INbw59O7pBCS/8PR9cRKSoOky4dW1kdG4LeIgtk/h1QLbD3N1dTq3X4/u/w/GDPwtx583XVyvA==}
     engines: {node: '>=18'}
     peerDependencies:
       eslint: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0-0 || ^9.0.0 || ^10.0.0
@@ -4455,8 +4455,8 @@ packages:
     engines: {node: ^20.5.0 || >=22.0.0, npm: '>= 10'}
     hasBin: true
 
-  npm@11.14.0:
-    resolution: {integrity: sha512-6jfZzqK8EfWGnTeZQe+bgMx4IgiEZn7k1eM4GE8SE81B3iYch52dVSMO1hC2OnNbFLIwzvwUkUxsOOcUPG2XIw==}
+  npm@11.14.1:
+    resolution: {integrity: sha512-aopNZ0eEl6LbxoFcrXLmTEPzNBNxfiQnVgR9RmJBqzm+5h5pFoOmRljpRJbsXxocBeSl7GLcx3MoDf2UlEOjZw==}
     engines: {node: ^20.17.0 || >=22.9.0}
     hasBin: true
     bundledDependencies:
@@ -8163,7 +8163,7 @@ snapshots:
     transitivePeerDependencies:
       - '@types/estree'
 
-  eslint-plugin-react-hooks@7.1.1-canary-f4e0d4ed-20260429(eslint@10.3.0(jiti@2.7.0)):
+  eslint-plugin-react-hooks@7.1.1-canary-d5736f09-20260507(eslint@10.3.0(jiti@2.7.0)):
     dependencies:
       '@babel/core': 7.29.0
       '@babel/parser': 7.29.2
@@ -9289,7 +9289,7 @@ snapshots:
       shell-quote: 1.8.3
       which: 5.0.0
 
-  npm@11.14.0: {}
+  npm@11.14.1: {}
 
   object-inspect@1.13.4: {}
 
