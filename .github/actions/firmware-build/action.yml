@@ -7,7 +7,7 @@ description: Build the mikrojs firmware for a single ESP32 chip target and uploa
 #      relative `uses: ./.github/actions/firmware-build` path resolves.
 inputs:
   target:
-    description: ESP32 chip target (esp32, esp32c3, esp32c6, esp32s3)
+    description: ESP32 chip target (esp32, esp32c3, esp32c5, esp32c6, esp32s3)
     required: true
   pack-format:
     description: 'How to lay out the uploaded artifact: tarball | unpacked'

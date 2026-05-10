@@ -22,7 +22,7 @@ This guide walks you through creating a Mikro.js project, flashing firmware to a
 - An ESP32 development board
 
 ::: tip Which board should I use?
-Any ESP32, ESP32-C3, ESP32-S3, or ESP32-C6 board should work out of the box. We recommend the [Seeed Studio XIAO ESP32C6](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html): it's small, cheap (~$5), has USB-C, and is the primary board Mikro.js is developed and tested against.
+Any ESP32, ESP32-C3, ESP32-S3, ESP32-C5, or ESP32-C6 board should work out of the box. We recommend the [Seeed Studio XIAO ESP32C6](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html): it's small, cheap (~$5), has USB-C, and is the primary board Mikro.js is developed and tested against.
 :::
 
 ## Create a project

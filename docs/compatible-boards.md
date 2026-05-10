@@ -9,7 +9,7 @@ Mikro.js works with most ESP32-based development boards. This page lists boards 
 
 ## Requirements
 
-- **Chip**: ESP32, ESP32-S3, ESP32-C3, or ESP32-C6
+- **Chip**: ESP32, ESP32-S3, ESP32-C3, ESP32-C5, or ESP32-C6
 - **Flash**: At least 4 MB
 - **RAM**: At least 300 KB available
 - **USB**: USB-C recommended for ease of use
@@ -20,11 +20,12 @@ The key limiting factor is RAM: the runtime, your JavaScript application, and al
 
 These boards are actively used during Mikro.js development.
 
-| Board                     | Chip     | Flash | PSRAM | Link                                                                                 |
-| ------------------------- | -------- | ----- | ----- | ------------------------------------------------------------------------------------ |
-| Seeed Studio XIAO ESP32C3 | ESP32-C3 | 4 MB  | -     | [seeedstudio.com](https://www.seeedstudio.com/Seeed-XIAO-ESP32C3-p-5431.html)        |
-| Seeed Studio XIAO ESP32S3 | ESP32-S3 | 8 MB  | 8 MB  | [seeedstudio.com](https://www.seeedstudio.com/XIAO-ESP32S3-p-5627.html)              |
-| Seeed Studio XIAO ESP32C6 | ESP32-C6 | 4 MB  | -     | [seeedstudio.com](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html) |
+| Board                     | Chip     | Flash | PSRAM | Link                                                                                  |
+| ------------------------- | -------- | ----- | ----- | ------------------------------------------------------------------------------------- |
+| Seeed Studio XIAO ESP32C3 | ESP32-C3 | 4 MB  | -     | [seeedstudio.com](https://www.seeedstudio.com/Seeed-XIAO-ESP32C3-p-5431.html)         |
+| Seeed Studio XIAO ESP32S3 | ESP32-S3 | 8 MB  | 8 MB  | [seeedstudio.com](https://www.seeedstudio.com/XIAO-ESP32S3-p-5627.html)               |
+| Seeed Studio XIAO ESP32C6 | ESP32-C6 | 4 MB  | -     | [seeedstudio.com](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html)  |
+| Seeed Studio XIAO ESP32C5 | ESP32-C5 | 8 MB  | 8 MB  | [seeedstudio.com](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32-C5-p-6573.html) |
 
 The XIAO ESP32C6 is small, cheap (~$5), has USB-C, and is the primary board Mikro.js is developed and tested against. If you're unsure what to buy, start here.
 
@@ -35,6 +36,7 @@ Any board that meets the [requirements](#requirements) should work, regardless o
 ## Chip notes
 
 - **ESP32-C3**: Single-core RISC-V. Works well but has less RAM than dual-core variants.
+- **ESP32-C5**: Dual-band Wi-Fi 6 (2.4 GHz and 5 GHz) and BLE 5. Requires PSRAM for the standard mikrojs configuration (Wi-Fi + BLE concurrently); bare modules without PSRAM are not currently supported. 5 GHz access requires `wifi.country` to be set to a region that allows it.
 - **ESP32-C6**: Adds Wi-Fi 6 and Thread/Zigbee radio alongside BLE.
 
 ## Other manufacturers

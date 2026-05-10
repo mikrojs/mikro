@@ -1,4 +1,7 @@
 {
+  "esp32c5": {
+    "heapDelta": 41093
+  },
   "esp32c6": {
     "heapDelta": 41217
   },

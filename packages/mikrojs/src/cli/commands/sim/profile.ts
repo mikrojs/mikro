@@ -120,6 +120,7 @@ export const args = command(
 const CHIP_BUDGETS_KB: Record<string, number> = {
   esp32: 200,
   esp32c3: 180,
+  esp32c5: 240,
   esp32c6: 240,
   esp32s3: 260,
 }

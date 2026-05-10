@@ -213,8 +213,16 @@ static void mik__http_task(void* arg) {
     {
         esp_err_t err = esp_http_client_open(client, args->req.body_len);
         if (err != ESP_OK) {
-            snprintf(error_buf, sizeof(error_buf), "fetch failed: could not connect to %s",
-                     args->req.url);
+            int sock_errno = esp_http_client_get_errno(client);
+            int tls_code = 0;
+            int tls_flags = 0;
+            esp_err_t last_tls_err =
+                esp_http_client_get_and_clear_last_tls_error(client, &tls_code, &tls_flags);
+            snprintf(error_buf, sizeof(error_buf),
+                     "fetch failed: could not connect to %s (%s, errno=%d, "
+                     "esp_tls=%s, mbedtls=-0x%04x, flags=0x%x)",
+                     args->req.url, esp_err_to_name(err), sock_errno,
+                     esp_err_to_name(last_tls_err), tls_code, tls_flags);
             have_error = true;
             goto cleanup;
         }
