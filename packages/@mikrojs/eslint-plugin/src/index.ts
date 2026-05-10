@@ -1,3 +1,4 @@
+import {noDeviceImportsInConfig} from './rules/no-device-imports-in-config.js'
 import {noDotCatch} from './rules/no-dot-catch.js'
 import {noEval} from './rules/no-eval.js'
 import {noIntl} from './rules/no-intl.js'
@@ -23,6 +24,7 @@ const plugin = {
     'no-intl': noIntl,
     'no-temporal': noTemporal,
     'no-sparse-arrays': noSparseArrays,
+    'no-device-imports-in-config': noDeviceImportsInConfig,
   },
   configs: {} as Record<string, unknown[]>,
 }
@@ -47,6 +49,7 @@ Object.assign(plugin.configs, {
         '@mikrojs/no-intl': 'error',
         '@mikrojs/no-temporal': 'error',
         '@mikrojs/no-sparse-arrays': 'warn',
+        '@mikrojs/no-device-imports-in-config': 'error',
       },
     },
   ],

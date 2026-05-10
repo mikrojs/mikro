@@ -17,6 +17,17 @@ export async function loadMikroConfig(startDir: string): Promise<MikroJSConfig |
     if (existsSync(configPath)) {
       const source = await readFile(configPath, 'utf-8')
       let code = stripTypeScriptTypes(source, {mode: 'strip'})
+      // Backstop for the no-device-imports-in-config lint rule: device modules
+      // (mikrojs/*) can't resolve from a data: URL anyway, so fail with a
+      // clear message instead of an opaque module-not-found error.
+      const deviceImports = [...code.matchAll(/['"](mikrojs\/[^'"]+)['"]/g)].map((m) => m[1])
+      if (deviceImports.length > 0) {
+        const unique = [...new Set(deviceImports)]
+        throw new Error(
+          `${configPath}: cannot import on-device modules (${unique.join(', ')}) in a build-time config file. ` +
+            `Only the bare 'mikrojs' import is allowed here; mikrojs/* subpaths are device-only.`,
+        )
+      }
       code = code.replace(
         /import\s*\{[^}]*\}\s*from\s*['"]mikrojs['"]\s*;?/,
         'const defineConfig = (c) => c;',
