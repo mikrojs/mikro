@@ -103,26 +103,6 @@ async function readSensor(): Promise<Result<number, PinError>> {
 }
 ```
 
-When wrapping callback-based APIs, resolve with `ok()` and `err()` instead of using `reject`:
-
-```typescript
-// Bad: reject leaks errors out of the type system
-function onceConnected(): Promise<WifiConnectionInfo> {
-  return new Promise((resolve, reject) => {
-    wifi.on('connected', resolve)
-    wifi.on('error', reject)
-  })
-}
-
-// Good: both paths go through resolve, keeping errors typed
-function onceConnected(): Promise<Result<WifiConnectionInfo, WifiError>> {
-  return new Promise((resolve) => {
-    wifi.on('connected', (info) => resolve(ok(info)))
-    wifi.on('error', (e) => resolve(err(WifiError.ConnectionFailed(e.message))))
-  })
-}
-```
-
 ### `@mikrojs/no-dot-catch` {#no-dot-catch}
 
 **Severity:** error

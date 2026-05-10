@@ -1,3 +1,4 @@
+import {lazyEvent} from 'mikrojs/observable/lazy'
 import {err, ok} from 'mikrojs/result'
 import {Ble as NativeBle} from 'native:ble'
 
@@ -9,8 +10,9 @@ import type {
   BleError,
   Characteristic,
   CharacteristicProperty,
+  ConnectionInfo,
+  MtuInfo,
   Peripheral,
-  PeripheralEventMap,
   Service,
 } from './types.js'
 import {parseUuid} from './uuid.js'
@@ -219,13 +221,9 @@ const peripheral: Peripheral = {
     return ok(handle)
   },
 
-  on<K extends keyof PeripheralEventMap>(event: K, listener: PeripheralEventMap[K]) {
-    native.on(event, listener as (...args: unknown[]) => void)
-  },
-
-  off<K extends keyof PeripheralEventMap>(event: K, listener: PeripheralEventMap[K]) {
-    native.off(event, listener as (...args: unknown[]) => void)
-  },
+  onConnect: lazyEvent<ConnectionInfo>(native, 'connect'),
+  onDisconnect: lazyEvent<ConnectionInfo>(native, 'disconnect'),
+  onMtu: lazyEvent<MtuInfo>(native, 'mtu'),
 }
 
 export {ble, peripheral}

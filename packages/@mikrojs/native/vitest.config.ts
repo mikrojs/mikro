@@ -4,14 +4,38 @@ import {defineConfig} from 'vitest/config'
 
 export default defineConfig({
   resolve: {
-    alias: {
-      'mikrojs/result': path.resolve(import.meta.dirname, 'runtime/result/result.ts'),
-      'mikrojs/http/helpers': path.resolve(import.meta.dirname, 'runtime/http/helpers.ts'),
-      'native:result': path.resolve(
-        import.meta.dirname,
-        'runtime/result/native-result.node-shim.ts',
-      ),
-    },
+    /* Order matters — more specific aliases must come before broader ones,
+     * otherwise vite matches the broader alias first and fails to resolve
+     * sub-paths. */
+    alias: [
+      {
+        find: 'mikrojs/observable/operators',
+        replacement: path.resolve(import.meta.dirname, 'runtime/observable/operators.ts'),
+      },
+      {
+        find: 'mikrojs/observable',
+        replacement: path.resolve(import.meta.dirname, 'runtime/observable/observable.ts'),
+      },
+      {
+        find: 'mikrojs/result',
+        replacement: path.resolve(import.meta.dirname, 'runtime/result/result.ts'),
+      },
+      {
+        find: 'mikrojs/http/helpers',
+        replacement: path.resolve(import.meta.dirname, 'runtime/http/helpers.ts'),
+      },
+      {
+        find: 'native:result',
+        replacement: path.resolve(import.meta.dirname, 'runtime/result/native-result.node-shim.ts'),
+      },
+      {
+        find: 'native:observable',
+        replacement: path.resolve(
+          import.meta.dirname,
+          'runtime/observable/native-observable.node-shim.ts',
+        ),
+      },
+    ],
   },
   test: {
     include: ['addon/**/*.test.ts', 'src/**/*.test.ts', 'runtime/**/*.test.ts'],

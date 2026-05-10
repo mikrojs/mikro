@@ -1,3 +1,4 @@
+import type {Observable} from '../observable/types.js'
 import type {Result} from '../result/types.js'
 
 export type WifiStatus =
@@ -87,17 +88,6 @@ export interface ApStartOptions {
   maxConnections?: number
 }
 
-export interface WifiEventMap {
-  connect: (info: WifiConnectionInfo) => void
-  disconnect: (reason: WifiDisconnectReason) => void
-  'rssi-low': (rssi: number) => void
-}
-
-export interface ApEventMap {
-  'station-connect': (info: ApStationInfo) => void
-  'station-disconnect': (info: ApStationInfo) => void
-}
-
 export type WifiError =
   | {name: 'InitFailed'; message: string}
   | {name: 'CountryNotSet'}
@@ -122,8 +112,8 @@ export interface WifiAp {
   readonly stations: ApStationInfo[]
   deauthStation(mac: string): Result<void, WifiError>
   inactiveTimeout: number
-  on<K extends keyof ApEventMap>(event: K, listener: ApEventMap[K]): void
-  off<K extends keyof ApEventMap>(event: K, listener: ApEventMap[K]): void
+  readonly onStationConnect: Observable<ApStationInfo>
+  readonly onStationDisconnect: Observable<ApStationInfo>
 }
 
 export interface Wifi {
@@ -135,8 +125,9 @@ export interface Wifi {
   isConnected: boolean
   scan(opts?: ScanOptions): Promise<Result<ScanResult[], WifiError>>
 
-  on<K extends keyof WifiEventMap>(event: K, listener: WifiEventMap[K]): void
-  off<K extends keyof WifiEventMap>(event: K, listener: WifiEventMap[K]): void
+  readonly onConnect: Observable<WifiConnectionInfo>
+  readonly onDisconnect: Observable<WifiDisconnectReason>
+  readonly onRssiLow: Observable<number>
 
   readonly mac: string
   readonly hostname: string | undefined

@@ -42,7 +42,7 @@ import {ble, peripheral} from 'mikrojs/ble'
 // ---cut---
 ble.name = 'mikrojs-sensor'
 
-peripheral.on('connect', (info) => {
+peripheral.onConnect.subscribe((info) => {
   console.log('connected: %s mtu: %d', info.address, info.mtu)
 })
 
@@ -205,26 +205,26 @@ Updates the cached value AND sends a notification to every subscribed central. T
 ```ts twoslash
 import {peripheral} from 'mikrojs/ble'
 // ---cut---
-peripheral.on('connect', (info) => {
+peripheral.onConnect.subscribe((info) => {
   console.log('connected: %s mtu: %d', info.address, info.mtu)
 })
 
-peripheral.on('disconnect', (info) => {
+peripheral.onDisconnect.subscribe((info) => {
   console.log('disconnected: %s', info.address)
 })
 
-peripheral.on('mtu', (info) => {
+peripheral.onMtu.subscribe((info) => {
   console.log('mtu renegotiated to %d', info.mtu)
 })
 ```
 
-| Event          | Payload          | Description                                                        |
+| Stream         | Payload          | Description                                                        |
 | -------------- | ---------------- | ------------------------------------------------------------------ |
-| `'connect'`    | `ConnectionInfo` | A central has connected                                            |
-| `'disconnect'` | `ConnectionInfo` | A central has disconnected. `mtu` reflects the last known value    |
-| `'mtu'`        | `MtuInfo`        | ATT MTU renegotiated mid-session (typically shortly after connect) |
+| `onConnect`    | `ConnectionInfo` | A central has connected                                            |
+| `onDisconnect` | `ConnectionInfo` | A central has disconnected. `mtu` reflects the last known value    |
+| `onMtu`        | `MtuInfo`        | ATT MTU renegotiated mid-session (typically shortly after connect) |
 
-Listeners fire on the JS loop thread in registration order. Safe to register before calling `advertise()`; no events are missed during startup. To stay discoverable after a central disconnects, call `peripheral.advertise()` again from the `disconnect` handler.
+Each property is an `Observable<T>` (see `mikrojs/observable`). Subscribers fire on the JS loop thread; subscribe before calling `advertise()` so no events are missed during startup. To stay discoverable after a central disconnects, call `peripheral.advertise()` again from the `onDisconnect` subscriber. Call `unsubscribe()` on the returned `Subscription` to stop receiving values.
 
 ## Types
 

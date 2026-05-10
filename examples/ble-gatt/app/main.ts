@@ -7,11 +7,11 @@ ble.name = 'mikrojs-hello'
 // Peripheral lifecycle listeners. These fire on the JS loop thread as
 // centrals connect, renegotiate MTU, or disconnect. Register before
 // advertise so no event is missed.
-peripheral.on('connect', (info) => {
+peripheral.onConnect.subscribe((info) => {
   console.log('connected: %s mtu: %d', info.address, info.mtu)
 })
 
-peripheral.on('disconnect', async (info) => {
+peripheral.onDisconnect.subscribe(async (info) => {
   console.log('disconnected: %s mtu: %d', info.address, info.mtu)
   // NimBLE stops advertising on connect. Re-advertise so the device stays
   // discoverable once the peer goes away.
@@ -25,7 +25,7 @@ peripheral.on('disconnect', async (info) => {
   if (!r.ok) console.error('re-advertise failed: %s', r.error.name)
 })
 
-peripheral.on('mtu', (info) => {
+peripheral.onMtu.subscribe((info) => {
   console.log('mtu renegotiated on %d new mtu: %d', info.id, info.mtu)
 })
 

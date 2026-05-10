@@ -85,9 +85,9 @@ describe.runIf(hasWifi)('udp over wifi', () => {
     const sock1 = r1.value
 
     let received: {msg: string; from: string} | undefined
-    sock1.onMessage = (msg, from) => {
+    const onMessageSub = sock1.onMessage.subscribe(({msg, from}) => {
       received = {msg: new TextDecoder().decode(msg), from: `${from.address}:${from.port}`}
-    }
+    })
 
     const r2 = await bind({port: 0, family: 'ipv4'})
     assert.ok(r2)
@@ -108,6 +108,7 @@ describe.runIf(hasWifi)('udp over wifi', () => {
     if (!received) return
     assert.equal(received.msg, 'hello')
 
+    onMessageSub.unsubscribe()
     sock1.close()
     r2.value.close()
   })

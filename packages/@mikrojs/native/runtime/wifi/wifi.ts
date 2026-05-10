@@ -1,9 +1,9 @@
+import {lazyEvent} from 'mikrojs/observable/lazy'
 import {err, ok} from 'mikrojs/result'
 import {Wifi as NativeWifi} from 'native:wifi'
 
 import type {Result} from '../result/types.js'
 import type {
-  ApEventMap,
   ApStartOptions,
   ApStationInfo,
   IpConfig,
@@ -15,8 +15,8 @@ import type {
   WifiAp,
   WifiConnectionInfo,
   WifiCountryCode,
+  WifiDisconnectReason,
   WifiError,
-  WifiEventMap,
   WifiStatus,
 } from './types.js'
 
@@ -71,13 +71,8 @@ const ap: WifiAp = {
     native.apSetInactiveTimeout(seconds)
   },
 
-  on<K extends keyof ApEventMap>(event: K, listener: ApEventMap[K]) {
-    native.on(event, listener as (...args: unknown[]) => void)
-  },
-
-  off<K extends keyof ApEventMap>(event: K, listener: ApEventMap[K]) {
-    native.off(event, listener as (...args: unknown[]) => void)
-  },
+  onStationConnect: lazyEvent<ApStationInfo>(native, 'station-connect'),
+  onStationDisconnect: lazyEvent<ApStationInfo>(native, 'station-disconnect'),
 }
 
 const MAX_CONNECT_RETRIES = 5
@@ -135,13 +130,9 @@ const wifi: Wifi = {
     return ok(asyncResult.value as ScanResult[])
   },
 
-  on<K extends keyof WifiEventMap>(event: K, listener: WifiEventMap[K]) {
-    native.on(event, listener as (...args: unknown[]) => void)
-  },
-
-  off<K extends keyof WifiEventMap>(event: K, listener: WifiEventMap[K]) {
-    native.off(event, listener as (...args: unknown[]) => void)
-  },
+  onConnect: lazyEvent<WifiConnectionInfo>(native, 'connect'),
+  onDisconnect: lazyEvent<WifiDisconnectReason>(native, 'disconnect'),
+  onRssiLow: lazyEvent<number>(native, 'rssi-low'),
 
   get mac(): string {
     const result = native.mac()

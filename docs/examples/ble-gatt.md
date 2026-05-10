@@ -23,11 +23,11 @@ import {sleep} from 'mikrojs/sleep'
 
 ble.name = 'mikrojs-hello'
 
-peripheral.on('connect', (info) => {
+peripheral.onConnect.subscribe((info) => {
   console.log('connected: %s mtu: %d', info.address, info.mtu)
 })
 
-peripheral.on('disconnect', async (info) => {
+peripheral.onDisconnect.subscribe(async (info) => {
   console.log('disconnected: %s', info.address)
   // NimBLE stops advertising on connect. Re-advertise so the device stays
   // discoverable once the peer hangs up.
@@ -40,7 +40,7 @@ peripheral.on('disconnect', async (info) => {
   if (!r.ok) console.error('re-advertise failed: %s', r.error.name)
 })
 
-peripheral.on('mtu', (info) => {
+peripheral.onMtu.subscribe((info) => {
   console.log('mtu renegotiated to %d', info.mtu)
 })
 
@@ -116,9 +116,9 @@ if (!result.ok) {
 
 ## Key concepts
 
-### `peripheral.on()` listeners fire before `advertise()`
+### Subscribe to lifecycle Observables before `advertise()`
 
-Register lifecycle listeners first so you never miss a `connect` event during startup. The listeners stay active across multiple `advertise()` calls.
+Register `onConnect`/`onDisconnect`/`onMtu` subscribers first so you never miss a `connect` event during startup. Each subscription stays active across multiple `advertise()` calls until you call `unsubscribe()` on the returned `Subscription`.
 
 ### `handle.notify()` updates the cached value AND pushes
 

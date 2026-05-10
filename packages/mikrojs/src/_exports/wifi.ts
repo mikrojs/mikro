@@ -1,5 +1,4 @@
 export type {
-  ApEventMap,
   ApStartOptions,
   ApStationInfo,
   AuthMode,
@@ -14,7 +13,6 @@ export type {
   WifiCountryCode,
   WifiDisconnectReason,
   WifiError,
-  WifiEventMap,
   WifiStatus,
 } from '@mikrojs/native/runtime/wifi/types'
 export {wifi} from '@mikrojs/native/runtime/wifi/types'

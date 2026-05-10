@@ -64,11 +64,11 @@ if (connected.ok) {
     const sock = bound.value
     const joined = sock.joinMulticastGroup({address: GROUP})
     if (joined.ok) {
-      sock.onMessage = (msg, from) => {
+      sock.onMessage.subscribe(({msg, from}) => {
         const text = new TextDecoder().decode(msg)
         if (text === deviceId) return
         console.log('discovered %s at %s', text, from.address)
-      }
+      })
       while (true) {
         await sock.send(deviceId, {address: GROUP, port: PORT, family: 'ipv4'})
         await sleep(ANNOUNCE_MS)

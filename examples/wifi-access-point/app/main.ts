@@ -1,3 +1,4 @@
+import {map} from 'mikrojs/observable/operators'
 import {sleep} from 'mikrojs/sleep'
 import {wifi} from 'mikrojs/wifi'
 
@@ -16,11 +17,11 @@ console.log('SSID: MikroJS-AP')
 console.log('IP: %s', wifi.ap.ip)
 
 // Log when stations connect/disconnect
-wifi.ap.on('station-connect', (info) => {
-  console.log('Station connected: %s', info.mac)
+wifi.ap.onStationConnect.pipe(map((v) => v.mac)).subscribe((mac) => {
+  console.log('Station connected: %s', mac)
 })
 
-wifi.ap.on('station-disconnect', (info) => {
+wifi.ap.onStationDisconnect.subscribe((info) => {
   console.log('Station disconnected: %s', info.mac)
 })
 
