@@ -112,24 +112,26 @@ ipConfig(opts: StaticIpConfig): Result<void, WifiError>
 ```ts twoslash
 import {wifi} from 'mikrojs/wifi'
 // ---cut---
-wifi.on('connect', (info) => {
+wifi.onConnect.subscribe((info) => {
   console.log('Connected: %s', info.ip)
 })
 
-wifi.on('disconnect', (reason) => {
+wifi.onDisconnect.subscribe((reason) => {
   console.log('Disconnected: %s', reason)
 })
 
-wifi.on('rssi-low', (rssi) => {
+wifi.onRssiLow.subscribe((rssi) => {
   console.log('Signal weak: %d dBm', rssi)
 })
 ```
 
-| Event          | Payload                | Description                          |
-| -------------- | ---------------------- | ------------------------------------ |
-| `'connect'`    | `WifiConnectionInfo`   | Connected to network                 |
-| `'disconnect'` | `WifiDisconnectReason` | Disconnected from network            |
-| `'rssi-low'`   | `number`               | Signal dropped below `rssiThreshold` |
+| Stream         | Payload                            | Description                          |
+| -------------- | ---------------------------------- | ------------------------------------ |
+| `onConnect`    | `Observable<WifiConnectionInfo>`   | Connected to network                 |
+| `onDisconnect` | `Observable<WifiDisconnectReason>` | Disconnected from network            |
+| `onRssiLow`    | `Observable<number>`               | Signal dropped below `rssiThreshold` |
+
+Each property is an `Observable<T>` (see [`mikrojs/observable`](/api/observable)). Subscribers fire on the JS loop thread; call `unsubscribe()` on the returned `Subscription` to stop receiving values.
 
 ## Access point
 
@@ -170,10 +172,22 @@ deauthStation(mac: string): Result<void, WifiError>
 
 ### wifi.ap events
 
-| Event                  | Payload         | Description         |
-| ---------------------- | --------------- | ------------------- |
-| `'station-connect'`    | `ApStationInfo` | Client connected    |
-| `'station-disconnect'` | `ApStationInfo` | Client disconnected |
+```ts twoslash
+import {wifi} from 'mikrojs/wifi'
+// ---cut---
+wifi.ap.onStationConnect.subscribe((info) => {
+  console.log('client connected: %s', info.mac)
+})
+
+wifi.ap.onStationDisconnect.subscribe((info) => {
+  console.log('client disconnected: %s', info.mac)
+})
+```
+
+| Stream                | Payload                     | Description         |
+| --------------------- | --------------------------- | ------------------- |
+| `onStationConnect`    | `Observable<ApStationInfo>` | Client connected    |
+| `onStationDisconnect` | `Observable<ApStationInfo>` | Client disconnected |
 
 ## Types
 

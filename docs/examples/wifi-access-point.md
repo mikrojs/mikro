@@ -34,11 +34,11 @@ console.log('SSID: MikroJS-AP')
 console.log('IP: %s', wifi.ap.ip)
 
 // Log when stations connect/disconnect
-wifi.ap.on('station-connect', (info) => {
+wifi.ap.onStationConnect.subscribe((info) => {
   console.log('Station connected: %s', info.mac)
 })
 
-wifi.ap.on('station-disconnect', (info) => {
+wifi.ap.onStationDisconnect.subscribe((info) => {
   console.log('Station disconnected: %s', info.mac)
 })
 
@@ -61,7 +61,7 @@ while (true) {
 
 2. **Access point config.** `wifi.ap.start()` takes an SSID, passphrase (minimum 8 characters), channel number, and maximum client count. `.orPanic()` crashes with a clear message if startup fails.
 
-3. **Event listeners.** `wifi.ap.on('station-connect', callback)` fires when a device joins the network. The callback receives the client's MAC address. Disconnect works the same way.
+3. **Event streams.** `wifi.ap.onStationConnect` is an `Observable<ApStationInfo>` that emits whenever a device joins the network. Subscribe with `.subscribe(callback)`; the callback receives the client's MAC address. Disconnect works the same way via `onStationDisconnect`.
 
 4. **Connected clients.** `wifi.ap.stations` returns an array of currently connected stations, each with a `mac` address and `rssi` signal strength. The example polls this every 10 seconds.
 

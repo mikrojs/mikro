@@ -109,6 +109,7 @@ export default defineConfig({
           {text: 'Globals and Built-ins', link: '/api/globals'},
           {text: 'env', link: '/api/env'},
           {text: 'result', link: '/api/result'},
+          {text: 'observable', link: '/api/observable'},
           {text: 'schema', link: '/api/schema'},
           {text: 'pin', link: '/api/pin'},
           {text: 'pwm', link: '/api/pwm'},
