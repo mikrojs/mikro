@@ -1,3 +1,4 @@
+import type {Observable} from '../observable/types.js'
 import type {Result} from '../result/types.js'
 
 /** Advertising interval range in milliseconds. */
@@ -171,23 +172,15 @@ export interface MtuInfo {
   mtu: number
 }
 
-export interface PeripheralEventMap {
-  connect: (info: ConnectionInfo) => void
-  disconnect: (info: ConnectionInfo) => void
-  mtu: (info: MtuInfo) => void
-}
-
 export interface Peripheral {
   /** Start advertising. Returns a handle whose `stop()` ends this session. */
   advertise(options?: AdvertiseOptions): Promise<Result<AdvertiseHandle, BleError>>
-  /**
-   * Register a listener for a peripheral lifecycle event. Listeners are
-   * called on the JS loop thread in registration order. Safe to register
-   * before calling `advertise()`.
-   */
-  on<K extends keyof PeripheralEventMap>(event: K, listener: PeripheralEventMap[K]): void
-  /** Remove a previously-registered listener. */
-  off<K extends keyof PeripheralEventMap>(event: K, listener: PeripheralEventMap[K]): void
+  /** Emits when a central connects. Subscribers are dispatched on the JS loop thread. */
+  readonly onConnect: Observable<ConnectionInfo>
+  /** Emits when a central disconnects. */
+  readonly onDisconnect: Observable<ConnectionInfo>
+  /** Emits when a connected central renegotiates its ATT MTU. */
+  readonly onMtu: Observable<MtuInfo>
 }
 
 export declare const ble: Ble

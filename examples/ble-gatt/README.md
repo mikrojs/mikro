@@ -7,7 +7,7 @@ A connectable BLE GATT peripheral with two services:
   - A read-only info string.
   - A writable "command" characteristic. Writes from the central fire an `onWrite` handler on the JS loop thread that hex-dumps the received bytes to the serial console. Reads return whatever was last written.
 
-The app also registers `peripheral.on('connect' | 'disconnect' | 'mtu', ...)` listeners that log each event, and auto-re-advertises on disconnect so the device stays discoverable after a central hangs up.
+The app also subscribes to `peripheral.onConnect`, `peripheral.onDisconnect`, and `peripheral.onMtu` (Observable streams from `mikrojs/observable`) to log each event, and auto-re-advertises on disconnect so the device stays discoverable after a central hangs up.
 
 ## Run
 
