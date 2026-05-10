@@ -10,6 +10,17 @@ typedef struct MIKRuntime MIKRuntime;
 typedef struct MIKRunOptions {
     int mem_limit;
     size_t stack_size;
+    /* Allocate the QuickJS heap from PSRAM instead of internal SRAM on
+     * chips with both. Frees ~150-250 KB of contiguous internal SRAM for
+     * mbedTLS, WiFi/BLE, and DMA buffers, the dominant root cause of
+     * HTTPS handshake failures (error 0x7002) on apps with significant
+     * retained JS state. JS execution is somewhat slower (PSRAM has
+     * higher access latency than internal SRAM); for typical embedded
+     * IO-bound workloads this is invisible against networking and IO
+     * costs. No effect on hosts and chips without PSRAM. Defaults false
+     * for backward compatibility; the firmware bootstrap flips it on
+     * when CONFIG_MIKROJS_QUICKJS_HEAP_PSRAM is set. */
+    bool use_psram_heap;
 } MIKRunOptions;
 
 typedef struct MIKConfig {

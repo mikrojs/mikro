@@ -53,6 +53,23 @@ static size_t node_get_largest_free_internal_mem(void) {
     return 0;
 }
 
+static void* node_malloc_psram(size_t size) {
+    (void)size;
+    return NULL;
+}
+
+static void* node_calloc_psram(size_t count, size_t size) {
+    (void)count;
+    (void)size;
+    return NULL;
+}
+
+static void* node_realloc_psram(void* ptr, size_t size) {
+    (void)ptr;
+    (void)size;
+    return NULL;
+}
+
 static bool node_get_fs_info(const char* label, size_t* total, size_t* used) {
     (void)label;
     (void)total;
@@ -152,6 +169,9 @@ static const MIKPlatform node_platform = {
     .get_largest_free_system_mem = node_get_largest_free_system_mem,
     .get_free_internal_mem = node_get_free_internal_mem,
     .get_largest_free_internal_mem = node_get_largest_free_internal_mem,
+    .malloc_psram = node_malloc_psram,
+    .calloc_psram = node_calloc_psram,
+    .realloc_psram = node_realloc_psram,
     .get_fs_info = node_get_fs_info,
     .log = node_log,
     .stdout_write = node_stdout_write,

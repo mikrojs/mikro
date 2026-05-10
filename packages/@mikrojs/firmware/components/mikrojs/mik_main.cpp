@@ -300,6 +300,9 @@ void MIK_Main(void) {
     if (app_config.stack_size > 0) {
         options.stack_size = app_config.stack_size;
     }
+#ifdef CONFIG_MIKROJS_QUICKJS_HEAP_PSRAM
+    options.use_psram_heap = true;
+#endif
 
     auto create_runtime = [&]() -> MIKRuntime* {
         MIKRuntime* rt = MIK_NewRuntimeOptions(&options);
