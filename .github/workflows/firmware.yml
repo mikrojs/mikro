@@ -55,7 +55,7 @@ jobs:
       matrix:
         target: ${{ fromJSON(needs.setup.outputs.chips) }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    container: espressif/idf:v6.0
+    container: espressif/idf:v6.0.1
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
         with:
