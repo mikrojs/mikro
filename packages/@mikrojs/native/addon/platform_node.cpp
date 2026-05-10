@@ -45,6 +45,14 @@ static size_t node_get_largest_free_system_mem(void) {
     return 0;
 }
 
+static size_t node_get_free_internal_mem(void) {
+    return 0;
+}
+
+static size_t node_get_largest_free_internal_mem(void) {
+    return 0;
+}
+
 static bool node_get_fs_info(const char* label, size_t* total, size_t* used) {
     (void)label;
     (void)total;
@@ -142,6 +150,8 @@ static const MIKPlatform node_platform = {
     .get_min_free_system_mem = node_get_min_free_system_mem,
     .get_total_system_mem = node_get_total_system_mem,
     .get_largest_free_system_mem = node_get_largest_free_system_mem,
+    .get_free_internal_mem = node_get_free_internal_mem,
+    .get_largest_free_internal_mem = node_get_largest_free_internal_mem,
     .get_fs_info = node_get_fs_info,
     .log = node_log,
     .stdout_write = node_stdout_write,

@@ -47,6 +47,10 @@ static JSValue mik__sys_memory_usage(JSContext* ctx, JSValue this_val, int argc,
                       JS_NewInt64(ctx, (int64_t)platform->get_total_system_mem()));
     JS_SetPropertyStr(ctx, obj, "systemLargestFree",
                       JS_NewInt64(ctx, (int64_t)platform->get_largest_free_system_mem()));
+    JS_SetPropertyStr(ctx, obj, "internalFree",
+                      JS_NewInt64(ctx, (int64_t)platform->get_free_internal_mem()));
+    JS_SetPropertyStr(ctx, obj, "internalLargestFree",
+                      JS_NewInt64(ctx, (int64_t)platform->get_largest_free_internal_mem()));
     return obj;
 }
 

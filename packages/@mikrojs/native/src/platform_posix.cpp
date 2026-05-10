@@ -45,6 +45,14 @@ static size_t posix_get_largest_free_system_mem(void) {
     return 0;  /* Not available on desktop */
 }
 
+static size_t posix_get_free_internal_mem(void) {
+    return 0;  /* No internal/PSRAM distinction on desktop */
+}
+
+static size_t posix_get_largest_free_internal_mem(void) {
+    return 0;  /* No internal/PSRAM distinction on desktop */
+}
+
 static bool posix_get_fs_info(const char* label, size_t* total, size_t* used) {
     (void)label;
     (void)total;
@@ -111,6 +119,8 @@ static const MIKPlatform posix_platform = {
     .get_min_free_system_mem = posix_get_min_free_system_mem,
     .get_total_system_mem = posix_get_total_system_mem,
     .get_largest_free_system_mem = posix_get_largest_free_system_mem,
+    .get_free_internal_mem = posix_get_free_internal_mem,
+    .get_largest_free_internal_mem = posix_get_largest_free_internal_mem,
     .get_fs_info = posix_get_fs_info,
     .log = posix_log,
     .stdout_write = posix_stdout_write,
