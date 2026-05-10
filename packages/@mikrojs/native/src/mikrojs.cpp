@@ -317,6 +317,7 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
     mik__result_init(ctx);
     mik__cbor_init(ctx);
     mik__udp_init(ctx);
+    mik__observable_init(ctx);
 
     /* Native mikrojs modules (replace bytecode builtins) */
     mik__inspect_register(ctx);

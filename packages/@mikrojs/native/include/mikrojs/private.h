@@ -215,6 +215,9 @@ JSModuleDef* mik__result_init(JSContext* ctx);
 /* UDP module (mik_udp.cpp) */
 JSModuleDef* mik__udp_init(JSContext* ctx);
 
+/* Observable module (mik_observable.cpp) */
+JSModuleDef* mik__observable_init(JSContext* ctx);
+
 bool mik__repl_is_evaluating(void);
 
 /* REPL protocol mode (mik_repl.cpp) — used by mik_console.cpp, mik_stdio.cpp */

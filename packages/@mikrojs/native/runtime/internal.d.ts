@@ -25,6 +25,10 @@ declare module 'native:result' {
   export function err<E>(error: E): ErrResult<E>
 }
 
+declare module 'native:observable' {
+  export {Observable} from '@mikrojs/native/runtime/observable/types'
+}
+
 declare module 'native:sys' {
   import type {JsMemoryUsage} from './sys/types.js'
   export function evalScript(code: string): Promise<{value: unknown}>

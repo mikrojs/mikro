@@ -92,6 +92,14 @@
       "development": "./src/_exports/neopixel.ts",
       "import": "./dist/_exports/neopixel.js"
     },
+    "./observable": {
+      "development": "./src/_exports/observable.ts",
+      "import": "./dist/_exports/observable.js"
+    },
+    "./observable/operators": {
+      "development": "./src/_exports/observable/operators.ts",
+      "import": "./dist/_exports/observable/operators.js"
+    },
     "./package.json": "./package.json",
     "./pin": {
       "development": "./src/_exports/pin.ts",
@@ -167,6 +175,8 @@
       "./pwm": "./dist/_exports/pwm.js",
       "./reader": "./dist/_exports/reader.js",
       "./neopixel": "./dist/_exports/neopixel.js",
+      "./observable": "./dist/_exports/observable.js",
+      "./observable/operators": "./dist/_exports/observable/operators.js",
       "./i2c": "./dist/_exports/i2c.js",
       "./spi": "./dist/_exports/spi.js",
       "./ble": "./dist/_exports/ble.js",
