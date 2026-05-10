@@ -1,0 +1,15 @@
+# ESP32-C5: same console story as C6 (UART primary, USB-Serial/JTAG
+# secondary). See sdkconfig.defaults.esp32c6 for the reasoning around
+# avoiding ESP-IDF's USB-JTAG VFS at boot. mikrojs installs the
+# USB-Serial/JTAG driver itself for REPL/TLV transport; auto-detection
+# latches to whichever interface receives the first byte.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=n
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+
+# Enable PSRAM. Quad SPI is the only supported mode on ESP32-C5.
+# IGNORE_NOTFOUND so the same firmware boots on bare C5 modules too,
+# falling back to internal SRAM only.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y

@@ -13,6 +13,7 @@ type Chip =
   | 'esp32h2beta1'
   | 'esp32h2beta2'
   | 'esp32c2'
+  | 'esp32c5'
   | 'esp32c6'
   | 'esp32h2'
 

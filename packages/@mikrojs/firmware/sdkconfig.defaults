@@ -93,7 +93,10 @@ CONFIG_VFS_SUPPORT_SELECT=n
 
 # --- Assertions & error strings ---
 CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT=y
-CONFIG_ESP_ERR_TO_NAME_LOOKUP=n
+# Keep esp_err_to_name() readable. Costs ~2 KB flash; without this, runtime
+# errors surface as "UNKNOWN ERROR" instead of e.g. ESP_ERR_NO_MEM, which
+# makes diagnosing on-device failures unnecessarily painful.
+CONFIG_ESP_ERR_TO_NAME_LOOKUP=y
 CONFIG_HAL_DEFAULT_ASSERTION_LEVEL=0
 
 # --- lwIP ---
