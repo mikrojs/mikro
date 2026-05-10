@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.0 (2026-05-10)
+
+### Breaking changes
+
+- replace .on/.off with Observable streams ([#70](https://github.com/mikrojs/mikrojs/pull/70))
+- **wifi:** drive country and hostname from mikro.config.ts ([#73](https://github.com/mikrojs/mikrojs/pull/73))
+
+### Features
+
+- **config:** reject mikrojs/* imports in mikro.config.ts ([#74](https://github.com/mikrojs/mikrojs/pull/74))
+- **firmware:** add ESP32-C5 chip support ([#72](https://github.com/mikrojs/mikrojs/pull/72))
+- **runtime:** allocate QuickJS heap from PSRAM by default ([8269c3f](https://github.com/mikrojs/mikrojs/commit/8269c3f61a48999a3948c8e05d6e6e3d82b69558))
+- **sys:** expose internal-SRAM stats to spot hidden TLS pressure ([8f0cbe3](https://github.com/mikrojs/mikrojs/commit/8f0cbe31aef247a7d69a6dda9ca8acd01d09fb34))
+
+### Bug fixes
+
+- **observable:** pin operator types so twoslash infers through pipe ([#75](https://github.com/mikrojs/mikrojs/pull/75))
+- **firmware:** halve TLS inbound buffer to free internal SRAM ([4a2ec0a](https://github.com/mikrojs/mikrojs/commit/4a2ec0ac2dcdde5b5c764ee9c908e4501903d098))
+
+### Other
+
+- **deps:** update pnpm/action-setup digest to 91ab88e ([#62](https://github.com/mikrojs/mikrojs/pull/62))
+- upgrade esp-idf minimum version to 6.0.1 ([#68](https://github.com/mikrojs/mikrojs/pull/68))
+
 ## 0.5.1 (2026-05-10)
 
 ### Other
