@@ -1,8 +1,10 @@
+import {Observable} from 'mikrojs/observable'
 import {ok} from 'mikrojs/result'
 import {bind as nativeBind, type NativeUdpSocket} from 'native:udp'
 
+import type {Subscriber} from '../observable/types.js'
 import type {Result} from '../result/types.js'
-import type {BindOptions, MulticastGroup, PeerAddress, UdpError, UdpSocket} from './types.js'
+import type {BindOptions, MulticastGroup, UdpError, UdpMessage, UdpSocket} from './types.js'
 
 const utf8 = new TextEncoder()
 
@@ -11,7 +13,37 @@ function toBytes(data: Uint8Array | string): Uint8Array {
 }
 
 function makeSocket(handle: NativeUdpSocket): UdpSocket {
-  let onMessage: ((msg: Uint8Array, from: PeerAddress) => void) | null = null
+  /* Lazy native attach: keep handle.setOnMessage in sync with whether any
+   * JS subscriber is listening. With zero subscribers, the native side
+   * skips JS dispatch and increments the dropped counter for inbound
+   * packets — preserving the pre-Observable behavior of unset onMessage
+   * silently discarding traffic. */
+  const subscribers: Subscriber<UdpMessage>[] = []
+  let closed = false
+
+  const onMessage = new Observable<UdpMessage>((sub) => {
+    if (closed) {
+      sub.complete()
+      return
+    }
+    subscribers.push(sub)
+    if (subscribers.length === 1) {
+      handle.setOnMessage((msg, from) => {
+        /* Snapshot so unsubscribes during dispatch don't shift indices. */
+        const snapshot = subscribers.slice()
+        for (const s of snapshot) {
+          if (!s.closed) s.next({msg, from})
+        }
+      })
+    }
+    sub.addTeardown(() => {
+      const i = subscribers.indexOf(sub)
+      if (i >= 0) subscribers.splice(i, 1)
+      if (subscribers.length === 0 && !closed) {
+        handle.setOnMessage(null)
+      }
+    })
+  })
 
   const sock: UdpSocket = {
     get port() {
@@ -26,13 +58,7 @@ function makeSocket(handle: NativeUdpSocket): UdpSocket {
     set dropped(value: number) {
       handle.dropped = value
     },
-    get onMessage() {
-      return onMessage
-    },
-    set onMessage(fn) {
-      onMessage = fn
-      handle.setOnMessage(fn)
-    },
+    onMessage,
     send(data, to) {
       return handle.send(toBytes(data), to)
     },
@@ -43,6 +69,16 @@ function makeSocket(handle: NativeUdpSocket): UdpSocket {
       return handle.leaveMulticastGroup(group.address)
     },
     close() {
+      if (closed) return
+      closed = true
+      handle.setOnMessage(null)
+      /* Complete any active subscriptions. Walk a snapshot in case a
+       * complete handler unsubscribes a sibling. */
+      const snapshot = subscribers.slice()
+      subscribers.length = 0
+      for (const s of snapshot) {
+        if (!s.closed) s.complete()
+      }
       handle.close()
     },
   }

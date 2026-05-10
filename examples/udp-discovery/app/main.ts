@@ -35,12 +35,12 @@ if (!connected.ok) {
     } else {
       const me = deviceId
 
-      sock.onMessage = (msg, from) => {
+      sock.onMessage.subscribe(({msg, from}) => {
         const text = new TextDecoder().decode(msg)
         // Multicast loops back to ourselves on the same host; skip.
         if (text === me) return
         console.log('discovered %s at %s', text, from.address)
-      }
+      })
 
       console.log('announcing as %s on %s:%d', me, GROUP, PORT)
 

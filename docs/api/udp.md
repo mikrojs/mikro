@@ -22,9 +22,9 @@ if (!result.ok) {
 } else {
   const socket = result.value
 
-  socket.onMessage = (msg, from) => {
+  socket.onMessage.subscribe(({msg, from}) => {
     console.log('%d bytes from %s:%d', msg.length, from.address, from.port)
-  }
+  })
 
   await socket.send('hello', {address: '192.168.1.42', port: 5683, family: 'ipv4'})
 }
@@ -109,25 +109,25 @@ Closes the socket. Idempotent. Subsequent `send` calls resolve to `{name: 'Close
 
 ## Socket properties
 
-| Property    | Type                            | Description                                                    |
-| ----------- | ------------------------------- | -------------------------------------------------------------- |
-| `port`      | `number`                        | Actual bound port (resolved when `bind` was called with `0`)   |
-| `family`    | `'ipv4' \| 'ipv6' \| 'dual'`    | Address family the socket was opened with                      |
-| `dropped`   | `number`                        | Counter of inbound datagrams dropped (see below)               |
-| `onMessage` | `((msg, from) => void) \| null` | Receive callback. Assign to start receiving; assign `null` off |
+| Property    | Type                         | Description                                                  |
+| ----------- | ---------------------------- | ------------------------------------------------------------ |
+| `port`      | `number`                     | Actual bound port (resolved when `bind` was called with `0`) |
+| `family`    | `'ipv4' \| 'ipv6' \| 'dual'` | Address family the socket was opened with                    |
+| `dropped`   | `number`                     | Counter of inbound datagrams dropped (see below)             |
+| `onMessage` | `Observable<UdpMessage>`     | Stream of inbound datagrams. Subscribe to start receiving    |
 
 ## Receiving
 
-Received datagrams are pushed to `socket.onMessage`. The handler is called once per packet with a freshly allocated `Uint8Array` and a `PeerAddress` describing the sender.
+`socket.onMessage` is an `Observable<UdpMessage>` (see `mikrojs/observable`). Subscribe to receive packets — each emission is `{msg, from}` with a freshly allocated `Uint8Array` and a `PeerAddress` describing the sender. The first subscribe attaches the native dispatch; the last `unsubscribe()` detaches it again.
 
 ```ts twoslash
 import {bind} from 'mikrojs/udp'
 declare const socket: NonNullable<Awaited<ReturnType<typeof bind>>['value']>
 // ---cut---
-socket.onMessage = (msg, from) => {
+socket.onMessage.subscribe(({msg, from}) => {
   const text = new TextDecoder().decode(msg)
   console.log('%s:%d -> %s', from.address, from.port, text)
-}
+})
 ```
 
 The receive buffer is 1500 bytes (typical Ethernet MTU). Datagrams larger than that are dropped rather than truncated and increment `socket.dropped`. This covers all common protocols (CoAP is capped at 1152 bytes by spec; mDNS, DNS, SNTP all stay well under the MTU).
@@ -143,7 +143,7 @@ import {bind} from 'mikrojs/udp'
 const r = await bind({port: 5683, recvQueue: 32})
 ```
 
-`socket.dropped` also increments when a packet arrives but no `onMessage` handler is set, or when a datagram is larger than the receive buffer.
+`socket.dropped` also increments when a packet arrives but no subscriber is attached to `onMessage`, or when a datagram is larger than the receive buffer.
 
 ## Address normalization
 
