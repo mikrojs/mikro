@@ -62,6 +62,14 @@ static size_t esp32_get_largest_free_system_mem(void) {
     return heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
 }
 
+static size_t esp32_get_free_internal_mem(void) {
+    return heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+}
+
+static size_t esp32_get_largest_free_internal_mem(void) {
+    return heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+}
+
 static bool esp32_get_fs_info(const char* label, size_t* total, size_t* used) {
 #if HAS_LITTLEFS
     return esp_littlefs_info(label, total, used) == ESP_OK;
@@ -163,6 +171,8 @@ static const MIKPlatform esp32_platform = {
     .get_min_free_system_mem = esp32_get_min_free_system_mem,
     .get_total_system_mem = esp32_get_total_system_mem,
     .get_largest_free_system_mem = esp32_get_largest_free_system_mem,
+    .get_free_internal_mem = esp32_get_free_internal_mem,
+    .get_largest_free_internal_mem = esp32_get_largest_free_internal_mem,
     .get_fs_info = esp32_get_fs_info,
     .log = esp32_log,
     .stdout_write = esp32_stdout_write,

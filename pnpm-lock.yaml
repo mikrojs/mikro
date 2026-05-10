@@ -182,6 +182,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/mikrojs
 
+  dev/sram-pressure:
+    dependencies:
+      mikrojs:
+        specifier: workspace:*
+        version: link:../../packages/mikrojs
+
   dev/stackoverflow:
     dependencies:
       mikrojs:

@@ -18,11 +18,25 @@ typedef struct MIKPlatform {
     size_t (*get_free_system_mem)(void);
     size_t (*get_min_free_system_mem)(void); /* All-time low watermark */
     size_t (*get_total_system_mem)(void);
-    /** Largest contiguous free block (for diagnosing heap fragmentation —
+    /** Largest contiguous free block (for diagnosing heap fragmentation:
      *  an allocation larger than this fails even if total free is bigger).
      *  On platforms without a native largest-block API, implementations
      *  may return the same value as get_free_system_mem. */
     size_t (*get_largest_free_system_mem)(void);
+    /** Free internal-SRAM bytes. On chips with PSRAM this is the subset of
+     *  free heap that lives in fast on-chip RAM, which is also what mbedTLS
+     *  handshake buffers, WiFi/BLE drivers, and DMA-capable buffers compete
+     *  for. Distinct from get_free_system_mem on PSRAM-equipped chips, where
+     *  combined heap is dominated by PSRAM and hides internal-SRAM pressure.
+     *  On hosts and chips without PSRAM, may return the same value as
+     *  get_free_system_mem (or 0 if unavailable). */
+    size_t (*get_free_internal_mem)(void);
+    /** Largest contiguous free block in internal SRAM. Allocations that
+     *  must land in internal RAM (such as mbedTLS record buffers) fail when
+     *  this drops below their size, even when get_largest_free_system_mem
+     *  reports plenty of contiguous PSRAM. Same fallback rules as
+     *  get_free_internal_mem. */
+    size_t (*get_largest_free_internal_mem)(void);
     bool (*get_fs_info)(const char* label, size_t* total, size_t* used);
     void (*log)(int level, const char* tag, const char* fmt, ...);
     int (*stdout_write)(const void* buf, size_t len);

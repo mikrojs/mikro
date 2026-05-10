@@ -10,10 +10,23 @@ export interface MemoryUsage {
   /** Total system heap in bytes (0 on host) */
   systemTotal: number
   /** Largest contiguous free block in bytes (0 on host). Allocations
-   *  larger than this fail even when `systemFree` is bigger — the gap
+   *  larger than this fail even when `systemFree` is bigger; the gap
    *  between `systemLargestFree` and `systemFree` measures heap
    *  fragmentation. */
   systemLargestFree: number
+  /** Free internal-SRAM bytes (0 on host). On chips with PSRAM this is
+   *  the subset of free heap that lives in fast on-chip RAM, which
+   *  also holds mbedTLS handshake buffers, WiFi/BLE driver state, and
+   *  DMA-capable buffers. On PSRAM-equipped chips `systemFree` is
+   *  dominated by PSRAM and can hide internal-SRAM pressure: watch
+   *  `internalFree` instead when diagnosing TLS handshake or driver
+   *  allocation failures. On chips without PSRAM, equals `systemFree`. */
+  internalFree: number
+  /** Largest contiguous free block in internal SRAM (0 on host).
+   *  Allocations that must land in internal RAM (such as mbedTLS record
+   *  buffers, ~16 KB each) fail when this drops below their size, even
+   *  when `systemLargestFree` reports plenty of contiguous PSRAM. */
+  internalLargestFree: number
 }
 
 export interface Uptime {
