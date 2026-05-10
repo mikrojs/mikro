@@ -6,8 +6,6 @@ import {wifi} from 'mikrojs/wifi'
 await sleep(2000)
 console.log('Current time at startup: %s', new Date())
 
-wifi.country = 'NO'
-
 const ssid = env.require('WIFI_SSID')
 const passphrase = env.require('WIFI_PASSPHRASE')
 

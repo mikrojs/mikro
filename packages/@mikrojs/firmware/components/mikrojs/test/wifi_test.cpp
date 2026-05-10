@@ -28,11 +28,15 @@ static void setup() {
     vTaskDelay(pdMS_TO_TICKS(100));
     rt = MIK_NewRuntime();
     ctx = MIK_GetJSContext(rt);
+    /* Country is config-only — populate it directly so wifi ops that gate on
+     * mik__wifi_try_auto_country can proceed. */
+    MIKConfig cfg;
+    MIK_DefaultConfig(&cfg);
+    snprintf(cfg.wifi_country, sizeof(cfg.wifi_country), "US");
+    MIK_SetConfig(rt, &cfg);
     /* WiFi module is self-registered and lazily initialized.
-     * The import below triggers init + loop consumer registration.
-     * Then drain any stale events from previous tests. */
-    const char* init_code =
-        "import { Wifi } from \"native:wifi\"; new Wifi().setCountry(\"US\");";
+     * The import below triggers init + loop consumer registration. */
+    const char* init_code = "import { Wifi } from \"native:wifi\"; new Wifi();";
     JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test-setup", init_code, strlen(init_code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
@@ -332,14 +336,22 @@ TEST_CASE("Wifi mac returns a valid MAC address format", "[wifi]") {
     teardown();
 }
 
-TEST_CASE("Wifi hostname get/set round-trips", "[wifi]") {
-    setup();
+TEST_CASE("Wifi hostname reflects configured wifi.hostname", "[wifi]") {
+    /* Custom setup with wifi.hostname populated. Mirrors setup() but injects
+     * a hostname before the lazy netif init runs. */
+    esp_wifi_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(100));
+    rt = MIK_NewRuntime();
+    ctx = MIK_GetJSContext(rt);
+    MIKConfig cfg;
+    MIK_DefaultConfig(&cfg);
+    snprintf(cfg.wifi_country, sizeof(cfg.wifi_country), "US");
+    snprintf(cfg.wifi_hostname, sizeof(cfg.wifi_hostname), "test-device");
+    MIK_SetConfig(rt, &cfg);
 
     JSValue ret = eval_module(R"(
         import { Wifi } from "native:wifi";
-        const wifi = new Wifi();
-        wifi.setHostname("test-device");
-        globalThis.__hostname = wifi.getHostname();
+        globalThis.__hostname = new Wifi().getHostname();
     )");
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
 
@@ -446,13 +458,15 @@ TEST_CASE("Wifi power save get/set round-trips", "[wifi]") {
     teardown();
 }
 
-TEST_CASE("Wifi country get/set round-trips", "[wifi]") {
+TEST_CASE("Wifi country reflects configured wifi.country", "[wifi]") {
     setup();
 
+    /* setup() populated wifi_country = "US"; trigger a wifi op so
+     * mik__wifi_try_auto_country applies it, then read back via getCountry. */
     JSValue ret = eval_module(R"(
         import { Wifi } from "native:wifi";
         const wifi = new Wifi();
-        wifi.setCountry("US");
+        wifi.scan();
         globalThis.__cc = wifi.getCountry();
     )");
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");

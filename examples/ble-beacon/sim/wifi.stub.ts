@@ -37,9 +37,6 @@ export class Wifi implements SimWifi {
   getHostname() {
     return 'mikrojs-sim' as string | undefined
   }
-  setHostname() {
-    return {ok: true as const}
-  }
   getIpConfig() {
     if (!connected) return {ok: true as const, value: undefined}
     return {
@@ -94,8 +91,5 @@ export class Wifi implements SimWifi {
   }
   getCountry() {
     return undefined
-  }
-  setCountry() {
-    return {ok: true as const}
   }
 }

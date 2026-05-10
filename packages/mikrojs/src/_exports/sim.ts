@@ -24,7 +24,6 @@ export interface SimStubMethods {
     off(event: string, listener: (...args: unknown[]) => void): void
     mac(): NR<string>
     getHostname(): string | undefined
-    setHostname(hostname: string): NRV
     getIpConfig(): NR<{ip: string; netmask: string; gateway: string; dns: string} | undefined>
     setIpConfig(opts: {
       ip?: string
@@ -55,7 +54,6 @@ export interface SimStubMethods {
     getPowerSave(): string
     setPowerSave(mode: string): NRV
     getCountry(): string | undefined
-    setCountry(cc: string): NRV
   }
   http: {
     request(

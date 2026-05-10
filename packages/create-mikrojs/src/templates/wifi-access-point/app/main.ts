@@ -1,9 +1,6 @@
 import {sleep} from 'mikrojs/sleep'
 import {wifi} from 'mikrojs/wifi'
 
-// Country must be set before using WiFi
-wifi.country = 'NO'
-
 // Start the access point
 wifi.ap
   .start({

@@ -407,7 +407,6 @@ declare module 'native:wifi' {
     // Network config
     mac(): R<string>
     getHostname(): string | undefined
-    setHostname(hostname: string): R<void>
     getIpConfig(): R<{ip: string; netmask: string; gateway: string; dns: string} | undefined>
     setIpConfig(opts: {
       ip?: string
@@ -446,7 +445,6 @@ declare module 'native:wifi' {
     getPowerSave(): string
     setPowerSave(mode: string): R<void>
     getCountry(): string | undefined
-    setCountry(cc: string): R<void>
   }
 
   export declare const Wifi: {

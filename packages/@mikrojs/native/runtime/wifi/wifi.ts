@@ -152,12 +152,6 @@ const wifi: Wifi = {
     return native.getHostname()
   },
 
-  set hostname(value: string | undefined) {
-    if (value !== undefined) {
-      native.setHostname(value)
-    }
-  },
-
   ipConfig: ((
     opts?: StaticIpConfig,
   ): Result<IpConfig | undefined, WifiError> | Result<void, WifiError> => {
@@ -196,12 +190,6 @@ const wifi: Wifi = {
 
   get country(): WifiCountryCode | undefined {
     return native.getCountry() as WifiCountryCode | undefined
-  },
-
-  set country(cc: WifiCountryCode | undefined) {
-    if (cc !== undefined) {
-      native.setCountry(cc)
-    }
   },
 }
 

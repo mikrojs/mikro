@@ -3,9 +3,6 @@ import {request} from 'mikrojs/http/request'
 import {memoryUsage} from 'mikrojs/sys'
 import {wifi} from 'mikrojs/wifi'
 
-// Country must be set before using WiFi
-wifi.country = 'NO'
-
 const ssid = env.require('WIFI_SSID')
 const passphrase = env.require('WIFI_PASSPHRASE')
 

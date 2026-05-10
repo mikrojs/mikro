@@ -29,7 +29,6 @@ export class Wifi implements SimWifi {
   off() {}
   mac() { return ok('00:00:00:00:00:00') }
   getHostname() { return 'mikrojs-sim' as string | undefined }
-  setHostname() { return ok() }
   getIpConfig() {
     if (!connected) return ok(undefined)
     return ok({ip: currentIp, netmask: '255.255.255.0', gateway: '192.168.1.1', dns: '8.8.8.8'})
@@ -50,7 +49,6 @@ export class Wifi implements SimWifi {
   getPowerSave() { return 'NONE' }
   setPowerSave() { return ok() }
   getCountry() { return undefined }
-  setCountry() { return ok() }
 }
 `,
 }

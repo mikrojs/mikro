@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "nvs_flash.h"
+#include "mikrojs/platform.h"
 #include "private.h"
 #include "utils.h"
 
@@ -251,7 +252,29 @@ static void mik__wifi_event_handler(void* arg, esp_event_base_t event_base, int3
     }
 }
 
-esp_err_t mik__wifi_ensure_initialized() {
+/* Pick the DHCP hostname for the STA netif: configured `wifi.hostname` from
+ * mikro.config.json takes priority; otherwise default to `mikrojs-<device-id>`.
+ * Returns true if a hostname was applied. */
+static bool mik__wifi_apply_hostname(JSContext* ctx) {
+    if (!s_sta_netif) return false;
+    char buf[64];
+    const char* hostname = nullptr;
+    if (ctx) {
+        MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+        if (mik_rt && mik_rt->config.wifi_hostname[0] != '\0') {
+            hostname = mik_rt->config.wifi_hostname;
+        }
+    }
+    if (!hostname) {
+        const char* dev_id = MIK_GetPlatform()->get_device_id();
+        if (!dev_id || !dev_id[0]) return false;
+        snprintf(buf, sizeof(buf), "mikrojs-%s", dev_id);
+        hostname = buf;
+    }
+    return esp_netif_set_hostname(s_sta_netif, hostname) == ESP_OK;
+}
+
+esp_err_t mik__wifi_ensure_initialized(JSContext* ctx) {
     if (s_wifi_initialized) return ESP_OK;
 
     esp_err_t err = nvs_flash_init();
@@ -272,6 +295,7 @@ esp_err_t mik__wifi_ensure_initialized() {
      * asserting in esp_netif_create_default_wifi_sta. */
     if (!s_sta_netif) {
         s_sta_netif = esp_netif_create_default_wifi_sta();
+        if (s_sta_netif) mik__wifi_apply_hostname(ctx);
     }
     if (!s_sta_netif) return ESP_FAIL;
 
@@ -310,8 +334,8 @@ fail_after_init:
 
 /* Start the WiFi radio.  Deferred from init so the radio is not active
  * until connect() or scan() is actually called. */
-static esp_err_t mik__wifi_ensure_started() {
-    esp_err_t err = mik__wifi_ensure_initialized();
+static esp_err_t mik__wifi_ensure_started(JSContext* ctx) {
+    esp_err_t err = mik__wifi_ensure_initialized(ctx);
     if (err != ESP_OK) return err;
     if (s_wifi_started) return ESP_OK;
 
@@ -374,7 +398,7 @@ static JSClassDef mik_wifi_classdef = {
 };
 
 static JSValue mik__wifi_constructor(JSContext* ctx, JSValue new_target, int argc, JSValue* argv) {
-    esp_err_t err = mik__wifi_ensure_initialized();
+    esp_err_t err = mik__wifi_ensure_initialized(ctx);
     if (err != ESP_OK) {
         return JS_ThrowInternalError(ctx, "WiFi init failed: %s", esp_err_to_name(err));
     }
@@ -386,7 +410,7 @@ static JSValue mik__wifi_connect(JSContext* ctx, JSValue this_val, int argc, JSV
         return mik__result_err_tag(ctx, "CountryNotSet");
     }
 
-    esp_err_t start_err = mik__wifi_ensure_started();
+    esp_err_t start_err = mik__wifi_ensure_started(ctx);
     if (start_err != ESP_OK) {
         return mik__result_err_named(ctx, "StartFailed",
                                "Failed to start WiFi radio: %s", esp_err_to_name(start_err));
@@ -478,7 +502,7 @@ static JSValue mik__wifi_scan(JSContext* ctx, JSValue this_val, int argc, JSValu
         return mik__result_err_tag(ctx, "CountryNotSet");
     }
 
-    esp_err_t start_err = mik__wifi_ensure_started();
+    esp_err_t start_err = mik__wifi_ensure_started(ctx);
     if (start_err != ESP_OK) {
         return mik__result_err_named(ctx, "StartFailed",
                                "Failed to start WiFi radio: %s", esp_err_to_name(start_err));
@@ -631,22 +655,6 @@ static JSValue mik__wifi_get_hostname(JSContext* ctx, JSValue this_val, int argc
     return JS_NewString(ctx, hostname);
 }
 
-static JSValue mik__wifi_set_hostname(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    if (!s_sta_netif) {
-        return mik__result_err_tag(ctx, "NotInitialized");
-    }
-    const char* hostname = JS_ToCString(ctx, argv[0]);
-    if (!hostname) return JS_EXCEPTION;
-
-    esp_err_t err = esp_netif_set_hostname(s_sta_netif, hostname);
-    JS_FreeCString(ctx, hostname);
-    if (err != ESP_OK) {
-        return mik__result_err_named(ctx, "SetFailed",
-                               "Failed to set hostname: %s", esp_err_to_name(err));
-    }
-    return mik__result_ok_void(ctx);
-}
-
 static JSValue mik__wifi_get_ip_config(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     if (!s_sta_netif) {
         return JS_UNDEFINED;
@@ -746,7 +754,7 @@ static JSValue mik__wifi_ap_start(JSContext* ctx, JSValue this_val, int argc, JS
         return mik__result_err_tag(ctx, "CountryNotSet");
     }
 
-    esp_err_t err = mik__wifi_ensure_started();
+    esp_err_t err = mik__wifi_ensure_started(ctx);
     if (err != ESP_OK) {
         return mik__result_err_named(ctx, "StartFailed",
                                "Failed to start WiFi radio: %s", esp_err_to_name(err));
@@ -952,26 +960,11 @@ static JSValue mik__wifi_get_country(JSContext* ctx, JSValue this_val, int argc,
     return JS_NewStringLen(ctx, cc, 2);
 }
 
-static JSValue mik__wifi_set_country(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    const char* cc = JS_ToCString(ctx, argv[0]);
-    if (!cc) return JS_EXCEPTION;
-
-    esp_err_t err = esp_wifi_set_country_code(cc, true);
-    JS_FreeCString(ctx, cc);
-
-    if (err != ESP_OK) {
-        return mik__result_err_named(ctx, "SetFailed",
-                               "Failed to set WiFi country code: %s", esp_err_to_name(err));
-    }
-    s_country_configured = true;
-    return mik__result_ok_void(ctx);
-}
-
 /* ── TX power ──────────────────────────────────────────────────────── */
 
 static JSValue mik__wifi_get_tx_power(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     /* esp_wifi_get_max_tx_power requires the radio to be started. */
-    esp_err_t start_err = mik__wifi_ensure_started();
+    esp_err_t start_err = mik__wifi_ensure_started(ctx);
     if (start_err != ESP_OK) {
         return mik__result_err_named(ctx, "GetFailed",
                                "Failed to get TX power: %s", esp_err_to_name(start_err));
@@ -988,7 +981,7 @@ static JSValue mik__wifi_get_tx_power(JSContext* ctx, JSValue this_val, int argc
 static JSValue mik__wifi_set_tx_power(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     double dbm;
     if (JS_ToFloat64(ctx, &dbm, argv[0])) return JS_EXCEPTION;
-    esp_err_t start_err = mik__wifi_ensure_started();
+    esp_err_t start_err = mik__wifi_ensure_started(ctx);
     if (start_err != ESP_OK) {
         return mik__result_err_named(ctx, "SetFailed",
                                "Failed to set TX power: %s", esp_err_to_name(start_err));
@@ -1097,7 +1090,6 @@ static const JSCFunctionListEntry mik__wifi_proto_funcs[] = {
     MIK_CFUNC_DEF("off", 2, mik__wifi_off),
     MIK_CFUNC_DEF("mac", 0, mik__wifi_mac),
     MIK_CFUNC_DEF("getHostname", 0, mik__wifi_get_hostname),
-    MIK_CFUNC_DEF("setHostname", 1, mik__wifi_set_hostname),
     MIK_CFUNC_DEF("getIpConfig", 0, mik__wifi_get_ip_config),
     MIK_CFUNC_DEF("setIpConfig", 1, mik__wifi_set_ip_config),
     MIK_CFUNC_DEF("apStart", 1, mik__wifi_ap_start),
@@ -1108,7 +1100,6 @@ static const JSCFunctionListEntry mik__wifi_proto_funcs[] = {
     MIK_CFUNC_DEF("getPowerSave", 0, mik__wifi_get_power_save),
     MIK_CFUNC_DEF("setPowerSave", 1, mik__wifi_set_power_save),
     MIK_CFUNC_DEF("getCountry", 0, mik__wifi_get_country),
-    MIK_CFUNC_DEF("setCountry", 1, mik__wifi_set_country),
     MIK_CFUNC_DEF("getTxPower", 0, mik__wifi_get_tx_power),
     MIK_CFUNC_DEF("setTxPower", 1, mik__wifi_set_tx_power),
     MIK_CFUNC_DEF("getRssiThreshold", 0, mik__wifi_get_rssi_threshold),

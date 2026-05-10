@@ -99,7 +99,6 @@ console.log('neopixel end:', neo.end())
 logMem('after neopixel')
 
 // --- wifi ---
-wifi.country = 'NO'
 const WIFI_SSID = env.get('WIFI_SSID')
 const WIFI_PASSPHRASE = env.get('WIFI_PASSPHRASE')
 console.log('connecting to wifi...')

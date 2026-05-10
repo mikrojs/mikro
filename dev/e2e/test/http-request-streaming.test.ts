@@ -22,7 +22,6 @@ const isSim = env.get('MIKRO_ENV') === 'simulator'
 
 describe.runIf(hasWifi && !isSim)('http request streaming', () => {
   beforeAll(async () => {
-    wifi.country = 'NO'
     const connected = await wifi.connect(WIFI_SSID!, WIFI_PASSPHRASE!)
     assert.equal(connected.ok, true, 'wifi connect')
     if (connected.ok) console.log(`connected: ${connected.value.ip}`)
