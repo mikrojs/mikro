@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.5.1 (2026-05-10)
+
+### Other
+
+- **deps:** update dependency knip to v6.12.2 ([#67](https://github.com/mikrojs/mikrojs/pull/67))
+- **deps:** update pnpm to v11.0.9 ([#46](https://github.com/mikrojs/mikrojs/pull/46))
+- **deps:** update dependency npm to v11.14.1 ([#65](https://github.com/mikrojs/mikrojs/pull/65))
+- **deps:** update dependency publint to v0.3.20 ([#64](https://github.com/mikrojs/mikrojs/pull/64))
+- **deps:** update dependency vite to v8.0.11 ([#57](https://github.com/mikrojs/mikrojs/pull/57))
+- **deps:** update dependency wrangler to v4.90.0 ([#61](https://github.com/mikrojs/mikrojs/pull/61))
+- **deps:** update dependency knip to v6.12.1 ([#60](https://github.com/mikrojs/mikrojs/pull/60))
+- **deps:** update dependency terser to v5.47.1 ([#59](https://github.com/mikrojs/mikrojs/pull/59))
+- **deps:** update dependency terser to v5.47.0 ([#58](https://github.com/mikrojs/mikrojs/pull/58))
+- **deps:** update dependency npm to v11.14.0 ([#56](https://github.com/mikrojs/mikrojs/pull/56))
+- **deps:** update dependency knip to v6.12.0 ([#55](https://github.com/mikrojs/mikrojs/pull/55))
+- **deps:** update dependency @types/estree to v1.0.9 ([#53](https://github.com/mikrojs/mikrojs/pull/53))
+- **deps:** update dependency vue to v3.5.34 ([#52](https://github.com/mikrojs/mikrojs/pull/52))
+- **deps:** update dependency wrangler to v4.88.0 ([#51](https://github.com/mikrojs/mikrojs/pull/51))
+- **deps:** update dependency oxfmt to ^0.48.0 ([#50](https://github.com/mikrojs/mikrojs/pull/50))
+- **deps:** update dependency publint to v0.3.19 ([#49](https://github.com/mikrojs/mikrojs/pull/49))
+- **deps:** update dependency @swc/core to v1.15.33 ([#45](https://github.com/mikrojs/mikrojs/pull/45))
+- **deps:** update pnpm to v11.0.4 ([#33](https://github.com/mikrojs/mikrojs/pull/33))
+- **deps:** update pnpm/action-setup action to v6 ([#44](https://github.com/mikrojs/mikrojs/pull/44))
+- **deps:** update dependency wrangler to v4.87.0 ([#43](https://github.com/mikrojs/mikrojs/pull/43))
+- **deps:** update dependency oxfmt to ^0.47.0 ([#42](https://github.com/mikrojs/mikrojs/pull/42))
+- **deps:** update dependency knip to v6.11.0 ([#41](https://github.com/mikrojs/mikrojs/pull/41))
+- **deps:** update dependency eslint to v10.3.0 ([#36](https://github.com/mikrojs/mikrojs/pull/36))
+- **deps:** update dependency globals to v17.6.0 ([#38](https://github.com/mikrojs/mikrojs/pull/38))
+- **deps:** update dependency @clack/prompts to v1.3.0 ([#35](https://github.com/mikrojs/mikrojs/pull/35))
+- **deps:** update typescript-eslint monorepo to v8.59.1 ([#34](https://github.com/mikrojs/mikrojs/pull/34))
+- **deps:** update dependency knip to v6.10.0 ([#39](https://github.com/mikrojs/mikrojs/pull/39))
+- **renovate:** minReleaseAge + enable automerge for dev deps ([#37](https://github.com/mikrojs/mikrojs/pull/37))
+- **deps:** update pnpm to v11.0.3 ([#32](https://github.com/mikrojs/mikrojs/pull/32))
+- **deps:** update dependency eslint-plugin-package-json to v0.91.2 ([#30](https://github.com/mikrojs/mikrojs/pull/30))
+- **deps:** update dependency @swc/core to v1.15.33 ([#29](https://github.com/mikrojs/mikrojs/pull/29))
+- Configure Renovate ([#27](https://github.com/mikrojs/mikrojs/pull/27))
+
 ## 0.5.0 (2026-05-02)
 
 ### Breaking changes
