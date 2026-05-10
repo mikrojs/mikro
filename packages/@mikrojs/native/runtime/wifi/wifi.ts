@@ -1,9 +1,9 @@
+import {Observable} from 'mikrojs/observable'
 import {err, ok} from 'mikrojs/result'
 import {Wifi as NativeWifi} from 'native:wifi'
 
 import type {Result} from '../result/types.js'
 import type {
-  ApEventMap,
   ApStartOptions,
   ApStationInfo,
   IpConfig,
@@ -15,8 +15,8 @@ import type {
   WifiAp,
   WifiConnectionInfo,
   WifiCountryCode,
+  WifiDisconnectReason,
   WifiError,
-  WifiEventMap,
   WifiStatus,
 } from './types.js'
 
@@ -36,6 +36,23 @@ const StatusFromCode = new Map<number, WifiStatus>(
 )
 
 const native = new NativeWifi()
+
+/* One Observable per event type, each backed by a single native.on
+ * registration. Subscribers share that registration via the multicast
+ * source from Observable.withEmitters() — registering the listener once
+ * keeps the C-level callback list at minimum size regardless of how many
+ * JS subscribers are attached. */
+const _onConnect = Observable.withEmitters<WifiConnectionInfo>()
+const _onDisconnect = Observable.withEmitters<WifiDisconnectReason>()
+const _onRssiLow = Observable.withEmitters<number>()
+const _onStationConnect = Observable.withEmitters<ApStationInfo>()
+const _onStationDisconnect = Observable.withEmitters<ApStationInfo>()
+
+native.on('connect', (info) => _onConnect.next(info as WifiConnectionInfo))
+native.on('disconnect', (reason) => _onDisconnect.next(reason as WifiDisconnectReason))
+native.on('rssi-low', (rssi) => _onRssiLow.next(rssi as number))
+native.on('station-connect', (info) => _onStationConnect.next(info as ApStationInfo))
+native.on('station-disconnect', (info) => _onStationDisconnect.next(info as ApStationInfo))
 
 const ap: WifiAp = {
   start(options: ApStartOptions): Result<void, WifiError> {
@@ -71,13 +88,8 @@ const ap: WifiAp = {
     native.apSetInactiveTimeout(seconds)
   },
 
-  on<K extends keyof ApEventMap>(event: K, listener: ApEventMap[K]) {
-    native.on(event, listener as (...args: unknown[]) => void)
-  },
-
-  off<K extends keyof ApEventMap>(event: K, listener: ApEventMap[K]) {
-    native.off(event, listener as (...args: unknown[]) => void)
-  },
+  onStationConnect: _onStationConnect.observable,
+  onStationDisconnect: _onStationDisconnect.observable,
 }
 
 const MAX_CONNECT_RETRIES = 5
@@ -135,13 +147,9 @@ const wifi: Wifi = {
     return ok(asyncResult.value as ScanResult[])
   },
 
-  on<K extends keyof WifiEventMap>(event: K, listener: WifiEventMap[K]) {
-    native.on(event, listener as (...args: unknown[]) => void)
-  },
-
-  off<K extends keyof WifiEventMap>(event: K, listener: WifiEventMap[K]) {
-    native.off(event, listener as (...args: unknown[]) => void)
-  },
+  onConnect: _onConnect.observable,
+  onDisconnect: _onDisconnect.observable,
+  onRssiLow: _onRssiLow.observable,
 
   get mac(): string {
     const result = native.mac()
