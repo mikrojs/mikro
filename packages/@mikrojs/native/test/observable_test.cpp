@@ -4,7 +4,8 @@
  * Tests cover:
  * - subscribe lifecycle (basic emit + complete, teardown order, closed flag)
  * - sync emission (subscribe-time emit, recursive next-in-next)
- * - throws caught + logged at dispatch boundary (cleanup runs anyway)
+ * - throws caught at dispatch boundary, scheduled async via setTimeout(0)
+ *   (cleanup runs anyway, sibling subscribers still receive the value)
  * - multicast (idempotent close, late-subscriber immediate complete,
  *   snapshot-on-dispatch survives unsubscribe-during-dispatch)
  * - Observable.from(iterable / promise / observable)
@@ -253,7 +254,42 @@ TEST_CASE("unsubscribe is idempotent" * doctest::test_suite("observable")) {
     MIK_FreeRuntime(rt);
 }
 
-TEST_CASE("observer.next throw is caught + logged, dispatch continues" *
+TEST_CASE("observer.next throw is scheduled async, dispatch continues" *
+          doctest::test_suite("observable")) {
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    /* Stub setTimeout so the async-thrown error doesn't actually fire during
+     * the test (which would surface as an uncaught exception). Capture each
+     * scheduled callback and verify it throws when invoked manually. */
+    JSValue rv = eval_module(
+        ctx,
+        "import {Observable} from 'mikrojs/observable'\n"
+        "const scheduled = []\n"
+        "globalThis.setTimeout = (fn, ms) => { scheduled.push({fn, ms}); return 0 }\n"
+        "let count = 0\n"
+        "new Observable(sub => {\n"
+        "  sub.next(1); sub.next(2); sub.next(3); sub.complete()\n"
+        "}).subscribe(v => { count++; if (v === 1) throw new Error('boom') })\n"
+        "globalThis.__count = count\n"
+        "globalThis.__scheduledCount = scheduled.length\n"
+        "let msg = ''\n"
+        "if (scheduled.length > 0) {\n"
+        "  try { scheduled[0].fn() } catch (e) { msg = e.message }\n"
+        "}\n"
+        "globalThis.__caughtMessage = msg\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    /* All three values delivered synchronously; subscription stayed alive. */
+    CHECK(read_global_int(ctx, "__count") == 3);
+    /* Exactly one async re-throw was scheduled; running it surfaces 'boom'. */
+    CHECK(read_global_int(ctx, "__scheduledCount") == 1);
+    CHECK(read_global_string(ctx, "__caughtMessage") == "boom");
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("teardown throw schedules async re-throw, subsequent teardowns still run" *
           doctest::test_suite("observable")) {
     auto* rt = MIK_NewRuntime();
     auto* ctx = MIK_GetJSContext(rt);
@@ -261,39 +297,29 @@ TEST_CASE("observer.next throw is caught + logged, dispatch continues" *
     JSValue rv = eval_module(
         ctx,
         "import {Observable} from 'mikrojs/observable'\n"
-        "let count = 0\n"
+        "const scheduled = []\n"
+        "globalThis.setTimeout = (fn, ms) => { scheduled.push({fn, ms}); return 0 }\n"
+        "let trace = []\n"
         "new Observable(sub => {\n"
-        "  sub.next(1); sub.next(2); sub.next(3); sub.complete()\n"
-        "}).subscribe(v => { count++; if (v === 1) throw new Error('boom') })\n"
-        "globalThis.__count = count\n");
+        "  sub.addTeardown(() => trace.push('a'))\n"
+        "  sub.addTeardown(() => { throw new Error('mid') })\n"
+        "  sub.addTeardown(() => trace.push('c'))\n"
+        "  sub.complete()\n"
+        "}).subscribe()\n"
+        "globalThis.__trace = trace.join(',')\n"
+        "globalThis.__scheduledCount = scheduled.length\n"
+        "let msg = ''\n"
+        "if (scheduled.length > 0) {\n"
+        "  try { scheduled[0].fn() } catch (e) { msg = e.message }\n"
+        "}\n"
+        "globalThis.__caughtMessage = msg\n");
     CHECK_FALSE(JS_IsException(rv));
     JS_FreeValue(ctx, rv);
 
-    /* All three values delivered; subscription stayed alive after throw. */
-    CHECK(read_global_int(ctx, "__count") == 3);
-    MIK_FreeRuntime(rt);
-}
-
-TEST_CASE("teardown throw doesn't stop subsequent teardowns" *
-          doctest::test_suite("observable")) {
-    auto* rt = MIK_NewRuntime();
-    auto* ctx = MIK_GetJSContext(rt);
-
-    JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
-                             "let trace = []\n"
-                             "new Observable(sub => {\n"
-                             "  sub.addTeardown(() => trace.push('a'))\n"
-                             "  sub.addTeardown(() => { throw new Error('mid') })\n"
-                             "  sub.addTeardown(() => trace.push('c'))\n"
-                             "  sub.complete()\n"
-                             "}).subscribe()\n"
-                             "globalThis.__trace = trace.join(',')\n");
-    CHECK_FALSE(JS_IsException(rv));
-    JS_FreeValue(ctx, rv);
-
-    /* Order is reverse-insertion: c, (boom: caught), a. */
+    /* Reverse-insertion order, with the throwing teardown skipped. */
     CHECK(read_global_string(ctx, "__trace") == "c,a");
+    CHECK(read_global_int(ctx, "__scheduledCount") == 1);
+    CHECK(read_global_string(ctx, "__caughtMessage") == "mid");
     MIK_FreeRuntime(rt);
 }
 

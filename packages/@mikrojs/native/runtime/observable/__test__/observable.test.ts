@@ -2,6 +2,24 @@ import {Observable} from 'mikrojs/observable'
 import {filter, finalize, map, take, takeUntil} from 'mikrojs/observable/operators'
 import {describe, expect, test, vi} from 'vitest'
 
+/* Capture setTimeout calls so tests can assert that dispatch errors are
+ * scheduled to re-throw async without those throws actually firing during
+ * the test. The captured fn() can be invoked to verify it throws. */
+function captureScheduledThrows() {
+  const calls: Array<{fn: () => void; ms: number}> = []
+  const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+    fn: () => void,
+    ms: number,
+  ) => {
+    calls.push({fn, ms})
+    return 0 as unknown as ReturnType<typeof setTimeout>
+  }) as typeof setTimeout)
+  return {
+    calls,
+    restore: () => spy.mockRestore(),
+  }
+}
+
 describe('Observable primitive', () => {
   test('subscribe delivers next + complete in order', () => {
     const log: Array<number | string> = []
@@ -81,8 +99,8 @@ describe('Observable primitive', () => {
     expect(count).toBe(1)
   })
 
-  test('observer.next throw is caught + logged, dispatch continues', () => {
-    const logSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  test('observer.next throw is scheduled to re-throw async, dispatch continues', () => {
+    const captured = captureScheduledThrows()
     const seen: number[] = []
     new Observable<number>((sub) => {
       sub.next(1)
@@ -93,13 +111,17 @@ describe('Observable primitive', () => {
       seen.push(v)
       if (v === 1) throw new Error('boom')
     })
+    /* Synchronous behavior: all values delivered, subscription stayed alive. */
     expect(seen).toEqual([1, 2, 3])
-    expect(logSpy).toHaveBeenCalled()
-    logSpy.mockRestore()
+    /* Async behavior: exactly one setTimeout(0) scheduled, and running it throws. */
+    expect(captured.calls).toHaveLength(1)
+    expect(captured.calls[0]!.ms).toBe(0)
+    expect(() => captured.calls[0]!.fn()).toThrow('boom')
+    captured.restore()
   })
 
-  test('teardown throw does not stop subsequent teardowns', () => {
-    const logSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  test('teardown throw schedules async re-throw, subsequent teardowns still run', () => {
+    const captured = captureScheduledThrows()
     const trace: string[] = []
     new Observable<number>((sub) => {
       sub.addTeardown(() => trace.push('a'))
@@ -110,8 +132,9 @@ describe('Observable primitive', () => {
       sub.complete()
     }).subscribe()
     expect(trace).toEqual(['c', 'a'])
-    expect(logSpy).toHaveBeenCalled()
-    logSpy.mockRestore()
+    expect(captured.calls).toHaveLength(1)
+    expect(() => captured.calls[0]!.fn()).toThrow('mid')
+    captured.restore()
   })
 
   test('producer setup throw bubbles to subscribe caller', () => {
@@ -321,8 +344,8 @@ describe('pipe + operators', () => {
     expect(seen).toEqual([1, 2])
   })
 
-  test('map fn throw is logged and that value is dropped', () => {
-    const logSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  test('map fn throw schedules async re-throw, that value is dropped', () => {
+    const captured = captureScheduledThrows()
     const seen: number[] = []
     Observable.from([1, 2, 3])
       .pipe(
@@ -333,7 +356,8 @@ describe('pipe + operators', () => {
       )
       .subscribe((v) => seen.push(v))
     expect(seen).toEqual([1, 3])
-    expect(logSpy).toHaveBeenCalled()
-    logSpy.mockRestore()
+    expect(captured.calls).toHaveLength(1)
+    expect(() => captured.calls[0]!.fn()).toThrow('boom')
+    captured.restore()
   })
 })

@@ -76,7 +76,7 @@ Transform each value through `fn`.
 const map: <A, B>(fn: (value: A) => B) => (source: Observable<A>) => Observable<B>
 ```
 
-Throws inside `fn` are caught and logged via `console.error`; the bad value is dropped for that subscription, the subscription stays alive.
+Throws inside `fn` are caught at the dispatch boundary and re-thrown asynchronously (see [Errors](#errors)); the bad value is dropped for that subscription, the subscription stays alive.
 
 ### filter(pred)
 
@@ -174,7 +174,7 @@ Async iterables are not currently supported.
 
 There is no `error` notification channel. Two cases:
 
-**Throws inside observer or operator callbacks** are caught at the dispatch boundary, logged via `console.error`, and isolated to the offending subscriber. The producer is not killed; sibling subscribers still receive the value. This matches the existing `mik_call_handler` precedent in the C runtime.
+**Throws inside observer, operator, or teardown callbacks** are caught at the dispatch boundary, isolated to the offending subscriber, and re-thrown asynchronously via `setTimeout(0)`. The synchronous producer keeps running — sibling subscribers receive the value, remaining teardowns run — and the bug eventually surfaces as an uncaught exception. On device, that uncaught throw halts the runtime via the existing unhandled-rejection path. **Stream errors are panics**, just deferred until after the current dispatch finishes so they don't take down innocent subscribers along the way.
 
 **Failures that are part of a stream's contract** (e.g. an HTTP fetch that may fail) flow as `Result.err(...)` values through `next()`, just like a successful value:
 

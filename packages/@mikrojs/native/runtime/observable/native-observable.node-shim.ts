@@ -1,17 +1,25 @@
-/* eslint-disable no-console */
-/* console.error inside dispatch matches the mik_call_handler precedent in
- * the C runtime (log + continue, isolated to that subscriber). */
-
 // Host-side shim for `native:observable`, used only in vitest (Node) where
 // the mikrojs C runtime isn't available. Keep in sync with mik_observable.cpp.
 //
 // Mirrors the locked design in .claude/plans/observable.md:
 // - subscribe() returns a Subscription with unsubscribe() (no AbortSignal)
-// - no error channel — throws caught + logged at the dispatch boundary,
-//   isolated to that subscriber
+// - no error channel — throws inside dispatch or teardown are caught at the
+//   boundary, isolated to the offending subscriber, and re-thrown
+//   asynchronously via setTimeout(0) so the synchronous producer keeps
+//   running but the bug eventually surfaces (and on device, halts the
+//   runtime via the existing unhandled-rejection path)
 // - sync emission allowed
 // - pipe-only composition (operators live in operators.ts)
 // - withEmitters() factory: {observable, next, complete}
+
+/* Catch a thrown error and re-throw it on the next tick. The synchronous
+ * caller keeps going (other subscribers receive the value, remaining
+ * teardowns run); the error eventually surfaces as an uncaught exception. */
+function panicAsync(err: unknown): void {
+  setTimeout(() => {
+    throw err
+  }, 0)
+}
 
 class Subscriber<T> {
   closed = false
@@ -38,7 +46,7 @@ class Subscriber<T> {
       try {
         this.next_fn(value)
       } catch (err) {
-        console.error(err)
+        panicAsync(err)
       }
     }
   }
@@ -50,7 +58,7 @@ class Subscriber<T> {
       try {
         this.complete_fn()
       } catch (err) {
-        console.error(err)
+        panicAsync(err)
       }
     }
     this.runTeardowns()
@@ -64,7 +72,7 @@ class Subscriber<T> {
       try {
         fn()
       } catch (err) {
-        console.error(err)
+        panicAsync(err)
       }
       return
     }
@@ -85,7 +93,7 @@ class Subscriber<T> {
       try {
         list[i]!()
       } catch (err) {
-        console.error(err)
+        panicAsync(err)
       }
     }
   }

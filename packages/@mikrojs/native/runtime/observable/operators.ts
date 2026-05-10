@@ -1,8 +1,3 @@
-/* eslint-disable no-console */
-/* console.error inside operator dispatch is intentional: it matches the
- * existing mik_call_handler precedent in the C layer (log + continue rather
- * than panic). See .claude/plans/observable.md → Errors section. */
-
 /* Operators for `Observable.pipe(...)`. Each is a factory returning a
  * function `(source) => Observable`. Composition is pure pipe — no method
  * chaining on Observable itself.
@@ -11,6 +6,13 @@
  * fallible streams (`Observable<Ok, Err>` with Err != never), corresponding
  * Result-aware operators (`mapOk`, `filterOk`, ...) ship when a concrete
  * consumer asks. Today no module produces fallible event streams.
+ *
+ * Errors: throws inside operator transforms or finalize callbacks are caught
+ * at the dispatch boundary, isolated to that subscriber, and re-thrown
+ * asynchronously via setTimeout(0). The synchronous producer keeps going
+ * (the bad value is dropped, sibling subscribers untouched), and on device
+ * the eventual uncaught throw halts the runtime via the existing
+ * unhandled-rejection path. Stream errors are panics.
  *
  * See `.claude/plans/observable.md` for the full design.
  */
@@ -22,9 +24,18 @@
  * runtime/observable/types.ts. */
 import {Observable} from 'mikrojs/observable'
 
-/* Map values through a transform. Throws inside `fn` are caught at the
- * dispatch boundary; the bad value is dropped for that subscription, others
- * are unaffected. */
+/* Catch a thrown error and re-throw it on the next tick. The synchronous
+ * caller keeps going; the error eventually surfaces as an uncaught
+ * exception. */
+function panicAsync(err: unknown): void {
+  setTimeout(() => {
+    throw err
+  }, 0)
+}
+
+/* Map values through a transform. Throws inside `fn` are caught and
+ * scheduled to re-throw on the next tick (panic). The bad value is dropped
+ * for that subscription; sibling subscriptions are unaffected. */
 export const map =
   <A, B>(fn: (value: A) => B) =>
   (source: Observable<A>): Observable<B> =>
@@ -35,7 +46,7 @@ export const map =
           try {
             next = fn(value)
           } catch (err) {
-            console.error(err)
+            panicAsync(err)
             return
           }
           sub.next(next)
@@ -45,7 +56,7 @@ export const map =
       sub.addTeardown(() => upstream.unsubscribe())
     })
 
-/* Pass through values matching `pred`. `pred` errors are caught + logged. */
+/* Pass through values matching `pred`. `pred` errors panic asynchronously. */
 export const filter =
   <A>(pred: (value: A) => boolean) =>
   (source: Observable<A>): Observable<A> =>
@@ -56,7 +67,7 @@ export const filter =
           try {
             keep = pred(value)
           } catch (err) {
-            console.error(err)
+            panicAsync(err)
             return
           }
           if (keep) sub.next(value)
@@ -108,8 +119,8 @@ export const takeUntil =
     })
 
 /* Run `fn` when the subscription ends for any reason (unsubscribe or
- * natural completion). Throws inside `fn` are caught + logged so other
- * teardowns still run. RxJS naming. */
+ * natural completion). Throws inside `fn` are caught and panic
+ * asynchronously, so subsequent teardowns still run. RxJS naming. */
 export const finalize =
   (fn: () => void) =>
   <A>(source: Observable<A>): Observable<A> =>
@@ -123,7 +134,7 @@ export const finalize =
         try {
           fn()
         } catch (err) {
-          console.error(err)
+          panicAsync(err)
         }
       })
     })
