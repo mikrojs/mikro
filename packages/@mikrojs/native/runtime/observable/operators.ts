@@ -17,7 +17,16 @@
  * See `.claude/plans/observable.md` for the full design.
  */
 
-import {Observable} from 'native:observable'
+import {Observable as NativeObservable} from 'native:observable'
+
+import type {Observable as ObservableT} from './types.js'
+
+/* `native:observable` resolves only inside the runtime build; outside
+ * (twoslash, host typecheck without internal.d.ts) it falls back to `any`,
+ * which collapses pipe/operator inference at use sites. Pin the type to the
+ * declared class in `./types.ts` so consumers always see the typed shape. */
+const Observable = NativeObservable as unknown as typeof ObservableT
+type Observable<Ok, Err = never> = ObservableT<Ok, Err>
 
 /* Catch a thrown error and re-throw it on the next tick. The synchronous
  * caller keeps going; the error eventually surfaces as an uncaught
