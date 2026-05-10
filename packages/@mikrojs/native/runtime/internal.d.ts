@@ -11,6 +11,10 @@ declare module 'mikrojs/kv/shared' {
   export {KVError, makeCreateValue, type NativeKvFns} from './kv/shared.js'
 }
 
+declare module 'mikrojs/observable/lazy' {
+  export {lazyEvent} from './observable/lazy.js'
+}
+
 declare module 'native:cbor' {
   import type {CborError} from '@mikrojs/native/runtime/cbor/types'
   import type {Result} from 'mikrojs/result'

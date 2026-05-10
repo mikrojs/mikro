@@ -17,12 +17,7 @@
  * See `.claude/plans/observable.md` for the full design.
  */
 
-/* Importing from `mikrojs/observable` (not `native:observable`) so this
- * module typechecks from any package that already re-exports it. At runtime
- * `mikrojs/observable` resolves to the bytecode bundle which re-exports the
- * native class; at typecheck it resolves to the ambient `declare class` in
- * runtime/observable/types.ts. */
-import {Observable} from 'mikrojs/observable'
+import {Observable} from 'native:observable'
 
 /* Catch a thrown error and re-throw it on the next tick. The synchronous
  * caller keeps going; the error eventually surfaces as an uncaught

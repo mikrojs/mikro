@@ -1,4 +1,4 @@
-import {Observable} from 'mikrojs/observable'
+import {lazyEvent} from 'mikrojs/observable/lazy'
 import {err, ok} from 'mikrojs/result'
 import {Ble as NativeBle} from 'native:ble'
 
@@ -142,16 +142,6 @@ function normalizeServices(services: Service[]) {
 
 const native = new NativeBle()
 
-/* Per-event multicast sources backed by a single native.on registration each.
- * See observable.md → Module integration. */
-const _onConnect = Observable.withEmitters<ConnectionInfo>()
-const _onDisconnect = Observable.withEmitters<ConnectionInfo>()
-const _onMtu = Observable.withEmitters<MtuInfo>()
-
-native.on('connect', (info) => _onConnect.next(info as ConnectionInfo))
-native.on('disconnect', (info) => _onDisconnect.next(info as ConnectionInfo))
-native.on('mtu', (info) => _onMtu.next(info as MtuInfo))
-
 const ble: Ble = {
   get name(): string {
     return native.getName()
@@ -231,9 +221,9 @@ const peripheral: Peripheral = {
     return ok(handle)
   },
 
-  onConnect: _onConnect.observable,
-  onDisconnect: _onDisconnect.observable,
-  onMtu: _onMtu.observable,
+  onConnect: lazyEvent<ConnectionInfo>(native, 'connect'),
+  onDisconnect: lazyEvent<ConnectionInfo>(native, 'disconnect'),
+  onMtu: lazyEvent<MtuInfo>(native, 'mtu'),
 }
 
 export {ble, peripheral}

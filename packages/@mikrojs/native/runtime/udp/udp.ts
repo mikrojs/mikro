@@ -1,5 +1,5 @@
-import {Observable} from 'mikrojs/observable'
 import {ok} from 'mikrojs/result'
+import {Observable} from 'native:observable'
 import {bind as nativeBind, type NativeUdpSocket} from 'native:udp'
 
 import type {Subscriber} from '../observable/types.js'

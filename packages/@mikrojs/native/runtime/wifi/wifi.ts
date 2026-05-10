@@ -1,4 +1,4 @@
-import {Observable} from 'mikrojs/observable'
+import {lazyEvent} from 'mikrojs/observable/lazy'
 import {err, ok} from 'mikrojs/result'
 import {Wifi as NativeWifi} from 'native:wifi'
 
@@ -37,23 +37,6 @@ const StatusFromCode = new Map<number, WifiStatus>(
 
 const native = new NativeWifi()
 
-/* One Observable per event type, each backed by a single native.on
- * registration. Subscribers share that registration via the multicast
- * source from Observable.withEmitters() — registering the listener once
- * keeps the C-level callback list at minimum size regardless of how many
- * JS subscribers are attached. */
-const _onConnect = Observable.withEmitters<WifiConnectionInfo>()
-const _onDisconnect = Observable.withEmitters<WifiDisconnectReason>()
-const _onRssiLow = Observable.withEmitters<number>()
-const _onStationConnect = Observable.withEmitters<ApStationInfo>()
-const _onStationDisconnect = Observable.withEmitters<ApStationInfo>()
-
-native.on('connect', (info) => _onConnect.next(info as WifiConnectionInfo))
-native.on('disconnect', (reason) => _onDisconnect.next(reason as WifiDisconnectReason))
-native.on('rssi-low', (rssi) => _onRssiLow.next(rssi as number))
-native.on('station-connect', (info) => _onStationConnect.next(info as ApStationInfo))
-native.on('station-disconnect', (info) => _onStationDisconnect.next(info as ApStationInfo))
-
 const ap: WifiAp = {
   start(options: ApStartOptions): Result<void, WifiError> {
     return native.apStart(options as Parameters<typeof native.apStart>[0])
@@ -88,8 +71,8 @@ const ap: WifiAp = {
     native.apSetInactiveTimeout(seconds)
   },
 
-  onStationConnect: _onStationConnect.observable,
-  onStationDisconnect: _onStationDisconnect.observable,
+  onStationConnect: lazyEvent<ApStationInfo>(native, 'station-connect'),
+  onStationDisconnect: lazyEvent<ApStationInfo>(native, 'station-disconnect'),
 }
 
 const MAX_CONNECT_RETRIES = 5
@@ -147,9 +130,9 @@ const wifi: Wifi = {
     return ok(asyncResult.value as ScanResult[])
   },
 
-  onConnect: _onConnect.observable,
-  onDisconnect: _onDisconnect.observable,
-  onRssiLow: _onRssiLow.observable,
+  onConnect: lazyEvent<WifiConnectionInfo>(native, 'connect'),
+  onDisconnect: lazyEvent<WifiDisconnectReason>(native, 'disconnect'),
+  onRssiLow: lazyEvent<number>(native, 'rssi-low'),
 
   get mac(): string {
     const result = native.mac()
