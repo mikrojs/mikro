@@ -30,7 +30,8 @@ typedef struct MIKConfig {
     uint32_t mem_reserved;
     uint32_t fs_read_max; /* 0 = keep runtime default (65536) */
     char entry_point[128];
-    char wifi_country[3]; /* Two-letter country code + NUL, e.g. "NO" */
+    char wifi_country[3];   /* Two-letter country code + NUL, e.g. "NO" */
+    char wifi_hostname[64]; /* DHCP hostname; empty = use mikrojs-<device-id> default */
 } MIKConfig;
 
 void MIK_DefaultConfig(MIKConfig* config);

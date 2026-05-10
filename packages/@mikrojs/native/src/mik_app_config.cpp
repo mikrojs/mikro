@@ -19,6 +19,7 @@ void MIK_DefaultConfig(MIKConfig* config) {
     config->fs_read_max = 0; /* 0 = runtime default (65536) */
     config->entry_point[0] = '\0';
     config->wifi_country[0] = '\0';
+    config->wifi_hostname[0] = '\0';
 }
 
 /* Minimal JSON parser for config file — avoids cJSON dependency.
@@ -343,8 +344,10 @@ int MIK_LoadConfig(const char* base_path, MIKConfig* config) {
             if (mik__json_get_number(buf, "fsReadMax", &num_val)) {
                 config->fs_read_max = (uint32_t)num_val;
             }
-            mik__json_get_string(buf, "wifiCountry", config->wifi_country,
+            mik__json_get_string(buf, "wifi.country", config->wifi_country,
                                  sizeof(config->wifi_country));
+            mik__json_get_string(buf, "wifi.hostname", config->wifi_hostname,
+                                 sizeof(config->wifi_hostname));
 
             platform->log(MIK_LOG_INFO, TAG,
                            "Loaded config: restart=%d delay=%dms stack=%u reserved=%lu",

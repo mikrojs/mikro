@@ -1,6 +1,6 @@
 import {defineConfig} from 'mikrojs'
 
 export default defineConfig({
-  wifiCountry: 'NO',
+  wifi: {country: 'NO'},
   restartOnUncaughtException: false,
 })

@@ -54,8 +54,6 @@ const GROUP = '224.0.0.251'
 const PORT = 7654
 const ANNOUNCE_MS = 2000
 
-wifi.country = 'NO'
-
 const ssid = env.require('WIFI_SSID')
 const passphrase = env.require('WIFI_PASSPHRASE')
 

@@ -295,7 +295,6 @@ const pass = env.get('WIFI_PASSPHRASE')
 describe.runIf(ssid && pass)('wifi', () => {
   test('connect', async () => {
     const {wifi} = await import('mikrojs/wifi')
-    wifi.country = 'NO'
     const result = await wifi.connect(ssid!, pass!)
     assert.equal(result.ok, true)
   })

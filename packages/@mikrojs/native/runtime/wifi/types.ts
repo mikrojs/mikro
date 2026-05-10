@@ -139,7 +139,7 @@ export interface Wifi {
   off<K extends keyof WifiEventMap>(event: K, listener: WifiEventMap[K]): void
 
   readonly mac: string
-  hostname: string | undefined
+  readonly hostname: string | undefined
   ipConfig(): Result<IpConfig | undefined, WifiError>
   ipConfig(opts: StaticIpConfig): Result<void, WifiError>
   ipConfig(opts?: StaticIpConfig): Result<IpConfig | undefined, WifiError> | Result<void, WifiError>
@@ -150,7 +150,7 @@ export interface Wifi {
   rssiThreshold: number
 
   powerSave: PowerSaveMode
-  country: WifiCountryCode | undefined
+  readonly country: WifiCountryCode | undefined
 }
 
 export declare const wifi: Wifi

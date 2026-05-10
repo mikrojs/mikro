@@ -27,7 +27,8 @@ These options are bundled into the deployed app and read by the firmware at boot
 | `restartDelay`               | `number` (ms)     | `0`              | Delay before restart after uncaught exception |
 | `stackSize`                  | `number` (bytes)  | firmware default | QuickJS C stack size                          |
 | `memReserved`                | `number` (bytes)  | `65536` (64 KB)  | Heap reserved for native subsystems           |
-| `wifiCountry`                | `WifiCountryCode` | none             | WiFi regulatory country code                  |
+| `wifi.country`               | `WifiCountryCode` | none             | WiFi regulatory country code                  |
+| `wifi.hostname`              | `string`          | `mikrojs-<id>`   | DHCP hostname advertised by the STA interface |
 
 ### `restartOnUncaughtException`
 
@@ -51,9 +52,13 @@ Amount of system heap to keep out of QuickJS's reach, reserved for native subsys
 
 Use `/mem` in the REPL to verify: the **System** line should have a comfortable cushion over the **QuickJS** line. See [Tuning memReserved](/developing-for-microcontrollers#tuning-memreserved) for more guidance.
 
-### `wifiCountry`
+### `wifi.country`
 
 Two-letter [ISO 3166-1](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) country code for WiFi regulatory domain. Controls which channels and power levels are available. Set this to your country to comply with local regulations and ensure optimal WiFi performance. When unset, ESP-IDF defaults to world safe mode (`"01"`, channels 1-11). The full list of supported codes is defined by the [ESP-IDF regulatory database](https://github.com/espressif/esp-idf/blob/v6.0/components/esp_wifi/regulatory/esp_wifi_regulatory.txt) (168 countries/regions).
+
+### `wifi.hostname`
+
+DHCP hostname advertised by the STA interface. This is what your router shows in its client list. When unset, defaults to `mikrojs-<device-id>` (e.g. `mikrojs-abcdef0123`), where the device ID is a base32-encoded MAC. Must conform to RFC 1123: letters, digits and hyphens only, must not start or end with a hyphen, max 63 characters. Takes effect on the next DHCP lease.
 
 ## Build options {#build}
 
@@ -122,7 +127,10 @@ export default defineConfig({
   restartOnUncaughtException: true,
   restartDelay: 500,
   memReserved: 32 * 1024,
-  wifiCountry: 'NO', // Norway
+  wifi: {
+    country: 'NO', // Norway
+    hostname: 'living-room-sensor',
+  },
 
   build: {
     bundle: true,

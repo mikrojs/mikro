@@ -153,6 +153,18 @@ export function loadConfig(entry: string): Promise<MikroJSConfig | null> {
   return loadMikroConfig(pathlib.dirname(pathlib.resolve(entry)))
 }
 
+// Strip host-only sections, normalize K/M-suffixed sizes, and flatten the
+// `wifi: {country, hostname}` group into dotted-key form so the device-side
+// JSON parser (mik_app_config.cpp) can read it without a nested-object pass.
+function serializeRuntimeConfig(config: MikroJSConfig): Record<string, unknown> {
+  const {sim: _sim, build: _build, wifi, fsReadMax, ...rest} = config
+  const out: Record<string, unknown> = {...rest}
+  if (fsReadMax !== undefined) out.fsReadMax = parseSize(fsReadMax)
+  if (wifi?.country) out['wifi.country'] = wifi.country
+  if (wifi?.hostname) out['wifi.hostname'] = wifi.hostname
+  return out
+}
+
 export function build(
   entry: string,
   buildDir: string,
@@ -268,19 +280,10 @@ export function build(
 
       const writeConfig = defer(() => {
         if (config === null) return EMPTY
-        // Strip sim + build sections: they're CLI/host-only and meaningless
-        // on device.
-        const {sim: _sim, build: _build, ...runtimeConfig} = config
-        // Normalize K/M-suffixed sizes to plain numbers so the device-side
-        // JSON parser (mik_app_config.cpp) can read them without shipping a
-        // suffix parser into flash.
-        if (runtimeConfig.fsReadMax !== undefined) {
-          runtimeConfig.fsReadMax = parseSize(runtimeConfig.fsReadMax)
-        }
         return output(
           buildDir,
           pathlib.join(rootDir, 'mikro.config.json'),
-          JSON.stringify(runtimeConfig),
+          JSON.stringify(serializeRuntimeConfig(config)),
         )
       })
 
@@ -469,14 +472,10 @@ export function buildTests(
 
       const writeConfig = defer(() => {
         if (config === null) return EMPTY
-        const {sim: _sim, build: _build, ...runtimeConfig} = config
-        if (runtimeConfig.fsReadMax !== undefined) {
-          runtimeConfig.fsReadMax = parseSize(runtimeConfig.fsReadMax)
-        }
         return output(
           buildDir,
           pathlib.join(rootDir, 'mikro.config.json'),
-          JSON.stringify(runtimeConfig),
+          JSON.stringify(serializeRuntimeConfig(config)),
         )
       })
 

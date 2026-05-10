@@ -89,6 +89,15 @@ export interface MikroJSBuildConfig {
   logLevel?: LogLevel
 }
 
+export interface MikroJSWifiConfig {
+  /** Two-letter ISO 3166-1 country code for the WiFi regulatory domain. */
+  country?: WifiCountryCode
+  /** DHCP hostname advertised by the STA interface. Defaults to
+   * `mikrojs-<device-id>` when unset. RFC 1123: letters, digits, hyphens
+   * only; must not start or end with a hyphen; max 63 chars. */
+  hostname?: string
+}
+
 export interface MikroJSConfig {
   restartOnUncaughtException?: boolean
   restartDelay?: number
@@ -99,7 +108,7 @@ export interface MikroJSConfig {
    * larger files chunk-by-chunk. Number of bytes, or string with K/M
    * suffix (e.g. '128k', '1m'). Default: 65536 (64 KiB). */
   fsReadMax?: number | string
-  wifiCountry?: WifiCountryCode
+  wifi?: MikroJSWifiConfig
   /** Simulator-only options. Stripped from the bundled config before deploy. */
   sim?: MikroJSSimConfig
   /** Build-time options. Stripped from the bundled config before deploy. */

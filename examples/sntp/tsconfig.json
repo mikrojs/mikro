@@ -1,5 +1,5 @@
 {
-  "include": ["env.d.ts", "app/**/*"],
+  "include": ["env.d.ts", "app/**/*", "mikro.config.ts"],
   "compilerOptions": {
     "module": "nodenext",
     "target": "es2024",
