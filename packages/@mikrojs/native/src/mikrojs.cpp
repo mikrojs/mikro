@@ -17,16 +17,18 @@
 
 #define MIK__DEFAULT_STACK_SIZE 1024 * 1024  // 1 MB
 
-/* JS malloc functions */
+/* JS malloc functions. Routed through the mik__js_* family so the QuickJS
+ * heap can be relocated to PSRAM on chips with both internal SRAM and PSRAM,
+ * leaving internal SRAM free for mbedTLS, WiFi/BLE, and DMA buffers. */
 
 static void* mik__mf_calloc(void* opaque, size_t count, size_t size) {
     (void)opaque;
-    return mik__calloc(count, size);
+    return mik__js_calloc(count, size);
 }
 
 static void* mik__mf_malloc(void* opaque, size_t size) {
     (void)opaque;
-    return mik__malloc(size);
+    return mik__js_malloc(size);
 }
 
 static void mik__mf_free(void* opaque, void* ptr) {
@@ -36,7 +38,7 @@ static void mik__mf_free(void* opaque, void* ptr) {
 
 static void* mik__mf_realloc(void* opaque, void* ptr, size_t size) {
     (void)opaque;
-    return mik__realloc(ptr, size);
+    return mik__js_realloc(ptr, size);
 }
 
 static const JSMallocFunctions mik_mf = {
@@ -199,7 +201,11 @@ static void mik__promise_rejection_tracker(JSContext* ctx, JSValue promise, JSVa
 }
 
 void MIK_DefaultOptions(MIKRunOptions* options) {
-    static MIKRunOptions default_options = {.mem_limit = 0, .stack_size = MIK__DEFAULT_STACK_SIZE};
+    static MIKRunOptions default_options = {
+        .mem_limit = 0,
+        .stack_size = MIK__DEFAULT_STACK_SIZE,
+        .use_psram_heap = false,
+    };
 
     memcpy(options, &default_options, sizeof(*options));
 }
@@ -227,6 +233,12 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
 
     memcpy(&mik_rt->options, options, sizeof(*options));
     MIK_DefaultConfig(&mik_rt->config);
+
+    /* Switch the QuickJS heap to PSRAM before constructing the runtime,
+     * so JS_NewRuntime2 and every subsequent QuickJS allocation lands
+     * in PSRAM. The MIKRuntime struct itself stays in internal SRAM:
+     * it was allocated before this point. */
+    mik__set_quickjs_heap_psram(options->use_psram_heap);
 
     rt = JS_NewRuntime2(&mik_mf, NULL);
     CHECK_NOT_NULL(rt);

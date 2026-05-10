@@ -53,6 +53,23 @@ static size_t posix_get_largest_free_internal_mem(void) {
     return 0;  /* No internal/PSRAM distinction on desktop */
 }
 
+static void* posix_malloc_psram(size_t size) {
+    (void)size;
+    return NULL;  /* No PSRAM on desktop; caller falls back to libc */
+}
+
+static void* posix_calloc_psram(size_t count, size_t size) {
+    (void)count;
+    (void)size;
+    return NULL;
+}
+
+static void* posix_realloc_psram(void* ptr, size_t size) {
+    (void)ptr;
+    (void)size;
+    return NULL;
+}
+
 static bool posix_get_fs_info(const char* label, size_t* total, size_t* used) {
     (void)label;
     (void)total;
@@ -121,6 +138,9 @@ static const MIKPlatform posix_platform = {
     .get_largest_free_system_mem = posix_get_largest_free_system_mem,
     .get_free_internal_mem = posix_get_free_internal_mem,
     .get_largest_free_internal_mem = posix_get_largest_free_internal_mem,
+    .malloc_psram = posix_malloc_psram,
+    .calloc_psram = posix_calloc_psram,
+    .realloc_psram = posix_realloc_psram,
     .get_fs_info = posix_get_fs_info,
     .log = posix_log,
     .stdout_write = posix_stdout_write,

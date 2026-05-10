@@ -37,6 +37,18 @@ typedef struct MIKPlatform {
      *  reports plenty of contiguous PSRAM. Same fallback rules as
      *  get_free_internal_mem. */
     size_t (*get_largest_free_internal_mem)(void);
+    /** Allocate `size` bytes from PSRAM/external RAM. Returns NULL if
+     *  PSRAM is unavailable (host platforms, chips without PSRAM, or
+     *  PSRAM exhaustion); the caller falls back to the regular allocator.
+     *  On ESP32 with CONFIG_SPIRAM=y, implemented via heap_caps_malloc
+     *  with MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT. The returned pointer is
+     *  freed via standard free(). */
+    void* (*malloc_psram)(size_t size);
+    /** PSRAM-targeted calloc. Same fallback rules as malloc_psram. */
+    void* (*calloc_psram)(size_t count, size_t size);
+    /** PSRAM-targeted realloc. Grows or moves the allocation while keeping
+     *  it in PSRAM. Same fallback rules as malloc_psram. */
+    void* (*realloc_psram)(void* ptr, size_t size);
     bool (*get_fs_info)(const char* label, size_t* total, size_t* used);
     void (*log)(int level, const char* tag, const char* fmt, ...);
     int (*stdout_write)(const void* buf, size_t len);

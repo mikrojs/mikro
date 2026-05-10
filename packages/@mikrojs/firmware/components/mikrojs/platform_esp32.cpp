@@ -70,6 +70,35 @@ static size_t esp32_get_largest_free_internal_mem(void) {
     return heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
 }
 
+static void* esp32_malloc_psram(size_t size) {
+#ifdef CONFIG_SPIRAM
+    return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    (void)size;
+    return NULL;
+#endif
+}
+
+static void* esp32_calloc_psram(size_t count, size_t size) {
+#ifdef CONFIG_SPIRAM
+    return heap_caps_calloc(count, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    (void)count;
+    (void)size;
+    return NULL;
+#endif
+}
+
+static void* esp32_realloc_psram(void* ptr, size_t size) {
+#ifdef CONFIG_SPIRAM
+    return heap_caps_realloc(ptr, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    (void)ptr;
+    (void)size;
+    return NULL;
+#endif
+}
+
 static bool esp32_get_fs_info(const char* label, size_t* total, size_t* used) {
 #if HAS_LITTLEFS
     return esp_littlefs_info(label, total, used) == ESP_OK;
@@ -173,6 +202,9 @@ static const MIKPlatform esp32_platform = {
     .get_largest_free_system_mem = esp32_get_largest_free_system_mem,
     .get_free_internal_mem = esp32_get_free_internal_mem,
     .get_largest_free_internal_mem = esp32_get_largest_free_internal_mem,
+    .malloc_psram = esp32_malloc_psram,
+    .calloc_psram = esp32_calloc_psram,
+    .realloc_psram = esp32_realloc_psram,
     .get_fs_info = esp32_get_fs_info,
     .log = esp32_log,
     .stdout_write = esp32_stdout_write,

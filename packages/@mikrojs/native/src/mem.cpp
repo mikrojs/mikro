@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "mikrojs/platform.h"
+
 /*
  * QuickJS uses malloc_usable_size to track memory consumption against its
  * memory limit. ESP-IDF lacks a standard malloc_usable_size, and the
@@ -60,4 +62,66 @@ void* mik__realloc(void* ptr, size_t size) {
     if (!raw) return nullptr;
     hdr_write(raw, size);
     return static_cast<char*>(raw) + HDR_SIZE;
+}
+
+/* QuickJS-heap allocator. When the PSRAM flag is set, route through the
+ * platform's malloc_psram first; if the platform can't satisfy the request
+ * (no PSRAM, or PSRAM exhausted), fall back to libc malloc so the runtime
+ * keeps working. The fallback only matters on host builds and in PSRAM-OOM
+ * edge cases. Under normal ESP32 operation with CONFIG_SPIRAM=y, every
+ * allocation lands in PSRAM. */
+
+static bool g_quickjs_heap_psram = false;
+
+void mik__set_quickjs_heap_psram(bool enable) {
+    g_quickjs_heap_psram = enable;
+}
+
+bool mik__is_quickjs_heap_psram(void) {
+    return g_quickjs_heap_psram;
+}
+
+void* mik__js_malloc(size_t size) {
+    void* raw = nullptr;
+    if (g_quickjs_heap_psram) {
+        const MIKPlatform* p = MIK_GetPlatform();
+        if (p && p->malloc_psram) {
+            raw = p->malloc_psram(size + HDR_SIZE);
+        }
+    }
+    if (!raw) raw = malloc(size + HDR_SIZE);
+    if (!raw) return nullptr;
+    hdr_write(raw, size);
+    return static_cast<char*>(raw) + HDR_SIZE;
+}
+
+void* mik__js_calloc(size_t count, size_t size) {
+    if (size && count > SIZE_MAX / size) return nullptr;
+    size_t total = count * size;
+    void* raw = nullptr;
+    if (g_quickjs_heap_psram) {
+        const MIKPlatform* p = MIK_GetPlatform();
+        if (p && p->calloc_psram) {
+            raw = p->calloc_psram(1, total + HDR_SIZE);
+        }
+    }
+    if (!raw) raw = calloc(1, total + HDR_SIZE);
+    if (!raw) return nullptr;
+    hdr_write(raw, total);
+    return static_cast<char*>(raw) + HDR_SIZE;
+}
+
+void* mik__js_realloc(void* ptr, size_t size) {
+    void* raw = ptr ? static_cast<char*>(ptr) - HDR_SIZE : nullptr;
+    void* new_raw = nullptr;
+    if (g_quickjs_heap_psram) {
+        const MIKPlatform* p = MIK_GetPlatform();
+        if (p && p->realloc_psram) {
+            new_raw = p->realloc_psram(raw, size + HDR_SIZE);
+        }
+    }
+    if (!new_raw) new_raw = realloc(raw, size + HDR_SIZE);
+    if (!new_raw) return nullptr;
+    hdr_write(new_raw, size);
+    return static_cast<char*>(new_raw) + HDR_SIZE;
 }

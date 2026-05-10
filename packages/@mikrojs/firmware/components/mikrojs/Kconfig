@@ -22,6 +22,32 @@ menu "mikrojs console"
 
 endmenu
 
+menu "mikrojs runtime memory"
+
+    config MIKROJS_QUICKJS_HEAP_PSRAM
+        bool "Allocate QuickJS heap in PSRAM"
+        default y if SPIRAM
+        depends on SPIRAM
+        help
+            When enabled, the QuickJS engine allocates its heap from PSRAM
+            instead of internal SRAM. This frees roughly 150-250 KB of
+            contiguous internal SRAM for mbedTLS handshake buffers, WiFi
+            and BLE driver state, and DMA-capable buffers — the most
+            common cause of HTTPS handshake failures (error 0x7002) on
+            apps with significant retained JS state.
+
+            Cost: PSRAM has higher access latency than internal SRAM,
+            so JS execution is somewhat slower. For typical embedded
+            JS workloads (event-driven, IO-bound) this is invisible
+            against networking and IO costs, while HTTPS reliability
+            matters.
+
+            Defaults on for chips with PSRAM. Disable if your workload
+            is JS-execution-bound and you can fit the JS heap in
+            internal SRAM. No effect on chips without PSRAM.
+
+endmenu
+
 menu "mikrojs Test Configuration"
 
     config MIKROJS_TEST_GPIO_PIN
