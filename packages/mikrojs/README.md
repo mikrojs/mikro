@@ -64,7 +64,7 @@ The core runtime is a standalone C++ library with no ESP-IDF dependencies, makin
 
 - **Engine**: [QuickJS-NG](https://github.com/quickjs-ng/quickjs) ([near-complete ES2024 coverage](https://test262.fyi/#|qjs_ng))
 - **Runtime**: Standalone C++ library with cooperative, single-threaded event loop
-- **Platform**: ESP-IDF >= 6.0 (ESP32, ESP32-C3, ESP32-S3, ESP32-C6), desktop (macOS, Linux)
+- **Platform**: ESP-IDF >= 6.0.1 (ESP32, ESP32-C3, ESP32-S3, ESP32-C6), desktop (macOS, Linux)
 - **Modules**: Four-source resolution: virtual modules, native C modules, bytecode builtins, filesystem (LittleFS)
 - **Bytecode**: TypeScript bundled with esbuild, compiled to QuickJS bytecode at build time
 - **Tooling**: Node.js CLI (Ink/React), Node-API addon for host-side development and simulation

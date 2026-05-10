@@ -8,7 +8,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 - [Node.js](https://nodejs.org/) >= 24
 - [pnpm](https://pnpm.io/) 10.30.1+
-- [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html) (Espressif IDE Manager) with ESP-IDF >= 6.0.0 (for firmware builds)
+- [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html) (Espressif IDE Manager) with ESP-IDF >= 6.0.1 (for firmware builds)
 
 ## Getting started
 
@@ -24,10 +24,10 @@ If you already cloned without `--recurse-submodules`:
 git submodule update --init --recursive
 ```
 
-For firmware builds, install ESP-IDF >= 6.0.0 via [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html) before proceeding:
+For firmware builds, install ESP-IDF >= 6.0.1 via [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html) before proceeding:
 
 ```sh
-eim install -i v6.0 -t all -n true
+eim install -i v6.0.1 -t all -n true
 ```
 
 ## Node.js / TypeScript
@@ -65,7 +65,7 @@ ctest --test-dir build --output-on-failure
 
 ### One-time setup
 
-Make sure ESP-IDF >= 6.0.0 is installed (see [Prerequisites](#prerequisites)), then:
+Make sure ESP-IDF >= 6.0.1 is installed (see [Prerequisites](#prerequisites)), then:
 
 ```sh
 cd esp32

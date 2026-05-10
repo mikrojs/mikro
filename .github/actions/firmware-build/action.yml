@@ -1,7 +1,7 @@
 name: Build firmware
 description: Build the mikrojs firmware for a single ESP32 chip target and upload as artifact
 # NOTE: Caller must:
-#   1. Set `runs-on: ubuntu-latest` and `container: espressif/idf:v6.0`
+#   1. Set `runs-on: ubuntu-latest` and `container: espressif/idf:v6.0.1`
 #      (composite actions cannot set these themselves).
 #   2. Run `actions/checkout` before invoking this action so that the
 #      relative `uses: ./.github/actions/firmware-build` path resolves.

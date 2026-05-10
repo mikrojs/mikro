@@ -11,10 +11,10 @@ You can build custom firmware projects by depending on `@mikrojs/firmware` from 
 
 - [Node.js](https://nodejs.org/) >= 24
 - [pnpm](https://pnpm.io/) or npm
-- [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html) with ESP-IDF >= 6.0.0
+- [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html) with ESP-IDF >= 6.0.1
 
 ```sh
-eim install -i v6.0 -t all -n true
+eim install -i v6.0.1 -t all -n true
 ```
 
 ## Project structure
@@ -110,7 +110,7 @@ The `idf.py` command is provided by `@mikrojs/firmware` and runs through [EIM](h
 
 When you run `idf.py build`, the `project.cmake` included in your `CMakeLists.txt`:
 
-1. Validates ESP-IDF >= 6.0.0
+1. Validates ESP-IDF >= 6.0.1
 2. Resolves the `mikrojs` component from `@mikrojs/firmware`
 3. Scans your `package.json` dependencies for board/driver packages (via their `cmake.js` exports)
 4. Sets `EXTRA_COMPONENT_DIRS` to include all discovered components
