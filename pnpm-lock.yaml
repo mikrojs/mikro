@@ -526,10 +526,10 @@ importers:
         version: 6.1.0
       ink:
         specifier: ^7.0.1
-        version: 7.0.1(@types/react@19.2.14)(react@19.2.5)
+        version: 7.0.1(@types/react@19.2.14)(react@19.2.6)
       ink-select-input:
         specifier: ^6.2.0
-        version: 6.2.0(ink@7.0.1(@types/react@19.2.14)(react@19.2.5))(react@19.2.5)
+        version: 6.2.0(ink@7.0.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
       open:
         specifier: ^11.0.0
         version: 11.0.0
@@ -538,7 +538,7 @@ importers:
         version: 5.0.0(ts-toolbelt@9.6.0)
       react:
         specifier: ^19.2.5
-        version: 19.2.5
+        version: 19.2.6
       rxjs:
         specifier: ^7.8.2
         version: 7.8.2
@@ -4745,8 +4745,8 @@ packages:
     peerDependencies:
       react: ^19.2.0
 
-  react@19.2.5:
-    resolution: {integrity: sha512-llUJLzz1zTUBrskt2pwZgLq59AemifIftw4aB7JxOqf1HY2FDaGDxgwpAPVzHU1kdWabH7FauP4i1oEeer2WCA==}
+  react@19.2.6:
+    resolution: {integrity: sha512-sfWGGfavi0xr8Pg0sVsyHMAOziVYKgPLNrS7ig+ivMNb3wbCBw3KxtflsGBAwD3gYQlE/AEZsTLgToRrSCjb0Q==}
     engines: {node: '>=0.10.0'}
 
   read-package-json-fast@4.0.0:
@@ -8501,18 +8501,18 @@ snapshots:
 
   ini@4.1.1: {}
 
-  ink-select-input@6.2.0(ink@7.0.1(@types/react@19.2.14)(react@19.2.5))(react@19.2.5):
+  ink-select-input@6.2.0(ink@7.0.1(@types/react@19.2.14)(react@19.2.6))(react@19.2.6):
     dependencies:
       figures: 6.1.0
-      ink: 7.0.1(@types/react@19.2.14)(react@19.2.5)
-      react: 19.2.5
+      ink: 7.0.1(@types/react@19.2.14)(react@19.2.6)
+      react: 19.2.6
       to-rotated: 1.0.0
 
   ink-testing-library@4.0.0(@types/react@19.2.14):
     optionalDependencies:
       '@types/react': 19.2.14
 
-  ink@7.0.1(@types/react@19.2.14)(react@19.2.5):
+  ink@7.0.1(@types/react@19.2.14)(react@19.2.6):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.0
       ansi-escapes: 7.3.0
@@ -8527,8 +8527,8 @@ snapshots:
       indent-string: 5.0.0
       is-in-ci: 2.0.0
       patch-console: 2.0.0
-      react: 19.2.5
-      react-reconciler: 0.33.0(react@19.2.5)
+      react: 19.2.6
+      react-reconciler: 0.33.0(react@19.2.6)
       scheduler: 0.27.0
       signal-exit: 3.0.7
       slice-ansi: 9.0.0
@@ -9587,12 +9587,12 @@ snapshots:
       minimist: 1.2.8
       strip-json-comments: 2.0.1
 
-  react-reconciler@0.33.0(react@19.2.5):
+  react-reconciler@0.33.0(react@19.2.6):
     dependencies:
-      react: 19.2.5
+      react: 19.2.6
       scheduler: 0.27.0
 
-  react@19.2.5: {}
+  react@19.2.6: {}
 
   read-package-json-fast@4.0.0:
     dependencies:
