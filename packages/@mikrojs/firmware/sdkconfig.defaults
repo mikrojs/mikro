@@ -132,13 +132,3 @@ CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
 
-# TLS record buffers must come from internal SRAM. The ESP-IDF default for
-# the inbound buffer is 16 KB, which competes with QuickJS heap allocations
-# for contiguous internal SRAM and causes HTTPS handshake failures (error
-# 0x7002) on apps with significant retained JS state. Halving it to 8 KB
-# leaves enough room for typical TLS records (handshake fragments are well
-# under 4 KB; modern servers rarely send >4 KB application records, and
-# mbedTLS will fragment larger records). The outbound buffer was already
-# 4 KB via CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y.
-CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192
-
