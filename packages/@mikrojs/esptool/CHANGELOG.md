@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.1 (2026-05-11)
+
+### Bug fixes
+
+- **repl:** suspend microtasks while paused so user JS can't race deploy ([#77](https://github.com/mikrojs/mikrojs/pull/77))
+
+### Other
+
+- **deps:** update dependency ink to v7.0.2 ([#48](https://github.com/mikrojs/mikrojs/pull/48))
+- **deps:** update dependency react to v19.2.6 ([#54](https://github.com/mikrojs/mikrojs/pull/54))
+- fix(firmware): halve TLS inbound buffer to free internal SRAM ([#78](https://github.com/mikrojs/mikrojs/pull/78))
+- **workflows:** drop blacksmith for github-hosted runners ([#79](https://github.com/mikrojs/mikrojs/pull/79))
+
 ## 0.6.0 (2026-05-10)
 
 ### Breaking changes
