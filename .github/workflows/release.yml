@@ -33,7 +33,7 @@ permissions:
 
 jobs:
   plan:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read # for `releaser plan` to read PR + commit data
@@ -92,7 +92,7 @@ jobs:
           - os: ubuntu-24.04
             platform: linux
             arch: x64
-          - os: blacksmith-4vcpu-ubuntu-2404-arm
+          - os: ubuntu-24.04-arm
             platform: linux
             arch: arm64
     runs-on: ${{ matrix.os }}
@@ -127,7 +127,7 @@ jobs:
   firmware-setup:
     needs: plan
     if: needs.plan.outputs.should_run == 'true'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       chips: ${{ steps.read.outputs.chips }}
     steps:
@@ -142,7 +142,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.firmware-setup.outputs.chips) }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     container: espressif/idf:v6.0.1
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
@@ -161,9 +161,6 @@ jobs:
   publish:
     needs: [plan, build-prebuilds, build-firmware]
     if: needs.plan.outputs.should_run == 'true'
-    # npm provenance requires a GitHub-hosted runner; self-hosted (blacksmith)
-    # runners are rejected by sigstore verification with "Unsupported GitHub
-    # Actions runner environment".
     runs-on: ubuntu-latest
     permissions:
       contents: write # for `releaser tag` (push tag in release mode)
