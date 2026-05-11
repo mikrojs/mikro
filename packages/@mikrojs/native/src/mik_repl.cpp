@@ -104,7 +104,10 @@ bool mik__proto_read_exact(MIKReplTransport* transport, void* buf, size_t n) {
                     return false;
                 }
             }
-            if (repl_ctx) {
+            /* Microtasks are deferred user JS: settling them re-enters .then
+             * handlers that can write to the transport (console.log → MSG_LOG)
+             * or touch the filesystem mid-deploy. Gate on pause too. */
+            if (repl_ctx && !repl_paused) {
                 mik__execute_jobs(repl_ctx);
             }
             /* A pumped job (e.g. the test runtime's __testFileDone) may
@@ -1109,12 +1112,14 @@ void MIK_ProtocolServeLoop(void) {
             }
         }
 
-        /* Pump event loop between commands (skip timers/callbacks when paused,
-         * but always run microtasks so promises can settle) */
+        /* Pump event loop between commands. Skip both timers/callbacks AND
+         * microtasks when paused — draining microtasks runs user .then
+         * handlers, which can interleave MSG_LOG output with deploy traffic
+         * or race the staged-file swap. */
         if (repl_mik_rt && !repl_paused) {
             MIK_Loop(repl_mik_rt);
         }
-        if (ctx) {
+        if (ctx && !repl_paused) {
             mik__execute_jobs(ctx);
         }
     }
