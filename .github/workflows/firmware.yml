@@ -34,7 +34,7 @@ jobs:
     if: >-
       github.event_name != 'pull_request'
       || contains(github.event.pull_request.labels.*.name, 'firmware')
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       chips: ${{ steps.read.outputs.chips }}
     steps:
@@ -55,7 +55,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.setup.outputs.chips) }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     container: espressif/idf:v6.0.1
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
