@@ -145,18 +145,18 @@ static void mik__promise_rejection_tracker(JSContext* ctx, JSValue promise, JSVa
              * are genuine unhandled promise rejections. */
             bool in_promise = !mik__repl_is_evaluating();
             mik__report_uncaught(ctx, reason, in_promise);
-            if (!MIK_IsReplActive()) {
-                /* Notify the error handler (e.g. host bridge) directly.
-                 * Don't JS_Throw here — we're inside a QuickJS callback
-                 * during promise resolution; throwing would corrupt engine
-                 * state and cause mik__execute_jobs to dump the error a
-                 * second time. */
-                if (mik_rt->error_handler_fn) {
-                    mik_rt->error_handler_fn(ctx, reason, mik_rt->error_handler_opaque);
-                }
-                mik_rt->stop_requested = true;
-                MIK_Stop(mik_rt);
+            /* Notify the error handler (e.g. host bridge) directly.
+             * Don't JS_Throw here — we're inside a QuickJS callback
+             * during promise resolution; throwing would corrupt engine
+             * state and cause mik__execute_jobs to dump the error a
+             * second time. MIK_Stop itself gates on whether we're inside
+             * an interactive REPL eval so a typo at the prompt doesn't
+             * reboot the device. */
+            if (mik_rt->error_handler_fn) {
+                mik_rt->error_handler_fn(ctx, reason, mik_rt->error_handler_opaque);
             }
+            mik_rt->stop_requested = true;
+            MIK_Stop(mik_rt);
             return;
         }
 
@@ -534,6 +534,17 @@ void mik__execute_jobs(JSContext* ctx) {
 
 /* main loop which calls the user JS callbacks */
 int MIK_Loop(MIKRuntime* mik_rt) {
+    /* Deferred restart (see MIK_Stop): once the grace window elapses, reboot
+     * the device. While we're still in the window, return 0 without running
+     * any more user JS so the protocol serve loop keeps reading host
+     * commands but no further timers/microtasks fire on the dead runtime. */
+    if (mik_rt->restart_at_us > 0) {
+        const MIKPlatform* platform = MIK_GetPlatform();
+        if (platform->get_boot_us() >= mik_rt->restart_at_us) {
+            platform->restart();
+        }
+        return 0;
+    }
     if (mik_rt->stop_requested) {
         return 1;
     }
@@ -659,15 +670,30 @@ bool MIK_IsStopRequested(MIKRuntime* mik_rt) {
 
 void MIK_Stop(MIKRuntime* mik_rt) {
     CHECK_NOT_NULL(mik_rt);
-    if (MIK_IsReplActive()) {
+    /* A throw inside an interactive REPL eval is a user typo, not an app
+     * crash — don't reboot the device. Autorun crashes and async rejections
+     * outside REPL eval still honor restart_on_uncaught_exception. */
+    if (mik__repl_is_evaluating()) {
+        return;
+    }
+    if (!mik_rt->config.restart_on_uncaught_exception) {
         return;
     }
     const MIKPlatform* platform = MIK_GetPlatform();
-    if (mik_rt->config.restart_on_uncaught_exception) {
-        printf("Restarting in %d ms...\n", mik_rt->config.restart_delay_ms);
-        usleep(mik_rt->config.restart_delay_ms * 1000);
-        platform->restart();
+    if (MIK_IsReplActive()) {
+        /* Protocol REPL is attached (firmware): defer the restart so the
+         * host can still issue deploy/clean/--recover commands during the
+         * grace window. The actual platform->restart() fires from
+         * MIK_Loop once the deadline elapses. */
+        if (mik_rt->restart_at_us == 0) {
+            mik_rt->restart_at_us =
+                platform->get_boot_us() + (int64_t)mik_rt->config.restart_delay_ms * 1000;
+        }
+        return;
     }
+    /* No protocol REPL (host runtime, standalone): block and restart. */
+    usleep(mik_rt->config.restart_delay_ms * 1000);
+    platform->restart();
 }
 
 int mik__load_file(JSContext* ctx, DynBuf* dbuf, const char* filename) {
