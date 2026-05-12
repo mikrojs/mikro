@@ -221,13 +221,13 @@ import {env} from 'mikrojs/env'
 const ssid = env.require('WIFI_SSID')
 ```
 
-For production deployments, you can set `restartOnUncaughtException: true` in your `mikro.config.ts` to automatically restart the device when an unhandled exception occurs:
+The runtime always restarts the device on an uncaught exception so deployed apps can self-heal. Tune `panicRestartDelay` (the grace window between the exception and the actual reboot) to match your environment — longer for friendlier dev iteration, shorter for faster convergence in the field:
 
 ```ts twoslash
 import {defineConfig} from 'mikrojs'
 
 export default defineConfig({
-  restartOnUncaughtException: true,
+  panicRestartDelay: 500,
 })
 ```
 

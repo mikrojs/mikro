@@ -12,8 +12,7 @@
 static const char* TAG = "mik_app_config";
 
 void MIK_DefaultConfig(MIKConfig* config) {
-    config->restart_on_uncaught_exception = false;
-    config->restart_delay_ms = 1000;
+    config->panic_restart_delay_ms = 1000;
     config->stack_size = 0;
     config->mem_reserved = 64 * 1024;
     config->fs_read_max = 0; /* 0 = runtime default (65536) */
@@ -26,19 +25,7 @@ void MIK_DefaultConfig(MIKConfig* config) {
 }
 
 /* Minimal JSON parser for config file — avoids cJSON dependency.
- * Only handles the flat object with bool/number fields we need. */
-static bool mik__json_get_bool(const char* json, const char* key, bool* out) {
-    char pattern[128];
-    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-    const char* p = strstr(json, pattern);
-    if (!p) return false;
-    p += strlen(pattern);
-    while (*p == ' ' || *p == '\t' || *p == ':') p++;
-    if (strncmp(p, "true", 4) == 0) { *out = true; return true; }
-    if (strncmp(p, "false", 5) == 0) { *out = false; return true; }
-    return false;
-}
-
+ * Only handles the flat object with string/number fields we need. */
 static bool mik__json_get_string(const char* json, const char* key, char* out, size_t out_size) {
     char pattern[128];
     snprintf(pattern, sizeof(pattern), "\"%s\"", key);
@@ -329,14 +316,10 @@ int MIK_LoadConfig(const char* base_path, MIKConfig* config) {
         snprintf(path, sizeof(path), "%s/mikro.config.json", app_dir);
         buf = mik__read_json_file(path, &st);
         if (buf) {
-            bool bool_val;
             double num_val;
 
-            if (mik__json_get_bool(buf, "restartOnUncaughtException", &bool_val)) {
-                config->restart_on_uncaught_exception = bool_val;
-            }
-            if (mik__json_get_number(buf, "restartDelay", &num_val)) {
-                config->restart_delay_ms = (int)num_val;
+            if (mik__json_get_number(buf, "panicRestartDelay", &num_val)) {
+                config->panic_restart_delay_ms = (int)num_val;
             }
             if (mik__json_get_number(buf, "stackSize", &num_val)) {
                 config->stack_size = (size_t)num_val;
@@ -363,8 +346,8 @@ int MIK_LoadConfig(const char* base_path, MIKConfig* config) {
             }
 
             platform->log(MIK_LOG_INFO, TAG,
-                           "Loaded config: restart=%d delay=%dms stack=%u reserved=%lu",
-                           config->restart_on_uncaught_exception, config->restart_delay_ms,
+                           "Loaded config: delay=%dms stack=%u reserved=%lu",
+                           config->panic_restart_delay_ms,
                            (unsigned)config->stack_size, (unsigned long)config->mem_reserved);
             free(buf);
         }

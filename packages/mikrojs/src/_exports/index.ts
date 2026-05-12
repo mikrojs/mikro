@@ -119,8 +119,12 @@ export interface MikroJSLogFileOptions {
 }
 
 export interface MikroJSConfig {
-  restartOnUncaughtException?: boolean
-  restartDelay?: number
+  /** Grace window (in ms) between an uncaught exception and the
+   * subsequent device restart. The protocol REPL stays responsive to
+   * deploy / clean / --recover commands during this window — long enough
+   * lets the host break a tight crash loop, short enough keeps the device
+   * converging when no one is watching. Default: `1000`. */
+  panicRestartDelay?: number
   stackSize?: number
   memReserved?: number
   /** Maximum size in bytes for a single readFile() call. Files larger than

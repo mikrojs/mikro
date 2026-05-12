@@ -6,9 +6,9 @@ import {version} from 'mikrojs/sys'
 // import from 'mikrojs/*' here so the module has an import section.
 console.log(`crashloop fixture booting v${version} — this app is designed to crash`)
 
-// Uncaught synchronous throw. With restartOnUncaughtException=true in
-// mikro.config.ts, the runtime catches this and calls esp_restart() after
-// a 500ms delay, so the device enters a tight reboot cycle.
+// Uncaught synchronous throw. The runtime catches this and calls
+// esp_restart() after the panicRestartDelay grace window from
+// mikro.config.ts, so the device enters a tight reboot cycle.
 //
 // Alternative forcible variant (uncomment to bypass the runtime entirely):
 //

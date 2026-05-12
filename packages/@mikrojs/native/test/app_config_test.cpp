@@ -179,13 +179,12 @@ TEST_CASE("MIK_LoadConfig reads mikro.config.json settings" * doctest::test_suit
     auto dir = make_temp_dir();
     write_file(dir + "/package.json", R"({"name": "test", "main": "./main.js"})");
     write_file(dir + "/mikro.config.json",
-               R"({"restartOnUncaughtException": true, "restartDelay": 5000, "stackSize": 32768, "memReserved": 131072})");
+               R"({"panicRestartDelay": 5000, "stackSize": 32768, "memReserved": 131072})");
 
     MIKConfig config;
     MIK_LoadConfig(dir.c_str(), &config);
 
-    CHECK(config.restart_on_uncaught_exception);
-    CHECK_EQ(5000, config.restart_delay_ms);
+    CHECK_EQ(5000, config.panic_restart_delay_ms);
     CHECK_EQ(32768, (int)config.stack_size);
     CHECK_EQ((uint32_t)131072, config.mem_reserved);
 

@@ -670,30 +670,25 @@ bool MIK_IsStopRequested(MIKRuntime* mik_rt) {
 
 void MIK_Stop(MIKRuntime* mik_rt) {
     CHECK_NOT_NULL(mik_rt);
+    /* Only firmware (protocol REPL attached) auto-restarts on uncaught
+     * exceptions. Host embedders (Node addon, standalone tests) own their
+     * own process lifecycle and surface errors via the error handler. */
+    if (!MIK_IsReplActive()) {
+        return;
+    }
     /* A throw inside an interactive REPL eval is a user typo, not an app
-     * crash — don't reboot the device. Autorun crashes and async rejections
-     * outside REPL eval still honor restart_on_uncaught_exception. */
+     * crash — don't reboot the device. */
     if (mik__repl_is_evaluating()) {
         return;
     }
-    if (!mik_rt->config.restart_on_uncaught_exception) {
-        return;
+    /* Defer the restart so the host can still issue deploy/clean/--recover
+     * commands during the grace window. The actual platform->restart()
+     * fires from MIK_Loop once the deadline elapses. */
+    if (mik_rt->restart_at_us == 0) {
+        const MIKPlatform* platform = MIK_GetPlatform();
+        mik_rt->restart_at_us =
+            platform->get_boot_us() + (int64_t)mik_rt->config.panic_restart_delay_ms * 1000;
     }
-    const MIKPlatform* platform = MIK_GetPlatform();
-    if (MIK_IsReplActive()) {
-        /* Protocol REPL is attached (firmware): defer the restart so the
-         * host can still issue deploy/clean/--recover commands during the
-         * grace window. The actual platform->restart() fires from
-         * MIK_Loop once the deadline elapses. */
-        if (mik_rt->restart_at_us == 0) {
-            mik_rt->restart_at_us =
-                platform->get_boot_us() + (int64_t)mik_rt->config.restart_delay_ms * 1000;
-        }
-        return;
-    }
-    /* No protocol REPL (host runtime, standalone): block and restart. */
-    usleep(mik_rt->config.restart_delay_ms * 1000);
-    platform->restart();
 }
 
 int mik__load_file(JSContext* ctx, DynBuf* dbuf, const char* filename) {

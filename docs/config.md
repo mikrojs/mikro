@@ -21,26 +21,21 @@ export default defineConfig({
 
 These options are bundled into the deployed app and read by the firmware at boot.
 
-| Option                       | Type                | Default          | Description                                   |
-| ---------------------------- | ------------------- | ---------------- | --------------------------------------------- |
-| `restartOnUncaughtException` | `boolean`           | `false`          | Restart device on uncaught exception          |
-| `restartDelay`               | `number` (ms)       | `0`              | Delay before restart after uncaught exception |
-| `stackSize`                  | `number` (bytes)    | firmware default | QuickJS C stack size                          |
-| `memReserved`                | `number` (bytes)    | `65536` (64 KB)  | Heap reserved for native subsystems           |
-| `wifi.country`               | `WifiCountryCode`   | none             | WiFi regulatory country code                  |
-| `wifi.hostname`              | `string`            | `mikrojs-<id>`   | DHCP hostname advertised by the STA interface |
-| `logFile`                    | `true \| object`    | off              | Enable on-device file logging                 |
-| `logFile.dir`                | `string`            | `'/appfs/logs'`  | Directory the log file lives in               |
-| `logFile.maxSize`            | `number \| string`  | `'64k'`          | Rotate when file exceeds this size            |
-| `logFile.flush`              | `'line' \| 'error'` | `'error'`        | When to flush buffered writes to flash        |
+| Option              | Type                | Default          | Description                                         |
+| ------------------- | ------------------- | ---------------- | --------------------------------------------------- |
+| `panicRestartDelay` | `number` (ms)       | `1000`           | Grace window between uncaught exception and restart |
+| `stackSize`         | `number` (bytes)    | firmware default | QuickJS C stack size                                |
+| `memReserved`       | `number` (bytes)    | `65536` (64 KB)  | Heap reserved for native subsystems                 |
+| `wifi.country`      | `WifiCountryCode`   | none             | WiFi regulatory country code                        |
+| `wifi.hostname`     | `string`            | `mikrojs-<id>`   | DHCP hostname advertised by the STA interface       |
+| `logFile`           | `true \| object`    | off              | Enable on-device file logging                       |
+| `logFile.dir`       | `string`            | `'/appfs/logs'`  | Directory the log file lives in                     |
+| `logFile.maxSize`   | `number \| string`  | `'64k'`          | Rotate when file exceeds this size                  |
+| `logFile.flush`     | `'line' \| 'error'` | `'error'`        | When to flush buffered writes to flash              |
 
-### `restartOnUncaughtException`
+### `panicRestartDelay`
 
-Automatically restart the device when an uncaught exception reaches the top level. Useful for production deployments where you want the device to recover from transient failures. See [Error Handling](/error-handling) for details.
-
-### `restartDelay`
-
-Delay in milliseconds before restarting after an uncaught exception. Only meaningful when `restartOnUncaughtException` is `true`. A small delay (e.g. 500) gives the device breathing room for serial connections before the restart.
+The runtime always restarts the device when an uncaught exception reaches the top level so apps in the field can self-heal. `panicRestartDelay` controls the grace window (in milliseconds) between the exception and the actual `esp_restart()`. During this window the protocol REPL stays responsive so the host can land `mikro deploy` / `mikro clean` / `mikro ... --recover` commands and break a tight crash loop. Longer windows are friendlier to dev iteration; shorter windows make a self-healing device converge faster. See [Error Handling](/error-handling) for details.
 
 ### `stackSize`
 
@@ -170,8 +165,7 @@ All size options accept a number of bytes or a string with K/M suffix (e.g. `'30
 import {defineConfig} from 'mikrojs'
 
 export default defineConfig({
-  restartOnUncaughtException: true,
-  restartDelay: 500,
+  panicRestartDelay: 500,
   memReserved: 32 * 1024,
   wifi: {
     country: 'NO', // Norway

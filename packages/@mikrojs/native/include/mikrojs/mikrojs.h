@@ -30,8 +30,7 @@ typedef enum MIKLogFlush {
 } MIKLogFlush;
 
 typedef struct MIKConfig {
-    bool restart_on_uncaught_exception;
-    int restart_delay_ms;
+    int panic_restart_delay_ms;
     size_t stack_size;
     uint32_t mem_reserved;
     uint32_t fs_read_max; /* 0 = keep runtime default (65536) */
