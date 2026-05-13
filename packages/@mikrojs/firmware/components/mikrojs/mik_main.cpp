@@ -127,6 +127,7 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
                                 uint32_t payload_len);
 bool mik__handle_config_command(MIKReplTransport* transport, uint8_t cmd_type,
                                 uint32_t payload_len);
+bool mik__handle_fs_get(MIKReplTransport* transport, uint32_t payload_len);
 void mik__deploy_session_reset(void);
 
 static void platform_session_end(void* ctx) {
@@ -161,6 +162,11 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
     /* Deploy commands (0x20-0x27) */
     if (cmd_type >= MIK_CMD_DEPLOY_PUT && cmd_type <= MIK_CMD_DEPLOY_CHECKSUM) {
         return mik__handle_deploy_command(transport, cmd_type, payload_len);
+    }
+
+    /* File pull (0x2B) */
+    if (cmd_type == MIK_CMD_FS_GET) {
+        return mik__handle_fs_get(transport, payload_len);
     }
 
     /* Config commands (0x40-0x42) */
@@ -276,6 +282,9 @@ void MIK_Main(void) {
     /* Load app config (mikro.config.json) if present */
     MIKConfig app_config;
     MIK_LoadConfig("/appfs", &app_config);
+
+    /* Start file logging if configured (no-op when log_file is empty). */
+    mik_logfile_init(&app_config);
 
     /* Create JS runtime — reserve heap for WiFi, TLS, HTTP, LittleFS, and other
      * ESP-IDF subsystems that allocate after the runtime is created.

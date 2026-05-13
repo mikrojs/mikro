@@ -41,6 +41,26 @@ int mik__console_read(void* buf, size_t len);
 /* Write to the active console.  Returns bytes written. */
 int mik__console_write(const void* buf, size_t len);
 
+/* Tap installed by mik_logfile so console output is mirrored into the
+ * on-device log file. Called from mik__console_write before the actual
+ * UART/USB-JTAG write, so output is captured even when no host is
+ * attached. Single slot; mik_logfile owns it. */
+typedef void (*mik_console_tap_fn)(const void* buf, size_t len);
+void mik__console_set_tap(mik_console_tap_fn fn);
+
+/* File logging (mik_logfile.cpp).
+ * Initialized after MIK_LoadConfig once the filesystem is mounted.
+ * No-op when MIKConfig.log_file is empty. */
+typedef struct MIKConfig MIKConfig;
+void mik_logfile_init(const MIKConfig* config);
+void mik_logfile_close(void);
+void mik_logfile_flush(void);
+/* Release/restore the underlying FILE* so the host can read the file
+ * without contention. Output between suspend/resume is dropped. No-op
+ * when file logging is disabled. */
+void mik_logfile_suspend(void);
+void mik_logfile_resume(void);
+
 /* Serial binary I/O (mik_serial_io.cpp) */
 void mik__serial_binary_begin_no_echo(void);
 

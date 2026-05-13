@@ -6,5 +6,6 @@ import {defineConfig} from 'mikrojs'
 // between reboots. Only `mikro ... --recover` can break out.
 export default defineConfig({
   restartOnUncaughtException: true,
-  restartDelay: 500,
+  restartDelay: 2000,
+  logFile: {maxSize: 1024},
 })

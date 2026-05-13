@@ -60,6 +60,7 @@ import {
   CMD_DIRECTIVE,
   CMD_EVAL,
   CMD_EXIT,
+  CMD_FS_GET,
   CMD_HELLO,
   CMD_RESTART,
   CMD_RUNTIME_PAUSE,
@@ -1043,6 +1044,11 @@ async function handleFrame(frame: Frame): Promise<void> {
     case CMD_RUNTIME_RESUME:
       if (runner) runner.paused = false
       sendOk()
+      break
+    case CMD_FS_GET:
+      // File logging itself isn't wired into the simulator yet, so there's
+      // nothing to pull. Surface a clear error instead of timing out.
+      sendErr('fs get: not supported in simulator')
       break
   }
 }

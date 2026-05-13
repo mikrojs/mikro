@@ -83,6 +83,7 @@ idf_component_register(
     "mik_deploy.cpp"
     "mik_http.cpp"
     "mik_i2c.cpp"
+    "mik_logfile.cpp"
     "mik_neopixel.cpp"
     "mik_pin.cpp"
     "mik_pwm.cpp"

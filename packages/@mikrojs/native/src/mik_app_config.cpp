@@ -20,6 +20,9 @@ void MIK_DefaultConfig(MIKConfig* config) {
     config->entry_point[0] = '\0';
     config->wifi_country[0] = '\0';
     config->wifi_hostname[0] = '\0';
+    config->log_dir[0] = '\0';
+    config->log_max_size = 64 * 1024;
+    config->log_flush = MIK_LOG_FLUSH_ERROR;
 }
 
 /* Minimal JSON parser for config file — avoids cJSON dependency.
@@ -348,6 +351,16 @@ int MIK_LoadConfig(const char* base_path, MIKConfig* config) {
                                  sizeof(config->wifi_country));
             mik__json_get_string(buf, "wifi.hostname", config->wifi_hostname,
                                  sizeof(config->wifi_hostname));
+
+            mik__json_get_string(buf, "logFile.dir", config->log_dir, sizeof(config->log_dir));
+            if (mik__json_get_number(buf, "logFile.maxSize", &num_val)) {
+                config->log_max_size = (uint32_t)num_val;
+            }
+            char flush_str[16];
+            if (mik__json_get_string(buf, "logFile.flush", flush_str, sizeof(flush_str))) {
+                config->log_flush =
+                    strcmp(flush_str, "line") == 0 ? MIK_LOG_FLUSH_LINE : MIK_LOG_FLUSH_ERROR;
+            }
 
             platform->log(MIK_LOG_INFO, TAG,
                            "Loaded config: restart=%d delay=%dms stack=%u reserved=%lu",

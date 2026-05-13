@@ -259,6 +259,9 @@ void mik__repl_set_paused(bool paused);
 #define MIK_MSG_ERR 0x81
 #define MIK_MSG_CHECKSUM_RESULT 0x82
 #define MIK_MSG_CONFIG_ENTRIES 0x83
+/* Chunk of file bytes streamed in response to MIK_CMD_FS_GET.
+ * Multiple frames precede a final MSG_OK signaling end-of-file. */
+#define MIK_MSG_FS_CHUNK 0x84
 
 /* CLI → Device command types */
 #define MIK_CMD_EVAL 0x10
@@ -284,6 +287,10 @@ void mik__repl_set_paused(bool paused);
 #define MIK_CMD_RESTART 0x28
 #define MIK_CMD_RUNTIME_PAUSE 0x29
 #define MIK_CMD_RUNTIME_RESUME 0x2A
+/* Pull a file off the device. Payload: u16le path_len | path.
+ * Device replies with zero-or-more MIK_MSG_FS_CHUNK frames followed by
+ * MIK_MSG_OK on EOF, or MIK_MSG_ERR if the path can't be opened. */
+#define MIK_CMD_FS_GET 0x2B
 
 #define MIK_CMD_CONFIG_LIST 0x40
 #define MIK_CMD_CONFIG_SET 0x41

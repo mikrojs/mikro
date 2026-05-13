@@ -137,6 +137,28 @@ mikro tail
 | `-p, --port PORT` | Serial port (auto-detected if omitted) |
 | `-r, --restart`   | Restart the device first               |
 
+## mikro logs
+
+Pull the on-device log file written by the file logger. Requires [`logFile`](/config#logfile) to be enabled in `mikro.config.ts`. With no destination, the log is streamed to stdout — older rotated content first, then the current generation, so the output is chronological. With a destination directory, both `log.txt` and `log.txt.1` (if present) are written there as separate files.
+
+```sh
+# Stream to stdout
+mikro logs pull
+
+# Pipe through tools
+mikro logs pull | grep ERROR
+
+# Archive both generations
+mikro logs pull ./forensics
+```
+
+| Option            | Description                            |
+| ----------------- | -------------------------------------- |
+| `DEST`            | Optional directory to write files into |
+| `-p, --port PORT` | Serial port (auto-detected if omitted) |
+
+The file logger flushes and releases its handle while the file is streamed off, so the pull sees a consistent snapshot. Any log lines emitted during the transfer are dropped; in practice this is a sub-second window.
+
 ## mikro test
 
 Run on-device tests. Discovers `*.test.ts` files, deploys them, and reports structured results. Each file runs in a fresh runtime with a full heap, so tests are isolated from each other.

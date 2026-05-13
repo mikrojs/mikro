@@ -20,6 +20,7 @@ import * as envCommand from './commands/env.js'
 import * as eraseCommand from './commands/erase.js'
 import * as flashCommand from './commands/flash.js'
 import * as homeCommand from './commands/home.js'
+import * as logsCommand from './commands/logs.js'
 import * as listCommand from './commands/ls.js'
 import * as simCommand from './commands/sim.js'
 import * as tailCommand from './commands/tail.js' // no default export — plain async only
@@ -40,6 +41,7 @@ const commands = {
   list: listCommand,
   console: consoleCommand,
   home: homeCommand,
+  logs: logsCommand,
   tail: tailCommand,
   test: testCommand,
   sim: simCommand,
@@ -64,6 +66,7 @@ const argsParser = or(
     object({command: commands.sim.args}),
     object({command: commands.docs.args}),
     object({command: commands.home.args}),
+    object({command: commands.logs.args}),
   ),
 )
 
@@ -204,6 +207,10 @@ switch (config.command.action) {
   }
   case 'home': {
     void homeCommand.run()
+    break
+  }
+  case 'logs': {
+    void logsCommand.run(config.command)
     break
   }
   case 'test': {

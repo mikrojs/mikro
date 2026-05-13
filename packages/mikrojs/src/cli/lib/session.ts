@@ -26,6 +26,7 @@ import {
   mergeMap,
   type Observable,
   of,
+  scan,
   share,
   shareReplay,
   type Subscription,
@@ -58,6 +59,7 @@ import {
   buildDirectiveCommand,
   buildEvalCommand,
   buildExitCommand,
+  buildFsGetCommand,
   buildHelloCommand,
   buildRestartCommand,
   buildRuntimePauseCommand,
@@ -125,6 +127,11 @@ export interface ConfigEntriesEvent {
   entries: EnvEntry[]
 }
 
+export interface FsChunkEvent {
+  type: 'fs_chunk'
+  data: Buffer
+}
+
 export interface TestEvent {
   type: 'test'
   data: Record<string, unknown>
@@ -149,6 +156,7 @@ export type ReplEvent =
   | ErrEvent
   | ChecksumResultEvent
   | ConfigEntriesEvent
+  | FsChunkEvent
   | TestEvent
   | ManifestDoneEvent
   | DisconnectEvent
@@ -252,6 +260,11 @@ export interface ReplSession {
     set(key: string, value: string, secret: boolean): Promise<void>
     delete(key: string): Promise<void>
   }
+
+  /** Pull a file off the device. Streams chunks over the wire and resolves
+   * with the concatenated body. Rejects with the device error message
+   * (e.g. "open failed: ENOENT") when the path can't be read. */
+  fsGet(path: string): Promise<Buffer>
 
   /** Send restart command */
   restart(): void
@@ -738,6 +751,47 @@ export function connectRepl(
     },
   }
 
+  // ── File pull ──────────────────────────────────────────────────
+
+  /** Send CMD_FS_GET and collect MSG_FS_CHUNK frames until the terminal
+   * MSG_OK (or MSG_ERR) arrives. Returns the concatenated body. */
+  async function fsGet(path: string): Promise<Buffer> {
+    await awaitReady()
+    type FsGetAcc = {chunks: Buffer[]; terminal: OkEvent | ErrEvent | null}
+    const done = firstValueFrom(
+      messages$.pipe(
+        filter(
+          (e): e is FsChunkEvent | OkEvent | ErrEvent =>
+            e.type === 'fs_chunk' || e.type === 'ok' || e.type === 'err',
+        ),
+        scan<FsChunkEvent | OkEvent | ErrEvent, FsGetAcc>(
+          (acc, e) => {
+            if (e.type === 'fs_chunk') acc.chunks.push(e.data)
+            else acc.terminal = e
+            return acc
+          },
+          {chunks: [], terminal: null},
+        ),
+        first((acc): acc is FsGetAcc & {terminal: OkEvent | ErrEvent} => acc.terminal !== null),
+        timeout(RESPONSE_TIMEOUT_MS),
+      ),
+    )
+    await transport.write(buildFsGetCommand(path))
+    let result: FsGetAcc & {terminal: OkEvent | ErrEvent}
+    try {
+      result = await done
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw formatTimeoutError(`fs get '${path}'`, RESPONSE_TIMEOUT_MS)
+      }
+      throw err
+    }
+    if (result.terminal.type === 'err') {
+      throw new Error(`fs get '${path}': ${result.terminal.message}`)
+    }
+    return Buffer.concat(result.chunks)
+  }
+
   // ── Public API ─────────────────────────────────────────────────
 
   return {
@@ -764,6 +818,7 @@ export function connectRepl(
     deploy,
     eraseApp,
     config,
+    fsGet,
 
     restart(): void {
       // Mark the current ready cache as stale so the next awaitReady$
@@ -839,6 +894,8 @@ function frameToEvent(frame: Frame): ReplEvent | null {
         return null
       }
     }
+    case 'fs_chunk':
+      return {type: 'fs_chunk', data: msg.payload}
     case 'manifest_done':
       return {type: 'manifest_done'}
     default:
