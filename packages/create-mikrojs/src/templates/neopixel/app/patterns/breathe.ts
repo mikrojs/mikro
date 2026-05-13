@@ -1,22 +1,22 @@
-import type {NeoPixel} from 'mikrojs/neopixel'
-import {ok} from 'mikrojs/result'
-import {sleep} from 'mikrojs/sleep'
+import type { NeoPixel } from "mikrojs/neopixel";
+import { ok } from "mikrojs/result";
+import { sleep } from "mikrojs/sleep";
 
-import {hsv} from '../color.js'
+import { hsv } from "../color.js";
 
 /** Breathe: all LEDs pulse a single color in and out */
 export async function breathe(pixels: NeoPixel, numLeds: number, brightness: number, ms: number) {
-  const end = Date.now() + ms
-  let t = 0
+  const end = Date.now() + ms;
+  let t = 0;
   while (Date.now() < end) {
-    const v = ((Math.sin(t) + 1) / 2) * brightness
-    const [r, g, b] = hsv(30, 1, v)
-    const fillResult = pixels.fill(r, g, b)
-    if (!fillResult.ok) return fillResult
-    const showResult = pixels.show()
-    if (!showResult.ok) return showResult
-    t += 0.06
-    await sleep(20)
+    const v = ((Math.sin(t) + 1) / 2) * brightness;
+    const [r, g, b] = hsv(30, 1, v);
+    const fillResult = pixels.fill(r, g, b);
+    if (!fillResult.ok) return fillResult;
+    const showResult = pixels.show();
+    if (!showResult.ok) return showResult;
+    t += 0.06;
+    await sleep(20);
   }
-  return ok(undefined)
+  return ok(undefined);
 }

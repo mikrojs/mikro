@@ -13,8 +13,9 @@ import {eslintConfig} from './templates/_common/eslint-config.js'
 import {gitignore} from './templates/_common/gitignore.js'
 import {mikroConfig} from './templates/_common/mikro-config.js'
 import {packageJson} from './templates/_common/package-json.js'
+import {prettierConfig} from './templates/_common/prettier-config.js'
 import {readme} from './templates/_common/readme.js'
-import {tsconfig} from './templates/_common/tsconfig.js'
+import {tsconfigJson} from './templates/_common/tsconfig.js'
 
 interface TemplateMeta {
   name: string
@@ -144,14 +145,12 @@ export function scaffold(options: ScaffoldOptions) {
     ) + '\n',
   )
   const hasEnvDts = fs.existsSync(path.join(targetDir, 'env.d.ts'))
-  const tsconfigWithIncludes = hasEnvDts
-    ? {...tsconfig, include: ['env.d.ts', ...(tsconfig.include ?? [])]}
-    : tsconfig
   fs.writeFileSync(
     path.join(targetDir, 'tsconfig.json'),
-    JSON.stringify(tsconfigWithIncludes, null, 2) + '\n',
+    tsconfigJson(hasEnvDts ? ['env.d.ts'] : []),
   )
   fs.writeFileSync(path.join(targetDir, 'eslint.config.js'), eslintConfig)
+  fs.writeFileSync(path.join(targetDir, '.prettierrc.json'), prettierConfig)
   // Write a default mikro.config.ts unless the template ships its own.
   const mikroConfigPath = path.join(targetDir, 'mikro.config.ts')
   if (!fs.existsSync(mikroConfigPath)) {

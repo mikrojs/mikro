@@ -1,11 +1,17 @@
 export const eslintConfig = `\
-import js from '@eslint/js'
-import mikrojs from '@mikrojs/eslint-plugin'
-import tseslint from 'typescript-eslint'
+import js from "@eslint/js";
+import mikrojs from "@mikrojs/eslint-plugin";
+import tseslint from "typescript-eslint";
 
 export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    languageOptions: {
+      parserOptions: { projectService: true },
+    },
+  },
   ...mikrojs.configs.recommended,
-]
+];
 `
