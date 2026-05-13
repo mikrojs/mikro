@@ -56,6 +56,18 @@ struct MIKRuntime {
     bool is_worker;
     bool freeing;
     bool stop_requested;  /* Set by promise rejection tracker to stop the loop */
+    /* Set by MIK_EnableTestHelpers — the test supervisor wants stop_requested
+     * to bubble up cleanly so it can synthesize a failing-test event and move
+     * to the next file. Without this flag, MIK_Stop would arm a panic-restart
+     * deadline and reboot the whole device mid-manifest on the first async
+     * rejection. */
+    bool test_mode;
+    /* Deferred restart deadline (boot_us, 0 = no pending restart). Set by
+     * MIK_Stop when an uncaught exception happens with a protocol REPL
+     * attached: the serve loop keeps reading commands until the deadline so
+     * the host can still deploy/clean/--recover during the grace window,
+     * then platform->restart() fires from MIK_Loop. */
+    int64_t restart_at_us;
     const char* fs_base_path;
     const char* fs_root;  /* Sandbox root for mikrojs/fs operations (separate from module resolution) */
     size_t fs_limit;      /* Max bytes for fs_root (0 = unlimited) */

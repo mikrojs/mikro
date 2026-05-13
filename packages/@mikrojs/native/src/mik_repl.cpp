@@ -129,8 +129,11 @@ bool mik__proto_read_exact(MIKReplTransport* transport, void* buf, size_t n) {
             }
             /* Microtasks are deferred user JS: settling them re-enters .then
              * handlers that can write to the transport (console.log → MSG_LOG)
-             * or touch the filesystem mid-deploy. Gate on pause too. */
-            if (repl_ctx && !repl_paused) {
+             * or touch the filesystem mid-deploy. Gate on pause too — and
+             * on a pending panic-restart, since the runtime is on its way
+             * out and no further user JS should fire on it. */
+            if (repl_ctx && !repl_paused &&
+                (!repl_mik_rt || repl_mik_rt->restart_at_us == 0)) {
                 mik__execute_jobs(repl_ctx);
             }
             /* A pumped job (e.g. the test runtime's __testFileDone) may

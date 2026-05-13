@@ -4,7 +4,7 @@ Dev fixture that deploys an app which crash-loops on boot. Used to exercise the 
 
 ## What it does
 
-`app/main.ts` throws an uncaught exception as soon as it runs. `mikro.config.ts` sets `restartOnUncaughtException: true` with a 500ms delay, so the runtime catches the throw and calls `esp_restart()` after the delay. The next boot autoruns the same broken app, throws again, restarts, forever.
+`app/main.ts` throws an uncaught exception as soon as it runs. The runtime always restarts on uncaught exceptions; `mikro.config.ts` shortens the `panicRestartDelay` grace window so the runtime calls `esp_restart()` quickly after the throw. The next boot autoruns the same broken app, throws again, restarts, forever.
 
 Net effect: the device does enter `MIK_StartReplProtocol` briefly between crashes, but it's gone again before a normal `mikro dev` / `mikro deploy` / `mikro clean` can complete its handshake. The crash cycle is short enough that host-side retries alone aren't enough to catch it.
 
@@ -46,7 +46,7 @@ pnpm mikro console --recover   # open REPL on a broken device without deploying
 
 ## The forcible variant
 
-If you want a crash loop that doesn't rely on `restartOnUncaughtException`, replace the throw in `app/main.ts` with:
+If you want a crash loop that doesn't rely on the panic-restart path, replace the throw in `app/main.ts` with:
 
 ```ts
 import {restart} from 'mikrojs/sys'
