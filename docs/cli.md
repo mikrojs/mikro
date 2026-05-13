@@ -124,22 +124,30 @@ mikro console
 | `--hex`           | Show raw hex bytes                                                                                                                                 |
 | `--recover`       | Reset into safe mode before connecting (inspect a crash-looping device). See [Troubleshooting](/troubleshooting#recovering-a-crash-looping-device) |
 
-## mikro tail
-
-Stream console output from the device without an interactive REPL. Useful for monitoring a running app in the background or piping output to other tools.
-
-```sh
-mikro tail
-```
-
-| Option            | Description                            |
-| ----------------- | -------------------------------------- |
-| `-p, --port PORT` | Serial port (auto-detected if omitted) |
-| `-r, --restart`   | Restart the device first               |
-
 ## mikro logs
 
-Pull the on-device log file written by the file logger. Requires [`logFile`](/config#logfile) to be enabled in `mikro.config.ts`. With no destination, the log is streamed to stdout — older rotated content first, then the current generation, so the output is chronological. With a destination directory, both `log.txt` and `log.txt.1` (if present) are written there as separate files.
+Read or follow device logs. Two subcommands:
+
+- `mikro logs tail` — live stream from the wire (no `logFile` required).
+- `mikro logs pull` — read the on-device file written by the file logger (requires [`logFile`](/config#logfile) in `mikro.config.ts`).
+
+### mikro logs tail
+
+Stream console output from the device without an interactive REPL. Useful for monitoring a running app or piping output to other tools.
+
+```sh
+mikro logs tail
+```
+
+| Option            | Description                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `-p, --port PORT` | Serial port (auto-detected if omitted)                                                          |
+| `-r, --restart`   | Restart the device first                                                                        |
+| `--loglevel`      | Drop device output below this level: `none`, `error`, `warn`, `info`, `debug` (default `debug`) |
+
+### mikro logs pull
+
+Pull the on-device log file written by the file logger. With no destination, the log is streamed to stdout — older rotated content first, then the current generation, so the output is chronological. With a destination directory, both `log.txt` and `log.txt.1` (if present) are written there as separate files.
 
 ```sh
 # Stream to stdout

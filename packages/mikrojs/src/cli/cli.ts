@@ -23,7 +23,6 @@ import * as homeCommand from './commands/home.js'
 import * as logsCommand from './commands/logs.js'
 import * as listCommand from './commands/ls.js'
 import * as simCommand from './commands/sim.js'
-import * as tailCommand from './commands/tail.js' // no default export — plain async only
 import * as testCommand from './commands/test.js'
 import {isAgentMode} from './lib/agent.js'
 import {dispatchReplCommand} from './lib/serial/dispatchReplCommand.js'
@@ -42,7 +41,6 @@ const commands = {
   console: consoleCommand,
   home: homeCommand,
   logs: logsCommand,
-  tail: tailCommand,
   test: testCommand,
   sim: simCommand,
 }
@@ -61,7 +59,6 @@ const argsParser = or(
     object({command: commands.erase.args}),
     object({command: commands.clean.args}),
     object({command: commands['build-runtime'].args}),
-    object({command: commands.tail.args}),
     object({command: commands.test.args}),
     object({command: commands.sim.args}),
     object({command: commands.docs.args}),
@@ -186,10 +183,6 @@ switch (config.command.action) {
       Component: consoleCommand.default,
       run: consoleCommand.run,
     })
-    break
-  }
-  case 'tail': {
-    void tailCommand.run(config.command)
     break
   }
   case 'build-runtime': {
