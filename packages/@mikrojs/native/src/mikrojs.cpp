@@ -535,9 +535,10 @@ void mik__execute_jobs(JSContext* ctx) {
 /* main loop which calls the user JS callbacks */
 int MIK_Loop(MIKRuntime* mik_rt) {
     /* Deferred restart (see MIK_Stop): once the grace window elapses, reboot
-     * the device. While we're still in the window, return 0 without running
-     * any more user JS so the protocol serve loop keeps reading host
-     * commands but no further timers/microtasks fire on the dead runtime. */
+     * the device. While we're still in the window, return 0 without pumping
+     * timers/consumers so the protocol serve loop keeps reading host
+     * commands without firing any more user JS on the dead runtime. The
+     * serve loop also skips its microtask drain on this condition. */
     if (mik_rt->restart_at_us > 0) {
         const MIKPlatform* platform = MIK_GetPlatform();
         if (platform->get_boot_us() >= mik_rt->restart_at_us) {
@@ -679,6 +680,13 @@ void MIK_Stop(MIKRuntime* mik_rt) {
     /* A throw inside an interactive REPL eval is a user typo, not an app
      * crash — don't reboot the device. */
     if (mik__repl_is_evaluating()) {
+        return;
+    }
+    /* In test mode, the supervisor wants stop_requested to bubble up so it
+     * can synthesize a failing-test event and move to the next file. Arming
+     * a panic-restart here would reboot the device mid-manifest on the
+     * first async rejection. */
+    if (mik_rt->test_mode) {
         return;
     }
     /* Defer the restart so the host can still issue deploy/clean/--recover

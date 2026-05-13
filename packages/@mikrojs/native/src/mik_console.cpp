@@ -420,6 +420,7 @@ void mik__console_init(JSContext* ctx, JSValue global_obj) {
  * bindings they'll never use. The mikrojs/test built-in has a console.log
  * fallback for when these globals aren't present. */
 void MIK_EnableTestHelpers(MIKRuntime* mik_rt) {
+    mik_rt->test_mode = true;
     JSContext* ctx = mik_rt->ctx;
     JSValue global_obj = JS_GetGlobalObject(ctx);
     JS_SetPropertyStr(ctx, global_obj, "__testEmit",

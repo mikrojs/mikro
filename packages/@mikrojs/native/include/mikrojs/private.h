@@ -56,6 +56,12 @@ struct MIKRuntime {
     bool is_worker;
     bool freeing;
     bool stop_requested;  /* Set by promise rejection tracker to stop the loop */
+    /* Set by MIK_EnableTestHelpers — the test supervisor wants stop_requested
+     * to bubble up cleanly so it can synthesize a failing-test event and move
+     * to the next file. Without this flag, MIK_Stop would arm a panic-restart
+     * deadline and reboot the whole device mid-manifest on the first async
+     * rejection. */
+    bool test_mode;
     /* Deferred restart deadline (boot_us, 0 = no pending restart). Set by
      * MIK_Stop when an uncaught exception happens with a protocol REPL
      * attached: the serve loop keeps reading commands until the deadline so
