@@ -20,9 +20,9 @@ import * as envCommand from './commands/env.js'
 import * as eraseCommand from './commands/erase.js'
 import * as flashCommand from './commands/flash.js'
 import * as homeCommand from './commands/home.js'
+import * as logsCommand from './commands/logs.js'
 import * as listCommand from './commands/ls.js'
 import * as simCommand from './commands/sim.js'
-import * as tailCommand from './commands/tail.js' // no default export — plain async only
 import * as testCommand from './commands/test.js'
 import {isAgentMode} from './lib/agent.js'
 import {dispatchReplCommand} from './lib/serial/dispatchReplCommand.js'
@@ -40,7 +40,7 @@ const commands = {
   list: listCommand,
   console: consoleCommand,
   home: homeCommand,
-  tail: tailCommand,
+  logs: logsCommand,
   test: testCommand,
   sim: simCommand,
 }
@@ -59,11 +59,11 @@ const argsParser = or(
     object({command: commands.erase.args}),
     object({command: commands.clean.args}),
     object({command: commands['build-runtime'].args}),
-    object({command: commands.tail.args}),
     object({command: commands.test.args}),
     object({command: commands.sim.args}),
     object({command: commands.docs.args}),
     object({command: commands.home.args}),
+    object({command: commands.logs.args}),
   ),
 )
 
@@ -185,10 +185,6 @@ switch (config.command.action) {
     })
     break
   }
-  case 'tail': {
-    void tailCommand.run(config.command)
-    break
-  }
   case 'build-runtime': {
     const {default: buildRuntime} = buildRuntimeCommand
     await buildRuntime(config.command)
@@ -204,6 +200,10 @@ switch (config.command.action) {
   }
   case 'home': {
     void homeCommand.run()
+    break
+  }
+  case 'logs': {
+    void logsCommand.run(config.command)
     break
   }
   case 'test': {

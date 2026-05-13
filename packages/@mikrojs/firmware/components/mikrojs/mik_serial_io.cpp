@@ -162,7 +162,21 @@ int mik__console_read(void* buf, size_t len) {
 #endif
 }
 
+static mik_console_tap_fn s_console_tap = nullptr;
+
+void mik__console_set_tap(mik_console_tap_fn fn) {
+    s_console_tap = fn;
+}
+
 int mik__console_write(const void* buf, size_t len) {
+    /* Mirror to file-log tap (if installed) before the host write. This
+     * captures output even when USB-JTAG has no host attached. Skip the
+     * tap while a TLV protocol frame is being written — the file logger
+     * has a higher-level tap on the un-framed body via the log-emit
+     * hook, so capturing the wire bytes here would just embed the
+     * [type][len] header in the log file. */
+    mik_console_tap_fn tap = s_console_tap;
+    if (tap && !mik__proto_send_in_progress) tap(buf, len);
 #if SOC_USB_SERIAL_JTAG_SUPPORTED
     if (s_console == CONSOLE_USB_SERIAL_JTAG) {
         /* No host attached: the ring buffer would fill and block writes

@@ -21,14 +21,18 @@ export default defineConfig({
 
 These options are bundled into the deployed app and read by the firmware at boot.
 
-| Option                       | Type              | Default          | Description                                   |
-| ---------------------------- | ----------------- | ---------------- | --------------------------------------------- |
-| `restartOnUncaughtException` | `boolean`         | `false`          | Restart device on uncaught exception          |
-| `restartDelay`               | `number` (ms)     | `0`              | Delay before restart after uncaught exception |
-| `stackSize`                  | `number` (bytes)  | firmware default | QuickJS C stack size                          |
-| `memReserved`                | `number` (bytes)  | `65536` (64 KB)  | Heap reserved for native subsystems           |
-| `wifi.country`               | `WifiCountryCode` | none             | WiFi regulatory country code                  |
-| `wifi.hostname`              | `string`          | `mikrojs-<id>`   | DHCP hostname advertised by the STA interface |
+| Option                       | Type                | Default          | Description                                   |
+| ---------------------------- | ------------------- | ---------------- | --------------------------------------------- |
+| `restartOnUncaughtException` | `boolean`           | `false`          | Restart device on uncaught exception          |
+| `restartDelay`               | `number` (ms)       | `0`              | Delay before restart after uncaught exception |
+| `stackSize`                  | `number` (bytes)    | firmware default | QuickJS C stack size                          |
+| `memReserved`                | `number` (bytes)    | `65536` (64 KB)  | Heap reserved for native subsystems           |
+| `wifi.country`               | `WifiCountryCode`   | none             | WiFi regulatory country code                  |
+| `wifi.hostname`              | `string`            | `mikrojs-<id>`   | DHCP hostname advertised by the STA interface |
+| `logFile`                    | `true \| object`    | off              | Enable on-device file logging                 |
+| `logFile.dir`                | `string`            | `'/appfs/logs'`  | Directory the log file lives in               |
+| `logFile.maxSize`            | `number \| string`  | `'64k'`          | Rotate when file exceeds this size            |
+| `logFile.flush`              | `'line' \| 'error'` | `'error'`        | When to flush buffered writes to flash        |
 
 ### `restartOnUncaughtException`
 
@@ -59,6 +63,48 @@ Two-letter [ISO 3166-1](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) countr
 ### `wifi.hostname`
 
 DHCP hostname advertised by the STA interface. This is what your router shows in its client list. When unset, defaults to `mikrojs-<device-id>` (e.g. `mikrojs-abcdef0123`), where the device ID is a base32-encoded MAC. Must conform to RFC 1123: letters, digits and hyphens only, must not start or end with a hyphen, max 63 characters. Takes effect on the next DHCP lease.
+
+### `logFile`
+
+Persist runtime output to a rotated file on the device filesystem for post-mortem debugging. Captures JS `console.*` output, native `MIK_LOG` calls, and ESP-IDF `ESP_LOG` lines. Each entry is prefixed with an ISO 8601 wall-clock timestamp (when the RTC has been set by SNTP) or `[+SSS.fffs]` relative to boot otherwise.
+
+Set to `true` for sensible defaults, or pass an options object to override individual settings:
+
+```ts
+export default defineConfig({
+  logFile: true,
+})
+
+// or:
+export default defineConfig({
+  logFile: {
+    dir: '/appfs/logs',
+    maxSize: '128k',
+    flush: 'line',
+  },
+})
+```
+
+Pull the file off the device with [`mikro logs pull`](/cli#mikro-logs).
+
+#### `logFile.dir`
+
+Directory on the device filesystem where the log file is stored. The file itself is always named `log.txt`, rotated as `log.txt.1` once `maxSize` is reached. The directory is created on first boot if it doesn't exist.
+
+#### `logFile.maxSize`
+
+Maximum file size before rotation. Accepts a number of bytes or a string with K/M suffix (e.g. `'64k'`, `'1m'`). At the cap, `log.txt` is renamed to `log.txt.1` (replacing any previous generation) and a fresh `log.txt` is started. Total flash usage is bounded at **2 × maxSize**.
+
+#### `logFile.flush`
+
+When buffered log writes are committed to flash. Tradeoff between forensic fidelity and flash wear:
+
+- `'error'` (default) — buffer everything, flush only on warn/error lines. The post-mortem sweet spot: errors land on flash immediately, normal output rides the stdio buffer.
+- `'line'` — flush after every newline. Strongest crash-recovery guarantee, hardest on flash. Use only if you genuinely need every line to survive a hard reset.
+
+::: warning Flash budget
+Logging to flash burns write cycles. Rotation caps usage at `2 × maxSize`, but `flush: 'line'` will accelerate wear noticeably under chatty workloads. Default to `'error'` unless you have a specific reason not to.
+:::
 
 ## Build options {#build}
 
@@ -131,6 +177,8 @@ export default defineConfig({
     country: 'NO', // Norway
     hostname: 'living-room-sensor',
   },
+
+  logFile: true,
 
   build: {
     bundle: true,

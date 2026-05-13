@@ -153,15 +153,28 @@ export function loadConfig(entry: string): Promise<MikroJSConfig | null> {
   return loadMikroConfig(pathlib.dirname(pathlib.resolve(entry)))
 }
 
+/** Default directory for file logging when the user opts in via
+ * `logFile: true` or omits `logFile.dir`. Mirrored in the CLI's
+ * `logs pull` command so it can locate the same file the firmware
+ * writes to. */
+const DEFAULT_LOG_DIR = '/appfs/logs'
+
 // Strip host-only sections, normalize K/M-suffixed sizes, and flatten the
-// `wifi: {country, hostname}` group into dotted-key form so the device-side
-// JSON parser (mik_app_config.cpp) can read it without a nested-object pass.
+// `wifi: {country, hostname}` and `logFile: {...}` groups into dotted-key
+// form so the device-side JSON parser (mik_app_config.cpp) can read them
+// without a nested-object pass.
 function serializeRuntimeConfig(config: MikroJSConfig): Record<string, unknown> {
-  const {sim: _sim, build: _build, wifi, fsReadMax, ...rest} = config
+  const {sim: _sim, build: _build, wifi, logFile, fsReadMax, ...rest} = config
   const out: Record<string, unknown> = {...rest}
   if (fsReadMax !== undefined) out.fsReadMax = parseSize(fsReadMax)
   if (wifi?.country) out['wifi.country'] = wifi.country
   if (wifi?.hostname) out['wifi.hostname'] = wifi.hostname
+  if (logFile !== undefined) {
+    const opts = logFile === true ? {} : logFile
+    out['logFile.dir'] = opts.dir ?? DEFAULT_LOG_DIR
+    if (opts.maxSize !== undefined) out['logFile.maxSize'] = parseSize(opts.maxSize)
+    if (opts.flush !== undefined) out['logFile.flush'] = opts.flush
+  }
   return out
 }
 

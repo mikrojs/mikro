@@ -98,6 +98,26 @@ export interface MikroJSWifiConfig {
   hostname?: string
 }
 
+export type LogFlush = 'line' | 'error'
+
+export interface MikroJSLogFileOptions {
+  /** Directory on the device filesystem where the log file lives. The
+   * actual file is always `<dir>/log.txt` (rotated as `log.txt.1`).
+   * Default: '/appfs/logs'. */
+  dir?: string
+  /** Maximum file size before rotation. Number of bytes, or string with
+   * K/M suffix (e.g. '64k', '1m'). At cap, `log.txt` is renamed to
+   * `log.txt.1` (replacing any previous generation) and a fresh
+   * `log.txt` is started. Total flash usage is bounded at 2 × maxSize.
+   * Default: '64k'. */
+  maxSize?: number | string
+  /** When to commit buffered writes to flash. 'line' flushes after every
+   * newline (strongest post-mortem guarantee, hardest on flash). 'error'
+   * buffers in RAM and flushes on warn/error lines or when the buffer
+   * fills. Default: 'error'. */
+  flush?: LogFlush
+}
+
 export interface MikroJSConfig {
   restartOnUncaughtException?: boolean
   restartDelay?: number
@@ -109,6 +129,11 @@ export interface MikroJSConfig {
    * suffix (e.g. '128k', '1m'). Default: 65536 (64 KiB). */
   fsReadMax?: number | string
   wifi?: MikroJSWifiConfig
+  /** File logging to the device filesystem. Captures console output and
+   * native log calls into a rotated log file for post-mortem debugging.
+   * Use `true` for defaults, or an options object to override individual
+   * settings. Omit to disable. */
+  logFile?: true | MikroJSLogFileOptions
   /** Simulator-only options. Stripped from the bundled config before deploy. */
   sim?: MikroJSSimConfig
   /** Build-time options. Stripped from the bundled config before deploy. */

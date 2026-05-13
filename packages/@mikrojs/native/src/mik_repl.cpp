@@ -47,6 +47,23 @@ bool mik__repl_is_protocol_mode(void) {
 
 /* ── TLV frame helpers ───────────────────────────────────────────── */
 
+/* Plain bool, not atomic — relies on the assumption that mik__proto_send
+ * is only ever called from the REPL serve task, which is the same task
+ * that drives mik__console_write (since console_write is invoked by the
+ * runtime's stdout/stderr hooks during JS execution, and JS runs on the
+ * serve task). If a future feature introduces another task that calls
+ * mik__console_write directly (e.g. a watchdog or a sensor task that
+ * writes to console), its writes during a proto_send window will be
+ * dropped by the file-log tap. Revisit (task-local storage, or move the
+ * suppression into mik__console_write itself) if that happens. */
+bool mik__proto_send_in_progress = false;
+
+static MIKLogEmitFn s_log_emit_tap = nullptr;
+
+void mik__set_log_emit_tap(MIKLogEmitFn fn) {
+    s_log_emit_tap = fn;
+}
+
 /* Send a TLV-framed message: [ type: uint8 ] [ length: uint32_le ] [ payload ] */
 void mik__proto_send(MIKReplTransport* transport, uint8_t type, const void* data,
                      size_t len) {
@@ -56,10 +73,12 @@ void mik__proto_send(MIKReplTransport* transport, uint8_t type, const void* data
     header[2] = (uint8_t)((len >> 8) & 0xFF);
     header[3] = (uint8_t)((len >> 16) & 0xFF);
     header[4] = (uint8_t)((len >> 24) & 0xFF);
+    mik__proto_send_in_progress = true;
     transport->write(header, MIK_PROTO_HEADER_SIZE, transport->ctx);
     if (len > 0 && data) {
         transport->write(data, len, transport->ctx);
     }
+    mik__proto_send_in_progress = false;
 }
 
 void mik__proto_send_ok(MIKReplTransport* transport) {
@@ -70,9 +89,13 @@ void mik__proto_send_err(MIKReplTransport* transport, const char* msg) {
     mik__proto_send(transport, MIK_MSG_ERR, msg, strlen(msg));
 }
 
-/* Public wrapper used by mik_console.cpp and mik_stdio.cpp */
+/* Public wrapper used by mik_console.cpp and mik_stdio.cpp. Pre-frame
+ * tap fires before the TLV bytes go on the wire, so the file logger
+ * sees clean body text rather than [type][len][body]. */
 void mik__repl_proto_send_output(uint8_t msg_type, const void* data, size_t len) {
     if (repl_transport) {
+        MIKLogEmitFn tap = s_log_emit_tap;
+        if (tap) tap(msg_type, data, len);
         mik__proto_send(repl_transport, msg_type, data, len);
     }
 }

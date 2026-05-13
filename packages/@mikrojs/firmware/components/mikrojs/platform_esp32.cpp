@@ -182,12 +182,22 @@ static void esp32_log(int level, const char* tag, const char* fmt, ...) {
     esp_log_level_t tag_level = esp_log_level_get(tag);
     if (tag_level == ESP_LOG_NONE || esp_level > tag_level) return;
 
-    printf("[%s] %s: ", mik_log_level_name(level), tag);
+    /* Route through mik__console_write rather than printf so the file-log
+     * tap captures these lines along with JS console output. */
+    char buf[256];
+    int n = snprintf(buf, sizeof(buf), "[%s] %s: ", mik_log_level_name(level), tag);
+    if (n < 0) return;
+    if ((size_t)n >= sizeof(buf)) n = (int)sizeof(buf) - 1;
     va_list args;
     va_start(args, fmt);
-    vprintf(fmt, args);
+    int m = vsnprintf(buf + n, sizeof(buf) - (size_t)n, fmt, args);
     va_end(args);
-    putchar('\n');
+    if (m < 0) m = 0;
+    size_t total = (size_t)n + (size_t)m;
+    if (total >= sizeof(buf)) total = sizeof(buf) - 1;
+    /* Replace trailing NUL with newline; if exactly full, overwrite last byte. */
+    buf[total] = '\n';
+    mik__console_write(buf, total + 1);
 }
 
 static const MIKPlatform esp32_platform = {

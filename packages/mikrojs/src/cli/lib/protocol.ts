@@ -37,6 +37,9 @@ export const MSG_OK = 0x80
 export const MSG_ERR = 0x81
 export const MSG_CHECKSUM_RESULT = 0x82
 export const MSG_CONFIG_ENTRIES = 0x83
+/** Chunk of file bytes streamed in response to CMD_FS_GET. Repeated
+ *  zero-or-more times before a terminal MSG_OK. */
+export const MSG_FS_CHUNK = 0x84
 
 // ── CLI → Device command types ─────────────────────────────────────
 
@@ -64,6 +67,10 @@ export const CMD_DEPLOY_CHECKSUM = 0x27
 export const CMD_RESTART = 0x28
 export const CMD_RUNTIME_PAUSE = 0x29
 export const CMD_RUNTIME_RESUME = 0x2a
+/** Pull a file off the device. Payload: u16le path_len | path.
+ *  Device streams MSG_FS_CHUNK frames followed by a terminating MSG_OK,
+ *  or MSG_ERR on failure. */
+export const CMD_FS_GET = 0x2b
 
 export const CMD_CONFIG_LIST = 0x40
 export const CMD_CONFIG_SET = 0x41
@@ -147,6 +154,15 @@ export function buildRuntimePauseCommand(): Buffer {
 
 export function buildRuntimeResumeCommand(): Buffer {
   return buildFrame(CMD_RUNTIME_RESUME)
+}
+
+/** Build CMD_FS_GET payload: u16le path_len | path */
+export function buildFsGetCommand(path: string): Buffer {
+  const pathBytes = Buffer.from(path, 'utf-8')
+  const payload = Buffer.alloc(2 + pathBytes.length)
+  payload.writeUInt16LE(pathBytes.length, 0)
+  pathBytes.copy(payload, 2)
+  return buildFrame(CMD_FS_GET, payload)
 }
 
 // ── Deploy command builders ────────────────────────────────────────
@@ -258,6 +274,7 @@ export type MessageType =
   | 'err'
   | 'checksum_result'
   | 'config_entries'
+  | 'fs_chunk'
   | 'test'
   | 'manifest_done'
 
@@ -276,6 +293,7 @@ const MSG_TYPE_MAP: Record<number, MessageType> = {
   [MSG_ERR]: 'err',
   [MSG_CHECKSUM_RESULT]: 'checksum_result',
   [MSG_CONFIG_ENTRIES]: 'config_entries',
+  [MSG_FS_CHUNK]: 'fs_chunk',
   [MSG_TEST]: 'test',
   [MSG_MANIFEST_DONE]: 'manifest_done',
 }

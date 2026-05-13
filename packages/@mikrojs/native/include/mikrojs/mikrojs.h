@@ -23,6 +23,12 @@ typedef struct MIKRunOptions {
     bool use_psram_heap;
 } MIKRunOptions;
 
+/* File-log flush policies. Mirror of `LogFlush` in the host-side TS type. */
+typedef enum MIKLogFlush {
+    MIK_LOG_FLUSH_ERROR = 0, /* default: buffer, flush on warn/error or buffer full */
+    MIK_LOG_FLUSH_LINE = 1,
+} MIKLogFlush;
+
 typedef struct MIKConfig {
     bool restart_on_uncaught_exception;
     int restart_delay_ms;
@@ -32,6 +38,11 @@ typedef struct MIKConfig {
     char entry_point[128];
     char wifi_country[3];   /* Two-letter country code + NUL, e.g. "NO" */
     char wifi_hostname[64]; /* DHCP hostname; empty = use mikrojs-<device-id> default */
+    /* File-log config. log_dir empty disables file logging; otherwise the
+     * file lives at "<log_dir>/log.txt" (rotated as ".../log.txt.1"). */
+    char log_dir[64];
+    uint32_t log_max_size;
+    MIKLogFlush log_flush;
 } MIKConfig;
 
 void MIK_DefaultConfig(MIKConfig* config);
@@ -305,6 +316,20 @@ bool mik__proto_drain(MIKReplTransport* transport, size_t n);
 void mik__proto_send(MIKReplTransport* transport, uint8_t type, const void* data, size_t len);
 void mik__proto_send_ok(MIKReplTransport* transport);
 void mik__proto_send_err(MIKReplTransport* transport, const char* msg);
+
+/* Tap called by mik__repl_proto_send_output with the raw body bytes (no
+ * TLV framing) before they're sent on the wire. Single slot — owned by
+ * the file logger on the device side. msg_type is the MIK_MSG_* value so
+ * the tap can pick the appropriate log level. */
+typedef void (*MIKLogEmitFn)(uint8_t msg_type, const void* data, size_t len);
+void mik__set_log_emit_tap(MIKLogEmitFn fn);
+
+/* True while mik__proto_send is writing TLV bytes to the transport.
+ * Platform-side transports (mik__console_write on the ESP32) check this
+ * to skip any installed wire-byte taps that would otherwise capture the
+ * framing in addition to the body. Single-task code path, so plain bool
+ * is sufficient — there's no other writer of this flag. */
+extern bool mik__proto_send_in_progress;
 
 /* ── Session primitives ─────────────────────────────────────────────
  * A protocol session is scoped to a transport (one client connection).
