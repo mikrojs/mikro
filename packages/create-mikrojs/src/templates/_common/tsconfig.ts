@@ -1,7 +1,7 @@
 import type {TsConfigJson} from 'type-fest'
 
 export const tsconfig: TsConfigJson = {
-  include: ['app/**/*'],
+  include: ['mikro.config.ts', 'app/**/*'],
   compilerOptions: {
     module: 'nodenext',
     target: 'es2024',

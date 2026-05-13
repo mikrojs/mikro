@@ -5,6 +5,7 @@ export const dependencies = {
 } satisfies PackageJson['dependencies']
 
 export const devDependencies = {
+  prettier: '^3.4.0',
   typescript: '^6.0.3',
 } satisfies PackageJson['devDependencies']
 

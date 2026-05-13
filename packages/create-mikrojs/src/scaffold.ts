@@ -11,6 +11,7 @@ import {editorconfig} from './templates/_common/editorconfig.js'
 import {envExample} from './templates/_common/env-example.js'
 import {eslintConfig} from './templates/_common/eslint-config.js'
 import {gitignore} from './templates/_common/gitignore.js'
+import {mikroConfig} from './templates/_common/mikro-config.js'
 import {packageJson} from './templates/_common/package-json.js'
 import {readme} from './templates/_common/readme.js'
 import {tsconfig} from './templates/_common/tsconfig.js'
@@ -112,21 +113,12 @@ export interface ScaffoldOptions {
   template: string
   projectName: string
   mikrojsVersion: string
-  typescript?: boolean
   templatesDir: string
   pkgManager: PkgManager
 }
 
 export function scaffold(options: ScaffoldOptions) {
-  const {
-    targetDir,
-    template,
-    projectName,
-    mikrojsVersion,
-    typescript = true,
-    templatesDir,
-    pkgManager,
-  } = options
+  const {targetDir, template, projectName, mikrojsVersion, templatesDir, pkgManager} = options
 
   // Create project directory
   fs.mkdirSync(targetDir, {recursive: true})
@@ -141,29 +133,29 @@ export function scaffold(options: ScaffoldOptions) {
     JSON.stringify(
       packageJson(projectName, {
         dependencies: {...dependencies, mikrojs: `^${mikrojsVersion}`},
-        devDependencies: typescript
-          ? {
-              ...devDependencies,
-              ...eslintDevDependencies,
-              '@mikrojs/eslint-plugin': `^${mikrojsVersion}`,
-            }
-          : undefined,
-        typescript,
+        devDependencies: {
+          ...devDependencies,
+          ...eslintDevDependencies,
+          '@mikrojs/eslint-plugin': `^${mikrojsVersion}`,
+        },
       }),
       null,
       2,
     ) + '\n',
   )
-  if (typescript) {
-    const hasEnvDts = fs.existsSync(path.join(targetDir, 'env.d.ts'))
-    const tsconfigWithIncludes = hasEnvDts
-      ? {...tsconfig, include: ['env.d.ts', ...(tsconfig.include ?? [])]}
-      : tsconfig
-    fs.writeFileSync(
-      path.join(targetDir, 'tsconfig.json'),
-      JSON.stringify(tsconfigWithIncludes, null, 2) + '\n',
-    )
-    fs.writeFileSync(path.join(targetDir, 'eslint.config.js'), eslintConfig)
+  const hasEnvDts = fs.existsSync(path.join(targetDir, 'env.d.ts'))
+  const tsconfigWithIncludes = hasEnvDts
+    ? {...tsconfig, include: ['env.d.ts', ...(tsconfig.include ?? [])]}
+    : tsconfig
+  fs.writeFileSync(
+    path.join(targetDir, 'tsconfig.json'),
+    JSON.stringify(tsconfigWithIncludes, null, 2) + '\n',
+  )
+  fs.writeFileSync(path.join(targetDir, 'eslint.config.js'), eslintConfig)
+  // Write a default mikro.config.ts unless the template ships its own.
+  const mikroConfigPath = path.join(targetDir, 'mikro.config.ts')
+  if (!fs.existsSync(mikroConfigPath)) {
+    fs.writeFileSync(mikroConfigPath, mikroConfig)
   }
   fs.writeFileSync(path.join(targetDir, '.editorconfig'), editorconfig)
   fs.writeFileSync(path.join(targetDir, '.gitignore'), gitignore)
