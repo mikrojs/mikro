@@ -15,6 +15,7 @@ import {type BoardInfo, discoverBoards} from '../lib/boards.js'
 import {type FlasherArgs, getWriteFlashMultiArgs, readFlasherArgs} from '../lib/esptool.js'
 import {type Chip, resolveFrom} from '../lib/firmware.js'
 import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
+import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
 import {useObservable} from '../lib/useObservable.js'
@@ -404,6 +405,14 @@ function FlashProgress(props: {
   const progress = useObservable(observable, INITIAL_SPAWN_STATE)
   const {output, error, completed} = progress
 
+  const [pm, setPm] = useState<PkgManager>('npm')
+  useEffect(() => {
+    detectPreferredPm().then(setPm, () => {})
+  }, [])
+
+  const success = completed && !error
+  const lastLine = getLastLine(output)
+
   return (
     <Box flexDirection="column">
       <Text>
@@ -414,24 +423,53 @@ function FlashProgress(props: {
         ) : (
           <Spinner spinner={spinners.dots} />
         )}{' '}
-        Flashing {flasherArgs.chip} firmware via {port}
+        {success ? 'Flashed' : 'Flashing'} {flasherArgs.chip} firmware via {port}
         {error ? <Text> failed</Text> : null}
       </Text>
-      <Box flexDirection="column" paddingLeft={2}>
-        {flasherArgs.files.map((f) => (
-          <Text key={f.filename} color="gray">
-            0x{f.address.toString(16)} {f.filename}
+      {!completed && lastLine ? (
+        <Box paddingLeft={2}>
+          <Text color="gray">{lastLine}</Text>
+        </Box>
+      ) : null}
+      {error ? (
+        <Box flexDirection="column" paddingLeft={2}>
+          {output.map((chunk, i) => (
+            <Text key={i} color={chunk.type === 'err' ? 'red' : 'gray'}>
+              {textDecoder.decode(chunk.output)}
+            </Text>
+          ))}
+          <Text color="red">{error.stack}</Text>
+        </Box>
+      ) : null}
+      {success ? (
+        <Box flexDirection="column" paddingTop={1} paddingLeft={2}>
+          <Text bold>Next steps</Text>
+          <Text>
+            <Text color="gray">{figures.pointerSmall}</Text> Start a dev session:{' '}
+            <Text bold>{mikroCommand(pm, 'dev')}</Text>
           </Text>
-        ))}
-      </Box>
-      {output.map((chunk, i) => (
-        <Text key={i} color={chunk.type === 'err' ? 'red' : 'gray'}>
-          {textDecoder.decode(chunk.output)}
-        </Text>
-      ))}
-      {error && <Text color="red">{error.stack}</Text>}
+          <Text>
+            <Text color="gray">{figures.pointerSmall}</Text> Open a REPL:{' '}
+            <Text bold>{mikroCommand(pm, 'console')}</Text>
+          </Text>
+        </Box>
+      ) : null}
     </Box>
   )
+}
+
+function getLastLine(output: SpawnState['output']): string {
+  for (let i = output.length - 1; i >= 0; i--) {
+    const text = textDecoder.decode(output[i]!.output)
+    // Split on either CR or LF so esptool's \r-overwritten progress
+    // updates are treated as distinct lines, not concatenated.
+    const lines = text.split(/[\r\n]+/)
+    for (let j = lines.length - 1; j >= 0; j--) {
+      const line = lines[j]!.trim()
+      if (line) return line
+    }
+  }
+  return ''
 }
 
 const textDecoder = new TextDecoder()
