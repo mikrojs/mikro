@@ -26,6 +26,7 @@ jobs:
       - run: pnpm build:ts
       - run: pnpm build:native
       - run: pnpm test:js -- --coverage --coverage.reporter=json-summary --coverage.reporter=text
+      - run: pnpm test:sim
 
       - name: Coverage summary
         if: always()

@@ -5,7 +5,8 @@
   "description": "End-to-end smoke tests that run on the device",
   "type": "module",
   "scripts": {
-    "test": "mikro test"
+    "test": "mikro test",
+    "test:sim": "mikro sim test"
   },
   "dependencies": {
     "mikrojs": "workspace:*"
