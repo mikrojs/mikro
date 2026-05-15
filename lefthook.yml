@@ -60,3 +60,7 @@ pre-commit:
       only:
         - run: node scripts/is-agent.js
       run: pnpm test:lib
+    test-sim:
+      only:
+        - run: node scripts/is-agent.js
+      run: pnpm test:sim
