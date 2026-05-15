@@ -43,7 +43,8 @@ describe.runIf(hasWifi && !isSim)('http request streaming', () => {
       let total = 0
       let chunks = 0
       for await (const c of result.value.body) {
-        total += c.length
+        assert.ok(c)
+        total += c.value.length
         chunks++
       }
       assert.equal(total, 16384, 'all bytes received via stream')
@@ -62,7 +63,8 @@ describe.runIf(hasWifi && !isSim)('http request streaming', () => {
       assert.ok(result)
       let lineCount = 0
       for await (const line of splitLines(decodeUtf8(result.value.body))) {
-        if (line.length > 0) lineCount++
+        assert.ok(line)
+        if (line.value.length > 0) lineCount++
       }
       assert.truthy(lineCount >= 5, `received ${lineCount} lines (expected >= 5)`)
     },

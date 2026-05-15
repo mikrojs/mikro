@@ -1,6 +1,8 @@
+import {ok} from 'mikrojs/result'
 import {describe, expect, it} from 'vitest'
 
-import {BodyConsumedError, makeResponse, prepareBody} from '../helpers.js'
+import type {Result} from '../../result/types.js'
+import {BodyConsumedError, makeResponse, prepareBody, type RequestError} from '../helpers.js'
 
 describe('prepareBody', () => {
   it('defaults to null body with empty headers', () => {
@@ -39,10 +41,10 @@ describe('prepareBody', () => {
   })
 })
 
-function bodyFromBytes(bytes: Uint8Array): AsyncIterable<Uint8Array> {
+function bodyFromBytes(bytes: Uint8Array): AsyncIterable<Result<Uint8Array, RequestError>> {
   return {
     async *[Symbol.asyncIterator]() {
-      if (bytes.length > 0) yield bytes
+      if (bytes.length > 0) yield ok(bytes)
     },
   }
 }
@@ -120,7 +122,7 @@ describe('makeResponse', () => {
     expect(r.getAll('x-missing')).toEqual([])
   })
 
-  it('text() decodes body', async () => {
+  it('text() decodes body and returns ok result', async () => {
     const r = makeResponse({
       status: 200,
       statusText: '',
@@ -129,14 +131,16 @@ describe('makeResponse', () => {
       headers: [],
       body: bodyFromBytes(new TextEncoder().encode('hei mikro')),
     })
-    expect(await r.text()).toBe('hei mikro')
+    const text = await r.text()
+    expect(text.ok).toBe(true)
+    if (text.ok) expect(text.value).toBe('hei mikro')
   })
 
   it('bytes() drains multi-chunk body into a single Uint8Array', async () => {
     const chunks = [new Uint8Array([1, 2]), new Uint8Array([3, 4]), new Uint8Array([5])]
-    const body: AsyncIterable<Uint8Array> = {
+    const body: AsyncIterable<Result<Uint8Array, RequestError>> = {
       async *[Symbol.asyncIterator]() {
-        for (const c of chunks) yield c
+        for (const c of chunks) yield ok(c)
       },
     }
     const r = makeResponse({
@@ -148,14 +152,15 @@ describe('makeResponse', () => {
       body,
     })
     const merged = await r.bytes()
-    expect(Array.from(merged)).toEqual([1, 2, 3, 4, 5])
+    expect(merged.ok).toBe(true)
+    if (merged.ok) expect(Array.from(merged.value)).toEqual([1, 2, 3, 4, 5])
   })
 
   it('text() decodes multi-chunk UTF-8 with split codepoints', async () => {
-    const body: AsyncIterable<Uint8Array> = {
+    const body: AsyncIterable<Result<Uint8Array, RequestError>> = {
       async *[Symbol.asyncIterator]() {
-        yield new Uint8Array([0x68, 0xc3])
-        yield new Uint8Array([0xa9, 0x6c, 0x6c, 0x6f])
+        yield ok(new Uint8Array([0x68, 0xc3]))
+        yield ok(new Uint8Array([0xa9, 0x6c, 0x6c, 0x6f]))
       },
     }
     const r = makeResponse({
@@ -166,14 +171,16 @@ describe('makeResponse', () => {
       headers: [],
       body,
     })
-    expect(await r.text()).toBe('héllo')
+    const text = await r.text()
+    expect(text.ok).toBe(true)
+    if (text.ok) expect(text.value).toBe('héllo')
   })
 
   it('body yields every chunk exactly once via iteration', async () => {
-    const body: AsyncIterable<Uint8Array> = {
+    const body: AsyncIterable<Result<Uint8Array, RequestError>> = {
       async *[Symbol.asyncIterator]() {
-        yield new Uint8Array([1])
-        yield new Uint8Array([2, 3])
+        yield ok(new Uint8Array([1]))
+        yield ok(new Uint8Array([2, 3]))
       },
     }
     const r = makeResponse({
@@ -185,8 +192,39 @@ describe('makeResponse', () => {
       body,
     })
     const collected: number[] = []
-    for await (const chunk of r.body) collected.push(...chunk)
+    for await (const chunk of r.body) {
+      expect(chunk.ok).toBe(true)
+      if (chunk.ok) collected.push(...chunk.value)
+    }
     expect(collected).toEqual([1, 2, 3])
+  })
+
+  it('json() returns parsed Result on valid JSON', async () => {
+    const r = makeResponse({
+      status: 200,
+      statusText: '',
+      url: '',
+      redirected: false,
+      headers: [],
+      body: bodyFromBytes(new TextEncoder().encode('{"a":1}')),
+    })
+    const result = await r.json()
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value).toEqual({a: 1})
+  })
+
+  it('json() returns InvalidJson err on malformed payload', async () => {
+    const r = makeResponse({
+      status: 200,
+      statusText: '',
+      url: '',
+      redirected: false,
+      headers: [],
+      body: bodyFromBytes(new TextEncoder().encode('{not json')),
+    })
+    const result = await r.json()
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.name).toBe('InvalidJson')
   })
 
   it('throws BodyConsumed when text() is called twice', async () => {

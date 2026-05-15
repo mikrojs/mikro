@@ -9,12 +9,19 @@
  * lazy-load efficiency.
  */
 
+import {err, ok} from 'mikrojs/result'
+
+import type {Result} from '../result/types.js'
+
+export type ReaderError = {name: 'Timeout'; ms: number} | {name: 'StreamClosed'}
+
 /**
- * A buffered byte reader over an async iterator of byte chunks.
+ * A buffered byte reader over a Result-yielding async iterator of
+ * byte chunks.
  *
- * Wraps any `AsyncIterable<Uint8Array>` (typically `uart.read()`,
- * eventually also TCP sockets) and exposes three primitives that
- * share the same underlying byte buffer:
+ * Wraps any `AsyncIterable<Result<Uint8Array, E>>` (typically
+ * `uart.read()`, `fs.readStream`, an HTTP body) and exposes three
+ * primitives that share the same underlying byte buffer:
  *
  *   - `readUntil(delimiter, {timeoutMs})` — pull chunks until the
  *     buffer contains `delimiter`, return everything before it and
@@ -30,12 +37,12 @@
  *     underlying iterator. Useful before sending a new command when
  *     stale bytes from a previous response might be left over.
  *
- * Both `readUntil` and `readBytes` throw `TimeoutError` (an Error
- * with `name === 'TimeoutError'`) if the deadline expires before
- * the request is satisfied, and `StreamClosed` (an Error with
- * `name === 'StreamClosed'`) if the underlying iterator finishes
- * before the request is satisfied. Callers may wrap those in their
- * own Result type if they prefer structured error handling.
+ * Both `readUntil` and `readBytes` return `Result<Uint8Array, E |
+ * ReaderError>`: `err({name: 'Timeout', ms})` if the deadline expires
+ * before the request is satisfied, `err({name: 'StreamClosed'})` if
+ * the underlying iterator finishes early, or whatever error variant
+ * the source yields. `RangeError` is still thrown for invalid
+ * arguments (programmer mistakes, not stream errors).
  *
  * Timeout semantics: when a pull races against a `setTimeout` and
  * the timer wins, the pending `iter.next()` promise is kept so the
@@ -48,18 +55,21 @@
  * not protected against — the caller is responsible for
  * sequential ordering.
  */
-export class BufferedReader {
-  readonly #source: AsyncIterator<Uint8Array>
+export class BufferedReader<E = never> {
+  readonly #source: AsyncIterator<Result<Uint8Array, E>>
   #buffer: Uint8Array
-  #pending: Promise<IteratorResult<Uint8Array>> | null
+  #pending: Promise<IteratorResult<Result<Uint8Array, E>>> | null
 
-  constructor(source: AsyncIterable<Uint8Array>) {
-    this.#source = source[Symbol.asyncIterator]() as AsyncIterator<Uint8Array>
+  constructor(source: AsyncIterable<Result<Uint8Array, E>>) {
+    this.#source = source[Symbol.asyncIterator]() as AsyncIterator<Result<Uint8Array, E>>
     this.#buffer = new Uint8Array(0)
     this.#pending = null
   }
 
-  async readUntil(delimiter: Uint8Array, options: {timeoutMs: number}): Promise<Uint8Array> {
+  async readUntil(
+    delimiter: Uint8Array,
+    options: {timeoutMs: number},
+  ): Promise<Result<Uint8Array, E | ReaderError>> {
     if (delimiter.length === 0) {
       throw new RangeError('BufferedReader.readUntil: delimiter must be non-empty')
     }
@@ -69,24 +79,29 @@ export class BufferedReader {
       if (idx !== -1) {
         const out = this.#buffer.slice(0, idx)
         this.#buffer = this.#buffer.slice(idx + delimiter.length)
-        return out
+        return ok(out)
       }
-      await this.#pull(deadline)
+      const pull = await this.#pull(deadline, options.timeoutMs)
+      if (!pull.ok) return pull
     }
   }
 
-  async readBytes(count: number, options: {timeoutMs: number}): Promise<Uint8Array> {
+  async readBytes(
+    count: number,
+    options: {timeoutMs: number},
+  ): Promise<Result<Uint8Array, E | ReaderError>> {
     if (count < 0) {
       throw new RangeError('BufferedReader.readBytes: count must be non-negative')
     }
-    if (count === 0) return new Uint8Array(0)
+    if (count === 0) return ok(new Uint8Array(0))
     const deadline = Date.now() + options.timeoutMs
     while (this.#buffer.length < count) {
-      await this.#pull(deadline)
+      const pull = await this.#pull(deadline, options.timeoutMs)
+      if (!pull.ok) return pull
     }
     const out = this.#buffer.slice(0, count)
     this.#buffer = this.#buffer.slice(count)
-    return out
+    return ok(out)
   }
 
   /**
@@ -100,13 +115,9 @@ export class BufferedReader {
     this.#buffer = new Uint8Array(0)
   }
 
-  async #pull(deadline: number): Promise<void> {
+  async #pull(deadline: number, timeoutMs: number): Promise<Result<void, E | ReaderError>> {
     const remaining = deadline - Date.now()
-    if (remaining <= 0) {
-      const err = new Error(`BufferedReader: timeout waiting for bytes`)
-      err.name = 'TimeoutError'
-      throw err
-    }
+    if (remaining <= 0) return err({name: 'Timeout' as const, ms: timeoutMs})
 
     if (this.#pending === null) {
       this.#pending = this.#source.next()
@@ -116,24 +127,24 @@ export class BufferedReader {
     let timerId: ReturnType<typeof setTimeout> | undefined
     try {
       const result = await Promise.race([
-        pending.then((v): {kind: 'value'; v: IteratorResult<Uint8Array>} => ({kind: 'value', v})),
+        pending.then((v): {kind: 'value'; v: IteratorResult<Result<Uint8Array, E>>} => ({
+          kind: 'value',
+          v,
+        })),
         new Promise<{kind: 'timeout'}>((resolve) => {
           timerId = setTimeout(() => resolve({kind: 'timeout'}), remaining)
         }),
       ])
       if (result.kind === 'timeout') {
         // Leave #pending intact so the next pull resumes on this chunk.
-        const err = new Error(`BufferedReader: timeout after ${remaining}ms waiting for bytes`)
-        err.name = 'TimeoutError'
-        throw err
+        return err({name: 'Timeout' as const, ms: timeoutMs})
       }
       this.#pending = null
-      if (result.v.done) {
-        const err = new Error('BufferedReader: stream closed before read satisfied')
-        err.name = 'StreamClosed'
-        throw err
-      }
-      this.#buffer = concatBytes(this.#buffer, result.v.value)
+      if (result.v.done) return err({name: 'StreamClosed' as const})
+      const item = result.v.value
+      if (!item.ok) return item
+      this.#buffer = concatBytes(this.#buffer, item.value)
+      return ok()
     } finally {
       if (timerId !== undefined) clearTimeout(timerId)
     }

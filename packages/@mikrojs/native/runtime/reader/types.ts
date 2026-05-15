@@ -7,10 +7,14 @@
  * `packages/mikrojs` and by user apps via their tsconfig.
  */
 
+import type {Result} from 'mikrojs/result'
+
+export type ReaderError = {name: 'Timeout'; ms: number} | {name: 'StreamClosed'}
+
 /**
- * A buffered byte reader over an async iterator of `Uint8Array`
- * chunks. Offers three operations that share the same underlying
- * buffer:
+ * A buffered byte reader over a Result-yielding async iterator of
+ * `Uint8Array` chunks. Offers three operations that share the same
+ * underlying buffer:
  *
  *   - `readUntil(delimiter, {timeoutMs})` — return everything before
  *     the first occurrence of `delimiter`, consume the delimiter.
@@ -19,16 +23,23 @@
  *   - `drain()` — discard buffered bytes without affecting the
  *     underlying iterator.
  *
- * Throws an Error with `name === 'TimeoutError'` if the deadline
- * expires before the request is satisfied, or `name === 'StreamClosed'`
- * if the underlying iterator finishes before the request is satisfied.
+ * Returns `err({name: 'Timeout', ms})` if the deadline expires,
+ * `err({name: 'StreamClosed'})` if the underlying iterator finishes
+ * early, or the source's own error variant when it yields one.
+ * `RangeError` is still thrown for invalid arguments.
  *
  * Single-consumer only: concurrent `readUntil` / `readBytes` calls on
  * the same instance are unsupported.
  */
-export declare class BufferedReader {
-  constructor(source: AsyncIterable<Uint8Array>)
-  readUntil(delimiter: Uint8Array, options: {timeoutMs: number}): Promise<Uint8Array>
-  readBytes(count: number, options: {timeoutMs: number}): Promise<Uint8Array>
+export declare class BufferedReader<E = never> {
+  constructor(source: AsyncIterable<Result<Uint8Array, E>>)
+  readUntil(
+    delimiter: Uint8Array,
+    options: {timeoutMs: number},
+  ): Promise<Result<Uint8Array, E | ReaderError>>
+  readBytes(
+    count: number,
+    options: {timeoutMs: number},
+  ): Promise<Result<Uint8Array, E | ReaderError>>
   drain(): void
 }

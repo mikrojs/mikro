@@ -6,7 +6,7 @@ description: Result type for typed error handling
 # result
 
 ```ts twoslash
-import {ok, err, defineError} from 'mikrojs/result'
+import {ok, err, matchError} from 'mikrojs/result'
 import type {Result, OkResult, ErrResult} from 'mikrojs/result'
 ```
 
@@ -49,25 +49,45 @@ result.ok // false
 result.error // {name: 'NotFound'}
 ```
 
-### defineError()
+### matchError()
 
-Defines a set of named error variants. Each variant is a factory function that produces a tagged error object.
+Exhaustive dispatch on a tagged error's `name` field. The handler map must cover every variant or TypeScript fails the call site at compile time.
 
 ```ts
-function defineError<D>(name: string, variants: D): ErrorConstructors<D>
+function matchError<E extends {name: string}, R>(
+  error: E,
+  handlers: {[K in E['name']]: (error: Extract<E, {name: K}>) => R},
+): R
 ```
 
 ```ts twoslash
-import {defineError} from 'mikrojs/result'
+type SensorError = {name: 'ReadFailed'; message: string} | {name: 'NotConnected'}
 // ---cut---
-const SensorError = defineError('SensorError', {
-  ReadFailed: (message: string) => ({message}),
-  NotConnected: () => ({}),
-})
+import {matchError} from 'mikrojs/result'
 
-const e = SensorError.ReadFailed('timeout')
-// {name: 'ReadFailed', message: 'timeout'}
+declare const e: SensorError
+const summary = matchError(e, {
+  ReadFailed: (e) => `read failed: ${e.message}`,
+  NotConnected: () => 'sensor not connected',
+})
 ```
+
+## Defining a typed error union
+
+Mikro.js modules expose their failures as tagged unions on `name`. The recommended pattern is a const factory object plus a `ReturnType` extraction:
+
+```ts twoslash
+const SensorError = {
+  ReadFailed: (message: string) => ({name: 'ReadFailed', message}) as const,
+  NotConnected: () => ({name: 'NotConnected'}) as const,
+}
+type SensorError = ReturnType<(typeof SensorError)[keyof typeof SensorError]>
+
+// Usage: `err(SensorError.ReadFailed('timeout'))` yields
+// ErrResult<{name: 'ReadFailed'; message: string}>
+```
+
+The factory is plain JS — no runtime indirection, no closure overhead beyond the variant functions themselves. Inline `err({name: 'X' as const, ...})` literals are fine too when a variant only has one or two call sites.
 
 ## Result methods
 
@@ -161,20 +181,4 @@ Use this when failure is truly unrecoverable (e.g., during setup).
 
 ```ts
 type Result<T, E> = OkResult<T> | ErrResult<E>
-```
-
-### ErrorOf\<T\>
-
-Utility type that extracts the union of error shapes from an error constructor object (returned by `defineError`).
-
-```ts twoslash
-import {defineError} from 'mikrojs/result'
-import type {ErrorOf} from 'mikrojs/result'
-const SensorError = defineError('SensorError', {
-  ReadFailed: (message: string) => ({message}),
-  NotConnected: () => ({}),
-})
-// ---cut---
-type MyError = ErrorOf<typeof SensorError>
-// {name: 'ReadFailed'; message: string} | {name: 'NotConnected'}
 ```

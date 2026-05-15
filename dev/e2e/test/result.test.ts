@@ -1,4 +1,4 @@
-import {defineError, err, ok} from 'mikrojs/result'
+import {err, matchError, ok} from 'mikrojs/result'
 import {assert, describe, test} from 'mikrojs/test'
 
 describe('result', () => {
@@ -84,18 +84,20 @@ describe('result', () => {
     assert.throws(() => err('bad').orPanic('panicked'))
   })
 
-  test('defineError creates error factories', () => {
-    const MyError = defineError('MyError', {
-      NotFound: (id: string) => ({id}),
-      Invalid: (reason: string) => ({reason}),
+  test('matchError dispatches on name with exhaustive handlers', () => {
+    type E = {name: 'NotFound'; id: string} | {name: 'Invalid'; reason: string}
+    const e1: E = {name: 'NotFound', id: 'abc'}
+    const out1 = matchError(e1, {
+      NotFound: (e) => `missing:${e.id}`,
+      Invalid: (e) => `bad:${e.reason}`,
     })
+    assert.equal(out1, 'missing:abc')
 
-    const e1 = MyError.NotFound('abc')
-    assert.equal(e1.name, 'NotFound')
-    assert.equal(e1.id, 'abc')
-
-    const e2 = MyError.Invalid('too short')
-    assert.equal(e2.name, 'Invalid')
-    assert.equal(e2.reason, 'too short')
+    const e2: E = {name: 'Invalid', reason: 'too short'}
+    const out2 = matchError(e2, {
+      NotFound: (e) => `missing:${e.id}`,
+      Invalid: (e) => `bad:${e.reason}`,
+    })
+    assert.equal(out2, 'bad:too short')
   })
 })

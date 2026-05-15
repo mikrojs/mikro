@@ -1,4 +1,4 @@
-import {defineError, err, ok} from 'mikrojs/result'
+import {err, ok} from 'mikrojs/result'
 // Typed loosely to avoid deep type instantiation from Infer<S> in parse's generics.
 // Type safety is provided by the storage interface overloads in types.ts.
 import {parse as _parse} from 'mikrojs/schema'
@@ -8,12 +8,14 @@ import type {NativeError} from '../result/types.js'
 type ParseResult = {ok: true; value: unknown} | {ok: false; error: {message: string; path: string}}
 const parse = _parse as unknown as (schema: unknown, value: unknown) => ParseResult
 
-export const KVError = defineError('KVError', {
-  StorageFull: (message: string) => ({message}),
-  EncodeFailed: (message: string) => ({message}),
-  WriteFailed: (message: string) => ({message}),
-  ValidationFailed: (message: string, path: string) => ({message, path}),
-})
+export const KVError = {
+  StorageFull: (message: string) => ({name: 'StorageFull', message}) as const,
+  EncodeFailed: (message: string) => ({name: 'EncodeFailed', message}) as const,
+  WriteFailed: (message: string) => ({name: 'WriteFailed', message}) as const,
+  ValidationFailed: (message: string, path: string) =>
+    ({name: 'ValidationFailed', message, path}) as const,
+  Unknown: (code: number, message: string) => ({name: 'Unknown', code, message}) as const,
+}
 
 /* Error codes from errors.h (MIK_ERR_BASE + 0xD0..0xD4) */
 const KV_INVALID_KEY = 0x80d0
@@ -43,7 +45,7 @@ function mapKvError(e: NativeError) {
     case KV_WRITE:
       return KVError.WriteFailed(e.message)
     default:
-      throw new Error(`unexpected native kv error: code=0x${e.code.toString(16)}`)
+      return KVError.Unknown(e.code, e.message)
   }
 }
 

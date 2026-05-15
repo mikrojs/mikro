@@ -3,7 +3,9 @@
 // LTE modem over UART) implement the `Request` type directly and reuse
 // `prepareBody` + `makeResponse` for the boring parts.
 
-import type {Result} from 'mikrojs/result'
+import {err, ok} from 'mikrojs/result'
+
+import type {Result} from '../result/types.js'
 
 export interface RequestOptions {
   method?: string
@@ -25,21 +27,24 @@ export interface Response {
   headers: [string, string][]
   ok: boolean
   /**
-   * Response body as an async iterable of chunks. Single-shot: after any of
-   * `body`, `text()`, `bytes()`, or `json()` has started draining, calling
-   * another consumer throws `BodyConsumedError`.
+   * Response body as an async iterable of byte chunks. Iteration yields
+   * `Result<Uint8Array, RequestError>` so mid-stream failures (network
+   * drop, abort, timeout) compose with the rest of the Result-based API.
+   * Single-shot: after any of `body`, `text()`, `bytes()`, or `json()`
+   * has started draining, the next consumer call throws
+   * `BodyConsumedError`.
    */
-  body: AsyncIterable<Uint8Array>
+  body: AsyncIterable<Result<Uint8Array, RequestError>>
   /** First matching header value, case-insensitive, or undefined if absent. */
   get(name: string): string | undefined
   /** All matching header values in order, case-insensitive. Empty array if absent. */
   getAll(name: string): string[]
   /** Drain body as a UTF-8 string. Throws `BodyConsumedError` on second consumer call. */
-  text(): Promise<string>
+  text(): Promise<Result<string, RequestError>>
   /** Drain body and parse as JSON. Throws `BodyConsumedError` on second consumer call. */
-  json(): Promise<unknown>
+  json(): Promise<Result<unknown, RequestError>>
   /** Drain body to a single `Uint8Array`. Throws `BodyConsumedError` on second consumer call. */
-  bytes(): Promise<Uint8Array>
+  bytes(): Promise<Result<Uint8Array, RequestError>>
   /**
    * Cancel the request and release any native resources. Safe to call after
    * the body has been consumed (no-op). Safe to call multiple times.
@@ -63,16 +68,11 @@ export const RequestError = {
   Aborted: (message: string) => ({name: 'Aborted', message}) as const,
   /** Transport is at its concurrent-request cap. Retry after in-flight requests settle. */
   TooManyPending: () => ({name: 'TooManyPending'}) as const,
+  /** Body drained but JSON.parse rejected the payload. */
+  InvalidJson: (message: string) => ({name: 'InvalidJson', message}) as const,
 }
 
-export type RequestError =
-  | ReturnType<typeof RequestError.Hardware>
-  | ReturnType<typeof RequestError.Network>
-  | ReturnType<typeof RequestError.Timeout>
-  | ReturnType<typeof RequestError.BodyTooLarge>
-  | ReturnType<typeof RequestError.InvalidResponse>
-  | ReturnType<typeof RequestError.Aborted>
-  | ReturnType<typeof RequestError.TooManyPending>
+export type RequestError = ReturnType<(typeof RequestError)[keyof typeof RequestError]>
 
 export class BodyConsumedError extends Error {
   readonly name = 'BodyConsumed'
@@ -99,9 +99,9 @@ export function prepareBody(opts: RequestOptions): {
 }
 
 /**
- * Wrap a transport's raw response (async-iterable body) into the public
- * `Response` shape with `text()`/`json()`/`bytes()`/`get()`/`getAll()`/`close()`
- * and a single-shot body claim.
+ * Wrap a transport's raw response (Result-yielding async-iterable body) into
+ * the public `Response` shape with `text()`/`json()`/`bytes()`/`get()`/
+ * `getAll()`/`close()` and a single-shot body claim.
  */
 export function makeResponse(raw: {
   status: number
@@ -109,7 +109,7 @@ export function makeResponse(raw: {
   url: string
   redirected: boolean
   headers: [string, string][]
-  body: AsyncIterable<Uint8Array>
+  body: AsyncIterable<Result<Uint8Array, RequestError>>
 }): Response {
   let consumed = false
   const claim = () => {
@@ -117,7 +117,7 @@ export function makeResponse(raw: {
     consumed = true
   }
 
-  const body: AsyncIterable<Uint8Array> = {
+  const body: AsyncIterable<Result<Uint8Array, RequestError>> = {
     [Symbol.asyncIterator]() {
       claim()
       return raw.body[Symbol.asyncIterator]()
@@ -153,7 +153,13 @@ export function makeResponse(raw: {
     },
     json: async () => {
       claim()
-      return JSON.parse(await drainAsText(raw.body))
+      const text = await drainAsText(raw.body)
+      if (!text.ok) return text
+      try {
+        return ok(JSON.parse(text.value))
+      } catch (e) {
+        return err(RequestError.InvalidJson(e instanceof Error ? e.message : String(e)))
+      }
     },
     bytes: async () => {
       claim()
@@ -177,29 +183,35 @@ function normalizeHeaders(
   return out
 }
 
-async function drain(source: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
+async function drain(
+  source: AsyncIterable<Result<Uint8Array, RequestError>>,
+): Promise<Result<Uint8Array, RequestError>> {
   const parts: Uint8Array[] = []
   let total = 0
-  for await (const chunk of source) {
-    parts.push(chunk)
-    total += chunk.length
+  for await (const r of source) {
+    if (!r.ok) return r
+    parts.push(r.value)
+    total += r.value.length
   }
-  if (parts.length === 1) return parts[0]!
+  if (parts.length === 1) return ok(parts[0]!)
   const out = new Uint8Array(total)
   let offset = 0
   for (const p of parts) {
     out.set(p, offset)
     offset += p.length
   }
-  return out
+  return ok(out)
 }
 
-async function drainAsText(source: AsyncIterable<Uint8Array>): Promise<string> {
+async function drainAsText(
+  source: AsyncIterable<Result<Uint8Array, RequestError>>,
+): Promise<Result<string, RequestError>> {
   const decoder = new TextDecoder()
   let out = ''
-  for await (const chunk of source) {
-    out += decoder.decode(chunk, {stream: true})
+  for await (const r of source) {
+    if (!r.ok) return r
+    out += decoder.decode(r.value, {stream: true})
   }
   out += decoder.decode()
-  return out
+  return ok(out)
 }

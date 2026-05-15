@@ -668,15 +668,39 @@ static JSValue mik__http_next_message(JSContext* ctx, JSValue this_val, int argc
     return promise;
 }
 
+/* Forward decl: defined further down, called here so pendingCount() drains
+ * result_queue before reading the counter. */
+void mik__http_consume(JSContext* ctx);
+
 /* pendingCount() — number of in-flight requests whose terminal message has
  * not yet been consumed. Useful for tests that want to verify cancel+drain
- * freed a slot without relying on heap-headroom for a follow-up request. */
+ * freed a slot without relying on heap-headroom for a follow-up request.
+ *
+ * Drains result_queue first via the consume loop. Without this, a request
+ * whose native task has already posted its terminal message but whose
+ * message hasn't been processed by the next event-loop tick reads as
+ * "still pending" — even though it'd drop microseconds later. Surfaced
+ * as an intermittent "in-flight HTTP request at teardown" warning when
+ * the test harness reads pendingCount() synchronously right after the
+ * last awaited test step. */
 static JSValue mik__http_pending_count(JSContext* ctx, JSValue this_val, int argc,
                                        JSValue* argv) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     CHECK_NOT_NULL(mik_rt);
     if (!mik__http_st(mik_rt)) return JS_NewUint32(ctx, 0);
-    return JS_NewUint32(ctx, mik__http_st(mik_rt)->pending_count);
+    mik__http_consume(ctx);
+    /* Exclude explicitly-cancelled entries. JS has signalled intent to
+     * release; the entry stays alive only until the native task wakes
+     * from a blocking call (TLS handshake, DNS) and posts its terminal
+     * message. That's not a leak — counting it as one fires false
+     * "in-flight HTTP at teardown" warnings on tests that abort or
+     * time out a request and exit before the native task has noticed. */
+    MIKHttpState* state = mik__http_st(mik_rt);
+    uint32_t live = 0;
+    for (size_t i = 0; i < state->pending_count; i++) {
+        if (!state->pending[i].js_cancelled) live++;
+    }
+    return JS_NewUint32(ctx, live);
 }
 
 /* cancel(id) — signal a pending request to abort */

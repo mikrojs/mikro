@@ -22,10 +22,14 @@ uart.begin().orPanic('UART init failed')
 // Write data
 uart.write(new Uint8Array([0x41, 0x54, 0x0d, 0x0a])).orPanic('write failed')
 
-// Read data (async iterator)
+// Read data (async iterator of Result<Uint8Array, UartError>)
 const reader = uart.read().orPanic('read failed')
 for await (const chunk of reader) {
-  console.log('received: %s', new TextDecoder().decode(chunk))
+  if (!chunk.ok) {
+    console.error('uart read failed: %s', chunk.error.name)
+    break
+  }
+  console.log('received: %s', new TextDecoder().decode(chunk.value))
   break
 }
 
@@ -96,12 +100,12 @@ Write bytes to the TX pin. Blocks until all bytes are written to the FIFO. Only 
 ### uart.read()
 
 ```ts
-read(): Result<AsyncIterable<Uint8Array>, UartError>
+read(): Result<AsyncIterable<Result<Uint8Array, UartError>>, UartError>
 ```
 
-Start reading from the RX pin. Returns an `AsyncIterable` that yields `Uint8Array` chunks as data arrives. Only available when `rx` was provided in the constructor.
+Start reading from the RX pin. The outer Result wraps the initial open. The iterable yields `Result<Uint8Array, UartError>`: ok-wrapped chunks on success, a single terminal err item if the port becomes unavailable mid-iteration (e.g. `end()` was called). Only available when `rx` was provided in the constructor.
 
-Each iteration yields whatever bytes have accumulated in the receive buffer since the last read. Chunk boundaries do not correspond to message boundaries; higher-level framing (line splitting, packet parsing) is the caller's responsibility.
+Each yielded chunk contains whatever bytes have accumulated in the receive buffer since the last read. Chunk boundaries do not correspond to message boundaries; higher-level framing (line splitting, packet parsing) is the caller's responsibility.
 
 Only one reader can be active at a time. Calling `read()` while another reader is active returns an `AlreadyReading` error. Breaking out of the `for await` loop cleanly closes the reader, and `read()` can be called again.
 
@@ -113,7 +117,11 @@ uart.begin().orPanic('UART init failed')
 const reader = uart.read().orPanic('read failed')
 
 for await (const chunk of reader) {
-  const text = new TextDecoder().decode(chunk)
+  if (!chunk.ok) {
+    console.error('uart read failed: %s', chunk.error.name)
+    break
+  }
+  const text = new TextDecoder().decode(chunk.value)
   console.log(text)
   if (text.includes('OK')) break // break is safe, read() can be called again
 }
@@ -133,7 +141,7 @@ interface UartTx {
 
 ```ts
 interface UartRx {
-  read(): Result<AsyncIterable<Uint8Array>, UartError>
+  read(): Result<AsyncIterable<Result<Uint8Array, UartError>>, UartError>
 }
 ```
 

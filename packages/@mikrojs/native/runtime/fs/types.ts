@@ -79,8 +79,8 @@ export interface ReadStreamOptions {
 
 /**
  * Open a file as a stream of byte chunks. Returns a Result because the
- * initial open can fail; once iterating, mid-stream read errors propagate
- * via rejected promises from `next()`.
+ * initial open can fail; once iterating, mid-stream read errors arrive
+ * as a final `err(...)` item and end the stream.
  *
  * Compose with `mikrojs/stream` helpers (`decodeUtf8`, `splitLines`) for
  * text/line streams. Closes the underlying handle on EOF, mid-stream
@@ -89,4 +89,4 @@ export interface ReadStreamOptions {
 export declare function readStream(
   path: string,
   options?: ReadStreamOptions,
-): Result<AsyncIterable<Uint8Array>, FSError>
+): Result<AsyncIterable<Result<Uint8Array, FSError>>, FSError>

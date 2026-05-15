@@ -106,7 +106,6 @@ The most common pattern is checking and returning early:
 ```ts twoslash
 import {ok, err, type Result} from 'mikrojs/result'
 import {analogRead, type PinError} from 'mikrojs/pin'
-import {defineError, type ErrorOf} from 'mikrojs/result'
 declare const PublishError: {
   NetworkError: (message: string) => {name: 'NetworkError'; message: string}
 }
@@ -173,27 +172,28 @@ const message = analogRead(34).match({
 
 ## Defining errors
 
-Mikro.js modules define their errors using `defineError`:
+Mikro.js modules define their errors as tagged unions, keyed on `name`. The recommended shape is a const factory object plus a `ReturnType` extraction:
 
 ```ts twoslash
-import {defineError, type ErrorOf} from 'mikrojs/result'
+const SensorError = {
+  NotConnected: () => ({name: 'NotConnected'}) as const,
+  ReadFailed: (message: string) => ({name: 'ReadFailed', message}) as const,
+  OutOfRange: (value: number, min: number, max: number) =>
+    ({name: 'OutOfRange', value, min, max}) as const,
+}
 
-const SensorError = defineError('SensorError', {
-  NotConnected: () => ({}),
-  ReadFailed: (message: string) => ({message}),
-  OutOfRange: (value: number, min: number, max: number) => ({value, min, max}),
-})
-
-type SensorError = ErrorOf<typeof SensorError>
+type SensorError = ReturnType<(typeof SensorError)[keyof typeof SensorError]>
 ```
 
 This gives you:
 
 - **Constructor functions:** `SensorError.ReadFailed("timeout")` creates `{name: "ReadFailed", message: "timeout"}`
 - **A union type:** `SensorError` is `{name: "NotConnected"} | {name: "ReadFailed", message: string} | {name: "OutOfRange", value: number, min: number, max: number}`
-- **Exhaustive switching:** TypeScript enforces that you handle every variant in a `switch` block
+- **Exhaustive switching:** TypeScript enforces that you handle every variant in a `switch` block, or via [`matchError`](/api/result#matcherror)
 
 Errors are plain objects; no class hierarchies, no prototypes. They're cheap to create and easy to log over serial.
+
+For variants with only one or two call sites, an inline `err({name: 'X' as const, ...})` literal is fine — the factory pattern is just discoverability over the same shape.
 
 ## What about exceptions?
 
@@ -247,7 +247,7 @@ Other rules flag `throw`, `try/catch`, `Promise.reject()`, and `.catch()` to kee
 ## Quick reference
 
 ```ts
-import {ok, err, defineError, type Result, type ErrorOf} from 'mikrojs/result'
+import {ok, err, matchError, type Result} from 'mikrojs/result'
 
 // Check a result
 if (result.ok) {
@@ -290,11 +290,11 @@ switch (result.error.name) {
 }
 
 // Define custom errors
-const MyError = defineError('MyError', {
-  NotFound: (id: string) => ({id}),
-  Timeout: (ms: number) => ({ms}),
-})
-type MyError = ErrorOf<typeof MyError>
+const MyError = {
+  NotFound: (id: string) => ({name: 'NotFound', id}) as const,
+  Timeout: (ms: number) => ({name: 'Timeout', ms}) as const,
+}
+type MyError = ReturnType<(typeof MyError)[keyof typeof MyError]>
 
 // Use in function signatures
 function myFunction(): Result<string, MyError> {

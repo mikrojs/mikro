@@ -53,7 +53,13 @@ export interface UartTx {
  * @public
  */
 export interface UartRx {
-  read(): Result<AsyncIterable<Uint8Array>, UartError>
+  /**
+   * Open a Result-yielding async iterable of received chunks. Mid-stream
+   * failures (driver fault, port closed mid-iteration) arrive as a single
+   * terminal `err(UartError)` item rather than throwing — composes with
+   * stream/* combinators and other Result-based APIs.
+   */
+  read(): Result<AsyncIterable<Result<Uint8Array, UartError>>, UartError>
 }
 
 /**

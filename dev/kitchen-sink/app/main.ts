@@ -8,7 +8,7 @@ import {rtcStorage} from 'mikrojs/kv/rtc'
 import {NeoPixel} from 'mikrojs/neopixel'
 import {analogRead, digitalRead, digitalWrite, pinMode} from 'mikrojs/pin'
 import {Pwm} from 'mikrojs/pwm'
-import {defineError, err, ok} from 'mikrojs/result'
+import {err, matchError, ok} from 'mikrojs/result'
 import * as s from 'mikrojs/schema'
 import {sleep} from 'mikrojs/sleep'
 import {sntp} from 'mikrojs/sntp'
@@ -36,7 +36,7 @@ console.log('kv:', typeof nvsStorage, typeof rtcStorage)
 console.log('neopixel:', typeof NeoPixel)
 console.log('pin:', typeof pinMode, typeof digitalWrite, typeof digitalRead, typeof analogRead)
 console.log('pwm:', typeof Pwm)
-console.log('result:', typeof ok, typeof err, typeof defineError)
+console.log('result:', typeof ok, typeof err, typeof matchError)
 console.log('schema:', typeof s.string, typeof s.object, typeof s.parse)
 console.log('sleep:', typeof sleep)
 console.log('sntp:', typeof sntp)
