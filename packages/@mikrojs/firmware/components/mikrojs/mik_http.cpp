@@ -672,9 +672,18 @@ static JSValue mik__http_next_message(JSContext* ctx, JSValue this_val, int argc
  * result_queue before reading the counter. */
 void mik__http_consume(JSContext* ctx);
 
-/* pendingCount() — number of in-flight requests whose terminal message has
- * not yet been consumed. Useful for tests that want to verify cancel+drain
- * freed a slot without relying on heap-headroom for a follow-up request.
+/* pendingCount() — number of in-flight requests with work still visible to
+ * JS (headers/body not yet delivered, not cancelled). Useful for tests that
+ * want to verify cancel+drain freed a slot without relying on heap-headroom
+ * for a follow-up request.
+ *
+ * Semantic shift vs. a "raw slot count": this returns the JS-visible pending
+ * count, not the native slot count. Cancelled-but-not-yet-drained entries
+ * still occupy a native slot (until the BG task wakes from a blocking call
+ * and posts its terminal message) but are excluded from this count. If you
+ * need to know whether a follow-up `request()` will hit TooManyPending, this
+ * is not the right number — the slot may still be held. See
+ * MIK_HTTP_MAX_PENDING and the js_cancelled exclusion below.
  *
  * Drains result_queue first via the consume loop. Without this, a request
  * whose native task has already posted its terminal message but whose

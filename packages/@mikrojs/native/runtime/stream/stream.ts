@@ -118,6 +118,14 @@ export async function collectUntil<T, E>(
  * - The upstream iterator is explicitly .return()'d on exit (normal,
  *   timeout, or consumer break) so underlying resources (UART claims,
  *   socket handles, ring buffers) get released.
+ *
+ * Source contract: the source iterator must surface failures via
+ * `yield err(...)` items, not by rejecting `next()`. On a timer win,
+ * the in-flight `next()` promise is discarded; if that promise
+ * rejects, the rejection is unhandled. Every Result-yielding source
+ * in this codebase (`uart.read()`, `fs.readStream`, `Response.body`)
+ * satisfies that contract — only relevant if you compose
+ * `withTimeout` over a hand-rolled iterator.
  */
 export async function* withTimeout<T, E>(
   source: AsyncIterable<Result<T, E>>,

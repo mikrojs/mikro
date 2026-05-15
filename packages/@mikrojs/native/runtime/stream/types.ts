@@ -50,6 +50,12 @@ export declare function collectUntil<T, E>(
  * `err({name: 'Timeout', ms})` if the next item doesn't arrive in
  * time, then ends. Releases the upstream iterator via `return()` on
  * timeout, source error, or consumer break.
+ *
+ * Source contract: the source must surface failures via `yield err(...)`,
+ * not by rejecting `next()`. On a timer win the in-flight `next()`
+ * promise is discarded — if it later rejects, the rejection is
+ * unhandled. All Result-yielding sources in this runtime
+ * (`uart.read()`, `fs.readStream`, `Response.body`) satisfy that.
  */
 export declare function withTimeout<T, E>(
   source: AsyncIterable<Result<T, E>>,

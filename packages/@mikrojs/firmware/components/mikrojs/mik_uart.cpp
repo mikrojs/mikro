@@ -12,6 +12,11 @@
 static JSClassID mik_uart_class_id;
 static int mik__uart_slot = -1;
 
+/* Forward decl: defined alongside the iterator class further down. The Uart
+ * state holds a non-owning backpointer so end() can mark the active iterator
+ * as exhausted without having to reach through JS. */
+struct MIKUartIterState;
+
 /* ── State ────────────────────────────────────────────────────────── */
 
 struct MIKUartState {
@@ -22,6 +27,11 @@ struct MIKUartState {
     bool begun;
     bool reading;     // active read() iterator exists
     MIKPromise read_promise;  // pending next() promise (when waiting for data)
+    /* Non-owning ref to the active iterator (when reading == true). The iter
+     * holds a strong ref to this Uart via uart_jsval, so this back-edge is
+     * always cleared (iter_return / finalizer) before the Uart can outlive
+     * the iterator. */
+    MIKUartIterState* iter;
 };
 
 /* Per-runtime tracking of all Uart instances for the loop consumer */
@@ -98,6 +108,7 @@ static JSValue js_uart_constructor(JSContext* ctx, JSValue new_target, int argc,
     s->baud_rate = 115200;
     s->begun = false;
     s->reading = false;
+    s->iter = nullptr;
     s->read_promise.p = JS_UNDEFINED;
     s->read_promise.rfuncs[0] = JS_UNDEFINED;
     s->read_promise.rfuncs[1] = JS_UNDEFINED;
@@ -193,19 +204,29 @@ static JSValue js_uart_begin(JSContext* ctx, JSValue this_val, int argc, JSValue
     return mik__result_ok_void(ctx);
 }
 
+/* Forward decls — bodies live with the iterator class. */
+static JSValue mik__uart_iter_yield(JSContext* ctx, JSValue inner_result);
+static void mik__uart_iter_mark_ended(MIKUartIterState* it);
+
 static JSValue js_uart_end(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__uart_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
     if (!s->begun) return mik__result_ok_void(ctx);  // idempotent
 
-    /* Cancel any pending read. MIK_FreePromise frees the JSValues but
-     * doesn't reset the slot, so MIK_ClearPromise is required to keep
-     * MIK_IsPromisePending honest if the Uart is begun + read again. */
+    /* If a read() iterator is active, deliver a terminal err item so any
+     * awaiting next() unblocks with err(NotStarted) rather than hanging.
+     * Also flip the iterator's `ended` flag so its next call resolves with
+     * {done:true} — without this, the awaiter consumes the err yield, then
+     * the next call hits the `!s->begun` branch in iter_next and emits a
+     * second err yield. The active iterator backpointer makes that flip
+     * possible without reaching through JS. */
     if (s->reading) {
         if (MIK_IsPromisePending(ctx, &s->read_promise)) {
-            MIK_FreePromise(ctx, &s->read_promise);
+            JSValue err_yield = mik__uart_iter_yield(ctx, mik__result_err_tag(ctx, "NotStarted"));
+            MIK_ResolvePromise(ctx, &s->read_promise, 1, &err_yield);
             MIK_ClearPromise(ctx, &s->read_promise);
         }
+        if (s->iter) mik__uart_iter_mark_ended(s->iter);
         s->reading = false;
     }
 
@@ -270,9 +291,14 @@ static void mik__uart_iter_finalizer(JSRuntime* rt, JSValue val) {
      * safe here — except after iterator.return() nulled it out. */
     if (it->uart) {
         it->uart->reading = false;
+        if (it->uart->iter == it) it->uart->iter = nullptr;
     }
     JS_FreeValueRT(rt, it->uart_jsval);
     free(it);
+}
+
+static void mik__uart_iter_mark_ended(MIKUartIterState* it) {
+    if (it) it->ended = true;
 }
 
 static void mik__uart_iter_gc_mark(JSRuntime* rt, JSValue val, JS_MarkFunc* mark_func) {
@@ -370,6 +396,7 @@ static JSValue js_uart_iter_return(JSContext* ctx, JSValue this_val, int argc, J
     }
 
     it->uart->reading = false;
+    if (it->uart->iter == it) it->uart->iter = nullptr;
     it->uart = nullptr;
 
 done:
@@ -411,6 +438,7 @@ static JSValue js_uart_read(JSContext* ctx, JSValue this_val, int argc, JSValue*
         return JS_EXCEPTION;
     }
     JS_SetOpaque(iter_obj, it);
+    s->iter = it;
 
     return mik__result_ok(ctx, iter_obj);
 }

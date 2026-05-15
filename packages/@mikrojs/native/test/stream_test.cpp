@@ -323,3 +323,24 @@ TEST_CASE("withTimeout passes through fast items" * doctest::test_suite("stream"
     )JS";
     run_stream_test("withTimeout fast", code, "1|2|3");
 }
+
+TEST_CASE("withTimeout propagates source err" * doctest::test_suite("stream")) {
+    const char* code = R"JS(
+        import {withTimeout} from 'mikrojs/stream'
+        import {ok, err} from 'mikrojs/result'
+
+        async function* source() {
+            yield ok(1)
+            yield err({name: 'Boom'})
+            yield ok(2)  // should not be reached
+        }
+
+        const out = []
+        for await (const r of withTimeout(source(), 5000)) {
+            if (!r.ok) { out.push(`err=${r.error.name}`); break }
+            out.push(r.value)
+        }
+        globalThis.__result = out.join('|')
+    )JS";
+    run_stream_test("withTimeout source err", code, "1|err=Boom");
+}
