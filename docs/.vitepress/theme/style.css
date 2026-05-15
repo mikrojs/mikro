@@ -1,29 +1,296 @@
+/* ---------------------------------------------------------------------------
+ * Mikro.js docs theme
+ *
+ * Brand: JS-yellow (#f7df1e) on warm paper in light mode, JS-yellow on near-
+ * black in dark mode. Light-mode accent is a darker amber for AA contrast on
+ * text; the pure yellow is reserved for soft backgrounds and the dark theme.
+ * ------------------------------------------------------------------------- */
+
 :root {
-  --vp-c-brand-1: #6b5d00;
-  --vp-c-brand-2: #5a4e00;
-  --vp-c-brand-3: #4a4000;
-  --vp-c-brand-soft: rgba(107, 93, 0, 0.14);
-  --vp-button-brand-bg: #6b5d00;
-  --vp-button-brand-hover-bg: #5a4e00;
-  --vp-button-brand-active-bg: #4a4000;
-  --vp-button-brand-text: #fff;
+  /* Brand */
+  --vp-c-brand-1: #8a6f0c; /* link / accent (passes AA on warm paper) */
+  --vp-c-brand-2: #735c08;
+  --vp-c-brand-3: #5e4a05;
+  --vp-c-brand-soft: rgba(247, 223, 30, 0.18);
+
+  /* Pure brand, for non-text accents (borders, dots, bars). */
+  --mik-brand-yellow: #f7df1e;
+  --mik-brand-yellow-deep: #d4bf00;
+  --mik-brand-ink: #1a1a1a;
+
+  /* Warm paper background */
+  --vp-c-bg: #fbfaf5;
+  --vp-c-bg-alt: #f4f1e6;
+  --vp-c-bg-elv: #fbfaf5;
+  --vp-c-bg-soft: #efece0;
+
+  /* Borders pick up a hint of warmth */
+  --vp-c-divider: #e6e1cf;
+  --vp-c-gutter: #e6e1cf;
+
+  /* Buttons */
+  --vp-button-brand-bg: var(--mik-brand-yellow);
+  --vp-button-brand-hover-bg: var(--mik-brand-yellow-deep);
+  --vp-button-brand-active-bg: #b8a500;
+  --vp-button-brand-border: var(--mik-brand-yellow-deep);
+  --vp-button-brand-hover-border: var(--mik-brand-yellow-deep);
+  --vp-button-brand-text: var(--mik-brand-ink);
+  --vp-button-brand-hover-text: var(--mik-brand-ink);
+
+  /* Hero gradient (used by .clip span) */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(
+    120deg,
+    #1a1a1a 30%,
+    #8a6f0c 70%,
+    var(--mik-brand-yellow-deep) 100%
+  );
+  --vp-home-hero-image-background-image: radial-gradient(
+    closest-side,
+    rgba(247, 223, 30, 0.35),
+    rgba(247, 223, 30, 0)
+  );
+  --vp-home-hero-image-filter: blur(48px);
 }
 
 .dark {
-  --vp-c-brand-1: #f7df1e;
+  --vp-c-brand-1: var(--mik-brand-yellow);
   --vp-c-brand-2: #e5cf0a;
-  --vp-c-brand-3: #d4bf00;
+  --vp-c-brand-3: var(--mik-brand-yellow-deep);
   --vp-c-brand-soft: rgba(247, 223, 30, 0.14);
-  --vp-button-brand-bg: #f7df1e;
-  --vp-button-brand-hover-bg: #e5cf0a;
-  --vp-button-brand-active-bg: #d4bf00;
-  --vp-button-brand-text: #1a1a1a;
-  --vp-c-bg: #1a1a1a;
-  --vp-c-bg-soft: #2c2c2e;
+
+  --vp-c-bg: #161616;
+  --vp-c-bg-alt: #1c1c1c;
+  --vp-c-bg-elv: #1f1f1f;
+  --vp-c-bg-soft: #232323;
+
+  --vp-c-divider: #2c2c2e;
+  --vp-c-gutter: #2c2c2e;
+
+  --vp-button-brand-bg: var(--mik-brand-yellow);
+  --vp-button-brand-hover-bg: var(--mik-brand-yellow-deep);
+  --vp-button-brand-active-bg: #b8a500;
+  --vp-button-brand-border: var(--mik-brand-yellow-deep);
+  --vp-button-brand-hover-border: var(--mik-brand-yellow-deep);
+  --vp-button-brand-text: var(--mik-brand-ink);
+  --vp-button-brand-hover-text: var(--mik-brand-ink);
+
+  --vp-home-hero-name-background: linear-gradient(
+    120deg,
+    #f5f5f0 20%,
+    var(--mik-brand-yellow) 60%,
+    var(--mik-brand-yellow-deep) 100%
+  );
+  --vp-home-hero-image-background-image: radial-gradient(
+    closest-side,
+    rgba(247, 223, 30, 0.22),
+    rgba(247, 223, 30, 0)
+  );
+  --vp-home-hero-image-filter: blur(64px);
 }
 
-/* Instant tooltip (no delay like title="") — scoped to [data-tip] to avoid
-   colliding with VitePress's .tip.custom-block containers. */
+/* ---------------------------------------------------------------------------
+ * Chrome: nav + sidebar branding
+ * ------------------------------------------------------------------------- */
+
+/* Thin brand stripe under the navbar */
+.VPNavBar {
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.VPNavBar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--mik-brand-yellow) 18%,
+    var(--mik-brand-yellow) 82%,
+    transparent 100%
+  );
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Active sidebar item: brand-tinted background + left accent bar */
+.VPSidebarItem.is-active > .item .link .text,
+.VPSidebarItem.is-active > .item .link {
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+}
+
+.VPSidebarItem.level-1.is-active > .item,
+.VPSidebarItem.level-2.is-active > .item,
+.VPSidebarItem.level-3.is-active > .item,
+.VPSidebarItem.level-4.is-active > .item,
+.VPSidebarItem.level-5.is-active > .item {
+  position: relative;
+}
+
+.VPSidebarItem.level-1.is-active > .item::before,
+.VPSidebarItem.level-2.is-active > .item::before,
+.VPSidebarItem.level-3.is-active > .item::before,
+.VPSidebarItem.level-4.is-active > .item::before,
+.VPSidebarItem.level-5.is-active > .item::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: var(--mik-brand-yellow);
+  border-radius: 2px;
+}
+
+/* Sidebar group titles get a subtle brand uppercase treatment */
+.VPSidebarItem.level-0 > .item > .text {
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: var(--vp-c-text-2);
+}
+
+/* Footer accent line */
+.VPFooter {
+  border-top: 1px solid var(--vp-c-divider);
+  position: relative;
+}
+.VPFooter::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80px;
+  height: 2px;
+  background: var(--mik-brand-yellow);
+  border-radius: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Typography
+ * ------------------------------------------------------------------------- */
+
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3 {
+  letter-spacing: -0.015em;
+}
+
+.vp-doc h1 {
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.vp-doc h2 {
+  border-top: 1px solid var(--vp-c-divider);
+  padding-top: 24px;
+  margin-top: 48px;
+  font-weight: 700;
+}
+
+/* In-prose accent: <span class="mark">…</span> draws a brand-yellow
+   highlighter behind the text. Subtle in light mode, glowy in dark. */
+.vp-doc .mark {
+  background-image: linear-gradient(
+    120deg,
+    rgba(247, 223, 30, 0.55) 0%,
+    rgba(247, 223, 30, 0.35) 100%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 0.5em;
+  background-position: 0 88%;
+  padding: 0 2px;
+}
+
+.dark .vp-doc .mark {
+  background-image: linear-gradient(
+    120deg,
+    rgba(247, 223, 30, 0.35) 0%,
+    rgba(247, 223, 30, 0.18) 100%
+  );
+  color: #fff8d0;
+}
+
+/* Inline code: tiny brand tint */
+.vp-doc :not(pre) > code {
+  background-color: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+}
+
+/* Code block titles render with a subtle brand left-bar */
+.vp-doc div[class*='language-'] > button.copy {
+  top: 8px;
+}
+
+.vp-doc div[class*='language-']::before {
+  /* Override default language label to look more like a chip */
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  top: 8px;
+  right: 8px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Home hero
+ * ------------------------------------------------------------------------- */
+
+/* Circuit-trace background, scoped to .VPHome */
+.VPHome {
+  position: relative;
+  isolation: isolate;
+}
+.VPHome::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 640px;
+  background-image:
+    linear-gradient(to bottom, var(--vp-c-bg) 0%, transparent 30%, var(--vp-c-bg) 100%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120' fill='none' stroke='%23a89b5e' stroke-width='1' opacity='0.18'><path d='M10 10 L60 10 L60 60 L110 60'/><path d='M10 110 L40 110 L40 60'/><path d='M85 10 L85 35 L110 35'/><circle cx='60' cy='60' r='3' fill='%23a89b5e'/><circle cx='10' cy='10' r='2' fill='%23a89b5e'/><circle cx='110' cy='60' r='2' fill='%23a89b5e'/></svg>");
+  background-size:
+    auto,
+    120px 120px;
+  background-repeat: no-repeat, repeat;
+  z-index: -1;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
+}
+
+.dark .VPHome::before {
+  background-image:
+    linear-gradient(to bottom, var(--vp-c-bg) 0%, transparent 30%, var(--vp-c-bg) 100%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120' fill='none' stroke='%23f7df1e' stroke-width='1' opacity='0.10'><path d='M10 10 L60 10 L60 60 L110 60'/><path d='M10 110 L40 110 L40 60'/><path d='M85 10 L85 35 L110 35'/><circle cx='60' cy='60' r='3' fill='%23f7df1e'/><circle cx='10' cy='10' r='2' fill='%23f7df1e'/><circle cx='110' cy='60' r='2' fill='%23f7df1e'/></svg>");
+}
+
+/* Feature cards get a hover-brand border */
+.VPFeature {
+  transition:
+    border-color 0.15s,
+    transform 0.15s;
+}
+.VPFeature:hover {
+  border-color: var(--mik-brand-yellow);
+  transform: translateY(-2px);
+}
+
+/* Hero image: drop the default float, let the gradient blob behind do the work */
+.VPHero .VPImage {
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12));
+}
+
+/* ---------------------------------------------------------------------------
+ * Instant tooltip (no delay like title="") — scoped to [data-tip] to avoid
+ * colliding with VitePress's .tip.custom-block containers.
+ * ------------------------------------------------------------------------- */
 .tip[data-tip] {
   position: relative;
   cursor: help;

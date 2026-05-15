@@ -30,18 +30,20 @@ const {frontmatter} = useData()
 
 .VPHero .name .clip {
   font-size: 32px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   background: var(--vp-home-hero-name-background, var(--vp-c-brand-1));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: var(--vp-home-hero-name-color, transparent);
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .VPHero .text {
   font-size: 32px;
-  font-weight: 700;
-  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
   color: var(--vp-c-text-1);
   text-align: center;
 }

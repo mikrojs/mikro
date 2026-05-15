@@ -43,7 +43,7 @@ Blinky: the "Hello, World!" of tiny devices.
 import {digitalWrite, pinMode} from 'mikrojs/pin'
 import {sleep} from 'mikrojs/sleep'
 
-// Replace with your board's LED pin if different
+// Replace with your board's LED GPIO pin if different
 const LED_PIN = 15
 
 pinMode(LED_PIN, 'OUTPUT').orPanic('Failed to set pin mode')
