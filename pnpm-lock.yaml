@@ -597,6 +597,9 @@ importers:
       terser:
         specifier: ^5.46.2
         version: 5.47.1
+      tsx:
+        specifier: 'catalog:'
+        version: 4.22.0
 
   scripts:
     dependencies:
