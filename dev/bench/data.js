@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1778855073644,
+  "lastUpdate": 1778856781883,
   "repoUrl": "https://github.com/mikrojs/mikrojs",
   "entries": {
     "Benchmark": [
@@ -68363,6 +68363,516 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/mikrojs/mikrojs/commit/cf3d7551e0efbf15529e1b094577ca736095a668"
         },
         "date": 1778855073644,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "runtime_init — Total Memory",
+            "unit": "KB",
+            "value": 98.13,
+            "extra": "bytes=100483 mallocs=1169 obj=206/14832 shape=112/18960 prop=993/17216 str=5/267 atom=609/38313 jsfunc=1/137 pc2line=0/0 save_weakref=3280 save_shape=896"
+          },
+          {
+            "name": "runtime_init — Bytecode",
+            "unit": "KB",
+            "value": 0.01,
+            "extra": "js_func_code_size=14 bytes, 1 functions"
+          },
+          {
+            "name": "runtime_init — Live Allocations",
+            "unit": "count",
+            "value": 1169,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ result — Total Memory",
+            "unit": "KB",
+            "value": 102.59,
+            "extra": "bytes=105049 mallocs=1242 obj=219/15768 shape=115/19264 prop=1020/17792 str=11/589 atom=621/38887 jsfunc=5/953 pc2line=2/9 save_weakref=3404 save_shape=920"
+          },
+          {
+            "name": "+ result — Bytecode",
+            "unit": "KB",
+            "value": 0.17,
+            "extra": "js_func_code_size=179 bytes, 5 functions"
+          },
+          {
+            "name": "+ result — Live Allocations",
+            "unit": "count",
+            "value": 1242,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ sys — Total Memory",
+            "unit": "KB",
+            "value": 114.83,
+            "extra": "bytes=117582 mallocs=1457 obj=256/18432 shape=121/20152 prop=1121/19616 str=25/1296 atom=655/40454 jsfunc=22/4122 pc2line=17/62 save_weakref=3744 save_shape=968"
+          },
+          {
+            "name": "+ sys — Bytecode",
+            "unit": "KB",
+            "value": 0.63,
+            "extra": "js_func_code_size=644 bytes, 22 functions"
+          },
+          {
+            "name": "+ sys — Live Allocations",
+            "unit": "count",
+            "value": 1457,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ stdio — Total Memory",
+            "unit": "KB",
+            "value": 121.77,
+            "extra": "bytes=124695 mallocs=1565 obj=280/20160 shape=126/20672 prop=1176/20624 str=31/1617 atom=664/40907 jsfunc=30/5638 pc2line=22/93 save_weakref=3900 save_shape=1008"
+          },
+          {
+            "name": "+ stdio — Bytecode",
+            "unit": "KB",
+            "value": 0.87,
+            "extra": "js_func_code_size=892 bytes, 30 functions"
+          },
+          {
+            "name": "+ stdio — Live Allocations",
+            "unit": "count",
+            "value": 1565,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ cbor — Total Memory",
+            "unit": "KB",
+            "value": 124.37,
+            "extra": "bytes=127354 mallocs=1610 obj=290/20880 shape=126/20672 prop=1196/21072 str=37/1937 atom=665/40960 jsfunc=32/5944 pc2line=22/93 save_weakref=3968 save_shape=1008"
+          },
+          {
+            "name": "+ cbor — Bytecode",
+            "unit": "KB",
+            "value": 0.88,
+            "extra": "js_func_code_size=904 bytes, 32 functions"
+          },
+          {
+            "name": "+ cbor — Live Allocations",
+            "unit": "count",
+            "value": 1610,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ schema — Total Memory",
+            "unit": "KB",
+            "value": 136.1,
+            "extra": "bytes=139363 mallocs=1760 obj=314/22608 shape=127/20768 prop=1257/22192 str=43/2259 atom=709/43201 jsfunc=49/9361 pc2line=25/271 save_weakref=4264 save_shape=1016"
+          },
+          {
+            "name": "+ schema — Bytecode",
+            "unit": "KB",
+            "value": 2.58,
+            "extra": "js_func_code_size=2647 bytes, 49 functions"
+          },
+          {
+            "name": "+ schema — Live Allocations",
+            "unit": "count",
+            "value": 1760,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ env — Total Memory",
+            "unit": "KB",
+            "value": 142.47,
+            "extra": "bytes=145888 mallocs=1815 obj=326/23472 shape=128/20872 prop=1282/22720 str=49/2578 atom=713/46266 jsfunc=54/10190 pc2line=27/277 save_weakref=4352 save_shape=1024"
+          },
+          {
+            "name": "+ env — Bytecode",
+            "unit": "KB",
+            "value": 2.69,
+            "extra": "js_func_code_size=2757 bytes, 54 functions"
+          },
+          {
+            "name": "+ env — Live Allocations",
+            "unit": "count",
+            "value": 1815,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ fs — Total Memory",
+            "unit": "KB",
+            "value": 150.66,
+            "extra": "bytes=154275 mallocs=1952 obj=354/25488 shape=129/21104 prop=1356/24064 str=55/2896 atom=721/46650 jsfunc=66/12654 pc2line=37/328 save_weakref=4520 save_shape=1032"
+          },
+          {
+            "name": "+ fs — Bytecode",
+            "unit": "KB",
+            "value": 3.17,
+            "extra": "js_func_code_size=3247 bytes, 66 functions"
+          },
+          {
+            "name": "+ fs — Live Allocations",
+            "unit": "count",
+            "value": 1952,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ reader — Total Memory",
+            "unit": "KB",
+            "value": 159.15,
+            "extra": "bytes=162974 mallocs=2065 obj=371/26712 shape=132/21448 prop=1396/24848 str=61/3218 atom=741/47684 jsfunc=79/15691 pc2line=46/453 save_weakref=4692 save_shape=1056"
+          },
+          {
+            "name": "+ reader — Bytecode",
+            "unit": "KB",
+            "value": 4.22,
+            "extra": "js_func_code_size=4320 bytes, 79 functions"
+          },
+          {
+            "name": "+ reader — Live Allocations",
+            "unit": "count",
+            "value": 2065,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ stream — Total Memory",
+            "unit": "KB",
+            "value": 165.65,
+            "extra": "bytes=169629 mallocs=2149 obj=386/27792 shape=134/21648 prop=1423/25504 str=67/3540 atom=751/48213 jsfunc=87/17507 pc2line=52/574 save_weakref=4816 save_shape=1072"
+          },
+          {
+            "name": "+ stream — Bytecode",
+            "unit": "KB",
+            "value": 5.26,
+            "extra": "js_func_code_size=5387 bytes, 87 functions"
+          },
+          {
+            "name": "+ stream — Live Allocations",
+            "unit": "count",
+            "value": 2149,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ pin — Total Memory",
+            "unit": "KB",
+            "value": 172.49,
+            "extra": "bytes=176632 mallocs=2266 obj=407/29304 shape=137/22008 prop=1477/26496 str=73/3859 atom=768/49055 jsfunc=94/18894 pc2line=57/584 save_weakref=4992 save_shape=1096"
+          },
+          {
+            "name": "+ pin — Bytecode",
+            "unit": "KB",
+            "value": 5.46,
+            "extra": "js_func_code_size=5596 bytes, 94 functions"
+          },
+          {
+            "name": "+ pin — Live Allocations",
+            "unit": "count",
+            "value": 2266,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ sleep — Total Memory",
+            "unit": "KB",
+            "value": 177.61,
+            "extra": "bytes=181870 mallocs=2348 obj=424/30528 shape=137/22008 prop=1512/27184 str=79/4180 atom=779/49653 jsfunc=98/19610 pc2line=59/588 save_weakref=5128 save_shape=1096"
+          },
+          {
+            "name": "+ sleep — Bytecode",
+            "unit": "KB",
+            "value": 5.5,
+            "extra": "js_func_code_size=5635 bytes, 98 functions"
+          },
+          {
+            "name": "+ sleep — Live Allocations",
+            "unit": "count",
+            "value": 2348,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ sntp — Total Memory",
+            "unit": "KB",
+            "value": 183.21,
+            "extra": "bytes=187607 mallocs=2433 obj=438/31536 shape=138/22104 prop=1540/27760 str=85/4500 atom=791/50236 jsfunc=105/21121 pc2line=64/624 save_weakref=5256 save_shape=1104"
+          },
+          {
+            "name": "+ sntp — Bytecode",
+            "unit": "KB",
+            "value": 5.87,
+            "extra": "js_func_code_size=6010 bytes, 105 functions"
+          },
+          {
+            "name": "+ sntp — Live Allocations",
+            "unit": "count",
+            "value": 2433,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ neopixel — Total Memory",
+            "unit": "KB",
+            "value": 189.13,
+            "extra": "bytes=193665 mallocs=2525 obj=455/32760 shape=139/22248 prop=1579/28512 str=91/4824 atom=800/50670 jsfunc=114/22982 pc2line=70/638 save_weakref=5384 save_shape=1112"
+          },
+          {
+            "name": "+ neopixel — Bytecode",
+            "unit": "KB",
+            "value": 6.1,
+            "extra": "js_func_code_size=6243 bytes, 114 functions"
+          },
+          {
+            "name": "+ neopixel — Live Allocations",
+            "unit": "count",
+            "value": 2525,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ pwm — Total Memory",
+            "unit": "KB",
+            "value": 194.63,
+            "extra": "bytes=199299 mallocs=2610 obj=471/33912 shape=140/22392 prop=1615/29232 str=97/5143 atom=807/50995 jsfunc=122/24598 pc2line=75/652 save_weakref=5500 save_shape=1120"
+          },
+          {
+            "name": "+ pwm — Bytecode",
+            "unit": "KB",
+            "value": 6.32,
+            "extra": "js_func_code_size=6471 bytes, 122 functions"
+          },
+          {
+            "name": "+ pwm — Live Allocations",
+            "unit": "count",
+            "value": 2610,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ spi — Total Memory",
+            "unit": "KB",
+            "value": 200.07,
+            "extra": "bytes=204873 mallocs=2697 obj=488/35136 shape=142/22632 prop=1653/29984 str=103/5462 atom=812/51231 jsfunc=130/26138 pc2line=80/664 save_weakref=5612 save_shape=1136"
+          },
+          {
+            "name": "+ spi — Bytecode",
+            "unit": "KB",
+            "value": 6.49,
+            "extra": "js_func_code_size=6650 bytes, 130 functions"
+          },
+          {
+            "name": "+ spi — Live Allocations",
+            "unit": "count",
+            "value": 2697,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ i2c — Total Memory",
+            "unit": "KB",
+            "value": 205.88,
+            "extra": "bytes=210817 mallocs=2789 obj=506/36432 shape=144/22872 prop=1694/30768 str=109/5781 atom=817/51466 jsfunc=139/27919 pc2line=86/678 save_weakref=5728 save_shape=1152"
+          },
+          {
+            "name": "+ i2c — Bytecode",
+            "unit": "KB",
+            "value": 6.69,
+            "extra": "js_func_code_size=6853 bytes, 139 functions"
+          },
+          {
+            "name": "+ i2c — Live Allocations",
+            "unit": "count",
+            "value": 2789,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ uart — Total Memory",
+            "unit": "KB",
+            "value": 211.57,
+            "extra": "bytes=216647 mallocs=2876 obj=523/37656 shape=146/23112 prop=1732/31520 str=115/6101 atom=821/51659 jsfunc=148/29656 pc2line=91/692 save_weakref=5836 save_shape=1168"
+          },
+          {
+            "name": "+ uart — Bytecode",
+            "unit": "KB",
+            "value": 6.92,
+            "extra": "js_func_code_size=7087 bytes, 148 functions"
+          },
+          {
+            "name": "+ uart — Live Allocations",
+            "unit": "count",
+            "value": 2876,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ wifi — Total Memory",
+            "unit": "KB",
+            "value": 236.25,
+            "extra": "bytes=241922 mallocs=3293 obj=597/42984 shape=155/24504 prop=1900/34656 str=137/7295 atom=894/55414 jsfunc=183/36123 pc2line=123/838 save_weakref=6512 save_shape=1240"
+          },
+          {
+            "name": "+ wifi — Bytecode",
+            "unit": "KB",
+            "value": 8.18,
+            "extra": "js_func_code_size=8376 bytes, 183 functions"
+          },
+          {
+            "name": "+ wifi — Live Allocations",
+            "unit": "count",
+            "value": 3293,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ http/request — Total Memory",
+            "unit": "KB",
+            "value": 255.15,
+            "extra": "bytes=261271 mallocs=3524 obj=633/45576 shape=158/24944 prop=1983/36224 str=144/7684 atom=937/57588 jsfunc=219/43711 pc2line=146/1051 save_weakref=6856 save_shape=1264"
+          },
+          {
+            "name": "+ http/request — Bytecode",
+            "unit": "KB",
+            "value": 10.7,
+            "extra": "js_func_code_size=10957 bytes, 219 functions"
+          },
+          {
+            "name": "+ http/request — Live Allocations",
+            "unit": "count",
+            "value": 3524,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ kv/nvs — Total Memory",
+            "unit": "KB",
+            "value": 265.84,
+            "extra": "bytes=272222 mallocs=3669 obj=659/47448 shape=161/25336 prop=2044/37392 str=151/8064 atom=957/58599 jsfunc=235/47091 pc2line=153/1119 save_weakref=7068 save_shape=1288"
+          },
+          {
+            "name": "+ kv/nvs — Bytecode",
+            "unit": "KB",
+            "value": 11.56,
+            "extra": "js_func_code_size=11841 bytes, 235 functions"
+          },
+          {
+            "name": "+ kv/nvs — Live Allocations",
+            "unit": "count",
+            "value": 3669,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ kv/rtc — Total Memory",
+            "unit": "KB",
+            "value": 269.88,
+            "extra": "bytes=276356 mallocs=3737 obj=675/48600 shape=161/25336 prop=2081/38128 str=157/8386 atom=960/58756 jsfunc=237/47437 pc2line=154/1122 save_weakref=7168 save_shape=1288"
+          },
+          {
+            "name": "+ kv/rtc — Bytecode",
+            "unit": "KB",
+            "value": 11.64,
+            "extra": "js_func_code_size=11923 bytes, 237 functions"
+          },
+          {
+            "name": "+ kv/rtc — Live Allocations",
+            "unit": "count",
+            "value": 3737,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "+ test — Total Memory",
+            "unit": "KB",
+            "value": 303.93,
+            "extra": "bytes=311224 mallocs=4177 obj=740/53280 shape=165/26144 prop=2279/41584 str=163/8706 atom=1043/64933 jsfunc=301/61049 pc2line=205/1628 save_weakref=7784 save_shape=1320"
+          },
+          {
+            "name": "+ test — Bytecode",
+            "unit": "KB",
+            "value": 15.79,
+            "extra": "js_func_code_size=16172 bytes, 301 functions"
+          },
+          {
+            "name": "+ test — Live Allocations",
+            "unit": "count",
+            "value": 4177,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "steady_state (post-GC) — Total Memory",
+            "unit": "KB",
+            "value": 303.93,
+            "extra": "bytes=311224 mallocs=4177 obj=740/53280 shape=165/26144 prop=2279/41584 str=163/8706 atom=1043/64933 jsfunc=301/61049 pc2line=205/1628 save_weakref=7784 save_shape=1320"
+          },
+          {
+            "name": "steady_state (post-GC) — Bytecode",
+            "unit": "KB",
+            "value": 15.79,
+            "extra": "js_func_code_size=16172 bytes, 301 functions"
+          },
+          {
+            "name": "steady_state (post-GC) — Live Allocations",
+            "unit": "count",
+            "value": 4177,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "workload_peak — Total Memory",
+            "unit": "KB",
+            "value": 306.99,
+            "extra": "bytes=314358 mallocs=4222 obj=750/54000 shape=166/26280 prop=2304/42064 str=168/8989 atom=1048/65183 jsfunc=304/61819 pc2line=208/1646 save_weakref=7864 save_shape=1328"
+          },
+          {
+            "name": "workload_peak — Bytecode",
+            "unit": "KB",
+            "value": 15.94,
+            "extra": "js_func_code_size=16321 bytes, 304 functions"
+          },
+          {
+            "name": "workload_peak — Live Allocations",
+            "unit": "count",
+            "value": 4222,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "workload_settled (post-GC) — Total Memory",
+            "unit": "KB",
+            "value": 306.99,
+            "extra": "bytes=314358 mallocs=4222 obj=750/54000 shape=166/26280 prop=2304/42064 str=168/8989 atom=1048/65183 jsfunc=304/61819 pc2line=208/1646 save_weakref=7864 save_shape=1328"
+          },
+          {
+            "name": "workload_settled (post-GC) — Bytecode",
+            "unit": "KB",
+            "value": 15.94,
+            "extra": "js_func_code_size=16321 bytes, 304 functions"
+          },
+          {
+            "name": "workload_settled (post-GC) — Live Allocations",
+            "unit": "count",
+            "value": 4222,
+            "extra": "live malloc slots; churn proxy"
+          },
+          {
+            "name": "binary_size — libmikrojs.a",
+            "unit": "KB",
+            "value": 2133.29,
+            "extra": "2184484 bytes (libmikrojs.a)"
+          },
+          {
+            "name": "binary_size — libquickjs.a",
+            "unit": "KB",
+            "value": 1479.33,
+            "extra": "1514830 bytes (libquickjs.a)"
+          },
+          {
+            "name": "binary_size — memory_bench (stripped)",
+            "unit": "KB",
+            "value": 1495.88,
+            "extra": "1531776 bytes (memory_bench)"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Bjørge Næss",
+            "email": "bjoerge@gmail.com",
+            "username": ""
+          },
+          "committer": {
+            "name": "Bjørge Næss",
+            "email": "bjoerge@gmail.com",
+            "username": ""
+          },
+          "distinct": true,
+          "id": "da93f9eda2d9889c68d22e47fe24bf67b70f9e5d",
+          "message": "fix(release): scope mikrodroid token to pull-requests for PR endpoints (#109)\n\nCo-authored-by: Claude Opus 4.7 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-05-15T14:53:01.883Z",
+          "tree_id": "",
+          "url": "https://github.com/mikrojs/mikrojs/commit/da93f9eda2d9889c68d22e47fe24bf67b70f9e5d"
+        },
+        "date": 1778856781883,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
