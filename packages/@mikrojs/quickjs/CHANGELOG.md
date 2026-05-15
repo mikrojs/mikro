@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.7.0 (2026-05-15)
+
+### Breaking changes
+
+- **runtime:** yield Result from streaming APIs ([#103](https://github.com/mikrojs/mikrojs/pull/103))
+- **runtime:** always restart on uncaught error ([#93](https://github.com/mikrojs/mikrojs/pull/93))
+- **runtime:** add on-device file logging via `mikro logs pull` ([#92](https://github.com/mikrojs/mikrojs/pull/92))
+
+### Features
+
+- **docs:** improve vitepress theme ([#101](https://github.com/mikrojs/mikrojs/pull/101))
+- **create-mikrojs:** scaffold with TS only, mikro.config.ts and prettier defaults ([#97](https://github.com/mikrojs/mikrojs/pull/97))
+- **cli:** quiet `mikro flash` output and show next steps ([#94](https://github.com/mikrojs/mikrojs/pull/94))
+
+### Bug fixes
+
+- **release:** scope mikrodroid token to pull-requests for PR endpoints ([#109](https://github.com/mikrojs/mikrojs/pull/109))
+- **runtime:** unhang uart.read() when end() races a pending next() ([#106](https://github.com/mikrojs/mikrojs/pull/106))
+- **docs:** make brand hairline span the full navbar width ([#102](https://github.com/mikrojs/mikrojs/pull/102))
+
+### Other
+
+- **deps:** update dependency @clack/prompts to v1.4.0 ([#87](https://github.com/mikrojs/mikrojs/pull/87))
+- **workflows:** add zizmor audit and harden workflows ([#107](https://github.com/mikrojs/mikrojs/pull/107))
+- **deps:** update dependency tsx to v4.22.0 ([#108](https://github.com/mikrojs/mikrojs/pull/108))
+- **e2e:** run sim suite on pre-commit and CI ([#105](https://github.com/mikrojs/mikrojs/pull/105))
+- **deps:** update dependency wrangler to v4.91.0 ([#104](https://github.com/mikrojs/mikrojs/pull/104))
+- **deps:** update dependency tsx to v4.21.1 ([#100](https://github.com/mikrojs/mikrojs/pull/100))
+- remove .envrc file ([#99](https://github.com/mikrojs/mikrojs/pull/99))
+- **deps:** update dependency ink to v7.0.3 ([#96](https://github.com/mikrojs/mikrojs/pull/96))
+- **deps:** update pnpm to v11.1.2 ([#98](https://github.com/mikrojs/mikrojs/pull/98))
+- **deps:** update dependency publint to v0.3.21 ([#95](https://github.com/mikrojs/mikrojs/pull/95))
+- **deps:** update actions/create-github-app-token digest to bcd2ba4 ([#86](https://github.com/mikrojs/mikrojs/pull/86))
+- **deps:** update pnpm/action-setup digest to 0e279bb ([#76](https://github.com/mikrojs/mikrojs/pull/76))
+- **deps:** update pnpm to v11.1.1 ([#84](https://github.com/mikrojs/mikrojs/pull/84))
+- **deps:** update dependency knip to v6.13.1 ([#90](https://github.com/mikrojs/mikrojs/pull/90))
+- **deps:** update dependency knip to v6.13.0 ([#89](https://github.com/mikrojs/mikrojs/pull/89))
+- **deps:** update dependency wrangler to v4.90.1 ([#88](https://github.com/mikrojs/mikrojs/pull/88))
+- **deps:** update dependency oxfmt to ^0.49.0 ([#83](https://github.com/mikrojs/mikrojs/pull/83))
+
 ## 0.6.1 (2026-05-11)
 
 ### Bug fixes
