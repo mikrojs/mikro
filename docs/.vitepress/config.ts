@@ -19,6 +19,10 @@ export default defineConfig({
     },
   },
   markdown: {
+    theme: {
+      light: 'min-light',
+      dark: 'material-theme',
+    },
     config: (md) => {
       md.use(abbrPlugin)
       md.use(groupIconMdPlugin)

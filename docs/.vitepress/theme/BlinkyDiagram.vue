@@ -5,7 +5,7 @@
     <text x="80" y="75" text-anchor="middle" class="mcu-label">ESP32</text>
 
     <!-- Pin labels -->
-    <text x="135" y="108" class="pin-label" text-anchor="end">GPIO 20</text>
+    <text x="135" y="108" class="pin-label" text-anchor="end">GPIO 15</text>
     <text x="135" y="148" class="pin-label" text-anchor="end">GND</text>
 
     <!-- Pin dots -->
