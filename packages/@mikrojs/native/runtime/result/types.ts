@@ -37,20 +37,10 @@ export declare function ok<T>(value: T): OkResult<T>
 
 export declare function err<E>(error: E): ErrResult<E>
 
-type VariantDef = Record<string, (...args: any[]) => Record<string, unknown>>
-
-type ErrorConstructors<D extends VariantDef> = {
-  [K in keyof D & string]: (...args: Parameters<D[K]>) => {name: K} & ReturnType<D[K]>
-}
-
-export type ErrorOf<T extends Record<string, (...args: any[]) => any>> = {
-  [K in keyof T & string]: ReturnType<T[K]>
-}[keyof T & string]
-
-export declare function defineError<D extends VariantDef>(
-  name: string,
-  variants: D,
-): ErrorConstructors<D>
+export declare function matchError<E extends {name: string}, R>(
+  error: E,
+  handlers: {[K in E['name']]: (error: Extract<E, {name: K}>) => R},
+): R
 
 /** Raw error shape returned by native mik__result_err(). */
 export interface NativeError {

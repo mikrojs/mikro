@@ -1,10 +1,11 @@
-import {defineError, err, ok} from 'mikrojs/result'
+import {err, ok} from 'mikrojs/result'
 
 import type {Result} from '../result/types.js'
 
-export const SchemaError = defineError('SchemaError', {
-  ValidationFailed: (message: string, path: string) => ({message, path}),
-})
+export const SchemaError = {
+  ValidationFailed: (message: string, path: string) =>
+    ({name: 'ValidationFailed', message, path}) as const,
+}
 export type SchemaError = ReturnType<typeof SchemaError.ValidationFailed>
 
 // ── Schema types ────────────────────────────────────────────────────

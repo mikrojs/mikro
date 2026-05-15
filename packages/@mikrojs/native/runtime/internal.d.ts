@@ -318,8 +318,8 @@ declare module 'native:uart' {
 
     read(): Result<
       {
-        next(): Promise<IteratorResult<Uint8Array>>
-        return(): Promise<IteratorResult<Uint8Array>>
+        next(): Promise<IteratorResult<Result<Uint8Array, UartError>>>
+        return(): Promise<IteratorResult<Result<Uint8Array, UartError>>>
       },
       UartError
     >

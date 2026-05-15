@@ -20,7 +20,11 @@ if (!reader.ok) {
   // Give data a moment to loop back
   await sleep(1000)
   for await (const chunk of reader.value) {
-    console.log('Received: %s', new TextDecoder().decode(chunk))
+    if (!chunk.ok) {
+      console.error('UART read error: %s', chunk.error.name)
+      break
+    }
+    console.log('Received: %s', new TextDecoder().decode(chunk.value))
   }
 }
 

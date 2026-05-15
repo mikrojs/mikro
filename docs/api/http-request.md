@@ -32,6 +32,11 @@ if (!result.ok) {
 const response = result.value
 console.log('Status: %d', response.status)
 const data = await response.json()
+if (!data.ok) {
+  console.error('Body decode failed: %s', data.error.name)
+  return
+}
+console.log(data.value)
 ```
 
 ::: tip Result vs response.ok
@@ -52,6 +57,11 @@ if (!result.value.ok) {
   return
 }
 const data = await result.value.json()
+if (!data.ok) {
+  // Body drain or JSON.parse failed mid-stream
+  return
+}
+console.log(data.value)
 ```
 
 :::
@@ -111,18 +121,18 @@ interface Response {
   readonly redirected: boolean
   readonly headers: [string, string][]
   readonly ok: boolean // true if status is 200-299
-  readonly body: AsyncIterable<Uint8Array>
+  readonly body: AsyncIterable<Result<Uint8Array, RequestError>>
 
   get(name: string): string | undefined
   getAll(name: string): string[]
-  text(): Promise<string>
-  json(): Promise<unknown>
-  bytes(): Promise<Uint8Array>
+  text(): Promise<Result<string, RequestError>>
+  json(): Promise<Result<unknown, RequestError>>
+  bytes(): Promise<Result<Uint8Array, RequestError>>
   close(): Promise<void>
 }
 ```
 
-`get` and `getAll` look up headers case-insensitively. `text()`, `json()`, `bytes()`, and `body` are single-shot: calling more than one drains the body and a second call throws [`BodyConsumedError`](#bodyconsumederror).
+`get` and `getAll` look up headers case-insensitively. `text()`, `json()`, `bytes()`, and `body` are single-shot: calling more than one drains the body and a second call throws [`BodyConsumedError`](#bodyconsumederror). Each method returns a `Result` so mid-stream network drops, aborts, or (for `json()`) JSON parse failures stay inside the Result chain instead of throwing.
 
 ::: warning Always close responses you don't read
 Every response you don't drain with `text()`, `json()`, `bytes()`, or a `for await` loop needs an explicit `await response.close()`. Skipping this keeps memory tied up until the device reboots, and eventually new requests will fail with [`TooManyPending`](#requesterror).
@@ -143,6 +153,7 @@ Returned by `request` and any custom transport built on top of `mikrojs/http/hel
 | `InvalidResponse` | `message: string`             | Response was malformed or couldn't be parsed                 |
 | `Aborted`         | `message: string`             | Request was cancelled via timeout or `AbortSignal`           |
 | `TooManyPending`  | —                             | Transport's in-flight request slots are full                 |
+| `InvalidJson`     | `message: string`             | `Response.json()` drained the body but `JSON.parse` failed   |
 
 ### BodyConsumedError
 
@@ -172,7 +183,7 @@ export const request: Request = async (url, opts = {}) => {
       url,
       redirected: false,
       headers: raw.value.headers,
-      body: raw.value.body, // AsyncIterable<Uint8Array>
+      body: raw.value.body, // AsyncIterable<Result<Uint8Array, RequestError>>
     }),
   )
 }

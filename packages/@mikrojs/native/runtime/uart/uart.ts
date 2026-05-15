@@ -36,14 +36,15 @@ export class Uart implements UartBase {
     return this.#native.write(data)
   }
 
-  read(): Result<AsyncIterable<Uint8Array>, UartError> {
+  read(): Result<AsyncIterable<Result<Uint8Array, UartError>>, UartError> {
     const result = this.#native.read()
     if (!result.ok) return result
     const nativeIter = result.value
-    // Wrap the native iterator object (which has next/return) into a proper AsyncIterable
-    const iterable: AsyncIterable<Uint8Array> = {
+    // Wrap the native iterator object (which has next/return) into a proper AsyncIterable.
+    // Native yields Result items directly via mik__result_ok / mik__result_err_tag.
+    const iterable: AsyncIterable<Result<Uint8Array, UartError>> = {
       [Symbol.asyncIterator]() {
-        return nativeIter as AsyncIterator<Uint8Array>
+        return nativeIter as AsyncIterator<Result<Uint8Array, UartError>>
       },
     }
     return ok(iterable)

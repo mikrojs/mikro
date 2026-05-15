@@ -59,15 +59,17 @@ static void run_stream_test(const char* test_name, const char* js_code,
 TEST_CASE("decodeUtf8 converts byte chunks to strings" * doctest::test_suite("stream")) {
     const char* code = R"JS(
         import {decodeUtf8} from 'mikrojs/stream'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield new Uint8Array([104, 101, 108, 108, 111])  // "hello"
-            yield new Uint8Array([32, 119, 111, 114, 108, 100])  // " world"
+            yield ok(new Uint8Array([104, 101, 108, 108, 111]))  // "hello"
+            yield ok(new Uint8Array([32, 119, 111, 114, 108, 100]))  // " world"
         }
 
         const out = []
-        for await (const s of decodeUtf8(source())) {
-            out.push(s)
+        for await (const r of decodeUtf8(source())) {
+            if (!r.ok) { globalThis.__result = `err=${r.error.name}`; throw 'stop' }
+            out.push(r.value)
         }
         globalThis.__result = out.join('|')
     )JS";
@@ -78,35 +80,60 @@ TEST_CASE("decodeUtf8 handles whole multi-byte sequences in a single chunk" *
           doctest::test_suite("stream")) {
     const char* code = R"JS(
         import {decodeUtf8} from 'mikrojs/stream'
+        import {ok} from 'mikrojs/result'
 
         // "café" = 63 61 66 c3 a9 — whole sequence in one chunk is fine.
         // Cross-chunk split is documented as NOT supported in V1.
         async function* source() {
-            yield new Uint8Array([0x63, 0x61, 0x66, 0xc3, 0xa9])
+            yield ok(new Uint8Array([0x63, 0x61, 0x66, 0xc3, 0xa9]))
         }
 
         let out = ''
-        for await (const s of decodeUtf8(source())) {
-            out += s
+        for await (const r of decodeUtf8(source())) {
+            if (!r.ok) { globalThis.__result = `err=${r.error.name}`; throw 'stop' }
+            out += r.value
         }
         globalThis.__result = out
     )JS";
     run_stream_test("decodeUtf8 whole utf8", code, "café");
 }
 
-TEST_CASE("splitLines splits text on newline" * doctest::test_suite("stream")) {
+TEST_CASE("decodeUtf8 short-circuits on source err" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {splitLines} from 'mikrojs/stream'
+        import {decodeUtf8} from 'mikrojs/stream'
+        import {ok, err} from 'mikrojs/result'
 
         async function* source() {
-            yield 'first\n'
-            yield 'second\nthird\n'
-            yield 'fourth'  // no trailing newline
+            yield ok(new Uint8Array([0x61]))
+            yield err({name: 'Boom'})
+            yield ok(new Uint8Array([0x62]))  // should not be reached
         }
 
         const out = []
-        for await (const line of splitLines(source())) {
-            out.push(line)
+        for await (const r of decodeUtf8(source())) {
+            if (!r.ok) { out.push(`err=${r.error.name}`); break }
+            out.push(r.value)
+        }
+        globalThis.__result = out.join('|')
+    )JS";
+    run_stream_test("decodeUtf8 err propagates", code, "a|err=Boom");
+}
+
+TEST_CASE("splitLines splits text on newline" * doctest::test_suite("stream")) {
+    const char* code = R"JS(
+        import {splitLines} from 'mikrojs/stream'
+        import {ok} from 'mikrojs/result'
+
+        async function* source() {
+            yield ok('first\n')
+            yield ok('second\nthird\n')
+            yield ok('fourth')  // no trailing newline
+        }
+
+        const out = []
+        for await (const r of splitLines(source())) {
+            if (!r.ok) { globalThis.__result = `err=${r.error.name}`; throw 'stop' }
+            out.push(r.value)
         }
         globalThis.__result = out.join('|')
     )JS";
@@ -116,16 +143,18 @@ TEST_CASE("splitLines splits text on newline" * doctest::test_suite("stream")) {
 TEST_CASE("splitLines handles lines spanning chunks" * doctest::test_suite("stream")) {
     const char* code = R"JS(
         import {splitLines} from 'mikrojs/stream'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield 'hel'
-            yield 'lo\nwo'
-            yield 'rld\n'
+            yield ok('hel')
+            yield ok('lo\nwo')
+            yield ok('rld\n')
         }
 
         const out = []
-        for await (const line of splitLines(source())) {
-            out.push(line)
+        for await (const r of splitLines(source())) {
+            if (!r.ok) { globalThis.__result = `err=${r.error.name}`; throw 'stop' }
+            out.push(r.value)
         }
         globalThis.__result = out.join('|')
     )JS";
@@ -135,15 +164,17 @@ TEST_CASE("splitLines handles lines spanning chunks" * doctest::test_suite("stre
 TEST_CASE("splitLines supports custom delimiter" * doctest::test_suite("stream")) {
     const char* code = R"JS(
         import {splitLines} from 'mikrojs/stream'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield 'a\r\nb\r\n'
-            yield 'c\r\n'
+            yield ok('a\r\nb\r\n')
+            yield ok('c\r\n')
         }
 
         const out = []
-        for await (const line of splitLines(source(), '\r\n')) {
-            out.push(line)
+        for await (const r of splitLines(source(), '\r\n')) {
+            if (!r.ok) { globalThis.__result = `err=${r.error.name}`; throw 'stop' }
+            out.push(r.value)
         }
         globalThis.__result = out.join('|')
     )JS";
@@ -153,9 +184,10 @@ TEST_CASE("splitLines supports custom delimiter" * doctest::test_suite("stream")
 TEST_CASE("splitLines rejects empty delimiter" * doctest::test_suite("stream")) {
     const char* code = R"JS(
         import {splitLines} from 'mikrojs/stream'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield 'anything'
+            yield ok('anything')
         }
 
         try {
@@ -171,14 +203,16 @@ TEST_CASE("splitLines rejects empty delimiter" * doctest::test_suite("stream")) 
 TEST_CASE("splitLines preserves empty lines" * doctest::test_suite("stream")) {
     const char* code = R"JS(
         import {splitLines} from 'mikrojs/stream'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield 'a\n\nb\n'
+            yield ok('a\n\nb\n')
         }
 
         const out = []
-        for await (const line of splitLines(source())) {
-            out.push(line)
+        for await (const r of splitLines(source())) {
+            if (!r.ok) { globalThis.__result = `err=${r.error.name}`; throw 'stop' }
+            out.push(r.value)
         }
         globalThis.__result = out.join('|') + ':' + out.length
     )JS";
@@ -189,42 +223,70 @@ TEST_CASE("collectUntil collects until predicate matches" *
           doctest::test_suite("stream")) {
     const char* code = R"JS(
         import {collectUntil} from 'mikrojs/stream'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield '+CSQ: 15,99'
-            yield '+CREG: 0,1'
-            yield 'OK'
-            yield 'should not be reached'
+            yield ok('+CSQ: 15,99')
+            yield ok('+CREG: 0,1')
+            yield ok('OK')
+            yield ok('should not be reached')
         }
 
-        const {matched, collected} = await collectUntil(
+        const r = await collectUntil(
             source(),
             line => line === 'OK' || line.startsWith('ERROR'),
         )
-        globalThis.__result = `matched=${matched};collected=${collected.join('|')}`
+        if (!r.ok) {
+            globalThis.__result = `err=${r.error.name}`
+        } else {
+            const {matched, collected} = r.value
+            globalThis.__result = `matched=${matched};collected=${collected.join('|')}`
+        }
     )JS";
     run_stream_test("collectUntil basic", code,
                     "matched=OK;collected=+CSQ: 15,99|+CREG: 0,1");
 }
 
-TEST_CASE("collectUntil throws StreamClosed if no match" *
+TEST_CASE("collectUntil returns StreamClosed if no match" *
           doctest::test_suite("stream")) {
     const char* code = R"JS(
         import {collectUntil} from 'mikrojs/stream'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield 'a'
-            yield 'b'
+            yield ok('a')
+            yield ok('b')
         }
 
-        try {
-            await collectUntil(source(), s => s === 'OK')
-            globalThis.__result = 'no throw'
-        } catch (e) {
-            globalThis.__result = `threw=${e.name}`
+        const r = await collectUntil(source(), s => s === 'OK')
+        if (r.ok) {
+            globalThis.__result = 'no err'
+        } else {
+            globalThis.__result = `err=${r.error.name}`
         }
     )JS";
-    run_stream_test("collectUntil no match", code, "threw=StreamClosed");
+    run_stream_test("collectUntil no match", code, "err=StreamClosed");
+}
+
+TEST_CASE("collectUntil propagates source err" * doctest::test_suite("stream")) {
+    const char* code = R"JS(
+        import {collectUntil} from 'mikrojs/stream'
+        import {ok, err} from 'mikrojs/result'
+
+        async function* source() {
+            yield ok('a')
+            yield err({name: 'Boom'})
+            yield ok('OK')
+        }
+
+        const r = await collectUntil(source(), s => s === 'OK')
+        if (r.ok) {
+            globalThis.__result = 'no err'
+        } else {
+            globalThis.__result = `err=${r.error.name}`
+        }
+    )JS";
+    run_stream_test("collectUntil source err", code, "err=Boom");
 }
 
 /* NOTE: the "slow source" timeout test is intentionally omitted from
@@ -244,16 +306,18 @@ TEST_CASE("collectUntil throws StreamClosed if no match" *
 TEST_CASE("withTimeout passes through fast items" * doctest::test_suite("stream")) {
     const char* code = R"JS(
         import {withTimeout} from 'mikrojs/stream'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield 1
-            yield 2
-            yield 3
+            yield ok(1)
+            yield ok(2)
+            yield ok(3)
         }
 
         const out = []
-        for await (const n of withTimeout(source(), 5000)) {
-            out.push(n)
+        for await (const r of withTimeout(source(), 5000)) {
+            if (!r.ok) { globalThis.__result = `err=${r.error.name}`; throw 'stop' }
+            out.push(r.value)
         }
         globalThis.__result = out.join('|')
     )JS";

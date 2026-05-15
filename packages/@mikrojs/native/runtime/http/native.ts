@@ -92,10 +92,10 @@ export function createRequestFromNative(native: NativeHttpModule): Request {
     const {status, headers: responseHeaders} = headersResult.value
 
     let done = false
-    const rawBody: AsyncIterable<Uint8Array> = {
+    const rawBody: AsyncIterable<Result<Uint8Array, RequestError>> = {
       [Symbol.asyncIterator]() {
         return {
-          async next() {
+          async next(): Promise<IteratorResult<Result<Uint8Array, RequestError>>> {
             if (done) return {done: true, value: undefined}
             let msg
             try {
@@ -103,19 +103,28 @@ export function createRequestFromNative(native: NativeHttpModule): Request {
             } catch (e) {
               done = true
               cleanup()
-              throw e
+              const message = e instanceof Error ? e.message : String(e)
+              return {done: false, value: err(RequestError.Network(message))}
             }
             if (msg.kind === 'chunk') {
-              return {done: false, value: msg.data}
+              return {done: false, value: ok(msg.data)}
             }
             done = true
             cleanup()
             if (msg.kind === 'end') return {done: true, value: undefined}
             /* error */
             if (msg.cancelled) {
-              throw RequestError.Aborted(msg.message || String(options.signal?.reason ?? 'aborted'))
+              return {
+                done: false,
+                value: err(
+                  RequestError.Aborted(msg.message || String(options.signal?.reason ?? 'aborted')),
+                ),
+              }
             }
-            throw RequestError.Network(msg.message || 'HTTP request failed')
+            return {
+              done: false,
+              value: err(RequestError.Network(msg.message || 'HTTP request failed')),
+            }
           },
           async return() {
             if (!done) {

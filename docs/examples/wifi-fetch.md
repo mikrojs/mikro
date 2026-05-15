@@ -67,7 +67,11 @@ if (!connectResult.ok) {
       console.error(`HTTP error: ${result.value.status}`)
     } else {
       const data = await result.value.json()
-      console.log('Fetched post: %o', data)
+      if (!data.ok) {
+        console.error(`Body decode failed: ${data.error.name}`)
+      } else {
+        console.log('Fetched post: %o', data.value)
+      }
     }
   } else {
     console.error('Request failed: %s', result.error.name)

@@ -258,7 +258,8 @@ describe('fs: readStream', () => {
     const decoder = new TextDecoder()
     let out = ''
     for await (const chunk of r.value) {
-      out += decoder.decode(chunk)
+      assert.ok(chunk)
+      out += decoder.decode(chunk.value)
     }
     assert.equal(out, payload)
   })
@@ -271,7 +272,8 @@ describe('fs: readStream', () => {
     assert.ok(r)
     const lines: string[] = []
     for await (const line of splitLines(decodeUtf8(r.value))) {
-      lines.push(line)
+      assert.ok(line)
+      lines.push(line.value)
     }
     assert.deepEqual(lines, ['one', 'two', 'three'])
   })

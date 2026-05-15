@@ -56,10 +56,10 @@ Read a file as a stream of byte chunks.
 function readStream(
   path: string,
   options?: {chunkSize?: number},
-): Result<AsyncIterable<Uint8Array>, FSError>
+): Result<AsyncIterable<Result<Uint8Array, FSError>>, FSError>
 ```
 
-The Result wraps the initial open. Mid-stream read errors reject the iterator. The underlying handle closes on EOF, error, or early consumer break.
+The outer `Result` wraps the initial `open`. Once iterating, each yielded item is itself a `Result<Uint8Array, FSError>`: ok-wrapped chunks on success, a single terminal err item if a mid-stream read fails. The underlying handle closes on EOF, error, or early consumer break.
 
 Composes with `mikrojs/stream` for text and line processing:
 
@@ -69,7 +69,11 @@ import {decodeUtf8, splitLines} from 'mikrojs/stream'
 // ---cut---
 const stream = readStream('/data/events.log').orPanic('log missing')
 for await (const line of splitLines(decodeUtf8(stream))) {
-  console.log(line)
+  if (!line.ok) {
+    console.error(`read failed: ${line.error.name}`)
+    break
+  }
+  console.log(line.value)
 }
 ```
 

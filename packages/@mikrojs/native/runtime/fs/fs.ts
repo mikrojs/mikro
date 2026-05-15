@@ -1,4 +1,4 @@
-import {ok} from 'mikrojs/result'
+import {err, ok} from 'mikrojs/result'
 import * as native from 'native:fs'
 
 import type {Result} from '../result/types.js'
@@ -61,28 +61,26 @@ export const exists = native.exists
 export function readStream(
   path: string,
   options?: ReadStreamOptions,
-): Result<AsyncIterable<Uint8Array>, FSError> {
+): Result<AsyncIterable<Result<Uint8Array, FSError>>, FSError> {
   const openResult = native.open(path)
   if (!openResult.ok) return openResult
   const fh = openResult.value
   const chunkSize = options?.chunkSize ?? 512
 
-  async function* iterate(): AsyncIterable<Uint8Array> {
+  async function* iterate(): AsyncIterable<Result<Uint8Array, FSError>> {
     try {
       while (true) {
         const r = fh.read(chunkSize)
         if (!r.ok) {
           // Handle-level errors (BadFileDescriptor, Unknown) don't carry a
-          // path from the native side. All other variants include `path`
-          // when emitted by path-level ops — but fh.read doesn't have the
-          // path, so we decorate here to preserve the original readStream
-          // context.
+          // path from the native side. Path-aware variants are decorated
+          // here so consumers see the original readStream context.
           const e = r.error
-          if (e.name === 'BadFileDescriptor' || e.name === 'Unknown') throw e
-          throw {...e, path}
+          yield e.name === 'BadFileDescriptor' || e.name === 'Unknown' ? err(e) : err({...e, path})
+          return
         }
         if (r.value === undefined) break
-        yield r.value
+        yield ok(r.value)
       }
     } finally {
       fh.close()

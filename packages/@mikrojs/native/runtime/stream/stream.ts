@@ -1,24 +1,37 @@
 /**
  * Minimal composable stream primitives for mikrojs.
  *
- * Streams are plain `AsyncIterable<T>` — no class hierarchy, no
- * lockable readers, no BYOB, no queueing strategies. Transforms are
- * async generator functions. Composition is function call.
+ * Streams are `AsyncIterable<Result<T, E>>` — Result-yielding rather
+ * than throwing — so error handling composes uniformly with the rest
+ * of the runtime's Result-based APIs. Combinators short-circuit on the
+ * first err item: they yield the err and return.
  *
- * This is deliberately a subset of what Snell's "new-streams" proposal
- * covers, adapted for the realities of QuickJS on a microcontroller:
- * no fast-path promise optimizations, no sendfile-style native
- * shortcuts, tight heap budget.
+ * Combinators that originate their own errors (`withTimeout`,
+ * `collectUntil`) widen the result's error type with a `StreamError`
+ * variant defined in `./types.ts`.
  *
  * V1 scope: enough to rewrite a modem AT channel as a one-file shim.
  * Expand only when a second call site asks for it.
  */
 
+import {err, ok} from 'mikrojs/result'
+
+import type {Result} from '../result/types.js'
+
 /** Decode a stream of UTF-8 byte chunks into a stream of strings. */
-export async function* decodeUtf8(source: AsyncIterable<Uint8Array>): AsyncIterable<string> {
+export async function* decodeUtf8<E>(
+  source: AsyncIterable<Result<Uint8Array, E>>,
+): AsyncIterable<Result<string, E>> {
   const decoder = new TextDecoder()
-  for await (const chunk of source) yield decoder.decode(chunk, {stream: true})
-  yield decoder.decode()
+  for await (const r of source) {
+    if (!r.ok) {
+      yield r
+      return
+    }
+    yield ok(decoder.decode(r.value, {stream: true}))
+  }
+  const final = decoder.decode()
+  if (final.length > 0) yield ok(final)
 }
 
 /**
@@ -36,10 +49,10 @@ export async function* decodeUtf8(source: AsyncIterable<Uint8Array>): AsyncItera
  * for protocols that use a blank line as a separator, e.g. HTTP
  * headers vs. body.
  */
-export async function* splitLines(
-  source: AsyncIterable<string>,
+export async function* splitLines<E>(
+  source: AsyncIterable<Result<string, E>>,
   delimiter: string = '\n',
-): AsyncIterable<string> {
+): AsyncIterable<Result<string, E>> {
   // indexOf('') returns 0 unconditionally, which would make the inner
   // loop spin forever yielding empty strings. Reject at entry instead
   // of hanging the event loop on a user mistake.
@@ -47,16 +60,20 @@ export async function* splitLines(
     throw new RangeError('splitLines: delimiter must be non-empty')
   }
   let buffer = ''
-  for await (const chunk of source) {
-    buffer += chunk
+  for await (const r of source) {
+    if (!r.ok) {
+      yield r
+      return
+    }
+    buffer += r.value
     let idx = buffer.indexOf(delimiter)
     while (idx !== -1) {
-      yield buffer.slice(0, idx)
+      yield ok(buffer.slice(0, idx))
       buffer = buffer.slice(idx + delimiter.length)
       idx = buffer.indexOf(delimiter)
     }
   }
-  if (buffer.length > 0) yield buffer
+  if (buffer.length > 0) yield ok(buffer)
 }
 
 /**
@@ -68,34 +85,30 @@ export async function* splitLines(
  * like modem AT commands where the terminator (`OK`/`ERROR`) is
  * semantically different from the response body lines in between.
  *
- * If the stream closes before any item matches, throws `StreamClosed`
- * (a plain Error with a `.name`). Callers should wrap this in their
- * own Result type if they want structured error handling.
+ * If the stream closes before any item matches, returns
+ * `err({name: 'StreamClosed'})`. Source errors propagate unchanged.
  */
-export async function collectUntil<T>(
-  source: AsyncIterable<T>,
+export async function collectUntil<T, E>(
+  source: AsyncIterable<Result<T, E>>,
   predicate: (item: T) => boolean,
-): Promise<{matched: T; collected: T[]}> {
+): Promise<Result<{matched: T; collected: T[]}, E | {name: 'StreamClosed'}>> {
   const collected: T[] = []
-  for await (const item of source) {
-    if (predicate(item)) {
-      return {matched: item, collected}
-    }
-    collected.push(item)
+  for await (const r of source) {
+    if (!r.ok) return r
+    if (predicate(r.value)) return ok({matched: r.value, collected})
+    collected.push(r.value)
   }
-  const err = new Error('Stream closed before predicate matched')
-  err.name = 'StreamClosed'
-  throw err
+  return err({name: 'StreamClosed' as const})
 }
 
 /**
  * Wrap an async iterable with a total-duration timeout.
  *
  * The deadline starts when this function is called (not per-item).
- * If the next item doesn't arrive before the deadline, the returned
- * iterable throws a `TimeoutError`, and cleans up the upstream source
- * by calling its `return()` method. Callers using `for await` will see
- * the error propagate out of the loop.
+ * If the next item doesn't arrive before the deadline, yields
+ * `err({name: 'Timeout', ms})` and ends, cleaning up the upstream
+ * source by calling its `return()` method. Source errors propagate
+ * unchanged.
  *
  * Implementation notes:
  * - Promise.race with setTimeout would leak orphaned timers on the
@@ -106,28 +119,30 @@ export async function collectUntil<T>(
  *   timeout, or consumer break) so underlying resources (UART claims,
  *   socket handles, ring buffers) get released.
  */
-export async function* withTimeout<T>(source: AsyncIterable<T>, ms: number): AsyncIterable<T> {
+export async function* withTimeout<T, E>(
+  source: AsyncIterable<Result<T, E>>,
+  ms: number,
+): AsyncIterable<Result<T, E | {name: 'Timeout'; ms: number}>> {
   const deadline = Date.now() + ms
   const iter = source[Symbol.asyncIterator]()
   try {
     while (true) {
       const remaining = deadline - Date.now()
       if (remaining <= 0) {
-        const err = new Error(`Stream did not complete within ${ms}ms`)
-        err.name = 'TimeoutError'
-        throw err
+        yield err({name: 'Timeout' as const, ms})
+        return
       }
 
       let timerId: ReturnType<typeof setTimeout> | undefined
-      let result: IteratorResult<T, unknown>
+      let result: IteratorResult<Result<T, E>, unknown>
+      let timedOut = false
       try {
         result = await Promise.race([
           iter.next(),
-          new Promise<IteratorResult<T, unknown>>((_, reject) => {
+          new Promise<IteratorResult<Result<T, E>, unknown>>((resolve) => {
             timerId = setTimeout(() => {
-              const err = new Error(`Stream did not complete within ${ms}ms`)
-              err.name = 'TimeoutError'
-              reject(err)
+              timedOut = true
+              resolve({done: true, value: undefined})
             }, remaining)
           }),
         ])
@@ -135,8 +150,13 @@ export async function* withTimeout<T>(source: AsyncIterable<T>, ms: number): Asy
         if (timerId !== undefined) clearTimeout(timerId)
       }
 
+      if (timedOut) {
+        yield err({name: 'Timeout' as const, ms})
+        return
+      }
       if (result.done) return
-      yield result.value as T
+      yield result.value
+      if (!result.value.ok) return
     }
   } finally {
     if (typeof iter.return === 'function') {

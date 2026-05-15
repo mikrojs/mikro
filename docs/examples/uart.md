@@ -38,7 +38,11 @@ if (!reader.ok) {
   // Give data a moment to loop back
   await sleep(1000)
   for await (const chunk of reader.value) {
-    console.log('Received: %s', new TextDecoder().decode(chunk))
+    if (!chunk.ok) {
+      console.error('UART read error: %s', chunk.error.name)
+      break
+    }
+    console.log('Received: %s', new TextDecoder().decode(chunk.value))
   }
 }
 
@@ -54,7 +58,7 @@ console.log('Done!')
 
 3. **Writing.** `uart.write()` sends a `Uint8Array`. Use `TextEncoder` to convert strings to bytes.
 
-4. **Reading.** `uart.read()` returns an async iterator that yields `Uint8Array` chunks as they arrive. The `for await` loop processes each chunk. Use `TextDecoder` to convert bytes back to strings.
+4. **Reading.** `uart.read()` returns an async iterator that yields [`Result<Uint8Array, UartError>`](/api/result) items. Check `.ok` before reading `.value`; a non-ok chunk (e.g. port closed mid-read) is the iterator's terminal signal. Use `TextDecoder` to convert bytes back to strings.
 
 5. **Loopback test.** With TX wired to RX, the message you send is immediately received. This is a simple way to verify UART works before connecting to an actual peripheral.
 

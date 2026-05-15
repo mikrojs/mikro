@@ -159,9 +159,10 @@ Default: `() => undefined`.
 
 Errors returned by `set()` and `update()`, or passed to `onReadError`:
 
-| Variant            | When                                        |
-| ------------------ | ------------------------------------------- |
-| `StorageFull`      | RTC memory or NVS partition is full         |
-| `EncodeFailed`     | Value is not [CBOR](/api/cbor)-encodable    |
-| `WriteFailed`      | NVS open/commit failed (hardware error)     |
-| `ValidationFailed` | Schema validation failed (has `path` field) |
+| Variant            | When                                                          |
+| ------------------ | ------------------------------------------------------------- |
+| `StorageFull`      | RTC memory or NVS partition is full                           |
+| `EncodeFailed`     | Value is not [CBOR](/api/cbor)-encodable                      |
+| `WriteFailed`      | NVS open/commit failed (hardware error)                       |
+| `ValidationFailed` | Schema validation failed (has `path` field)                   |
+| `Unknown`          | Native code returned an error not in the curated set (`code`) |

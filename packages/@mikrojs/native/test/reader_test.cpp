@@ -54,9 +54,10 @@ TEST_CASE("BufferedReader.readUntil returns bytes before delimiter" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
         import {BufferedReader} from 'mikrojs/reader'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield new Uint8Array([104, 105, 13, 10, 98, 121, 101, 13, 10])  // "hi\r\nbye\r\n"
+            yield ok(new Uint8Array([104, 105, 13, 10, 98, 121, 101, 13, 10]))  // "hi\r\nbye\r\n"
         }
 
         const reader = new BufferedReader(source())
@@ -64,8 +65,12 @@ TEST_CASE("BufferedReader.readUntil returns bytes before delimiter" *
         const first = await reader.readUntil(crlf, {timeoutMs: 5000})
         const second = await reader.readUntil(crlf, {timeoutMs: 5000})
 
-        const td = new TextDecoder()
-        globalThis.__result = `${td.decode(first)}|${td.decode(second)}`
+        if (!first.ok || !second.ok) {
+            globalThis.__result = `err=${(first.error || second.error).name}`
+        } else {
+            const td = new TextDecoder()
+            globalThis.__result = `${td.decode(first.value)}|${td.decode(second.value)}`
+        }
     )JS";
     run_reader_test("BufferedReader readUntil basic", code, "hi|bye");
 }
@@ -74,16 +79,17 @@ TEST_CASE("BufferedReader.readUntil spans multiple source chunks" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
         import {BufferedReader} from 'mikrojs/reader'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield new Uint8Array([104, 101])    // "he"
-            yield new Uint8Array([108, 108])    // "ll"
-            yield new Uint8Array([111, 13, 10]) // "o\r\n"
+            yield ok(new Uint8Array([104, 101]))    // "he"
+            yield ok(new Uint8Array([108, 108]))    // "ll"
+            yield ok(new Uint8Array([111, 13, 10])) // "o\r\n"
         }
 
         const reader = new BufferedReader(source())
-        const line = await reader.readUntil(new Uint8Array([13, 10]), {timeoutMs: 5000})
-        globalThis.__result = new TextDecoder().decode(line)
+        const r = await reader.readUntil(new Uint8Array([13, 10]), {timeoutMs: 5000})
+        globalThis.__result = r.ok ? new TextDecoder().decode(r.value) : `err=${r.error.name}`
     )JS";
     run_reader_test("BufferedReader readUntil multichunk", code, "hello");
 }
@@ -92,8 +98,9 @@ TEST_CASE("BufferedReader.readUntil rejects empty delimiter" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
         import {BufferedReader} from 'mikrojs/reader'
+        import {ok} from 'mikrojs/result'
 
-        async function* source() { yield new Uint8Array([0]) }
+        async function* source() { yield ok(new Uint8Array([0])) }
 
         try {
             await new BufferedReader(source()).readUntil(new Uint8Array(0), {timeoutMs: 100})
@@ -105,39 +112,58 @@ TEST_CASE("BufferedReader.readUntil rejects empty delimiter" *
     run_reader_test("BufferedReader readUntil empty delim", code, "threw=RangeError");
 }
 
-TEST_CASE("BufferedReader.readUntil throws StreamClosed when source ends early" *
+TEST_CASE("BufferedReader.readUntil returns StreamClosed when source ends early" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
         import {BufferedReader} from 'mikrojs/reader'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield new Uint8Array([1, 2, 3])  // no delimiter, then end
+            yield ok(new Uint8Array([1, 2, 3]))  // no delimiter, then end
         }
 
-        try {
-            await new BufferedReader(source()).readUntil(new Uint8Array([0xff]), {timeoutMs: 100})
-            globalThis.__result = 'no throw'
-        } catch (e) {
-            globalThis.__result = `threw=${e.name}`
-        }
+        const r = await new BufferedReader(source()).readUntil(new Uint8Array([0xff]), {timeoutMs: 100})
+        globalThis.__result = r.ok ? 'no err' : `err=${r.error.name}`
     )JS";
-    run_reader_test("BufferedReader readUntil closed", code, "threw=StreamClosed");
+    run_reader_test("BufferedReader readUntil closed", code, "err=StreamClosed");
+}
+
+TEST_CASE("BufferedReader.readUntil propagates source err" *
+          doctest::test_suite("reader")) {
+    const char* code = R"JS(
+        import {BufferedReader} from 'mikrojs/reader'
+        import {ok, err} from 'mikrojs/result'
+
+        async function* source() {
+            yield ok(new Uint8Array([1, 2]))
+            yield err({name: 'Boom'})
+        }
+
+        const r = await new BufferedReader(source()).readUntil(new Uint8Array([0xff]), {timeoutMs: 1000})
+        globalThis.__result = r.ok ? 'no err' : `err=${r.error.name}`
+    )JS";
+    run_reader_test("BufferedReader readUntil src err", code, "err=Boom");
 }
 
 TEST_CASE("BufferedReader.readBytes returns exactly count bytes" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
         import {BufferedReader} from 'mikrojs/reader'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])
+            yield ok(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))
         }
 
         const reader = new BufferedReader(source())
         const a = await reader.readBytes(3, {timeoutMs: 5000})
         const b = await reader.readBytes(5, {timeoutMs: 5000})
 
-        globalThis.__result = `a=${[...a].join(',')};b=${[...b].join(',')}`
+        if (!a.ok || !b.ok) {
+            globalThis.__result = 'err'
+        } else {
+            globalThis.__result = `a=${[...a.value].join(',')};b=${[...b.value].join(',')}`
+        }
     )JS";
     run_reader_test("BufferedReader readBytes basic", code, "a=1,2,3;b=4,5,6,7,8");
 }
@@ -146,16 +172,17 @@ TEST_CASE("BufferedReader.readBytes spans multiple source chunks" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
         import {BufferedReader} from 'mikrojs/reader'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield new Uint8Array([1, 2])
-            yield new Uint8Array([3, 4])
-            yield new Uint8Array([5, 6])
+            yield ok(new Uint8Array([1, 2]))
+            yield ok(new Uint8Array([3, 4]))
+            yield ok(new Uint8Array([5, 6]))
         }
 
         const reader = new BufferedReader(source())
-        const all = await reader.readBytes(6, {timeoutMs: 5000})
-        globalThis.__result = [...all].join(',')
+        const r = await reader.readBytes(6, {timeoutMs: 5000})
+        globalThis.__result = r.ok ? [...r.value].join(',') : `err=${r.error.name}`
     )JS";
     run_reader_test("BufferedReader readBytes multichunk", code, "1,2,3,4,5,6");
 }
@@ -164,16 +191,17 @@ TEST_CASE("BufferedReader.readBytes of 0 returns empty buffer without pulling" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
         import {BufferedReader} from 'mikrojs/reader'
+        import {ok} from 'mikrojs/result'
 
         let pulled = false
         async function* source() {
             pulled = true
-            yield new Uint8Array([])
+            yield ok(new Uint8Array([]))
         }
 
         const reader = new BufferedReader(source())
-        const empty = await reader.readBytes(0, {timeoutMs: 5000})
-        globalThis.__result = `len=${empty.length};pulled=${pulled}`
+        const r = await reader.readBytes(0, {timeoutMs: 5000})
+        globalThis.__result = r.ok ? `len=${r.value.length};pulled=${pulled}` : 'err'
     )JS";
     run_reader_test("BufferedReader readBytes zero", code, "len=0;pulled=false");
 }
@@ -181,10 +209,11 @@ TEST_CASE("BufferedReader.readBytes of 0 returns empty buffer without pulling" *
 TEST_CASE("BufferedReader.drain discards buffered bytes" * doctest::test_suite("reader")) {
     const char* code = R"JS(
         import {BufferedReader} from 'mikrojs/reader'
+        import {ok} from 'mikrojs/result'
 
         async function* source() {
-            yield new Uint8Array([1, 2, 3, 4, 5])
-            yield new Uint8Array([9, 9, 9])
+            yield ok(new Uint8Array([1, 2, 3, 4, 5]))
+            yield ok(new Uint8Array([9, 9, 9]))
         }
 
         const reader = new BufferedReader(source())
@@ -192,7 +221,11 @@ TEST_CASE("BufferedReader.drain discards buffered bytes" * doctest::test_suite("
         reader.drain()
         const second = await reader.readBytes(3, {timeoutMs: 5000})
 
-        globalThis.__result = `first=${[...first].join(',')};second=${[...second].join(',')}`
+        if (!first.ok || !second.ok) {
+            globalThis.__result = 'err'
+        } else {
+            globalThis.__result = `first=${[...first.value].join(',')};second=${[...second.value].join(',')}`
+        }
     )JS";
     run_reader_test("BufferedReader drain", code, "first=1,2;second=9,9,9");
 }
@@ -201,21 +234,26 @@ TEST_CASE("BufferedReader readUntil and readBytes interleave on same buffer" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
         import {BufferedReader} from 'mikrojs/reader'
+        import {ok} from 'mikrojs/result'
 
         // Simulates a modem-style protocol: header line, then length-prefixed
         // binary payload. The header is CRLF-terminated; the payload is raw.
         async function* source() {
-            yield new Uint8Array([
+            yield ok(new Uint8Array([
                 0x4f, 0x4b, 0x0d, 0x0a,  // "OK\r\n"
                 0xde, 0xad, 0xbe, 0xef,  // 4-byte payload
-            ])
+            ]))
         }
 
         const reader = new BufferedReader(source())
         const line = await reader.readUntil(new Uint8Array([13, 10]), {timeoutMs: 5000})
         const body = await reader.readBytes(4, {timeoutMs: 5000})
 
-        globalThis.__result = `line=${new TextDecoder().decode(line)};body=${[...body].map(b => b.toString(16)).join(',')}`
+        if (!line.ok || !body.ok) {
+            globalThis.__result = 'err'
+        } else {
+            globalThis.__result = `line=${new TextDecoder().decode(line.value)};body=${[...body.value].map(b => b.toString(16)).join(',')}`
+        }
     )JS";
     run_reader_test("BufferedReader mixed mode", code, "line=OK;body=de,ad,be,ef");
 }

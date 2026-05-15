@@ -55,6 +55,7 @@ export type KVError =
   | {name: 'EncodeFailed'; message: string}
   | {name: 'WriteFailed'; message: string}
   | {name: 'ValidationFailed'; message: string; path: string}
+  | {name: 'Unknown'; code: number; message: string}
 
 export type KVOptions<S> =
   | {

@@ -46,7 +46,8 @@ describe.runIf(hasWifi && !isSim)('http request e2e', () => {
     assert.equal(result.value.status, 200)
     assert.truthy(result.value.ok, 'response.ok reflects 2xx')
     const body = await result.value.json()
-    assert.type(body, 'object')
+    assert.ok(body)
+    assert.type(body.value, 'object')
   })
 
   test('GET returns a non-empty body as bytes', async () => {
@@ -54,7 +55,8 @@ describe.runIf(hasWifi && !isSim)('http request e2e', () => {
     assert.ok(result)
 
     const bytes = await result.value.bytes()
-    assert.equal(bytes.length, 1024, `expected 1024 bytes, got ${bytes.length}`)
+    assert.ok(bytes)
+    assert.equal(bytes.value.length, 1024, `expected 1024 bytes, got ${bytes.value.length}`)
   })
 
   test('non-2xx status surfaces as response.ok=false with body still readable', async () => {
@@ -109,9 +111,11 @@ describe.runIf(hasWifi && !isSim)('http request e2e', () => {
     })
     assert.ok(result)
     assert.equal(result.value.status, 200)
-    const body = (await result.value.json()) as {json: {hello: string; n: number}}
-    assert.equal(body.json.hello, 'mikro')
-    assert.equal(body.json.n, 42)
+    const body = await result.value.json()
+    assert.ok(body)
+    const parsed = body.value as {json: {hello: string; n: number}}
+    assert.equal(parsed.json.hello, 'mikro')
+    assert.equal(parsed.json.n, 42)
   })
 
   test(

@@ -1,7 +1,7 @@
 import {err, ok} from 'mikrojs/result'
 import {describe, expect, it} from 'vitest'
 
-import type {RequestError} from '../helpers.js'
+import {RequestError} from '../helpers.js'
 import {createRequestFromNative, type NativeHttpModule} from '../native.js'
 
 /* ── Fake native:http builder ──────────────────────────────────────── */
@@ -82,7 +82,7 @@ function createFakeNative(script: FakeScript): NativeHttpModule & {cancelCalls: 
       const hr = headersCancelResolvers.get(id)
       if (hr) {
         headersCancelResolvers.delete(id)
-        hr(err({name: 'Aborted' as const, message: 'cancelled'}) as HeadersResult)
+        hr(err(RequestError.Aborted('cancelled')) as HeadersResult)
       }
       void Promise.resolve().then(() =>
         deliver(id, {kind: 'error', cancelled: true, message: 'cancelled'}),
@@ -105,7 +105,9 @@ describe('createRequestFromNative', () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.value.status).toBe(200)
-      expect(await result.value.text()).toBe('hello')
+      const text = await result.value.text()
+      expect(text.ok).toBe(true)
+      if (text.ok) expect(text.value).toBe('hello')
     }
   })
 
@@ -124,7 +126,10 @@ describe('createRequestFromNative', () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       const collected: number[] = []
-      for await (const chunk of result.value.body) collected.push(...chunk)
+      for await (const chunk of result.value.body) {
+        expect(chunk.ok).toBe(true)
+        if (chunk.ok) collected.push(...chunk.value)
+      }
       expect(collected).toEqual([1, 2, 3, 4, 5])
     }
   })
@@ -143,14 +148,15 @@ describe('createRequestFromNative', () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       for await (const chunk of result.value.body) {
-        expect(chunk[0]).toBe(1)
+        expect(chunk.ok).toBe(true)
+        if (chunk.ok) expect(chunk.value[0]).toBe(1)
         break
       }
       expect(native.cancelCalls.length).toBe(1)
     }
   })
 
-  it('surfaces network errors mid-stream as iterator rejection with message', async () => {
+  it('yields a Network err item mid-stream when transport reports error', async () => {
     const native = createFakeNative({
       messages: [
         {kind: 'chunk', data: new Uint8Array([1, 2])},
@@ -163,17 +169,20 @@ describe('createRequestFromNative', () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       const pulled: number[] = []
-      await expect(async () => {
-        for await (const chunk of result.value.body) pulled.push(...chunk)
-      }).rejects.toMatchObject({name: 'Network', message: 'connection reset by peer'})
+      let finalErr: RequestError | undefined
+      for await (const chunk of result.value.body) {
+        if (chunk.ok) pulled.push(...chunk.value)
+        else finalErr = chunk.error
+      }
       expect(pulled).toEqual([1, 2])
+      expect(finalErr).toMatchObject({name: 'Network', message: 'connection reset by peer'})
     }
   })
 
   it('returns TooManyPending when native layer rejects at start', async () => {
     const native = createFakeNative({
       messages: [],
-      startError: {name: 'TooManyPending'},
+      startError: RequestError.TooManyPending(),
     })
     const request = createRequestFromNative(native)
 
@@ -185,7 +194,7 @@ describe('createRequestFromNative', () => {
   it('surfaces ERROR-before-HEADERS as a Network failure at the request() level', async () => {
     const native = createFakeNative({
       messages: [],
-      headersError: {name: 'Network', message: 'DNS resolution failed'},
+      headersError: RequestError.Network('DNS resolution failed'),
     })
     const request = createRequestFromNative(native)
 
@@ -202,7 +211,7 @@ describe('createRequestFromNative', () => {
   it('maps pre-headers cancelled error to Aborted', async () => {
     const native = createFakeNative({
       messages: [],
-      headersError: {name: 'Aborted', message: 'cancelled'},
+      headersError: RequestError.Aborted('cancelled'),
     })
     const request = createRequestFromNative(native)
 
@@ -252,19 +261,19 @@ describe('createRequestFromNative', () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       const pulled: number[] = []
+      let finalErr: RequestError | undefined
       const promise = (async () => {
-        try {
-          for await (const c of result.value.body) pulled.push(...c)
-        } catch (e) {
-          return e
+        for await (const c of result.value.body) {
+          if (c.ok) pulled.push(...c.value)
+          else finalErr = c.error
         }
       })()
       await Promise.resolve()
       await Promise.resolve()
       controller.abort()
-      const thrown = await promise
+      await promise
       expect(native.cancelCalls.length).toBeGreaterThan(0)
-      expect(thrown).toMatchObject({name: 'Aborted'})
+      expect(finalErr).toMatchObject({name: 'Aborted'})
     }
   })
 
@@ -275,11 +284,11 @@ describe('createRequestFromNative', () => {
     const result = await request('https://example.test/', {timeoutMs: 10})
     expect(result.ok).toBe(true)
     if (result.ok) {
-      await expect(async () => {
-        for await (const _ of result.value.body) {
-          /* drain */
-        }
-      }).rejects.toMatchObject({name: 'Aborted'})
+      let finalErr: RequestError | undefined
+      for await (const c of result.value.body) {
+        if (!c.ok) finalErr = c.error
+      }
+      expect(finalErr).toMatchObject({name: 'Aborted'})
       expect(native.cancelCalls.length).toBe(1)
     }
   })

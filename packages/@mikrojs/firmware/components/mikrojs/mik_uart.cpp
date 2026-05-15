@@ -260,6 +260,7 @@ struct MIKUartIterState {
      * iterator could outlive its parent Uart, leading to a UAF here. */
     MIKUartState* uart;
     JSValue uart_jsval;
+    bool ended;  // sticky: once true, next() returns {done:true} immediately
 };
 
 static void mik__uart_iter_finalizer(JSRuntime* rt, JSValue val) {
@@ -286,7 +287,24 @@ static JSClassDef mik_uart_iter_class = {
     .gc_mark = mik__uart_iter_gc_mark,
 };
 
-/* Try to read available data and return {done: false, value: Uint8Array} synchronously */
+/* Build {done:false, value: Result<Uint8Array, UartError>} wrapper. Takes
+ * ownership of the inner Result value. */
+static JSValue mik__uart_iter_yield(JSContext* ctx, JSValue inner_result) {
+    JSValue out = JS_NewObject(ctx);
+    JS_DefinePropertyValueStr(ctx, out, "done", JS_FALSE, JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, out, "value", inner_result, JS_PROP_C_W_E);
+    return out;
+}
+
+static JSValue mik__uart_iter_done(JSContext* ctx) {
+    JSValue out = JS_NewObject(ctx);
+    JS_DefinePropertyValueStr(ctx, out, "done", JS_TRUE, JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, out, "value", JS_UNDEFINED, JS_PROP_C_W_E);
+    return out;
+}
+
+/* Try to read available data and return {done:false, value: ok(Uint8Array)}
+ * synchronously, or JS_UNDEFINED if no data is buffered yet. */
 static JSValue mik__uart_try_read(JSContext* ctx, MIKUartState* s) {
     size_t buffered = 0;
     uart_get_buffered_data_len(s->port, &buffered);
@@ -302,18 +320,27 @@ static JSValue mik__uart_try_read(JSContext* ctx, MIKUartState* s) {
     }
 
     JSValue arr = MIK_NewUint8Array(ctx, buf, read);
-    JSValue result = JS_NewObject(ctx);
-    JS_DefinePropertyValueStr(ctx, result, "done", JS_FALSE, JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, result, "value", arr, JS_PROP_C_W_E);
-    return result;
+    return mik__uart_iter_yield(ctx, mik__result_ok(ctx, arr));
 }
 
 static JSValue js_uart_iter_next(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* it = static_cast<MIKUartIterState*>(JS_GetOpaque2(ctx, this_val, mik_uart_iter_class_id));
     if (!it || !it->uart) return JS_ThrowInternalError(ctx, "invalid uart iterator");
+
+    if (it->ended) {
+        JSValue done_result = mik__uart_iter_done(ctx);
+        return MIK_NewResolvedPromise(ctx, 1, &done_result);
+    }
+
     MIKUartState* s = it->uart;
 
-    if (!s->begun) return JS_Throw(ctx, JS_NewString(ctx, "UART not started"));
+    /* If end() has invalidated the underlying port, surface NotStarted as
+     * a single err item and mark the iterator done. */
+    if (!s->begun) {
+        it->ended = true;
+        JSValue err_yield = mik__uart_iter_yield(ctx, mik__result_err_tag(ctx, "NotStarted"));
+        return MIK_NewResolvedPromise(ctx, 1, &err_yield);
+    }
 
     /* Try synchronous read first */
     JSValue sync_result = mik__uart_try_read(ctx, s);
@@ -468,9 +495,7 @@ void mik__uart_consume(JSContext* ctx) {
         }
 
         JSValue arr = MIK_NewUint8Array(ctx, buf, read_bytes);
-        JSValue result = JS_NewObject(ctx);
-        JS_DefinePropertyValueStr(ctx, result, "done", JS_FALSE, JS_PROP_C_W_E);
-        JS_DefinePropertyValueStr(ctx, result, "value", arr, JS_PROP_C_W_E);
+        JSValue result = mik__uart_iter_yield(ctx, mik__result_ok(ctx, arr));
         MIK_ResolvePromise(ctx, &s->read_promise, 1, &result);
         MIK_ClearPromise(ctx, &s->read_promise);
     }

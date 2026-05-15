@@ -24,7 +24,7 @@ import {request} from 'mikrojs/http/request'
 | Module                            | Description                                      |
 | --------------------------------- | ------------------------------------------------ |
 | [env](/api/env)                   | Environment variables: `require`, `get`, `has`   |
-| [result](/api/result)             | `Result` type, `ok()`, `err()`, `defineError()`  |
+| [result](/api/result)             | `Result` type, `ok()`, `err()`, `matchError()`   |
 | [schema](/api/schema)             | Runtime type validation with type inference      |
 | [pin](/api/pin)                   | GPIO: digital read/write, analog read            |
 | [pwm](/api/pwm)                   | Pulse-width modulation                           |
