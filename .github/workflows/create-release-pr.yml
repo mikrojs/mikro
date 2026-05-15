@@ -50,8 +50,9 @@ jobs:
 
       # The mikrodroid GitHub App must have these repo permissions:
       #   - Contents: Read and write   (push the ci/release-main branch)
-      #   - Pull requests: Read and write   (create/update the rolling PR)
-      #   - Issues: Read and write   (PR conversation comments use the issues API)
+      #   - Pull requests: Read and write   (create/update the rolling PR,
+      #     including conversation comments — PR-shaped endpoints under
+      #     /issues/ are gated by the pull-requests permission)
       # Using GITHUB_TOKEN here would prevent the merge of the resulting PR
       # from triggering downstream workflows (release.yml). The App token
       # workaround is required, not optional.
@@ -63,8 +64,7 @@ jobs:
           client-id: ${{ secrets.MIKRODROID_CLIENT_ID }}
           private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
           permission-contents: write # push the ci/release-main branch
-          permission-pull-requests: write # create/update the rolling PR
-          permission-issues: write # PR conversation comments use the issues API
+          permission-pull-requests: write # create/update PR + conversation comments
 
       - name: Configure git
         if: steps.plan.outputs.should_run == 'true'

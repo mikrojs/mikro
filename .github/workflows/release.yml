@@ -59,7 +59,8 @@ jobs:
       # Mint mikrodroid App token only for pr-preview, where we need to
       # remove the trigger label as the bot. Other modes don't have
       # side effects in this job. Required mikrodroid App permissions:
-      # Issues: Write (label removal goes through the issues API).
+      # Pull requests: Write (label endpoints on a PR require the
+      # pull-requests permission even though the URL is /issues/.../labels).
       - name: Generate mikrodroid token
         if: steps.plan.outputs.mode == 'pr-preview'
         id: app-token
@@ -67,7 +68,7 @@ jobs:
         with:
           client-id: ${{ secrets.MIKRODROID_CLIENT_ID }}
           private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
-          permission-issues: write # label removal goes through the issues API
+          permission-pull-requests: write # remove label on a PR
 
       # Remove the trigger label immediately so a second click during the long
       # publish (10–15 min) doesn't queue another run, and so the PR isn't
@@ -172,7 +173,7 @@ jobs:
       # helper. That makes `git push` of the release tag attribute to
       # mikrodroid[bot] instead of github-actions[bot]. Required mikrodroid
       # App permissions: Contents: Write (tag push + GitHub Release),
-      # Issues: Write (PR-preview comments use the issues API).
+      # Pull requests: Write (PR-preview conversation comments).
       - name: Generate mikrodroid token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
@@ -180,8 +181,7 @@ jobs:
           client-id: ${{ secrets.MIKRODROID_CLIENT_ID }}
           private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
           permission-contents: write # tag push + GitHub Release
-          permission-pull-requests: write # PR-preview comment edits
-          permission-issues: write # PR-preview comments go through the issues API
+          permission-pull-requests: write # PR-preview conversation comments
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
         with:
