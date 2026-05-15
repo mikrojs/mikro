@@ -59,7 +59,9 @@ runs:
     # compute path entirely.
     - if: inputs.version != ''
       shell: bash
-      run: pnpm --silent releaser bump --mode release --set ${{ inputs.version }}
+      env:
+        VERSION: ${{ inputs.version }}
+      run: pnpm --silent releaser bump --mode release --set "$VERSION"
 
     - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # ratchet:actions/cache@v5
       with:
@@ -104,9 +106,11 @@ runs:
     - if: inputs.pack-format == 'tarball'
       shell: bash
       working-directory: esp32/build
+      env:
+        ARTIFACT_NAME: ${{ inputs.artifact-name }}
       run: |
         mkdir -p ../../firmware-out
-        tar czf ../../firmware-out/${{ inputs.artifact-name }}.tar.gz \
+        tar czf "../../firmware-out/${ARTIFACT_NAME}.tar.gz" \
           flasher_args.json \
           bootloader/bootloader.bin \
           partition_table/partition-table.bin \

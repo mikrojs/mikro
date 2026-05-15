@@ -40,7 +40,7 @@ jobs:
 
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # ratchet:actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # ratchet:actions/setup-node@v6 # zizmor: ignore[cache-poisoning] workflow_dispatch-only (no PR-writable cache scope), and pnpm --frozen-lockfile verifies tarball integrity. Re-evaluate if push/pull_request/schedule triggers are added.
         with:
           node-version: 24
           cache: pnpm
@@ -91,6 +91,9 @@ jobs:
       - name: Commit and push to bench-data
         if: ${{ !inputs.dry_run }}
         working-directory: bench-data
+        env:
+          RANGE: ${{ inputs.range }}
+          STEP: ${{ inputs.step }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -98,7 +101,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "no changes"
           else
-            git commit -m "bench: backfill ${{ inputs.range }} (step=${{ inputs.step }})"
+            git commit -m "bench: backfill $RANGE (step=$STEP)"
             git push
           fi
 

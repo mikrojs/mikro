@@ -70,7 +70,8 @@ const config = {
     '**/*.stub.ts',
   ],
   ignoreDependencies: ['unbarrelify', 'taze'],
-  ignoreBinaries: ['cmake', 'ctest'],
+  // zizmor is installed system-wide (brew/uv/pipx), not via npm
+  ignoreBinaries: ['cmake', 'ctest', 'zizmor'],
   // Knip can't trace `import * as` namespace member access or type-only re-exports
   // through barrel files. All remaining "unused" exports/types have been manually
   // verified as used.

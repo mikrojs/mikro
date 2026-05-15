@@ -67,6 +67,7 @@ jobs:
         with:
           client-id: ${{ secrets.MIKRODROID_CLIENT_ID }}
           private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
+          permission-issues: write # label removal goes through the issues API
 
       # Remove the trigger label immediately so a second click during the long
       # publish (10–15 min) doesn't queue another run, and so the PR isn't
@@ -178,6 +179,9 @@ jobs:
         with:
           client-id: ${{ secrets.MIKRODROID_CLIENT_ID }}
           private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
+          permission-contents: write # tag push + GitHub Release
+          permission-pull-requests: write # PR-preview comment edits
+          permission-issues: write # PR-preview comments go through the issues API
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
         with:

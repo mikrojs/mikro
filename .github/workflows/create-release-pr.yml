@@ -62,6 +62,9 @@ jobs:
         with:
           client-id: ${{ secrets.MIKRODROID_CLIENT_ID }}
           private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
+          permission-contents: write # push the ci/release-main branch
+          permission-pull-requests: write # create/update the rolling PR
+          permission-issues: write # PR conversation comments use the issues API
 
       - name: Configure git
         if: steps.plan.outputs.should_run == 'true'
