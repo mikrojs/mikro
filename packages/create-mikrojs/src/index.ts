@@ -87,16 +87,6 @@ async function main(config: InferValue<typeof args>): Promise<void> {
     process.exit(0)
   }
 
-  const typescript = await p.confirm({
-    message: 'Use TypeScript?',
-    initialValue: true,
-  })
-
-  if (p.isCancel(typescript)) {
-    p.cancel('Cancelled.')
-    process.exit(0)
-  }
-
   const targetDir = path.resolve(process.cwd(), projectName)
   const isCwd = targetDir === process.cwd()
   const pkgName = isCwd ? path.basename(targetDir) : projectName
@@ -118,7 +108,6 @@ async function main(config: InferValue<typeof args>): Promise<void> {
     template,
     projectName: pkgName,
     mikrojsVersion: pkg.version,
-    typescript,
     templatesDir,
     pkgManager: pm,
   })

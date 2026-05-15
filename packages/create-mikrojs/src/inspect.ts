@@ -32,7 +32,6 @@ scaffold({
   template,
   projectName: 'my-project',
   mikrojsVersion: '0.0.0',
-  typescript: true,
   templatesDir,
   pkgManager: 'npm',
 })

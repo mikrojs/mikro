@@ -27,6 +27,13 @@ const config = {
     'packages/@mikrojs/analyze-imports': {
       ignore: ['test/unit/**', 'test/symlink/**', 'dist/**'],
     },
+    'packages/create-mikrojs': {
+      // eslint, prettier, typescript-eslint, @mikrojs/eslint-plugin are
+      // invoked by scaffold.test.ts via node_modules/.bin paths (to lint
+      // and format-check scaffolded projects), not via JS imports — knip
+      // can't see them.
+      ignoreDependencies: ['@mikrojs/eslint-plugin', 'eslint', 'prettier', 'typescript-eslint'],
+    },
     'packages/@repo/releaser': {
       // bin/releaser.js is auto-detected from package.json bin. The .ts is
       // invoked via tsx from the shim and dispatches to all command modules.
