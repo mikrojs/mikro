@@ -22,6 +22,11 @@ pre-commit:
       glob: '*.{js,ts,tsx,md,json}'
       exclude: '(^|/)CHANGELOG\.md$'
       run: pnpm fmt:check -- {staged_files}
+    zizmor:
+      skip:
+        - run: node scripts/is-agent.js
+      glob: '.github/{workflows,actions}/**/*.{yml,yaml}'
+      run: pnpm lint:workflows
 
     # Agent: full project checks
     build-cpp:
@@ -48,6 +53,10 @@ pre-commit:
       only:
         - run: node scripts/is-agent.js
       run: pnpm knip
+    zizmor-all:
+      only:
+        - run: node scripts/is-agent.js
+      run: pnpm lint:workflows
     publint:
       only:
         - run: node scripts/is-agent.js
