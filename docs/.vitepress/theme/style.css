@@ -93,26 +93,31 @@
  * Chrome: nav + sidebar branding
  * ------------------------------------------------------------------------- */
 
-/* Thin brand stripe under the navbar */
-.VPNavBar {
-  border-bottom: 1px solid var(--vp-c-divider);
+/* Brand-tinted hairline under the navbar.
+   VitePress draws the actual line via .divider-line, which is
+   padding-left'd by sidebar-width when a sidebar is present. We zero
+   that padding so the line spans the full width and recolor it with
+   a soft brand gradient. !important beats VitePress's scoped-CSS
+   data-v specificity. */
+.VPNavBar .divider {
+  padding-left: 0 !important;
 }
-.VPNavBar::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
+.VPNavBar .divider-line {
   background: linear-gradient(
     90deg,
     transparent 0%,
     var(--mik-brand-yellow) 18%,
     var(--mik-brand-yellow) 82%,
     transparent 100%
-  );
+  ) !important;
   opacity: 0.5;
-  pointer-events: none;
+}
+
+/* VPNavBarTitle adds its own border under the title area when a sidebar
+   is present. Now that .divider-line spans the full width, that extra
+   border duplicates above our brand hairline — drop it. */
+.VPNavBarTitle.has-sidebar .title {
+  border-bottom-color: transparent !important;
 }
 
 /* Active sidebar item: brand-tinted background + left accent bar */
