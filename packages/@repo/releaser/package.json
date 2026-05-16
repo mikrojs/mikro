@@ -24,7 +24,7 @@
   "devDependencies": {
     "@types/node": "catalog:node24",
     "@types/semver": "^7.7.1",
-    "tsx": "^4.21.0",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
