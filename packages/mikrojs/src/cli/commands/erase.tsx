@@ -13,6 +13,7 @@ import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
+import {TroubleshootingHint} from '../lib/troubleshooting.js'
 import {useObservable} from '../lib/useObservable.js'
 
 export const args = command(
@@ -21,7 +22,7 @@ export const args = command(
     action: constant('erase'),
     port: optional(
       option('-p', '--port', string({metavar: 'PORT'}), {
-        description: message`Serial port of device to erase, example: /dev/cu.usbmodem101`,
+        description: message`Serial port of device to erase. Auto-detected if omitted.`,
       }),
     ),
     baud: optional(
@@ -114,6 +115,7 @@ function DeviceErase({port, baud, yes}: {port?: string; baud?: string; yes: bool
         ) : (
           <Text>No devices found</Text>
         )}
+        <TroubleshootingHint />
       </RenderAndExit>
     )
   }
@@ -123,6 +125,7 @@ function DeviceErase({port, baud, yes}: {port?: string; baud?: string; yes: bool
       return (
         <RenderAndExit exitCode={1}>
           <Text color="red">{figures.cross} No devices found. Connect a device and try again.</Text>
+          <TroubleshootingHint />
         </RenderAndExit>
       )
     }

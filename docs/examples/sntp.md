@@ -10,7 +10,7 @@ Connect to WiFi and synchronize the device clock via NTP, so `new Date()` return
 ## Hardware
 
 - Any ESP32 board with WiFi
-- USB-C cable
+- USB cable
 - A WiFi network with internet access
 
 ## Setup

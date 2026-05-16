@@ -10,7 +10,7 @@ Counts how many times the device has woken up from deep sleep. The counter is st
 ## Hardware
 
 - Any ESP32 board
-- USB-C cable
+- USB cable
 
 ## Code
 

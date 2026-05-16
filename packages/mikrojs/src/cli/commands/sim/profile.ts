@@ -427,7 +427,7 @@ function renderProfile(entries: ProfileEntry[], opts: RenderOptions): void {
   const budgetBytes = opts.memoryBudgetKB !== null ? opts.memoryBudgetKB * 1024 : null
 
   console.log(`QuickJS baseline: ${baselineKB.toFixed(1)} KB (runtime + context + intrinsics)`)
-  const header = `Module profile — ${visibleEntries.length} modules, ${totalKB.toFixed(1)} KB load cost, ${grandTotalKB.toFixed(1)} KB total`
+  const header = `Module profile: ${visibleEntries.length} modules, ${totalKB.toFixed(1)} KB load cost, ${grandTotalKB.toFixed(1)} KB total`
   console.log(header)
   console.log(dim(`  Load cost only; linking + evaluation overhead not included`))
   if (hiddenNative) {

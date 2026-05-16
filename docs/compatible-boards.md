@@ -5,40 +5,32 @@ description: ESP32 development boards that work with Mikro.js
 
 # Compatible Boards
 
-Mikro.js works with most ESP32-based development boards. This page lists boards that are known to work and boards that should work based on their specs.
-
 ## Requirements
 
-- **Chip**: ESP32, ESP32-S3, ESP32-C3, ESP32-C5, or ESP32-C6
-- **Flash**: At least 4 MB
-- **RAM**: At least 300 KB available
-- **USB**: USB-C recommended for ease of use
+- **Chip**: one of the chips listed under [Chip support](#chip-support)
+- **Flash**: at least 4 MB
 
-The key limiting factor is RAM: the runtime, your JavaScript application, and all loaded modules must fit in memory. Boards with **PSRAM** give you significantly more room, but it is not required for smaller applications.
+RAM is determined by the chip and module: 384-520 KB of on-die SRAM, shared by the runtime, Wi-Fi/BLE stacks, your app, and every loaded module. PSRAM variants (S3, C5, ESP32 WROVER) add external SPI memory in the same package, which lets larger apps use memory beyond the SRAM budget.
+
+## Chip support
+
+| Chip     | Notes                                                                                                                                                           |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ESP32‑C6 | **Recommended.** Primary development chip. Wi-Fi 6, BLE 5, Thread/Zigbee.                                                                                       |
+| ESP32‑S3 | **Recommended.** PSRAM variants fit larger apps.                                                                                                                |
+| ESP32‑C5 | **Recommended.** Dual-band Wi-Fi 6 and BLE 5. Requires PSRAM for the standard mikrojs configuration (Wi-Fi + BLE concurrently); 5 GHz needs `wifi.country` set. |
+| ESP32    | **Supported.** Prefer WROVER variants (4-8 MB PSRAM) over WROOM.                                                                                                |
+| ESP32‑C3 | **Limited support.** Good fit for GPIO, timers, sensors, and BLE. Not enough RAM for HTTPS or memory intensive applications.                                    |
 
 ## Tested
 
-These boards are actively used during Mikro.js development.
-
 | Board                     | Chip     | Flash | PSRAM | Link                                                                                  |
 | ------------------------- | -------- | ----- | ----- | ------------------------------------------------------------------------------------- |
-| Seeed Studio XIAO ESP32C3 | ESP32-C3 | 4 MB  | -     | [seeedstudio.com](https://www.seeedstudio.com/Seeed-XIAO-ESP32C3-p-5431.html)         |
-| Seeed Studio XIAO ESP32S3 | ESP32-S3 | 8 MB  | 8 MB  | [seeedstudio.com](https://www.seeedstudio.com/XIAO-ESP32S3-p-5627.html)               |
-| Seeed Studio XIAO ESP32C6 | ESP32-C6 | 4 MB  | -     | [seeedstudio.com](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html)  |
-| Seeed Studio XIAO ESP32C5 | ESP32-C5 | 8 MB  | 8 MB  | [seeedstudio.com](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32-C5-p-6573.html) |
-
-The XIAO ESP32C6 is small, cheap (~$5), has USB-C, and is the primary board Mikro.js is developed and tested against. If you're unsure what to buy, start here.
+| Seeed Studio XIAO ESP32C6 | ESP32‑C6 | 4 MB  | -     | [seeedstudio.com](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html)  |
+| Seeed Studio XIAO ESP32S3 | ESP32‑S3 | 8 MB  | 8 MB  | [seeedstudio.com](https://www.seeedstudio.com/XIAO-ESP32S3-p-5627.html)               |
+| Seeed Studio XIAO ESP32C5 | ESP32‑C5 | 8 MB  | 8 MB  | [seeedstudio.com](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32-C5-p-6573.html) |
+| Seeed Studio XIAO ESP32C3 | ESP32‑C3 | 4 MB  | -     | [seeedstudio.com](https://www.seeedstudio.com/Seeed-XIAO-ESP32C3-p-5431.html)         |
 
 ## Other boards
 
-Any board that meets the [requirements](#requirements) should work, regardless of manufacturer: Adafruit, SparkFun, Waveshare, LILYGO, WeAct, generic DevKit boards, etc. If you try one, [let us know](https://github.com/mikrojs/mikrojs/issues) how it goes.
-
-## Chip notes
-
-- **ESP32-C3**: Single-core RISC-V. Works well but has less RAM than dual-core variants.
-- **ESP32-C5**: Dual-band Wi-Fi 6 (2.4 GHz and 5 GHz) and BLE 5. Requires PSRAM for the standard mikrojs configuration (Wi-Fi + BLE concurrently); bare modules without PSRAM are not currently supported. 5 GHz access requires `wifi.country` to be set to a region that allows it.
-- **ESP32-C6**: Adds Wi-Fi 6 and Thread/Zigbee radio alongside BLE.
-
-## Other manufacturers
-
-Any ESP32 board that meets the [requirements](#requirements) should work, regardless of manufacturer: SparkFun, Waveshare, LILYGO, WeAct, generic DevKit boards, etc. If you have a board with a supported chip and at least 4 MB flash, give it a try.
+Any board with a supported chip and at least 4 MB flash should work, regardless of manufacturer: Adafruit, SparkFun, Waveshare, LILYGO, WeAct, generic DevKits. If you try one, [let us know](https://github.com/mikrojs/mikrojs/issues).

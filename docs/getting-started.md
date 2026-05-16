@@ -18,11 +18,13 @@ This guide walks you through creating a Mikro.js project, flashing firmware to a
 
 - [Node.js](https://nodejs.org/) >= 24
 - [pnpm](https://pnpm.io/installation) recommended, but npm, yarn, and bun work too
-- A USB-C cable
 - An ESP32 development board
+- A USB cable matching your board's port (e.g. USB-C)
 
 ::: tip Which board should I use?
-Any ESP32, ESP32-C3, ESP32-S3, ESP32-C5, or ESP32-C6 board should work out of the box. We recommend the [Seeed Studio XIAO ESP32C6](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html): it's small, cheap (~$5), has USB-C, and is the primary board Mikro.js is developed and tested against.
+Any ESP32, ESP32-S3, ESP32-C5, or ESP32-C6 board should work out of the box. We recommend the [Seeed Studio XIAO ESP32C6](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html) as the default: small, cheap (~$5), USB-C, and the primary board Mikro.js is developed and tested against.
+
+For network-heavy or memory-intensive apps, the [Seeed Studio XIAO ESP32C5](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32-C5-p-6573.html) is a better pick. Its 8 MB PSRAM gives you room for things like graphics with a display framebuffer, audio buffers, larger HTTP payloads, and apps that hold significant state in memory.
 :::
 
 ## Create a project
@@ -67,7 +69,7 @@ my-app/
 
 ## Plug in your board
 
-Connect your ESP32 board to your computer via USB-C.
+Connect your ESP32 board to your computer with a USB cable.
 
 ## Flash the firmware
 

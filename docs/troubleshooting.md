@@ -5,6 +5,17 @@ description: Recovering from common Mikro.js problems
 
 # Troubleshooting
 
+## Unable to connect to board
+
+- Try a different USB cable. Some are charge-only and won't enumerate as a serial device.
+- Try flipping the cable at the board side. USB-C is reversible by spec, but some boards only wire data on one orientation.
+- Try power-cycling the device (unplug it and plug it back in).
+- Check that no other program is holding the serial port open (Arduino IDE, esp-idf monitor, screen, minicom, another `mikro` session in a different terminal).
+- If multiple serial devices are attached, `mikro` may pick the wrong one. Force a specific port with `--port`, e.g. `mikro flash --port <port>`.
+- The firmware may be out of date or missing. Run `mikro flash` to install or update it.
+- The device may be crash-looping, restarting before `mikro` can open the protocol session. See [Recovering a crash-looping device](#recovering-a-crash-looping-device).
+- Force the board into download mode: hold BOOT, tap RESET, release BOOT, then run `mikro flash` again. Useful when auto-reset wiring isn't kicking in.
+
 ## Recovering a crash-looping device
 
 If your deployed app crashes immediately on boot, the device restarts before you can connect a normal REPL: there's no window to send a `mikro clean` or to deploy a fix. The firmware opens a brief recovery window (~500ms) very early in boot for exactly this case. If triggered, the firmware skips autorun and drops into the protocol loop, where deploy and REPL commands work as normal.

@@ -4,6 +4,7 @@ import {access, readdir, readFile, stat} from 'fs/promises'
 import {SerialPort} from 'serialport'
 
 import {parseDotenv} from './dotenv.js'
+import {TROUBLESHOOTING_URL} from './troubleshooting.js'
 
 export const BAUD_RATE = 115200
 
@@ -29,13 +30,14 @@ export async function resolvePort(explicit?: string): Promise<string> {
       } else {
         lines.push('No devices found')
       }
+      lines.push(`See ${TROUBLESHOOTING_URL} for help.`)
       throw new Error(lines.join('\n'))
     }
     return match.path
   }
 
   if (devices.length === 0) {
-    throw new Error('No serial devices found')
+    throw new Error(`No serial devices found\nSee ${TROUBLESHOOTING_URL} for help.`)
   }
 
   if (devices.length === 1) {

@@ -10,7 +10,7 @@ Periodically broadcast a "hello" datagram to a multicast group and listen for th
 ## Hardware
 
 - Two or more ESP32 boards with WiFi (one is enough to see the announcer logs, but you need at least two for actual discovery)
-- USB-C cables
+- USB cables
 - A WiFi network. Both boards must join the same SSID.
 
 ## Setup

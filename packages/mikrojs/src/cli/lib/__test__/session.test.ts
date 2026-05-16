@@ -2,7 +2,7 @@ import {createRequire} from 'node:module'
 
 import {encode as encodeCbor} from 'cbor2'
 import {lastValueFrom, Subject} from 'rxjs'
-import {describe, expect, it} from 'vitest'
+import {afterEach, describe, expect, it} from 'vitest'
 
 import {
   buildFrame,
@@ -22,8 +22,26 @@ import {
   MSG_OK,
   MSG_READY,
 } from '../protocol.js'
-import {connectRepl, type ReplEvent} from '../session.js'
+import {connectRepl as connectReplImpl, type ReplEvent, type ReplSession} from '../session.js'
 import type {Transport} from '../transport.js'
+
+// Track every session opened by a test so we can close any that the test
+// itself didn't get to (e.g. on assertion failure or vitest test-timeout).
+// Without this an abandoned awaitReady$ inside session.deploy() can fire its
+// 10s timeout after the test process has moved on, surfacing as an uncaught
+// DeviceTimeoutError that kills the run.
+const openSessions = new Set<ReplSession>()
+
+function connectRepl(transport: Transport): ReplSession {
+  const session = connectReplImpl(transport)
+  openSessions.add(session)
+  return session
+}
+
+afterEach(() => {
+  for (const session of openSessions) session.close()
+  openSessions.clear()
+})
 
 const require = createRequire(import.meta.url)
 const CLI_VERSION = (require('../../../../package.json') as {version: string}).version

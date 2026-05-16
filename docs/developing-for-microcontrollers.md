@@ -9,7 +9,7 @@ Writing TypeScript for an ESP32 is different from writing it for Node.js or a br
 
 ## Memory
 
-A typical ESP32 has 320-512KB of RAM. After the runtime starts, you'll have around 200-300KB free. That's plenty for most applications, but it's not infinite. Some boards include PSRAM (2-8MB of external RAM), which gives you a lot more to work with.
+The chips Mikro.js targets have 384-520 KB of on-die SRAM, all of it shared between Wi-Fi/BLE stacks, the QuickJS runtime, your app, and any loaded modules. How much you have free after boot depends on the chip and which radios are active. A C3 leaves significantly less than a C6 or S3 with the same radios up. Some boards include PSRAM (2-8 MB of external RAM), which lets larger apps allocate beyond the SRAM budget.
 
 ### Check your usage
 

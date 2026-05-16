@@ -43,8 +43,6 @@ try {
 
 And this uncertainty is **contagious**. Any function that calls `analogRead` might also throw, but there's no way to know from its signature. You either wrap everything in try/catch defensively, or you don't and hope for the best. Neither option is good.
 
-On a microcontroller with 300KB of heap, where you're debugging over a serial monitor, "something went wrong" isn't good enough.
-
 ## How Mikro.js handles errors
 
 Every Mikro.js function that can fail returns a [`Result`](/api/result):

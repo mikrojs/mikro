@@ -10,7 +10,7 @@ Configure the ESP32 as a WiFi access point (soft AP) that other devices can conn
 ## Hardware
 
 - Any ESP32 board with WiFi
-- USB-C cable
+- USB cable
 - A phone or laptop to connect to the AP
 
 ## Code
