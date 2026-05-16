@@ -47,7 +47,6 @@ export interface ReplMachineState {
   showWelcome: boolean
   evaluating: boolean
   paused: boolean
-  showTroubleshooting: boolean
   ctrlCPending: boolean
   returnPending: boolean
   disabled: boolean
@@ -86,9 +85,8 @@ export type ReplAction =
   | {type: 'deviceEvent'; event: ReplEvent}
   | {type: 'setDisabled'; disabled: boolean}
   | {type: 'setDeployStatus'; message: string | null}
-  | {type: 'setError'; message: string; showTroubleshooting?: boolean}
+  | {type: 'setError'; message: string; suppressLogEntry?: boolean}
   | {type: 'setFooterError'; message: string | null}
-  | {type: 'showTroubleshooting'}
   | {type: 'ctrlCTimeout'}
   | {type: 'returnResolve'}
   | {type: 'closeOverlay'}
@@ -133,7 +131,7 @@ const CONTEXT_HINTS: {pattern: RegExp; hint: string}[] = [
   {pattern: /^console\.\s*$/, hint: 'console.log()  console.warn()  console.error()'},
   {
     pattern: /^import\s/,
-    hint: 'import {x} from "mikrojs/module"  — built-in modules: fs, sys, stdio',
+    hint: 'import {x} from "mikrojs/module"  Built-in modules: fs, sys, stdio',
   },
 ]
 
@@ -219,7 +217,6 @@ export function createInitialState(port?: string, history: string[] = []): ReplM
     showWelcome: true,
     evaluating: false,
     paused: false,
-    showTroubleshooting: false,
     ctrlCPending: false,
     returnPending: false,
     disabled: false,
@@ -263,19 +260,16 @@ export function reduce(
       return [{...state, footerError: action.message}, []]
     case 'setError': {
       const connection: ConnectionState = {type: 'error', message: action.message}
-      const errorEvent: ReplLogEvent = {type: 'error', text: action.message}
-      // Troubleshooting hints are only useful for connection-class errors
-      // (timeout, link gone). Build/deploy/hook errors carry their own
-      // actionable message — opt in via the action when relevant.
-      const showTroubleshooting = action.showTroubleshooting ?? false
-      return [
-        {...state, connection, showTroubleshooting, events: [...state.events, errorEvent]},
-        [],
-      ]
+      // Connection-class failures (device timeouts, link gone) opt in to
+      // suppressLogEntry: the footer already renders the message with
+      // the troubleshooting link, so a duplicate line in the scrollback
+      // is noise. Build/deploy/hook failures always log so the full
+      // diagnostic survives once a new cycle clears the footer.
+      const events = action.suppressLogEntry
+        ? state.events
+        : [...state.events, {type: 'error', text: action.message} satisfies ReplLogEvent]
+      return [{...state, connection, events}, []]
     }
-    case 'showTroubleshooting':
-      if (state.connection.type === 'ready') return [state, []]
-      return [{...state, showTroubleshooting: true}, []]
     case 'ctrlCTimeout':
       if (!state.ctrlCPending) return [state, []]
       return [{...state, ctrlCPending: false, overrideHint: null}, []]
@@ -301,10 +295,7 @@ function reduceSessionEvent(
         deviceId: event.id,
         firmwareVersion: event.version,
       }
-      return [
-        {...state, connection, showTroubleshooting: false, events: [...state.events, event]},
-        [],
-      ]
+      return [{...state, connection, events: [...state.events, event]}, []]
     }
     case 'log':
     case 'warn':
@@ -705,7 +696,7 @@ export interface ReplHandle {
   keyInput(ch: string, key: KeyInfo): void
   setDisabled(disabled: boolean): void
   setDeployStatus(message: string | null): void
-  setError(message: string, opts?: {showTroubleshooting?: boolean}): void
+  setError(message: string, opts?: {suppressLogEntry?: boolean}): void
   /** Pin an error message in the REPL footer until the next cycle
    *  starts. Use alongside `logEvent({type:'error', …})` for errors
    *  that should remain visible after the output scrolls past. */
@@ -744,16 +735,13 @@ export function createRepl(options: {
     map((event: ReplEvent): ReplAction => ({type: 'deviceEvent', event})),
   )
 
-  // Connection timers: restart device after 2s (in case MSG_READY was sent
-  // before the CLI connected), show troubleshooting after 5s, hard error
-  // after full timeout.
+  // Connection timeout: after the full window without a MSG_READY, give
+  // up and surface an error. The troubleshooting hint is rendered by
+  // ReplConsole on its own delay (see TROUBLESHOOTING_HINT_DELAY_MS), so
+  // the state machine doesn't need a separate "show hint" timer.
   const ready$ = sessionActions$.pipe(
     filter((a) => a.type === 'deviceEvent' && a.event.type === 'ready'),
     first(),
-  )
-  const troubleshootingTimer$ = timer(5_000).pipe(
-    takeUntil(ready$),
-    map((): ReplAction => ({type: 'showTroubleshooting'})),
   )
   const connectionTimeout$ = timer(timeoutMs).pipe(
     takeUntil(ready$),
@@ -761,7 +749,7 @@ export function createRepl(options: {
       (): ReplAction => ({
         type: 'setError',
         message: `Connection timed out after ${timeoutMs / 1000}s`,
-        showTroubleshooting: true,
+        suppressLogEntry: true,
       }),
     ),
   )
@@ -798,7 +786,6 @@ export function createRepl(options: {
   const state$ = merge(
     sessionActions$,
     actions$,
-    troubleshootingTimer$,
     connectionTimeout$,
     handshakeDriver$,
     restartHandshakeDriver$,
@@ -862,8 +849,8 @@ export function createRepl(options: {
     setDeployStatus(message: string | null) {
       actions$.next({type: 'setDeployStatus', message})
     },
-    setError(message: string, opts?: {showTroubleshooting?: boolean}) {
-      actions$.next({type: 'setError', message, showTroubleshooting: opts?.showTroubleshooting})
+    setError(message: string, opts?: {suppressLogEntry?: boolean}) {
+      actions$.next({type: 'setError', message, suppressLogEntry: opts?.suppressLogEntry})
     },
     setFooterError(message: string | null) {
       actions$.next({type: 'setFooterError', message})

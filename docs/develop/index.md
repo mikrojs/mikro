@@ -19,7 +19,7 @@ This section covers building Mikro.js firmware from source, creating driver pack
 - [pnpm](https://pnpm.io/) >= 10.30
 - [direnv](https://direnv.net/) (for ESP-IDF environment management)
 - ESP-IDF prerequisites for your platform: see [Espressif's setup guide](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/linux-macos-setup.html)
-- A USB-C cable and an ESP32 development board (for on-device testing)
+- A USB cable and an ESP32 development board (for on-device testing)
 
 ## Getting the source
 

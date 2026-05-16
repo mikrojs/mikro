@@ -29,8 +29,10 @@ import {
   scan,
   share,
   shareReplay,
+  Subject,
   type Subscription,
   switchMap,
+  takeUntil,
   tap,
   timeout,
   timer,
@@ -71,6 +73,7 @@ import {
   parseCompletions,
 } from './protocol.js'
 import type {Transport} from './transport.js'
+import {TROUBLESHOOTING_URL} from './troubleshooting.js'
 
 // ── Event types ────────────────────────────────────────────────────
 
@@ -314,10 +317,28 @@ const JS_YIELD_TIMEOUT_MS = 10_000
  * (RX 4 KB) and any plausible UART path. */
 const PUT_CHUNK_SIZE = 2048
 
-function formatTimeoutError(context: string, timeoutMs: number): Error {
-  return new Error(
-    `${context}: device did not respond within ${timeoutMs}ms — it may be unplugged, wedged in a long JS operation, or (outside dev mode) in deep sleep`,
-  )
+function formatDuration(ms: number): string {
+  return ms >= 1000 ? `${ms / 1000}s` : `${ms}ms`
+}
+
+/** Thrown when a protocol command (or the initial handshake) doesn't get
+ * a response in time. Carries the timed-out operation label so logs and
+ * `--agent` consumers can tell *which* step stalled, while the UI footer
+ * can render just the human summary. Callers downstream (devSession,
+ * RenderAndExit handlers) classify connection-class failures via
+ * `instanceof DeviceTimeoutError` rather than string-matching the
+ * message. */
+export class DeviceTimeoutError extends Error {
+  readonly name = 'DeviceTimeoutError'
+  readonly timeoutMs: number
+  readonly context: string | undefined
+
+  constructor(timeoutMs: number, context?: string) {
+    const summary = `Device did not respond within ${formatDuration(timeoutMs)}. See ${TROUBLESHOOTING_URL} for help.`
+    super(context ? `${summary} (during ${context})` : summary)
+    this.timeoutMs = timeoutMs
+    this.context = context
+  }
 }
 
 export interface ConnectReplOptions {}
@@ -328,6 +349,10 @@ export function connectRepl(
 ): ReplSession {
   const frameParser = new FrameParser()
   let sub: Subscription | undefined
+  // Fires once when session.close() runs; lets per-call pipelines (notably
+  // awaitReady$'s 10s timeout) terminate cleanly instead of throwing an
+  // uncaught DeviceTimeoutError after the caller has been torn down.
+  const closed$ = new Subject<void>()
 
   // Buffer for raw (non-protocol) bytes so we only emit complete lines.
   let rawLineBuf = ''
@@ -402,9 +427,10 @@ export function connectRepl(
   // Response stream: OK, ERR, CHECKSUM_RESULT, CONFIG_ENTRIES
   const responses$ = messages$.pipe(filter(isResponseEvent))
 
-  /** Send a command and wait for the next response event. Wraps any
-   * timeout with a message naming the step, so a user seeing a
-   * generic rxjs TimeoutError gets context instead. */
+  /** Send a command and wait for the next response event. A timeout is
+   * surfaced as a `DeviceTimeoutError` so callers and the UI can tell
+   * which operation stalled (the `context` label flows through) and
+   * classify it via `instanceof` rather than string-matching. */
   async function sendAndWait(
     frame: Buffer,
     context: string,
@@ -416,7 +442,7 @@ export function connectRepl(
       return await response
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {
-        throw formatTimeoutError(context, timeoutMs)
+        throw new DeviceTimeoutError(timeoutMs, context)
       }
       throw err
     }
@@ -424,7 +450,10 @@ export function connectRepl(
 
   /** Send a command and expect MSG_OK. Throws on MSG_ERR or timeout.
    *  Returns the OK payload so callers can inspect extra bytes (e.g. the
-   *  changed/existed flag returned by CONFIG_SET / CONFIG_DELETE). */
+   *  changed/existed flag returned by CONFIG_SET / CONFIG_DELETE). The
+   *  `context` label annotates both device-side error responses
+   *  (MSG_ERR / unexpected type) and the `DeviceTimeoutError` raised on
+   *  timeout. */
   async function sendExpectOk(frame: Buffer, context: string, timeoutMs?: number): Promise<Buffer> {
     const resp = await sendAndWait(frame, context, timeoutMs)
     if (resp.type === 'err') {
@@ -472,10 +501,10 @@ export function connectRepl(
       return {...event, advisory: {kind: compat.direction!, message}}
     }
 
-    const mapTimeout = (context: string, ms: number) =>
+    const mapTimeout = (ms: number, context: string) =>
       catchError<ReadyEvent, never>((err) => {
         if (err instanceof Error && err.name === 'TimeoutError') {
-          throw formatTimeoutError(context, ms)
+          throw new DeviceTimeoutError(ms, context)
         }
         throw err
       })
@@ -508,8 +537,9 @@ export function connectRepl(
     return merge(hello$, ready$).pipe(
       first(),
       timeout(timeoutMs),
-      mapTimeout('waiting for device ready', timeoutMs),
+      mapTimeout(timeoutMs, 'handshake'),
       mergeMap(checkVersion),
+      takeUntil(closed$),
     )
   }
 
@@ -782,7 +812,7 @@ export function connectRepl(
       result = await done
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {
-        throw formatTimeoutError(`fs get '${path}'`, RESPONSE_TIMEOUT_MS)
+        throw new DeviceTimeoutError(RESPONSE_TIMEOUT_MS, `fs get '${path}'`)
       }
       throw err
     }
@@ -829,6 +859,8 @@ export function connectRepl(
     },
 
     close(): void {
+      closed$.next()
+      closed$.complete()
       sub?.unsubscribe()
       sub = undefined
       frameParser.flush()

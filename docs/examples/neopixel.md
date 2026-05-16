@@ -11,7 +11,7 @@ Drive WS2812 / SK6812 RGB LEDs with animated patterns. See the [neopixel API ref
 
 - Any ESP32 board
 - NeoPixel-compatible LEDs (WS2812 or SK6812)
-- USB-C cable
+- USB cable
 
 ## Code
 

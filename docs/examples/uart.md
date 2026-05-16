@@ -11,7 +11,7 @@ Send and receive serial data over UART. This example uses a loopback wiring (TX 
 
 - Any ESP32 board with two available GPIO pins
 - One jumper wire connecting TX to RX
-- USB-C cable
+- USB cable
 
 ## Code
 

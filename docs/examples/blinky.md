@@ -10,7 +10,7 @@ The classic first program: blink an LED on and off. Uses the [pin](/api/pin) and
 ## Hardware
 
 - Any ESP32 board with a built-in LED, or an external LED connected to a GPIO pin
-- USB-C cable
+- USB cable
 
 ## Code
 

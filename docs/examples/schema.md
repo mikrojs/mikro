@@ -10,7 +10,7 @@ Validates JSON data received over HTTP using typed schemas. This is a typical us
 ## Hardware
 
 - Any ESP32 board with WiFi
-- USB-C cable
+- USB cable
 
 ## Code
 

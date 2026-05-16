@@ -27,7 +27,7 @@ import {formatDeployEvent} from '../deployProgress.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {getMikroDir, resolveProjectRoot} from '../projectRoot.js'
 import {getPredeployCommands, runHooks} from '../runHooks.js'
-import type {DeployEvent, ReplSession} from '../session.js'
+import {type DeployEvent, DeviceTimeoutError, type ReplSession} from '../session.js'
 import {createWatcher} from '../watcher.js'
 import type {ReplHandle} from './replStateMachine.js'
 
@@ -229,7 +229,11 @@ export function createDevSession(options: {
         // The REPL handshake driver already surfaces firmware-incompat
         // errors; suppress here to avoid printing the same message twice.
         if (!(err instanceof FirmwareIncompatibleError)) {
-          repl?.setError(message)
+          // Device timeouts already surface in the REPL footer (with the
+          // troubleshooting link inlined); suppress the scrollback dup so
+          // the same line doesn't appear twice. Other deploy failures
+          // (build errors, hook stderr, MSG_ERR responses) still log.
+          repl?.setError(message, {suppressLogEntry: err instanceof DeviceTimeoutError})
         }
         repl?.setDisabled(false)
         return of({status: {type: 'error', message}} satisfies DevSessionState)

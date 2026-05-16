@@ -572,9 +572,6 @@ importers:
       update-notifier:
         specifier: ^7.3.1
         version: 7.3.1
-      which-pm-runs:
-        specifier: ^2.0.0
-        version: 2.0.0
     devDependencies:
       '@swc/core':
         specifier: ^1.15.30
@@ -5659,10 +5656,6 @@ packages:
   which-collection@1.0.2:
     resolution: {integrity: sha512-K4jVyjnBdgvc86Y6BkaLZEN933SwYOuBFkdmBu9ZfkcAbdVbpITnDmjvZ/aQjRXQrv5EPkTnD1s39GiiqbngCw==}
     engines: {node: '>= 0.4'}
-
-  which-pm-runs@2.0.0:
-    resolution: {integrity: sha512-nZMKNZWw3urJ6GnFOS+rXYe2glmWFVlQQWnKYzYXKvxKjyLO4QqQfp/wIYjMJl35yOp2YG/TR58DcVbQ24Giew==}
-    engines: {node: '>=22.13'}
 
   which-pm@4.0.0:
     resolution: {integrity: sha512-kLoLJ/y2o0GnU8ZNgI5/nlCbyjpUlqtaJQjMrzR2sKyQQ3BcJJ61oSOdZWIrfoScunyZS5w9U0wyFb0Bij9cyg==}
@@ -10841,8 +10834,6 @@ snapshots:
       is-set: 2.0.3
       is-weakmap: 2.0.2
       is-weakset: 2.0.4
-
-  which-pm-runs@2.0.0: {}
 
   which-pm@4.0.0:
     dependencies:

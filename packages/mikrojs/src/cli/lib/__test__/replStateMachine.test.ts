@@ -653,9 +653,24 @@ describe('replStateMachine', () => {
   describe('setError', () => {
     test('sets error connection state and logs error event', () => {
       const state = createInitialState()
-      const [next] = reduce(state, {type: 'setError', message: 'timeout'})
-      expect(next.connection).toEqual({type: 'error', message: 'timeout'})
-      expect(next.events.at(-1)).toEqual({type: 'error', text: 'timeout'})
+      const [next] = reduce(state, {type: 'setError', message: 'build failed'})
+      expect(next.connection).toEqual({type: 'error', message: 'build failed'})
+      expect(next.events.at(-1)).toEqual({type: 'error', text: 'build failed'})
+    })
+
+    test('suppressLogEntry skips the scrollback log entry', () => {
+      const state = createInitialState()
+      const eventCountBefore = state.events.length
+      const [next] = reduce(state, {
+        type: 'setError',
+        message: 'Device did not respond within 10s.',
+        suppressLogEntry: true,
+      })
+      expect(next.connection).toEqual({
+        type: 'error',
+        message: 'Device did not respond within 10s.',
+      })
+      expect(next.events.length).toBe(eventCountBefore)
     })
   })
 

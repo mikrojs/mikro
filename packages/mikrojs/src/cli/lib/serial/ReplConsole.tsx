@@ -1,13 +1,14 @@
 import spinners from 'cli-spinners'
+import figures from 'figures'
 import {Box, Static, Text, useInput} from 'ink'
 import React, {useCallback, useEffect, useState} from 'react'
-import {whichPMRuns} from 'which-pm-runs'
 
 import type {LogLevel} from '../../../_exports/index.js'
 import {EnvEditor, type EnvEditorConfig} from '../../components/EnvEditor.js'
 import {BorderFill, TitledBox} from '../../components/TitledBox.js'
 import {logLevelAllows} from '../parseMinifier.js'
 import {Spinner} from '../Spinner.js'
+import {TROUBLESHOOTING_HINT_DELAY_MS, TroubleshootingHint} from '../troubleshooting.js'
 import {useObservable} from '../useObservable.js'
 import {
   createInitialState,
@@ -98,9 +99,9 @@ function testEventText(data: Record<string, unknown>): string {
     case 1: // suite_start
       return String(data.s)
     case 2: // test_pass
-      return `  ✓ ${data.t} (${data.d}ms)`
+      return `  ${figures.tick} ${data.t} (${data.d}ms)`
     case 3: // test_fail
-      return `  ✗ ${data.t} (${data.d}ms)\n    ${data.m}`
+      return `  ${figures.cross} ${data.t} (${data.d}ms)\n    ${data.m}`
     case 4: // test_skip
       return `  - ${data.t}`
     case 6: {
@@ -112,7 +113,7 @@ function testEventText(data: Record<string, unknown>): string {
       return `${parts.join(', ')} (${data.d}ms)`
     }
     case 7: // beforeAll error
-      return `  ✗ beforeAll: ${data.m}`
+      return `  ${figures.cross} beforeAll: ${data.m}`
     case 8: {
       // heap
       const used = ((data.u as number) / 1024) | 0
@@ -195,17 +196,6 @@ function shouldRender(event: ReplLogEvent, logLevel: LogLevel): boolean {
   }
 }
 
-function getPackageRunner() {
-  const pm = whichPMRuns()
-  return pm?.name === 'pnpm'
-    ? 'pnpm mikro'
-    : pm?.name === 'yarn'
-      ? 'yarn mikro'
-      : pm?.name === 'bun'
-        ? 'bunx mikro'
-        : 'npx mikro'
-}
-
 const INITIAL_STATE = createInitialState()
 
 // ── Component ──────────────────────────────────────────────
@@ -229,6 +219,19 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
       setShowEvalSpinner(false)
     }
   }, [state.evaluating])
+
+  // Surface the troubleshooting hint once a connect attempt drags past 8s,
+  // so a stuck "Waiting for device…" footer points users at the docs.
+  const [connectingTooLong, setConnectingTooLong] = useState(false)
+  useEffect(() => {
+    const t = state.connection.type
+    if (t !== 'connecting' && t !== 'negotiating') return
+    const timer = setTimeout(() => setConnectingTooLong(true), TROUBLESHOOTING_HINT_DELAY_MS)
+    return () => {
+      clearTimeout(timer)
+      setConnectingTooLong(false)
+    }
+  }, [state.connection.type])
 
   // ── Derived render state ───────────────────────────────────
   const conn = state.connection
@@ -258,15 +261,26 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
           message: conn.message ?? (state.port ? `Connecting to ${state.port}…` : 'Connecting…'),
           tone: 'busy',
         }
-      : state.disabled
-        ? {message: state.deployStatus ?? 'Deploying…', tone: 'busy'}
-        : state.footerError
-          ? {message: state.footerError, tone: 'error'}
-          : watch === true
-            ? {message: 'Watching for file changes…', tone: 'watching'}
-            : watch === false
-              ? {message: 'File watching off. Press Ctrl+S to redeploy', tone: 'idle'}
-              : null
+      : isError
+        ? {
+            // Multi-line error messages (e.g. resolvePort listing several
+            // matches) get clipped to the first line so the footer stays a
+            // single row; the full text is in the scrollback. Single-line
+            // failures (DeviceTimeoutError) pass through unchanged.
+            // Watch-mode messaging is suppressed so we don't claim to be
+            // "watching" when we can't actually reach the device.
+            message: conn.message.split('\n')[0] || 'Disconnected from device',
+            tone: 'error',
+          }
+        : state.disabled
+          ? {message: state.deployStatus ?? 'Deploying…', tone: 'busy'}
+          : state.footerError
+            ? {message: state.footerError, tone: 'error'}
+            : watch === true
+              ? {message: 'Watching for file changes…', tone: 'watching'}
+              : watch === false
+                ? {message: 'File watching off. Press Ctrl+S to redeploy', tone: 'idle'}
+                : null
 
   const renderableEvents = state.events.filter((event) => shouldRender(event, logLevel))
 
@@ -290,17 +304,6 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
         }}
       </Static>
 
-      {state.showTroubleshooting && (
-        <Text color={isError ? 'red' : undefined} dimColor={!isError}>
-          {'\n  Troubleshooting:\n\n'}
-          {'  • Check that the device is connected and the correct port is selected\n'}
-          {'  • Try power-cycling the device\n'}
-          {'  • Check that no other program is using the serial port\n'}
-          {'  • Check that the firmware is compatible. Run '}
-          <Text underline>{getPackageRunner()} flash</Text>
-          {' to update.\n'}
-        </Text>
-      )}
       <Box flexDirection="column" marginTop={1}>
         {footer && (
           <Text
@@ -312,7 +315,7 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
                 <Spinner spinner={spinners.dots} />{' '}
               </>
             ) : footer.tone === 'error' ? (
-              '✗ '
+              `${figures.cross} `
             ) : footer.tone === 'watching' ? (
               <Text color="green">● </Text>
             ) : (
@@ -321,6 +324,8 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
             {footer.message}
           </Text>
         )}
+        {isConnecting && connectingTooLong && <TroubleshootingHint />}
+        {isConnecting && <Text dimColor>Press Ctrl+C to cancel</Text>}
         <TitledBox
           header={
             <BorderFill
@@ -344,9 +349,7 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
                   >
                     {` ${conn.deviceId ?? conn.chip ?? 'device'} `}
                   </Text>
-                ) : conn.type === 'error' ? (
-                  <Text color="red"> ✗ </Text>
-                ) : (
+                ) : conn.type === 'error' ? null : (
                   <Text color="grey">
                     <Spinner spinner={deviceIdSpinner} />
                   </Text>

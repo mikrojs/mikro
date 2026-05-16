@@ -11,7 +11,7 @@ A "breathing" LED effect: smoothly fades an LED in and out using PWM. See the [p
 
 - Any ESP32 board with a GPIO pin that supports PWM
 - An LED connected through a 220-ohm resistor
-- USB-C cable
+- USB cable
 
 ## Code
 

@@ -14,7 +14,7 @@ export const args = command(
     action: constant('console'),
     port: optional(
       option('-p', '--port', string({metavar: 'PORT'}), {
-        description: message`Serial port to connect to, example: /dev/cu.usbmodem101`,
+        description: message`Serial port to connect to. Auto-detected if omitted.`,
       }),
     ),
     agent: optional(flag('--agent', {description: message`NDJSON agent protocol over stdio`})),

@@ -1,11 +1,12 @@
 import spinners from 'cli-spinners'
 import {Box, Text, useInput} from 'ink'
 import SelectInput from 'ink-select-input'
-import React, {type ReactNode, useCallback, useMemo, useState} from 'react'
+import React, {type ReactNode, useCallback, useEffect, useMemo, useState} from 'react'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
+import {TROUBLESHOOTING_HINT_DELAY_MS, TroubleshootingHint} from '../lib/troubleshooting.js'
 
 type Item<V> = {
   key?: string
@@ -25,7 +26,13 @@ export function DevicePicker(props: Props) {
   const [selectedDevice, setSelectedDevice] = useState<PortInfo>()
   // Stop polling once a device is selected or auto-detected (avoid SerialPort.list() interfering with open port)
   const [pollingEnabled, setPollingEnabled] = useState(true)
+  const [waitingTooLong, setWaitingTooLong] = useState(false)
   const deviceDiscovery = useDevices(pollingEnabled)
+
+  useEffect(() => {
+    const id = setTimeout(() => setWaitingTooLong(true), TROUBLESHOOTING_HINT_DELAY_MS)
+    return () => clearTimeout(id)
+  }, [])
 
   const handleSelect = useCallback((item: Item<PortInfo>) => {
     setSelectedDevice(item.value)
@@ -98,6 +105,7 @@ export function DevicePicker(props: Props) {
         ) : (
           <Text>No devices found</Text>
         )}
+        <TroubleshootingHint />
       </RenderAndExit>
     )
   }
@@ -111,6 +119,7 @@ export function DevicePicker(props: Props) {
     return (
       <RenderAndExit exitCode={1}>
         <Text color="red">Error: No serial devices found</Text>
+        <TroubleshootingHint />
       </RenderAndExit>
     )
   }
@@ -130,9 +139,13 @@ export function DevicePicker(props: Props) {
 
   if (devices.length === 0) {
     return (
-      <Text>
-        <Spinner spinner={spinners.dots} /> Waiting for device…
-      </Text>
+      <Box flexDirection="column">
+        <Text>
+          <Spinner spinner={spinners.dots} /> Waiting for device…
+        </Text>
+        {waitingTooLong && <TroubleshootingHint prefix="Is the device plugged in?" />}
+        <Text dimColor>Press Ctrl+C to cancel</Text>
+      </Box>
     )
   }
 

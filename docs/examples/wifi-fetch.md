@@ -10,7 +10,7 @@ Connect to a WiFi network and make an HTTP request to a JSON API. Uses the [wifi
 ## Hardware
 
 - Any ESP32 board with WiFi
-- USB-C cable
+- USB cable
 - A WiFi network with internet access
 
 ## Setup

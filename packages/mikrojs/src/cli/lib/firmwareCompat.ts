@@ -63,13 +63,13 @@ export function formatAdvisory(result: FirmwareCompatResult, pm: PkgManager): st
   const {direction, deviceVersion, cliVersion: cli} = result
   if (direction === 'device_older') {
     return [
-      `Update available: device is running mikrojs v${deviceVersion} — your project uses v${cli}.`,
+      `Update available: device is running mikrojs v${deviceVersion}; your project uses v${cli}.`,
       `Run ${mikroCommand(pm, 'flash')} to update.`,
     ].join('\n')
   }
   // device_newer
   return [
-    `Update available: your project uses mikrojs v${cli} — device is running v${deviceVersion}.`,
+    `Update available: your project uses mikrojs v${cli}; device is running v${deviceVersion}.`,
     `Run ${installLatestCommand(pm, 'mikrojs')} to sync.`,
   ].join('\n')
 }

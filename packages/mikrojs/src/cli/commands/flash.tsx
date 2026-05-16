@@ -18,6 +18,7 @@ import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
 import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
+import {TroubleshootingHint} from '../lib/troubleshooting.js'
 import {useObservable} from '../lib/useObservable.js'
 
 export const args = command(
@@ -56,7 +57,7 @@ export const args = command(
     ),
     port: optional(
       option('-p', '--port', string({metavar: 'PORT'}), {
-        description: message`Serial port of device to flash to, example: /dev/cu.usbmodem101`,
+        description: message`Serial port of device to flash to. Auto-detected if omitted.`,
       }),
     ),
     baud: optional(
@@ -299,6 +300,7 @@ export default function FlashCmd(props: Props) {
         ) : (
           <Text>No devices found</Text>
         )}
+        <TroubleshootingHint />
       </RenderAndExit>
     )
   }
@@ -308,6 +310,7 @@ export default function FlashCmd(props: Props) {
       return (
         <RenderAndExit exitCode={1}>
           <Text color="red">{figures.cross} No devices found. Connect a device and try again.</Text>
+          <TroubleshootingHint />
         </RenderAndExit>
       )
     }
