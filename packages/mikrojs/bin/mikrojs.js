@@ -12,7 +12,13 @@ if (process.env.MIKROJS_WORKSPACE === '1') {
       join(import.meta.dirname, '../src/cli/cliWrapper.ts'),
       ...process.argv.slice(2),
     ],
-    {stdio: 'inherit'},
+    {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        TSX_TSCONFIG_PATH: join(import.meta.dirname, '../tsconfig.json'),
+      },
+    },
   ).on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)))
 } else {
   await import('../dist/cli/cliWrapper.js')
