@@ -21,7 +21,7 @@ pre-commit:
         - run: node scripts/is-agent.js
       glob: '*.{js,ts,tsx,md,json}'
       exclude: '(^|/)CHANGELOG\.md$'
-      run: pnpm fmt:check -- {staged_files}
+      run: pnpm fmt:check --no-error-on-unmatched-pattern -- {staged_files}
     zizmor:
       skip:
         - run: node scripts/is-agent.js
@@ -48,7 +48,7 @@ pre-commit:
         - run: node scripts/is-agent.js
       glob: '*.{js,ts,tsx,md,json}'
       exclude: '(^|/)CHANGELOG\.md$'
-      run: pnpm fmt:check -- {staged_files}
+      run: pnpm fmt:check --no-error-on-unmatched-pattern -- {staged_files}
     knip:
       only:
         - run: node scripts/is-agent.js
