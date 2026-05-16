@@ -3,19 +3,25 @@ import {spawn} from 'node:child_process'
 import {join} from 'node:path'
 
 if (process.env.MIKROJS_WORKSPACE === '1') {
+  // Pass node flags via NODE_OPTIONS instead of CLI args so any node subprocess
+  // we spawn later (notably simProcess via createSimTransport) inherits tsx
+  // loading without each spawn site having to special-case workspace mode.
+  const nodeOptions = [
+    process.env.NODE_OPTIONS ?? '',
+    '--no-warnings=ExperimentalWarning',
+    '--conditions=development',
+    '--import=tsx',
+  ]
+    .filter(Boolean)
+    .join(' ')
   spawn(
     process.execPath,
-    [
-      '--no-warnings=ExperimentalWarning',
-      '--conditions=development',
-      '--import=tsx',
-      join(import.meta.dirname, '../src/cli/cliWrapper.ts'),
-      ...process.argv.slice(2),
-    ],
+    [join(import.meta.dirname, '../src/cli/cliWrapper.ts'), ...process.argv.slice(2)],
     {
       stdio: 'inherit',
       env: {
         ...process.env,
+        NODE_OPTIONS: nodeOptions,
         TSX_TSCONFIG_PATH: join(import.meta.dirname, '../tsconfig.json'),
       },
     },
