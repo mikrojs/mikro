@@ -207,7 +207,8 @@ Variable names are limited to 15 characters (NVS storage constraint on ESP32).
 ## Deep sleep for battery-powered projects
 
 ```typescript
-import {deepSleep, enableTimerWakeup, getWakeupCause} from 'mikrojs/sleep'
+import {deepSleep} from 'mikrojs/sleep'
+import {getWakeupCause} from 'mikrojs/sys'
 import {rtcStorage} from 'mikrojs/kv'
 import * as s from 'mikrojs/schema'
 
@@ -219,9 +220,8 @@ console.log(`Boot #${bootCount.get() ?? 0}, cause: ${getWakeupCause()}`)
 // Do work: read sensor, send data, etc.
 // ...
 
-// Sleep for 5 minutes (microseconds)
-enableTimerWakeup(5 * 60 * 1_000_000).orPanic('timer wakeup')
-deepSleep(5 * 60 * 1_000_000) // never returns, device reboots on wake
+// Sleep for 5 minutes (milliseconds); never returns, device reboots on wake
+deepSleep({timer: 5 * 60 * 1000})
 ```
 
 Deep sleep draws ~10-20 uA vs. ~80-160 mA active. For battery projects, spend as little time awake as possible.

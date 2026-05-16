@@ -128,17 +128,13 @@ declare module 'native:pin' {
 }
 
 declare module 'native:sleep' {
-  import type {SleepError} from '@mikrojs/native/runtime/sleep/types'
-  import type {Result} from 'mikrojs/result'
+  import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'
 
-  export function deepSleep(ms: number): never
-  export function lightSleep(ms: number): Result<void, SleepError>
+  export function deepSleep(sources: DeepWakeupSources): never
+  export function lightSleep(sources: LightWakeupSources): void
   export function getWakeupCause(): string
-  export function enableTimerWakeup(us: number): Result<void, SleepError>
-  export function enableGpioWakeup(pin: number, level: number): Result<void, SleepError>
-  export function enableExt0Wakeup(pin: number, level: number): Result<void, SleepError>
-  export function enableExt1Wakeup(pinMask: number, mode: number): Result<void, SleepError>
-  export function disableWakeupSource(source?: string): Result<void, SleepError>
+  export function canWakeFromExt0(): boolean
+  export function canWakeFromExt1(): boolean
 }
 
 declare module 'native:http' {

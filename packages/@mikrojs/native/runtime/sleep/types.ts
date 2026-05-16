@@ -1,44 +1,60 @@
-import type {Result} from '../result/types.js'
+export type WakeupLevel = 'high' | 'low'
 
-export type SleepError =
-  | {name: 'WakeupConfigFailed'; message: string}
-  | {name: 'LightSleepFailed'; message: string}
-  | {name: 'DisableWakeupFailed'; message: string}
+/** A GPIO pin number that must be RTC-capable for deep-sleep wake.
+ *  Set varies per chip:
+ *  - ESP32-C6 / H2: 0–7 (LP_GPIO0–LP_GPIO7)
+ *  - ESP32-C3: 0–5
+ *  - ESP32-S2 / S3: 0–21 (LP_IO0–LP_IO21)
+ *  - ESP32: subset of 0–39 (see datasheet for RTC_GPIO mapping)
+ *
+ *  Not statically validated — passing a non-RTC pin throws at runtime.
+ */
+export type RtcGpio = number
 
-export declare function deepSleep(time: number): never
+/** Sources that can wake the chip from light sleep. */
+export type LightWakeupSources = {
+  /** Wake after this many milliseconds. Fractional values are allowed
+   *  (e.g. `0.01` = 10 µs). */
+  timer?: number
+  /** Wake when `pin` reaches `level`. Any GPIO works — no RTC-capable
+   *  constraint. */
+  gpio?: {pin: number; level: WakeupLevel}
+}
 
-export declare function lightSleep(time: number): Result<void, SleepError>
-
-export declare function getWakeupCause(): string
-
-/** Configure timer wakeup source (microseconds). */
-export declare function enableTimerWakeup(us: number): Result<void, SleepError>
+/** Sources that can wake the chip from deep sleep. */
+export type DeepWakeupSources = {
+  /** Wake after this many milliseconds. Fractional values are allowed. */
+  timer?: number
+  /** Wake on a single RTC GPIO. ESP32 / S2 / S3 only — throws on
+   *  C3 / C6 / H2 (use `ext1` instead). */
+  ext0?: {pin: RtcGpio; level: WakeupLevel}
+  /** Wake when any of `pins` matches `mode`. Pins must be RTC-capable. */
+  ext1?: {pins: RtcGpio[]; mode: 'any-low' | 'any-high'}
+}
 
 /**
- * Configure GPIO wakeup for light sleep.
- * @param pin GPIO pin number
- * @param level GPIO interrupt type (e.g. 4 = low, 5 = high)
+ * Enter deep sleep. Pass a `DeepWakeupSources` object, or a number as
+ * shorthand for `{timer: ms}`. The chip resets on wake.
  */
-export declare function enableGpioWakeup(pin: number, level: number): Result<void, SleepError>
+export declare function deepSleep(ms: number): never
+export declare function deepSleep(sources: DeepWakeupSources): never
 
 /**
- * Configure ext0 wakeup for deep sleep (ESP32, ESP32-S2, ESP32-S3 only).
- * @param pin RTC GPIO pin number
- * @param level 0 = low, 1 = high
+ * Enter light sleep. Pass a `LightWakeupSources` object, or a number as
+ * shorthand for `{timer: ms}`. Execution resumes from the call site
+ * after waking.
  */
-export declare function enableExt0Wakeup(pin: number, level: number): Result<void, SleepError>
+export declare function lightSleep(ms: number): void
+export declare function lightSleep(sources: LightWakeupSources): void
 
-/**
- * Configure ext1 wakeup for deep sleep.
- * @param pinMask Bitmask of RTC GPIO pins
- * @param mode 0 = ESP_EXT1_WAKEUP_ALL_LOW, 1 = ESP_EXT1_WAKEUP_ANY_HIGH
- */
-export declare function enableExt1Wakeup(pinMask: number, mode: number): Result<void, SleepError>
+/** Returns `true` if the current chip supports EXT0 wakeup
+ *  (ESP32, ESP32-S2, ESP32-S3). Use to gate `deepSleep({ext0: …})`
+ *  calls when targeting boards across the ESP32 family. */
+export declare function canWakeFromExt0(): boolean
 
-/**
- * Disable a wakeup source. If no source is specified, all sources are disabled.
- * @param source Optional: "timer", "ext0", "ext1", "gpio", "touchpad", "ulp"
- */
-export declare function disableWakeupSource(source?: string): Result<void, SleepError>
+/** Returns `true` if the current chip supports EXT1 wakeup. Every
+ *  chip mikrojs targets except ESP32-C3. Use to gate
+ *  `deepSleep({ext1: …})` calls. */
+export declare function canWakeFromExt1(): boolean
 
 export declare function sleep(ms: number): Promise<void>

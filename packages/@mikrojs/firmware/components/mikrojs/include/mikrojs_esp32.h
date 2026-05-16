@@ -64,6 +64,16 @@ void mik_logfile_resume(void);
 /* Serial binary I/O (mik_serial_io.cpp) */
 void mik__serial_binary_begin_no_echo(void);
 
+/* Detach the USB Serial/JTAG peripheral from the host (uninstalls the
+ * driver and disables the PHY pad) so the CLI sees a clean disconnect
+ * before light sleep. No-op when the active console isn't USJ. */
+void mik__serial_io_detach_usb(void);
+
+/* Re-attach the USB Serial/JTAG peripheral after a prior detach. The
+ * host re-enumerates the device. No-op when the active console isn't
+ * USJ. */
+void mik__serial_io_attach_usb(void);
+
 /* Shared NVS helpers (mik_serial_io.cpp) */
 extern const char* MIK__NVS_NS_ENV;  /* env var values */
 extern const char* MIK__NVS_NS_SEC;  /* secret-flag markers (u8) */

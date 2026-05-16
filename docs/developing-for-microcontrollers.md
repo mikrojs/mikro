@@ -128,7 +128,7 @@ Once you've found the hot spot, the fix is usually one of:
 Deep sleep drops power draw from ~80-160mA to ~10-20µA. The tradeoff: the CPU resets on wake, so your program starts from scratch.
 
 ```ts twoslash
-import {deepSleep, enableTimerWakeup} from 'mikrojs/sleep'
+import {deepSleep} from 'mikrojs/sleep'
 import {rtcStorage} from 'mikrojs/kv/rtc'
 import * as s from 'mikrojs/schema'
 
@@ -140,7 +140,7 @@ readings.update((n) => (n ?? 0) + 1)
 // Do your work (read sensor, send data, etc.)
 
 // Sleep for 5 minutes
-deepSleep(5 * 60 * 1_000_000)
+deepSleep({timer: 5 * 60 * 1000})
 ```
 
 Use [`rtcStorage`](/api/kv) to persist state across sleep cycles. It survives deep sleep but not power loss.

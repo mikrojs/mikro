@@ -6,12 +6,13 @@ import {catchError, from, map, type Observable, of, shareReplay, switchMap} from
 import type {LogLevel} from '../../../_exports/index.js'
 import {BAUD_RATE} from '../deploy.js'
 import {triggerSafeMode} from '../recover.js'
-import {connectRepl, type ReplSession} from '../session.js'
+import type {ReplSession} from '../session.js'
 import {Spinner} from '../Spinner.js'
-import {createSerialTransport, openSerial} from '../transport.js'
+import {openSerial} from '../transport.js'
 import {useObservable} from '../useObservable.js'
 import {InkReplConsole} from './InkReplConsole.js'
 import {createRepl, type ReplHandle} from './replStateMachine.js'
+import {createSupervisedSession} from './supervisedSession.js'
 
 export interface InkReplDriverContext {
   session: ReplSession
@@ -65,7 +66,7 @@ export function InkReplMode(props: InkReplModeProps) {
         // subscription inside connectRepl is listening when the
         // post-reset MSG_READY arrives.
         switchMap((serial) => {
-          const session = connectRepl(createSerialTransport(serial))
+          const session = createSupervisedSession(serial, {devicePath, baudRate: BAUD_RATE})
           return recover ? from(triggerSafeMode(serial)).pipe(map(() => session)) : of(session)
         }),
         map((session) => {

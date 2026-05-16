@@ -17,6 +17,13 @@ const config = {
       ignoreDependencies: ['@mikrojs/native', '@mikrojs/quickjs', 'esbuild'],
       ignore: ['resolve.js'],
     },
+    'examples/sleep': {
+      // Each app/*.ts file is a stand-alone entry — users pick one with
+      // `mikro dev app/<name>.ts`. Without this, only `main` from
+      // package.json counts as an entry and the rest get flagged as
+      // "unused".
+      entry: ['app/*.ts'],
+    },
     'packages/mikrojs': {
       entry: ['src/cli/cliWrapper.ts', 'src/cli/cli.ts', 'src/_exports/*.ts'],
       project: ['src/**/*.{ts,tsx}'],

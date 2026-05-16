@@ -17,4 +17,4 @@ await sleep(5000)
 
 // Sleep for 15 seconds, then wake up again
 console.log('Going to deep sleep for 15s...')
-deepSleep(15000)
+deepSleep({timer: 15_000})
