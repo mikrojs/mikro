@@ -16,6 +16,7 @@ import {type FlasherArgs, getWriteFlashMultiArgs, readFlasherArgs} from '../lib/
 import {type Chip, resolveFrom} from '../lib/firmware.js'
 import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
 import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
+import {port} from '../lib/portValueParser.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
 import {TroubleshootingHint} from '../lib/troubleshooting.js'
@@ -56,7 +57,7 @@ export const args = command(
       }),
     ),
     port: optional(
-      option('-p', '--port', string({metavar: 'PORT'}), {
+      option('-p', '--port', port(), {
         description: message`Serial port of device to flash to. Auto-detected if omitted.`,
       }),
     ),

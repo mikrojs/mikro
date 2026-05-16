@@ -2,9 +2,9 @@ import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import {flag, option} from '@optique/core/primitives'
-import {string} from '@optique/core/valueparser'
 
 import {DevicePicker} from '../components/DevicePicker.js'
+import {port} from '../lib/portValueParser.js'
 import {InkReplMode} from '../lib/serial/InkReplMode.js'
 import {runAgentRepl} from '../lib/serial/runAgentRepl.js'
 
@@ -13,7 +13,7 @@ export const args = command(
   object({
     action: constant('console'),
     port: optional(
-      option('-p', '--port', string({metavar: 'PORT'}), {
+      option('-p', '--port', port(), {
         description: message`Serial port to connect to. Auto-detected if omitted.`,
       }),
     ),

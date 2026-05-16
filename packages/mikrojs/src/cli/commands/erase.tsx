@@ -11,6 +11,7 @@ import type {Observable} from 'rxjs'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
+import {port} from '../lib/portValueParser.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
 import {TroubleshootingHint} from '../lib/troubleshooting.js'
@@ -21,7 +22,7 @@ export const args = command(
   object({
     action: constant('erase'),
     port: optional(
-      option('-p', '--port', string({metavar: 'PORT'}), {
+      option('-p', '--port', port(), {
         description: message`Serial port of device to erase. Auto-detected if omitted.`,
       }),
     ),

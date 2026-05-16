@@ -10,6 +10,7 @@ import {agentEmit, agentResult, isAgentMode} from '../lib/agent.js'
 import {loadEnvFiles, validateNvsKeys} from '../lib/deploy.js'
 import {formatDeployEvent} from '../lib/deployProgress.js'
 import {parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
+import {port} from '../lib/portValueParser.js'
 import {getMikroDir, resolveProjectRoot} from '../lib/projectRoot.js'
 import {openSession} from '../lib/serial/openSession.js'
 import type {TestEvent} from '../lib/session.js'
@@ -30,7 +31,7 @@ export const args = command(
       }),
     ),
     port: optional(
-      option('-p', '--port', string({metavar: 'PORT'}), {
+      option('-p', '--port', port(), {
         description: message`Serial port of device`,
       }),
     ),

@@ -9,6 +9,7 @@ import {filter, firstValueFrom, map, Subject, type Subscription} from 'rxjs'
 import {DevicePicker} from '../components/DevicePicker.js'
 import {agentEmit} from '../lib/agent.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
+import {port} from '../lib/portValueParser.js'
 import {resolveEntry} from '../lib/resolveEntry.js'
 import {createDevSession, type DevSessionHandle} from '../lib/serial/devSession.js'
 import {
@@ -24,7 +25,7 @@ export const args = command(
     action: constant('dev'),
     entry: optional(argument(path({metavar: 'ENTRY', mustExist: true, type: 'file'}))),
     port: optional(
-      option('-p', '--port', string({metavar: 'PORT'}), {
+      option('-p', '--port', port(), {
         description: message`Serial port of device`,
       }),
     ),
