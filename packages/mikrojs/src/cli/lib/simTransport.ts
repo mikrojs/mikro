@@ -22,7 +22,17 @@ export interface SimTransportOptions {
 }
 
 export function createSimTransport(options: SimTransportOptions): Transport {
-  const entryPath = fileURLToPath(new URL('../../simulator/simProcess.js', import.meta.url))
+  // In workspace dev mode the package is loaded from src/ via tsx, so the
+  // sibling simProcess.js doesn't exist (only the .ts source does). The
+  // mikrojs launcher (bin/mikrojs.js) sets NODE_OPTIONS=--import=tsx in that
+  // case, which the spawned subprocess inherits; we just need to flip the
+  // entry path to .ts. Keep the URL literal as `.js` so static tools (knip)
+  // can resolve it back to the .ts source.
+  const isWorkspace = process.env['MIKROJS_WORKSPACE'] === '1'
+  const entryUrl = new URL('../../simulator/simProcess.js', import.meta.url)
+  const entryPath = fileURLToPath(
+    isWorkspace ? new URL(entryUrl.href.replace(/\.js$/, '.ts')) : entryUrl,
+  )
   const args = ['--fs-root', options.fsRoot]
   if (options.memLimit) args.push('--mem-limit', String(options.memLimit))
   if (options.fsLimit) args.push('--fs-limit', String(options.fsLimit))
@@ -51,17 +61,28 @@ export function createSimTransport(options: SimTransportOptions): Transport {
     /* swallowed here; write() below re-reports as a transport error */
   })
 
+  const exitMessage = (info: {code: number | null; signal: NodeJS.Signals | null}) =>
+    `simProcess exited unexpectedly (code=${info.code} signal=${info.signal ?? 'none'})`
+
   const data = new Observable<Uint8Array>((subscriber) => {
+    // Subprocess may have crashed before anyone subscribed (e.g. a fast
+    // "Cannot find module" exit). Replay the captured exit so the consumer
+    // sees the failure instead of hanging until awaitReady$'s 10s timeout.
+    if (exitInfo) {
+      if (exitInfo.code !== 0) {
+        subscriber.error(new Error(exitMessage(exitInfo)))
+      } else {
+        subscriber.complete()
+      }
+      return
+    }
+
     const onData = (chunk: Buffer) => subscriber.next(new Uint8Array(chunk))
     const onEnd = () => subscriber.complete()
     const onError = (err: Error) => subscriber.error(err)
     const onExit = () => {
       if (exitInfo && exitInfo.code !== 0) {
-        subscriber.error(
-          new Error(
-            `simProcess exited unexpectedly (code=${exitInfo.code} signal=${exitInfo.signal ?? 'none'})`,
-          ),
-        )
+        subscriber.error(new Error(exitMessage(exitInfo)))
       } else {
         subscriber.complete()
       }

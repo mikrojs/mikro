@@ -280,7 +280,17 @@ function runProfileSubprocess(
   profilePath: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const entryPath = fileURLToPath(new URL('../../../simulator/simProcess.js', import.meta.url))
+    // Mirror createSimTransport: in workspace dev mode the package is loaded
+    // from src/ via tsx, so we spawn the .ts source rather than a non-existent
+    // .js sibling. The mikrojs launcher (bin/mikrojs.js) sets
+    // NODE_OPTIONS=--import=tsx in that case, which this subprocess inherits.
+    // Keep the URL literal as `.js` so static tools (knip) can resolve it back
+    // to the .ts source.
+    const isWorkspace = process.env['MIKROJS_WORKSPACE'] === '1'
+    const entryUrl = new URL('../../../simulator/simProcess.js', import.meta.url)
+    const entryPath = fileURLToPath(
+      isWorkspace ? new URL(entryUrl.href.replace(/\.js$/, '.ts')) : entryUrl,
+    )
     const childArgs = [
       entryPath,
       '--fs-root',
