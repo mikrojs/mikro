@@ -10,6 +10,7 @@ import {catchError, map, of, shareReplay} from 'rxjs'
 import {DevicePicker} from '../components/DevicePicker.js'
 import {EnvEditor} from '../components/EnvEditor.js'
 import {agentError, agentResult, isAgentMode} from '../lib/agent.js'
+import {port} from '../lib/portValueParser.js'
 import {readSecretValue} from '../lib/secretInput.js'
 import {openSession} from '../lib/serial/openSession.js'
 import {connectRepl, type ReplSession} from '../lib/session.js'
@@ -17,7 +18,7 @@ import {createSerialTransport, openSerial} from '../lib/transport.js'
 import {useObservable} from '../lib/useObservable.js'
 
 const portOption = optional(
-  option('-p', '--port', string({metavar: 'PORT'}), {
+  option('-p', '--port', port(), {
     description: message`Serial port of device`,
   }),
 )

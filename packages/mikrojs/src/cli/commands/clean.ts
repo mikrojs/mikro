@@ -4,12 +4,12 @@ import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import {flag, option} from '@optique/core/primitives'
-import {string} from '@optique/core/valueparser'
 import figures from 'figures'
 import {filter, firstValueFrom} from 'rxjs'
 import {SerialPort} from 'serialport'
 
 import {BAUD_RATE, resolvePort} from '../lib/deploy.js'
+import {port} from '../lib/portValueParser.js'
 import {triggerSafeMode} from '../lib/recover.js'
 import {connectRepl, type ReplSession} from '../lib/session.js'
 import {createSerialTransport} from '../lib/transport.js'
@@ -24,7 +24,7 @@ export const args = command(
   object({
     action: constant('clean'),
     port: optional(
-      option('-p', '--port', string({metavar: 'PORT'}), {
+      option('-p', '--port', port(), {
         description: message`Serial port of device`,
       }),
     ),

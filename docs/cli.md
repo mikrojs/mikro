@@ -464,3 +464,53 @@ Commands that build your code (`dev`, `deploy`, `build`, `test`, and their `sim`
 - `--minify-level LEVEL` sets minification aggressiveness: `default` or `max`. Can also be set via [`build.minifyLevel`](/config#buildminifylevel).
 - `--no-bytecode` skips compiling JavaScript to QuickJS bytecode. The device will parse JavaScript source at runtime, which uses more memory and is slower to start.
 - `--loglevel LEVEL` sets the build-time log level. Console calls below the threshold are eliminated as dead code by the minifier. Levels from most to least verbose: `debug` > `info` > `warn` > `error` > `none`. `deploy` and `build` default to `warn`; `dev` defaults to `debug`. See [`build.logLevel`](/config#buildloglevel) for details.
+
+## Shell completion
+
+`mikro` ships completion scripts for bash, zsh, and fish. Once installed, pressing <kbd>Tab</kbd> completes subcommands, flags, file paths, and, for `-p` / `--port`, the serial devices currently plugged into your machine.
+
+Generate and install the script for your shell:
+
+::: code-group
+
+```sh [bash]
+mkdir -p ~/.bash_completion.d
+mikro completion bash > ~/.bash_completion.d/mikro
+echo 'source ~/.bash_completion.d/mikro' >> ~/.bashrc
+```
+
+```sh [zsh]
+mikro completion zsh > "${fpath[1]}/_mikro"
+# reload completions in the current shell:
+autoload -U compinit && compinit
+```
+
+```sh [fish]
+mikro completion fish > ~/.config/fish/completions/mikro.fish
+```
+
+:::
+
+Then start a fresh shell session and try:
+
+```sh
+mikro <TAB>              # → dev, deploy, env, build, flash, ...
+mikro dev --<TAB>        # → --port, --env, --no-minify, ...
+mikro dev --port <TAB>   # → live serial devices on your machine
+```
+
+Completion is also available as the `--completion <shell>` option, useful for piping into a one-off file without invoking the subcommand form.
+
+### Project-local installs
+
+Shell completion only fires when the shell parses `mikro` as the first token of the command line. So it works for global installs and direnv-style setups that put `node_modules/.bin` on `$PATH`, but not for `pnpm mikro`, `npx mikro`, or `npm run` wrappers.
+
+If you prefer a local install, a small shell function makes completion work by routing the bare `mikro` name through `PATH`, with the project's `node_modules/.bin` prepended:
+
+```sh
+mikro() {
+  PATH="./node_modules/.bin:$PATH" command mikro "$@"
+}
+```
+
+Add it to your `.bashrc` / `.zshrc`. The local binary wins when present; otherwise it falls back to a global install. Note that prepending a relative path has the same trust implication as `direnv`'s `PATH_add`: a malicious project could plant its own `node_modules/.bin/mikro`.

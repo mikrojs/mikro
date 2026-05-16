@@ -12,11 +12,12 @@ import {filter, map, tap} from 'rxjs'
 import type {LogLevel} from '../../_exports/index.js'
 import {loadMikroConfig} from '../lib/loadMikroConfig.js'
 import {logLevelAllows, parseLogLevel} from '../lib/parseMinifier.js'
+import {port} from '../lib/portValueParser.js'
 import {openSession} from '../lib/serial/openSession.js'
 import type {ReplEvent} from '../lib/session.js'
 
 const portOption = optional(
-  option('-p', '--port', string({metavar: 'PORT'}), {
+  option('-p', '--port', port(), {
     description: message`Serial port of device`,
   }),
 )

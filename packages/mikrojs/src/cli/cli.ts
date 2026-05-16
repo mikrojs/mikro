@@ -1,82 +1,30 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
-import {message, or} from '@optique/core'
-import {object} from '@optique/core/constructs'
-import {defineProgram} from '@optique/core/program'
 import {run} from '@optique/run'
 import {render} from 'ink'
 import {type ComponentType, createElement} from 'react'
 import updateNotifier from 'update-notifier'
 
 import pkg from '../../package.json' with {type: 'json'}
-import * as buildCommand from './commands/build.js'
-import * as buildRuntimeCommand from './commands/build-runtime.js'
-import * as cleanCommand from './commands/clean.js'
-import * as consoleCommand from './commands/console.js'
-import * as deployCommand from './commands/deploy.js'
-import * as devCommand from './commands/dev.js'
-import * as docsCommand from './commands/docs.js'
-import * as envCommand from './commands/env.js'
-import * as eraseCommand from './commands/erase.js'
-import * as flashCommand from './commands/flash.js'
-import * as homeCommand from './commands/home.js'
-import * as logsCommand from './commands/logs.js'
-import * as listCommand from './commands/ls.js'
-import * as simCommand from './commands/sim.js'
-import * as testCommand from './commands/test.js'
 import {isAgentMode} from './lib/agent.js'
 import {dispatchReplCommand} from './lib/serial/dispatchReplCommand.js'
-
-const commands = {
-  flash: flashCommand,
-  build: buildCommand,
-  'build-runtime': buildRuntimeCommand,
-  clean: cleanCommand,
-  docs: docsCommand,
-  erase: eraseCommand,
-  env: envCommand,
-  dev: devCommand,
-  deploy: deployCommand,
-  list: listCommand,
-  console: consoleCommand,
-  home: homeCommand,
-  logs: logsCommand,
-  test: testCommand,
-  sim: simCommand,
-}
-
-const argsParser = or(
-  or(
-    object({command: commands.dev.args}),
-    object({command: commands.deploy.args}),
-    object({command: commands.env.args}),
-    object({command: commands.build.args}),
-    object({command: commands.flash.args}),
-    object({command: commands.console.args}),
-  ),
-  or(
-    object({command: commands.list.args}),
-    object({command: commands.erase.args}),
-    object({command: commands.clean.args}),
-    object({command: commands['build-runtime'].args}),
-    object({command: commands.test.args}),
-    object({command: commands.sim.args}),
-    object({command: commands.docs.args}),
-    object({command: commands.home.args}),
-    object({command: commands.logs.args}),
-  ),
-)
-
-const name: keyof typeof pkg.bin = 'mikro'
-const prog = defineProgram({
-  parser: argsParser,
-  metadata: {
-    name,
-    version: pkg.version,
-    author: message`Bjørge Næss <bjoerge@gmail.com>`,
-    bugs: message`https://github.com/mikrojs/mikrojs/issues`,
-  },
-})
+import {
+  buildCommand,
+  buildRuntimeCommand,
+  cleanCommand,
+  commands,
+  consoleCommand,
+  deployCommand,
+  devCommand,
+  docsCommand,
+  envCommand,
+  homeCommand,
+  listCommand,
+  logsCommand,
+  prog,
+  simCommand,
+  testCommand,
+} from './program.js'
 
 /* Global flag: --native-loglevel=<error|warn|info|debug|verbose>
  *
@@ -106,9 +54,10 @@ for (let i = 0; i < rawArgs.length; i++) {
   filteredArgs.push(arg)
 }
 
-const config = run(prog, {
+const config = await run(prog, {
   help: 'both',
   version: {value: pkg.version, command: true, option: true},
+  completion: 'both',
   args: filteredArgs,
 })
 

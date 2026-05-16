@@ -17,6 +17,7 @@ import {build} from '../lib/build.js'
 import {collectFiles, loadEnvFiles, validateNvsKeys} from '../lib/deploy.js'
 import {formatDeployEvent} from '../lib/deployProgress.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
+import {port} from '../lib/portValueParser.js'
 import {getMikroDir, resolveProjectRoot} from '../lib/projectRoot.js'
 import {resolveEntry} from '../lib/resolveEntry.js'
 import {getPredeployCommands, runHooks} from '../lib/runHooks.js'
@@ -30,7 +31,7 @@ export const args = command(
     action: constant('deploy'),
     entry: optional(argument(path({metavar: 'ENTRY', mustExist: true, type: 'file'}))),
     port: optional(
-      option('-p', '--port', string({metavar: 'PORT'}), {
+      option('-p', '--port', port(), {
         description: message`Serial port of device to deploy to`,
       }),
     ),
