@@ -106,8 +106,10 @@ CONFIG_HAL_DEFAULT_ASSERTION_LEVEL=0
 # native module won't even compile. Cost is roughly 5–10 KB flash.
 CONFIG_LWIP_IPV6=y
 
-# --- MbedTLS: TLS 1.2 + 1.3, AES-GCM/CCM, ECDHE ---
-CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y
+# --- MbedTLS: TLS 1.2 only, AES-GCM/CCM, ECDHE ---
+# 1.3's handshake working state plus its Kconfig-forced
+# KEEP_PEER_CERTIFICATE add several KB of peak heap per connection, so disable for now
+CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=n
 # Disable unused features
 CONFIG_MBEDTLS_SSL_RENEGOTIATION=n
 CONFIG_MBEDTLS_SSL_ALPN=y
@@ -119,6 +121,14 @@ CONFIG_MBEDTLS_X509_CSR_PARSE_C=n
 
 CONFIG_MBEDTLS_ERROR_STRINGS=n
 CONFIG_MBEDTLS_FS_IO=n
+
+# Allocate TLS record buffers on demand (vs. a fixed 16 KB IN +
+# 4 KB OUT block alive per connection). Incompatible with DTLS.
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+
+# Drop the peer cert chain after handshake validates it (~4 KB per
+# connection). Note: TLS 1.3 force-selects this back on via Kconfig.
+CONFIG_MBEDTLS_SSL_KEEP_PEER_CERTIFICATE=n
 
 # Disable rarely used ECC curves (keep P-256, P-384, Curve25519)
 # Note: secp192r1, secp224r1, secp192k1, secp224k1 removed in MbedTLS 4.x
