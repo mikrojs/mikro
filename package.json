@@ -72,7 +72,7 @@
     "lefthook": "^2.1.6",
     "mikrojs": "workspace:*",
     "npm-run-all2": "^8.0.4",
-    "oxfmt": "^0.49.0",
+    "oxfmt": "^0.50.0",
     "publint": "^0.3.18",
     "taze": "^19.11.0",
     "tsx": "catalog:",
