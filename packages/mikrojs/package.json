@@ -244,7 +244,8 @@
     "@types/update-notifier": "^6.0.8",
     "esbuild": "^0.28.0",
     "ink-testing-library": "^4.0.0",
-    "terser": "^5.46.2"
+    "terser": "^5.46.2",
+    "tsx": "catalog:"
   },
   "peerDependencies": {
     "@swc/core": "^1.0.0",

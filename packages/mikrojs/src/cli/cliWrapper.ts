@@ -2,7 +2,8 @@
 import {fork} from 'node:child_process'
 import * as path from 'node:path'
 
-const cliPath = path.join(import.meta.dirname, '/cli.js')
+const cliExt = import.meta.url.endsWith('.ts') ? '.ts' : '.js'
+const cliPath = path.join(import.meta.dirname, `cli${cliExt}`)
 
 function run() {
   const child = fork(cliPath, process.argv.slice(2))

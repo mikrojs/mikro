@@ -22,7 +22,7 @@ const config = {
       project: ['src/**/*.{ts,tsx}'],
       // @mikrojs/quickjs: native addon resolved at runtime
       // terser, @swc/core: optional minifiers loaded dynamically via importOptional()
-      ignoreDependencies: ['@mikrojs/quickjs', 'terser', '@swc/core'],
+      ignoreDependencies: ['@mikrojs/quickjs', 'terser', '@swc/core', 'tsx'],
     },
     'packages/@mikrojs/analyze-imports': {
       ignore: ['test/unit/**', 'test/symlink/**', 'dist/**'],
