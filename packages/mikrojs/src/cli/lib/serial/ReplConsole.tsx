@@ -249,6 +249,7 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
   }
 
   const isConnecting = conn.type === 'connecting' || conn.type === 'negotiating'
+  const isReconnecting = conn.type === 'reconnecting'
   const isError = conn.type === 'error'
 
   // One footer line drives both progress and watch-mode messaging so the
@@ -261,26 +262,33 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
           message: conn.message ?? (state.port ? `Connecting to ${state.port}…` : 'Connecting…'),
           tone: 'busy',
         }
-      : isError
+      : isReconnecting
         ? {
-            // Multi-line error messages (e.g. resolvePort listing several
-            // matches) get clipped to the first line so the footer stays a
-            // single row; the full text is in the scrollback. Single-line
-            // failures (DeviceTimeoutError) pass through unchanged.
-            // Watch-mode messaging is suppressed so we don't claim to be
-            // "watching" when we can't actually reach the device.
-            message: conn.message.split('\n')[0] || 'Disconnected from device',
-            tone: 'error',
+            // Subtle dim line — the disconnect was transient (light sleep,
+            // brief replug); we're already polling for the port to come back.
+            message: conn.message ?? 'Reconnecting…',
+            tone: 'idle',
           }
-        : state.disabled
-          ? {message: state.deployStatus ?? 'Deploying…', tone: 'busy'}
-          : state.footerError
-            ? {message: state.footerError, tone: 'error'}
-            : watch === true
-              ? {message: 'Watching for file changes…', tone: 'watching'}
-              : watch === false
-                ? {message: 'File watching off. Press Ctrl+S to redeploy', tone: 'idle'}
-                : null
+        : isError
+          ? {
+              // Multi-line error messages (e.g. resolvePort listing several
+              // matches) get clipped to the first line so the footer stays a
+              // single row; the full text is in the scrollback. Single-line
+              // failures (DeviceTimeoutError) pass through unchanged.
+              // Watch-mode messaging is suppressed so we don't claim to be
+              // "watching" when we can't actually reach the device.
+              message: conn.message.split('\n')[0] || 'Disconnected from device',
+              tone: 'error',
+            }
+          : state.disabled
+            ? {message: state.deployStatus ?? 'Deploying…', tone: 'busy'}
+            : state.footerError
+              ? {message: state.footerError, tone: 'error'}
+              : watch === true
+                ? {message: 'Watching for file changes…', tone: 'watching'}
+                : watch === false
+                  ? {message: 'File watching off. Press Ctrl+S to redeploy', tone: 'idle'}
+                  : null
 
   const renderableEvents = state.events.filter((event) => shouldRender(event, logLevel))
 

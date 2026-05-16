@@ -31,26 +31,17 @@ TEST_CASE("native:sleep exports expected functions", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {
-            deepSleep, lightSleep, getWakeupCause,
-            enableTimerWakeup, enableGpioWakeup,
-            disableWakeupSource
-        } from "native:sleep";
+        import { deepSleep, lightSleep, getWakeupCause } from "native:sleep";
         globalThis.__deepSleep = typeof deepSleep === "function";
         globalThis.__lightSleep = typeof lightSleep === "function";
         globalThis.__getWakeupCause = typeof getWakeupCause === "function";
-        globalThis.__enableTimerWakeup = typeof enableTimerWakeup === "function";
-        globalThis.__enableGpioWakeup = typeof enableGpioWakeup === "function";
-        globalThis.__disableWakeupSource = typeof disableWakeupSource === "function";
     )");
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
 
     JSValue global = JS_GetGlobalObject(ctx);
 
-    const char* names[] = {"__deepSleep",          "__lightSleep",    "__getWakeupCause",
-                           "__enableTimerWakeup",   "__enableGpioWakeup",
-                           "__disableWakeupSource"};
-    for (int i = 0; i < 6; i++) {
+    const char* names[] = {"__deepSleep", "__lightSleep", "__getWakeupCause"};
+    for (int i = 0; i < 3; i++) {
         JSValue v = JS_GetPropertyStr(ctx, global, names[i]);
         TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, v), names[i]);
         JS_FreeValue(ctx, v);
@@ -92,77 +83,15 @@ TEST_CASE("native:sleep getWakeupCause returns a string", "[modules]") {
     teardown();
 }
 
-/* ── enableTimerWakeup accepts microseconds ──────────────────────── */
+/* ── invalid gpio.level throws RangeError ────────────────────────── */
 
-TEST_CASE("native:sleep enableTimerWakeup does not throw", "[modules]") {
+TEST_CASE("native:sleep lightSleep throws RangeError on invalid level", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { enableTimerWakeup } from "native:sleep";
-        enableTimerWakeup(5000000);
-        globalThis.__ok = true;
-    )");
-    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
-
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue ok = JS_GetPropertyStr(ctx, global, "__ok");
-    TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, ok), "enableTimerWakeup should succeed");
-    JS_FreeValue(ctx, ok);
-    JS_FreeValue(ctx, global);
-    teardown();
-}
-
-/* ── disableWakeupSource works ───────────────────────────────────── */
-
-TEST_CASE("native:sleep disableWakeupSource clears all sources", "[modules]") {
-    setup();
-
-    JSValue ret = eval_module(R"(
-        import { enableTimerWakeup, disableWakeupSource } from "native:sleep";
-        enableTimerWakeup(1000000);
-        disableWakeupSource();
-        globalThis.__ok = true;
-    )");
-    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
-
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue ok = JS_GetPropertyStr(ctx, global, "__ok");
-    TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, ok), "disableWakeupSource should succeed");
-    JS_FreeValue(ctx, ok);
-    JS_FreeValue(ctx, global);
-    teardown();
-}
-
-/* ── disableWakeupSource with specific source ────────────────────── */
-
-TEST_CASE("native:sleep disableWakeupSource with 'timer'", "[modules]") {
-    setup();
-
-    JSValue ret = eval_module(R"(
-        import { enableTimerWakeup, disableWakeupSource } from "native:sleep";
-        enableTimerWakeup(1000000);
-        disableWakeupSource("timer");
-        globalThis.__ok = true;
-    )");
-    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
-
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue ok = JS_GetPropertyStr(ctx, global, "__ok");
-    TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, ok), "disableWakeupSource('timer') should succeed");
-    JS_FreeValue(ctx, ok);
-    JS_FreeValue(ctx, global);
-    teardown();
-}
-
-/* ── disableWakeupSource throws on invalid source ────────────────── */
-
-TEST_CASE("native:sleep disableWakeupSource throws on invalid source", "[modules]") {
-    setup();
-
-    JSValue ret = eval_module(R"(
-        import { disableWakeupSource } from "native:sleep";
+        import { lightSleep } from "native:sleep";
         try {
-            disableWakeupSource("invalid");
+            lightSleep({gpio: {pin: 0, level: "bogus"}});
             globalThis.__threw = false;
         } catch (e) {
             globalThis.__threw = true;
@@ -174,8 +103,7 @@ TEST_CASE("native:sleep disableWakeupSource throws on invalid source", "[modules
     JSValue global = JS_GetGlobalObject(ctx);
 
     JSValue threw = JS_GetPropertyStr(ctx, global, "__threw");
-    TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, threw),
-                             "disableWakeupSource should throw on invalid source");
+    TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, threw), "lightSleep should throw on invalid level");
     JS_FreeValue(ctx, threw);
 
     JSValue isRange = JS_GetPropertyStr(ctx, global, "__isRangeError");
@@ -190,19 +118,19 @@ TEST_CASE("native:sleep disableWakeupSource throws on invalid source", "[modules
 /* Light sleep disconnects UART console on targets without USB Serial/JTAG,
    causing the test monitor to stall. Only run on chips that have USB
    Serial/JTAG which keeps the connection alive through light sleep. */
-TEST_CASE("native:sleep lightSleep with 1ms returns or rejects gracefully", "[modules]") {
+TEST_CASE("native:sleep lightSleep with 1us timer returns or rejects gracefully", "[modules]") {
 #if !SOC_USB_SERIAL_JTAG_SUPPORTED
-    TEST_IGNORE_MESSAGE("light sleep disconnects UART console — skipped on non-USB targets");
+    TEST_IGNORE_MESSAGE("light sleep disconnects UART console, skipped on non-USB targets");
 #endif
     setup();
 
     JSValue ret = eval_module(R"(
         import { lightSleep } from "native:sleep";
         try {
-            lightSleep(1);
+            lightSleep({timer: 1});
             globalThis.__result = "ok";
         } catch (e) {
-            // Light sleep may fail on boards with USB JTAG or other constraints
+            /* Light sleep may throw on boards with USB JTAG or other constraints */
             globalThis.__result = "caught:" + e.message;
         }
     )");
@@ -212,7 +140,7 @@ TEST_CASE("native:sleep lightSleep with 1ms returns or rejects gracefully", "[mo
     JSValue result = JS_GetPropertyStr(ctx, global, "__result");
     const char* str = JS_ToCString(ctx, result);
     TEST_ASSERT_NOT_NULL_MESSAGE(str, "result should be set");
-    /* Either "ok" (sleep succeeded) or "caught:..." (threw a catchable error) — both are fine */
+    /* Either "ok" (sleep succeeded) or "caught:..." (threw a catchable error) */
     TEST_ASSERT_TRUE_MESSAGE(strncmp(str, "ok", 2) == 0 || strncmp(str, "caught:", 7) == 0,
                              "lightSleep should either succeed or throw a catchable error");
     JS_FreeCString(ctx, str);

@@ -77,6 +77,23 @@ function restart(): never
 
 Restarts the device immediately.
 
+### getWakeupCause()
+
+```ts
+function getWakeupCause(): string
+```
+
+Returns why the device booted. Useful for branching logic right after a deep sleep cycle.
+
+```ts twoslash
+import {getWakeupCause} from 'mikrojs/sys'
+// ---cut---
+const cause = getWakeupCause()
+console.log('Woke up because: %s', cause)
+```
+
+Possible values: `'timer'`, `'ext0'`, `'ext1'`, `'gpio'`, or `'undefined'` (cold boot or unknown).
+
 ### exit(exitCode?)
 
 ```ts

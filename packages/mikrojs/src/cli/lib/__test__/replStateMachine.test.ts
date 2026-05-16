@@ -923,11 +923,12 @@ describe('replStateMachine', () => {
       })
     })
 
-    test('disconnect with error sets error state', () => {
+    test('disconnect with error sets error state without duplicating in events', () => {
       const state = createInitialState()
       const [next] = reduce(state, deviceEvent({type: 'disconnect', error: 'device lost'}))
       expect(next.connection).toEqual({type: 'error', message: 'device lost'})
-      expect(next.events.at(-1)).toEqual({type: 'disconnect', error: 'device lost'})
+      // Footer renders the error; appending to events would duplicate it.
+      expect(next.events).toEqual(state.events)
     })
 
     test('disconnect without error emits end', () => {

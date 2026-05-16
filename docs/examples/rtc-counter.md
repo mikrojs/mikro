@@ -34,7 +34,7 @@ await sleep(5000)
 
 // Sleep for 15 seconds, then wake up again
 console.log('Going to deep sleep for 15s...')
-deepSleep(15000)
+deepSleep({timer: 15_000})
 ```
 
 ## Walkthrough
@@ -45,7 +45,7 @@ deepSleep(15000)
 
 3. **Update.** `count.update(fn)` reads, transforms, and writes atomically. Returns a [`Result`](/api/result), so `.orPanic()` halts with a clear message if the write fails.
 
-4. **Deep sleep.** `deepSleep(15000)` powers down the CPU for 15 seconds. RTC memory is preserved; everything else is lost. On wake, the script runs from the top.
+4. **Deep sleep.** `deepSleep({timer: 15_000})` powers down the CPU for 15 seconds (the value is in milliseconds). RTC memory is preserved; everything else is lost. On wake, the script runs from the top.
 
 ## Create project
 

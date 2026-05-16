@@ -25,6 +25,7 @@ import type {ReplEvent, ReplSession} from '../session.js'
 export type ConnectionState =
   | {type: 'connecting'; message?: string}
   | {type: 'negotiating'; message?: string}
+  | {type: 'reconnecting'; message?: string}
   | {type: 'ready'; chip: string | null; deviceId: string | null; firmwareVersion: string | null}
   | {type: 'error'; message: string}
   | {type: 'fallback'}
@@ -328,10 +329,26 @@ function reduceSessionEvent(
     case 'raw':
     case 'test':
       return [{...state, events: [...state.events, event]}, []]
+    case 'reconnecting': {
+      // Already showing reconnecting state — drop the duplicate without
+      // re-appending. The supervised session can emit this more than once
+      // (each new poll cycle), and we only want one line in the footer.
+      if (state.connection.type === 'reconnecting') return [state, []]
+      const connection: ConnectionState = {
+        type: 'reconnecting',
+        message: state.port ? `Reconnecting to ${state.port}…` : 'Reconnecting…',
+      }
+      return [{...state, connection}, []]
+    }
+    case 'reconnected':
+      // Informational only — the follow-up `ready` event transitions back.
+      return [state, []]
     case 'disconnect': {
       if (event.error) {
+        // The footer already shows the error message; appending to events
+        // would duplicate it as a red scrollback line.
         const connection: ConnectionState = {type: 'error', message: event.error}
-        return [{...state, connection, events: [...state.events, event]}, []]
+        return [{...state, connection}, []]
       }
       return [state, [{type: 'end'}]]
     }

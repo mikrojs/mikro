@@ -1,13 +1,17 @@
-export {
-  deepSleep,
-  disableWakeupSource,
-  enableExt0Wakeup,
-  enableExt1Wakeup,
-  enableGpioWakeup,
-  enableTimerWakeup,
-  getWakeupCause,
-  lightSleep,
-} from 'native:sleep'
+import {deepSleep as nativeDeepSleep, lightSleep as nativeLightSleep} from 'native:sleep'
+
+import type {DeepWakeupSources, LightWakeupSources} from './types.js'
+
+export type {DeepWakeupSources, LightWakeupSources, RtcGpio, WakeupLevel} from './types.js'
+export {canWakeFromExt0, canWakeFromExt1} from 'native:sleep'
+
+export function deepSleep(sources: DeepWakeupSources | number): never {
+  return nativeDeepSleep(typeof sources === 'number' ? {timer: sources} : sources)
+}
+
+export function lightSleep(sources: LightWakeupSources | number): void {
+  nativeLightSleep(typeof sources === 'number' ? {timer: sources} : sources)
+}
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))

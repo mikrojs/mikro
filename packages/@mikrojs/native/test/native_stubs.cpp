@@ -64,8 +64,8 @@ JSValue stub_ctor(JSContext* ctx, JSValueConst, int, JSValueConst*) {
 STUB_FUNCS(pin, "native:pin", "pinMode", "digitalWrite", "digitalRead", "analogRead",
            "analogReadMillivolts")
 STUB_FUNCS(sntp, "native:sntp", "sync", "stop", "setTimezone")
-STUB_FUNCS(sleep, "native:sleep", "deepSleep", "lightSleep", "getWakeupCause", "enableTimerWakeup",
-           "enableGpioWakeup", "enableExt0Wakeup", "enableExt1Wakeup", "disableWakeupSource")
+STUB_FUNCS(sleep, "native:sleep", "deepSleep", "lightSleep", "getWakeupCause",
+           "canWakeFromExt0", "canWakeFromExt1")
 STUB_FUNCS(http, "native:http", "request", "nextMessage", "cancel", "pendingCount")
 STUB_FUNCS(nvs_kv, "native:nvs_kv", "set", "get", "remove", "clear", "info")
 STUB_FUNCS(rtc, "native:rtc", "set", "get", "remove", "clear", "info")

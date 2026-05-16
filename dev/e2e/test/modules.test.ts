@@ -53,13 +53,14 @@ describe('module: sleep', () => {
   test('exports exist', async () => {
     const mod = await import('mikrojs/sleep')
     assert.type(mod.sleep, 'function')
-    assert.type(mod.getWakeupCause, 'function')
     assert.type(mod.deepSleep, 'function')
     assert.type(mod.lightSleep, 'function')
+    assert.type(mod.canWakeFromExt0, 'function')
+    assert.type(mod.canWakeFromExt1, 'function')
   })
 
   test('getWakeupCause returns a string', async () => {
-    const {getWakeupCause} = await import('mikrojs/sleep')
+    const {getWakeupCause} = await import('mikrojs/sys')
     const cause = getWakeupCause()
     assert.type(cause, 'string')
   })

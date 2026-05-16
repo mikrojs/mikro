@@ -17,6 +17,8 @@
 
 #if SOC_USB_SERIAL_JTAG_SUPPORTED
 #include "driver/usb_serial_jtag.h"
+#include "esp_rom_sys.h"
+#include "hal/usb_serial_jtag_ll.h"
 /* mikrojs owns the USB-Serial/JTAG peripheral directly. Leaving
  * CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y would have ESP-IDF register a
  * VFS and write to the TX FIFO from stdio, racing our driver ISR. */
@@ -74,35 +76,41 @@ static enum { CONSOLE_UART, CONSOLE_USB_SERIAL_JTAG } s_console =
 static bool s_usj_installed = false;
 #endif
 
-void mik__console_init(void) {
 #if SOC_USB_SERIAL_JTAG_SUPPORTED
-    /* Install USB-Serial/JTAG via the public driver API only. No VFS
-     * registration, no `fileno(stdin)`, no newlib integration — that's
-     * the whole point of this path.
-     *
-     * Both rings are sized to fit the largest single TLV frame plus a
-     * little headroom for the next frame's header to land alongside it.
-     *
-     * RX (host → device): the largest single command frame is a
-     * CMD_DEPLOY_PUT_CHUNK (≤ 2 KB body + 5 B header). Deploy PUTs no
-     * longer carry the file body in one frame — they're streamed as
-     * begin + N chunks with per-chunk MSG_OK pacing — so this size is
-     * a function of the chunk size, not of the largest deployable file.
-     * 4 KB gives ~2× headroom over a single chunk so the next command
-     * can be queued behind it.
-     *
-     * TX (device → host): bumped from the IDF default (256 B) to 2 KB
-     * so MSG_READY resends during the boot-handshake window don't fill
-     * the ring before the CLI's TTY starts draining. At 256 B the ring
-     * fills after ~3 MSG_READY sends, then subsequent writes (including
-     * the MSG_OK response to the first CMD_RUNTIME_PAUSE) stall long
-     * enough to blow past the CLI's 10 s pause timeout and force a
-     * restart-and-retry on every `mikro dev`. 2 KB is still small
-     * enough not to meaningfully dent RAM for display-heavy apps. */
+/* Install USB-Serial/JTAG via the public driver API only. No VFS
+ * registration, no `fileno(stdin)`, no newlib integration — that's
+ * the whole point of this path.
+ *
+ * Both rings are sized to fit the largest single TLV frame plus a
+ * little headroom for the next frame's header to land alongside it.
+ *
+ * RX (host → device): the largest single command frame is a
+ * CMD_DEPLOY_PUT_CHUNK (≤ 2 KB body + 5 B header). Deploy PUTs no
+ * longer carry the file body in one frame — they're streamed as
+ * begin + N chunks with per-chunk MSG_OK pacing — so this size is
+ * a function of the chunk size, not of the largest deployable file.
+ * 4 KB gives ~2× headroom over a single chunk so the next command
+ * can be queued behind it.
+ *
+ * TX (device → host): bumped from the IDF default (256 B) to 2 KB
+ * so MSG_READY resends during the boot-handshake window don't fill
+ * the ring before the CLI's TTY starts draining. At 256 B the ring
+ * fills after ~3 MSG_READY sends, then subsequent writes (including
+ * the MSG_OK response to the first CMD_RUNTIME_PAUSE) stall long
+ * enough to blow past the CLI's 10 s pause timeout and force a
+ * restart-and-retry on every `mikro dev`. 2 KB is still small
+ * enough not to meaningfully dent RAM for display-heavy apps. */
+static bool mik__usj_install_with_default_config(void) {
     usb_serial_jtag_driver_config_t usj_cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     usj_cfg.rx_buffer_size = 4096;
     usj_cfg.tx_buffer_size = 2048;
-    s_usj_installed = (usb_serial_jtag_driver_install(&usj_cfg) == ESP_OK);
+    return usb_serial_jtag_driver_install(&usj_cfg) == ESP_OK;
+}
+#endif
+
+void mik__console_init(void) {
+#if SOC_USB_SERIAL_JTAG_SUPPORTED
+    s_usj_installed = mik__usj_install_with_default_config();
 #endif
 
 #if MIK_CONSOLE_HAS_UART
@@ -226,6 +234,84 @@ void mik__serial_binary_begin_no_echo(void) {
     esp_log_level_set("*", ESP_LOG_NONE);
     /* No line-ending translation to disable: we bypass VFS entirely,
      * so `\n` passes through unchanged on both USJ and UART paths. */
+}
+
+/* ── USB detach/attach for light sleep ─────────────────────────────
+ *
+ * Light sleep on USJ-console chips (C3, C6, S3, …) powers down the
+ * digital peripheral domain but leaves the USB device enumerated on
+ * the host. node-serialport doesn't see a close, so the CLI can't
+ * tell the difference between "device is busy" and "device is asleep".
+ *
+ * To make the disconnect visible we uninstall the driver and pull
+ * down the D+ pad before sleeping. On wake we restore the pad and
+ * re-install the driver. The host re-enumerates, the CLI's existing
+ * disconnect → reconnect path handles the rest. */
+
+void mik__serial_io_detach_usb(void) {
+#if SOC_USB_SERIAL_JTAG_SUPPORTED
+    if (s_console != CONSOLE_USB_SERIAL_JTAG) return;
+    if (!s_usj_installed) return;
+
+    /* USJ has no public flush API. A short delay covers TX-ring drain
+     * for the typical log-line-sized writes we send before sleeping. */
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    usb_serial_jtag_driver_uninstall();
+    s_usj_installed = false;
+
+    /* Force a host-visible disconnect by overriding D+/D- pulls to
+     * present SE0 on the bus. `usb_serial_jtag_ll_phy_enable_pad(false)`
+     * (which ESP-IDF's own sleep prep uses) only gates the internal pad
+     * routing for leakage — it does NOT release the host-visible 1.5 k
+     * D+ pullup, so the host still sees the device enumerated. The
+     * pull-override is the only mechanism in ESP-IDF v6.0.1 that
+     * actually triggers a re-enumerate. C6 has no `_SUPPORT_LIGHT_SLEEP`
+     * cap for USJ (IDF-6395 in soc_caps.h), so this is the supported
+     * path.
+     * Refs:
+     *   components/hal/include/hal/usb_serial_jtag_ll.h
+     *   docs.espressif.com/projects/esp-iot-solution/.../usb_serial_jtag.html
+     */
+    usb_serial_jtag_pull_override_vals_t off = {
+        .dp_pu = 0,
+        .dm_pu = 0,
+        .dp_pd = 1,
+        .dm_pd = 1,
+    };
+    usb_serial_jtag_ll_phy_enable_pull_override(&off);
+    /* >2.5 ms of SE0 so the host registers a disconnect rather than a
+     * USB suspend. 5 ms gives plenty of margin without meaningfully
+     * delaying sleep entry. */
+    esp_rom_delay_us(5000);
+#endif
+}
+
+void mik__serial_io_attach_usb(void) {
+#if SOC_USB_SERIAL_JTAG_SUPPORTED
+    if (s_console != CONSOLE_USB_SERIAL_JTAG) return;
+    if (s_usj_installed) return;
+
+    /* `disable_pull_override` only flips `pad_pull_override` back to 0;
+     * the `dp_pullup`/`dp_pulldown` register fields still hold the
+     * disconnect values from detach (D+ pullup off, D+ pulldown on),
+     * so the host sees no connect signal until the peripheral autopilots
+     * — which only happens reliably once the driver is active. Drive
+     * the override to an explicit "connect" state (D+ pullup on,
+     * everything else off) first so the host sees J-state immediately,
+     * install the driver while the override holds it, then release. */
+    usb_serial_jtag_pull_override_vals_t connect = {
+        .dp_pu = 1,
+        .dm_pu = 0,
+        .dp_pd = 0,
+        .dm_pd = 0,
+    };
+    usb_serial_jtag_ll_phy_enable_pull_override(&connect);
+
+    s_usj_installed = mik__usj_install_with_default_config();
+
+    usb_serial_jtag_ll_phy_disable_pull_override();
+#endif
 }
 
 /* ── NVS helpers ─────────────────────────────────────────────────── */

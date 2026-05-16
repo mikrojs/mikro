@@ -149,6 +149,21 @@ export interface DisconnectEvent {
   error?: string
 }
 
+/** Emitted by `createSupervisedSession` when the underlying serial transport
+ *  drops but a reconnect attempt is in progress. The state machine renders
+ *  a subtle "reconnecting…" line. */
+export interface ReconnectingEvent {
+  type: 'reconnecting'
+}
+
+/** Emitted by `createSupervisedSession` after the reconnect handshake
+ *  succeeds (a fresh MSG_READY arrives via the new transport). The state
+ *  machine's `ready` reducer already handles the transition back to
+ *  `ready`; this event is informational. */
+export interface ReconnectedEvent {
+  type: 'reconnected'
+}
+
 export type ReplEvent =
   | ReadyEvent
   | TextEvent
@@ -163,6 +178,8 @@ export type ReplEvent =
   | TestEvent
   | ManifestDoneEvent
   | DisconnectEvent
+  | ReconnectingEvent
+  | ReconnectedEvent
 
 /** Response events that deploy/config commands wait for */
 type ResponseEvent = OkEvent | ErrEvent | ChecksumResultEvent | ConfigEntriesEvent

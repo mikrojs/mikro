@@ -124,6 +124,11 @@ export declare const firmware: {
 
 export declare function restart(): never
 
+/** Reason the device woke up this boot. Set after deep sleep (or first
+ *  boot). One of: `'timer'`, `'ext0'`, `'ext1'`, `'gpio'`, or `'undefined'`
+ *  (cold boot or unknown). */
+export declare function getWakeupCause(): string
+
 export declare function exit(exitCode?: number): never
 
 /** Immediately crash with an error message. Use for unrecoverable situations. */

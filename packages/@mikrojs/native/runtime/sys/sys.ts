@@ -1,4 +1,5 @@
 import {err, ok, PanicError, type Result} from 'mikrojs/result'
+import {getWakeupCause as nativeGetWakeupCause} from 'native:sleep'
 import * as native from 'native:sys'
 
 export function uptime(): {boot: number; rtc: number} {
@@ -38,6 +39,10 @@ export const deviceId: string = native.deviceId
 
 export function restart(): never {
   return native.restart() as never
+}
+
+export function getWakeupCause(): string {
+  return nativeGetWakeupCause()
 }
 
 export function exit(_exitCode?: number): never {

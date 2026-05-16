@@ -5,6 +5,8 @@
  * which erases at compile time, preventing accidental runtime import in app code.
  */
 
+import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'
+
 type NR<T> = {ok: true; value: T} | {ok: false; error: {name: string; message: string}}
 type NRV = {ok: true} | {ok: false; error: {name: string; message: string}}
 
@@ -97,14 +99,11 @@ export interface SimStubMethods {
     write(data: Uint8Array): NRV
   }
   sleep: {
-    deepSleep(ms: number): void
-    lightSleep(ms: number): NRV
+    deepSleep(sources: DeepWakeupSources): void
+    lightSleep(sources: LightWakeupSources): void
     getWakeupCause(): string
-    enableTimerWakeup(us: number): NRV
-    enableGpioWakeup(pin: number, level: number): NRV
-    enableExt0Wakeup(pin: number, level: number): NRV
-    enableExt1Wakeup(pinMask: number, mode: number): NRV
-    disableWakeupSource(source?: string): NRV
+    canWakeFromExt0(): boolean
+    canWakeFromExt1(): boolean
   }
   kv: {
     set(key: string, value: unknown): void
