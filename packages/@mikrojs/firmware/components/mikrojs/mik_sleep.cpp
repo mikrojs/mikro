@@ -231,6 +231,10 @@ static bool mik__configure_wakeup_sources(JSContext* ctx, JSValue sources) {
 static JSValue mik__sleep_deep(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     if (!mik__configure_wakeup_sources(ctx, argv[0])) return JS_EXCEPTION;
 
+    /* Flush + close the file log so the buffered line buffer and stdio
+     * buffer make it to flash; deep sleep reboots the chip otherwise. */
+    mik_logfile_close();
+
     /* Note: we intentionally do NOT call MIK_FreeRuntime() here.  We are inside
      * a JS function call, so the runtime still has live GC objects on the call
      * stack — freeing it would trigger a QuickJS assert.  Since deep sleep
