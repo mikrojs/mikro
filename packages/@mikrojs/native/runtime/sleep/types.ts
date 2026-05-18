@@ -28,7 +28,14 @@ export type DeepWakeupSources = {
   /** Wake on a single RTC GPIO. ESP32 / S2 / S3 only — throws on
    *  C3 / C6 / H2 (use `ext1` instead). */
   ext0?: {pin: RtcGpio; level: WakeupLevel}
-  /** Wake when any of `pins` matches `mode`. Pins must be RTC-capable. */
+  /** Wake when any of `pins` matches `mode`. Pins must be RTC-capable.
+   *
+   *  Caveat — original ESP32 chip only: the EXT1 hardware on the
+   *  original ESP32 cannot honor "any-low" with more than one pin (the
+   *  silicon always requires *every* selected pin to be low, not any).
+   *  Multi-pin `{mode: 'any-low'}` throws on ESP32; single-pin works,
+   *  and `'any-high'` works for any pin count. Every newer chip
+   *  (C3, C5, C6, S2, S3, …) supports multi-pin `'any-low'` natively. */
   ext1?: {pins: RtcGpio[]; mode: 'any-low' | 'any-high'}
 }
 

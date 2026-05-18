@@ -177,11 +177,31 @@ static bool mik__configure_ext1(JSContext* ctx, JSValue sources) {
         if (!mode_str) {
             ok = false;
         } else {
-            if (strcmp(mode_str, "any-low") == 0)
+            if (strcmp(mode_str, "any-low") == 0) {
+                // ESP32's EXT1 only ships ALL_LOW (wake when every selected pin
+                // is low); newer chips ship ANY_LOW. The two are equivalent for
+                // a single-pin mask, so we accept that case on ESP32 and route
+                // it through ALL_LOW. Multi-pin "any-low" can't be honored on
+                // ESP32 — the hardware always requires every pin to be low —
+                // so we reject it loudly rather than silently changing the
+                // wake condition.
+#if CONFIG_IDF_TARGET_ESP32
+                if (pin_count > 1) {
+                    JS_ThrowTypeError(
+                        ctx,
+                        "'any-low' with multiple pins is not supported on ESP32: "
+                        "hardware can only wake when all selected pins are low. "
+                        "Use one pin per ext1 source, or use 'any-high' mode.");
+                    ok = false;
+                } else {
+                    mode_value = ESP_EXT1_WAKEUP_ALL_LOW;
+                }
+#else
                 mode_value = ESP_EXT1_WAKEUP_ANY_LOW;
-            else if (strcmp(mode_str, "any-high") == 0)
+#endif
+            } else if (strcmp(mode_str, "any-high") == 0) {
                 mode_value = ESP_EXT1_WAKEUP_ANY_HIGH;
-            else {
+            } else {
                 JS_ThrowRangeError(ctx, "ext1.mode must be 'any-low' or 'any-high'");
                 ok = false;
             }
