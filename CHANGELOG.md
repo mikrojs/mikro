@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.8.0 (2026-05-21)
+
+### Breaking changes
+
+- **sleep:** split wakeup sources by sleep mode and auto-conf RTC pulls ([#124](https://github.com/mikrojs/mikrojs/pull/124))
+- **firmware:** drop tls 1.3 to shrink mbedtls handshake heap ([#115](https://github.com/mikrojs/mikrojs/pull/115))
+
+### Features
+
+- **cli:** add shell completion with live serial-port suggestions ([#125](https://github.com/mikrojs/mikrojs/pull/125))
+
+### Bug fixes
+
+- **sleep:** pick chip-appropriate ext1 wakeup enum ([#131](https://github.com/mikrojs/mikrojs/pull/131))
+- **sleep:** flush logfile before deep sleep reboot ([#130](https://github.com/mikrojs/mikrojs/pull/130))
+- **cli:** inherit tsx loading in workspace subprocesses ([#123](https://github.com/mikrojs/mikrojs/pull/123))
+- **cli:** set tsx to use mikrojs tsconfig ([#116](https://github.com/mikrojs/mikrojs/pull/116))
+
+### Other
+
+- **deps:** upgrade quickjs-ng to v0.15.0 ([#133](https://github.com/mikrojs/mikrojs/pull/133))
+- add socket.yml ignoring package.json under test fixture ([#132](https://github.com/mikrojs/mikrojs/pull/132))
+- update seeed studio xiao esp32-c5 product link ([#127](https://github.com/mikrojs/mikrojs/pull/127))
+- **deps:** update dependency knip to v6.14.1 ([#126](https://github.com/mikrojs/mikrojs/pull/126))
+- improve ux for device connection and troubleshooting ([#122](https://github.com/mikrojs/mikrojs/pull/122))
+- **deps:** update dependency oxfmt to ^0.50.0 ([#120](https://github.com/mikrojs/mikrojs/pull/120))
+- **deps:** update dependency wrangler to v4.92.0 ([#118](https://github.com/mikrojs/mikrojs/pull/118))
+- **deps:** update dependency knip to v6.14.0 ([#117](https://github.com/mikrojs/mikrojs/pull/117))
+- make fmt hook tolerate all-ignored input ([#113](https://github.com/mikrojs/mikrojs/pull/113))
+- **cli:** run mikro from TypeScript source in workspace ([#112](https://github.com/mikrojs/mikrojs/pull/112))
+- migrate tsx to catalog dependency ([#114](https://github.com/mikrojs/mikrojs/pull/114))
+- **deps:** update dependency taze to v19.12.0 ([#110](https://github.com/mikrojs/mikrojs/pull/110))
+
 ## 0.7.0 (2026-05-15)
 
 ### Breaking changes
