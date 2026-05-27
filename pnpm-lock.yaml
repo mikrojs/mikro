@@ -547,10 +547,10 @@ importers:
         version: 6.1.0
       ink:
         specifier: ^7.0.1
-        version: 7.0.3(@types/react@19.2.14)(react@19.2.6)
+        version: 7.0.3(@types/react@19.2.15)(react@19.2.6)
       ink-select-input:
         specifier: ^6.2.0
-        version: 6.2.0(ink@7.0.3(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
+        version: 6.2.0(ink@7.0.3(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)
       open:
         specifier: ^11.0.0
         version: 11.0.0
@@ -584,7 +584,7 @@ importers:
         version: 1.15.40
       '@types/react':
         specifier: ^19.2.14
-        version: 19.2.14
+        version: 19.2.15
       '@types/semver':
         specifier: ^7.7.1
         version: 7.7.1
@@ -596,7 +596,7 @@ importers:
         version: 0.28.0
       ink-testing-library:
         specifier: ^4.0.0
-        version: 4.0.0(@types/react@19.2.14)
+        version: 4.0.0(@types/react@19.2.15)
       terser:
         specifier: ^5.46.2
         version: 5.47.1
@@ -2534,8 +2534,8 @@ packages:
   '@types/node@25.6.0':
     resolution: {integrity: sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ==}
 
-  '@types/react@19.2.14':
-    resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
+  '@types/react@19.2.15':
+    resolution: {integrity: sha512-eRwcGNHve+E8qtEQSSRl6urh+rFop4v8gm6O8rGv25CodbvFdLjA1vVQ1KkiFE0w0UPOnb8tDiFKL5lp0rtY5Q==}
 
   '@types/semver@7.7.1':
     resolution: {integrity: sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA==}
@@ -7055,7 +7055,7 @@ snapshots:
     dependencies:
       undici-types: 7.19.2
 
-  '@types/react@19.2.14':
+  '@types/react@19.2.15':
     dependencies:
       csstype: 3.2.3
 
@@ -8532,18 +8532,18 @@ snapshots:
 
   ini@4.1.1: {}
 
-  ink-select-input@6.2.0(ink@7.0.3(@types/react@19.2.14)(react@19.2.6))(react@19.2.6):
+  ink-select-input@6.2.0(ink@7.0.3(@types/react@19.2.15)(react@19.2.6))(react@19.2.6):
     dependencies:
       figures: 6.1.0
-      ink: 7.0.3(@types/react@19.2.14)(react@19.2.6)
+      ink: 7.0.3(@types/react@19.2.15)(react@19.2.6)
       react: 19.2.6
       to-rotated: 1.0.0
 
-  ink-testing-library@4.0.0(@types/react@19.2.14):
+  ink-testing-library@4.0.0(@types/react@19.2.15):
     optionalDependencies:
-      '@types/react': 19.2.14
+      '@types/react': 19.2.15
 
-  ink@7.0.3(@types/react@19.2.14)(react@19.2.6):
+  ink@7.0.3(@types/react@19.2.15)(react@19.2.6):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.0
       ansi-escapes: 7.3.0
@@ -8572,7 +8572,7 @@ snapshots:
       ws: 8.20.1
       yoga-layout: 3.2.1
     optionalDependencies:
-      '@types/react': 19.2.14
+      '@types/react': 19.2.15
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
