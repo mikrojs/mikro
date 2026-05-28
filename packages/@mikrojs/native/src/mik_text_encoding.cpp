@@ -242,44 +242,138 @@ static const JSCFunctionListEntry mik__text_decoder_proto_funcs[] = {
 
 static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static const uint8_t b64_decode_table[256] = {
+/* The base64 decoder below is ported from QuickJS-NG (quickjs.c, `b64_decode`
+ * and its lookup tables), which implements the WHATWG forgiving-base64 decode
+ * algorithm. QuickJS-NG is MIT licensed:
+ *   Copyright (c) 2017-2024 Fabrice Bellard, Charlie Gordon and contributors.
+ * We use only the standard alphabet (atob/btoa never decode base64url) and
+ * surface decode failures as our own error type rather than a DOMException. */
+enum { K_VAL = 1u, K_WS = 2u };
+
+/* Sextet value per base64 character (0 for non-base64 bytes; validity is gated
+ * by b64_flags below). Positional initializer to stay standard C++. */
+static const uint8_t b64_val[256] = {
     /* clang-format off */
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255, 62,255,255,255, 63,
-     52, 53, 54, 55, 56, 57, 58, 59, 60, 61,255,255,255,  0,255,255,
-    255,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
-     15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,255,255,255,255,255,
-    255, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-     41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
-    255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,62, 0, 0, 0,63,
+    52,53,54,55,56,57,58,59,60,61, 0, 0, 0, 0, 0, 0,
+     0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
+    15,16,17,18,19,20,21,22,23,24,25, 0, 0, 0, 0, 0,
+     0,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+    41,42,43,44,45,46,47,48,49,50,51, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     /* clang-format on */
 };
 
+/* Per-byte class: K_WS (2) for ASCII whitespace, K_VAL (1) for the 64 standard
+ * base64 alphabet characters, 0 (invalid) otherwise. */
+static const char b64_flags[256] = {
+    /* clang-format off */
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 2, 2, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1,
+     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
+     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    /* clang-format on */
+};
+
+/* Implements https://infra.spec.whatwg.org/#forgiving-base64-decode.
+ * Writes decoded bytes to dst and returns the count; sets *err on malformed
+ * input. dst must have room for at least (len / 4) * 3 + 3 bytes. */
+static size_t b64_decode(const char* src, size_t len, uint8_t* dst, int* err) {
+    size_t i, j;
+    uint32_t acc;
+    int seen, pad;
+    unsigned ch;
+
+    acc = 0;
+    seen = 0;
+    for (i = 0, j = 0; i < len; i++) {
+        ch = (unsigned char)src[i];
+        if ((b64_flags[ch] & K_WS)) continue;
+        if (!(b64_flags[ch] & K_VAL)) break;
+        acc = (acc << 6) | b64_val[ch];
+        seen++;
+        if (seen == 4) {
+            dst[j++] = (acc >> 16) & 0xFF;
+            dst[j++] = (acc >> 8) & 0xFF;
+            dst[j++] = acc & 0xFF;
+            seen = 0;
+            acc = 0;
+        }
+    }
+
+    if (seen != 0) {
+        if (seen == 3) {
+            dst[j++] = (acc >> 10) & 0xFF;
+            dst[j++] = (acc >> 2) & 0xFF;
+        } else if (seen == 2) {
+            dst[j++] = (acc >> 4) & 0xFF;
+        } else {
+            *err = 1;
+            return 0;
+        }
+        for (pad = 0; i < len; i++) {
+            ch = (unsigned char)src[i];
+            if (pad < 2 && ch == '=') {
+                pad++;
+            } else if (!(b64_flags[ch] & K_WS)) {
+                break;
+            }
+        }
+        if (pad != 0 && seen + pad != 4) {
+            *err = 1;
+            return 0;
+        }
+    }
+
+    *err = i < len;
+    return j;
+}
+
 /* btoa: encode a binary string to base64.
- * Per the web spec, each JS character's code point is treated as a raw byte.
- * We must iterate by code point, not by UTF-8 bytes, since JS_ToCStringLen
- * returns UTF-8 where e.g. U+0080 becomes two bytes (\xC2\x80). */
+ * Per the web spec, the argument is first coerced to a string (ToString), then
+ * each character's code point is treated as a raw byte. We iterate by code
+ * point, not by UTF-8 bytes, since JS_ToCStringLen would turn e.g. U+0080 into
+ * two bytes (\xC2\x80). */
 static JSValue mik__btoa(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    JSValue str_val = argv[0];
+    JSValue str_val = JS_ToString(ctx, argv[0]);
+    if (JS_IsException(str_val)) return JS_EXCEPTION;
+
     JSValue len_val = JS_GetPropertyStr(ctx, str_val, "length");
     int64_t len;
     if (JS_ToInt64(ctx, &len, len_val)) {
         JS_FreeValue(ctx, len_val);
+        JS_FreeValue(ctx, str_val);
         return JS_EXCEPTION;
     }
     JS_FreeValue(ctx, len_val);
 
     /* Extract code points into a byte buffer, validating latin1 range */
     uint8_t* bytes = static_cast<uint8_t*>(js_malloc(ctx, len > 0 ? len : 1));
-    if (!bytes) return JS_EXCEPTION;
+    if (!bytes) {
+        JS_FreeValue(ctx, str_val);
+        return JS_EXCEPTION;
+    }
 
     JSAtom charCodeAt_atom = JS_NewAtom(ctx, "charCodeAt");
     for (int64_t i = 0; i < len; i++) {
@@ -289,6 +383,7 @@ static JSValue mik__btoa(JSContext* ctx, JSValue this_val, int argc, JSValue* ar
         if (JS_IsException(code)) {
             JS_FreeAtom(ctx, charCodeAt_atom);
             js_free(ctx, bytes);
+            JS_FreeValue(ctx, str_val);
             return JS_EXCEPTION;
         }
         int32_t cp;
@@ -297,6 +392,7 @@ static JSValue mik__btoa(JSContext* ctx, JSValue this_val, int argc, JSValue* ar
         if (cp > 0xFF) {
             JS_FreeAtom(ctx, charCodeAt_atom);
             js_free(ctx, bytes);
+            JS_FreeValue(ctx, str_val);
             return JS_ThrowRangeError(ctx,
                                       "The string to be encoded contains characters outside of the "
                                       "Latin1 range");
@@ -304,6 +400,7 @@ static JSValue mik__btoa(JSContext* ctx, JSValue this_val, int argc, JSValue* ar
         bytes[i] = (uint8_t)cp;
     }
     JS_FreeAtom(ctx, charCodeAt_atom);
+    JS_FreeValue(ctx, str_val);
 
     size_t out_len = 4 * ((len + 2) / 3);
     char* out = static_cast<char*>(js_malloc(ctx, out_len + 1));
@@ -332,55 +429,32 @@ static JSValue mik__btoa(JSContext* ctx, JSValue this_val, int argc, JSValue* ar
     return ret;
 }
 
-/* atob: decode a base64 string to a binary string */
+/* atob: decode a base64 string to a binary string. The argument is coerced to
+ * a string (ToString) per spec, then decoded via the ported forgiving-base64
+ * decoder above. */
 static JSValue mik__atob(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    JSValue str_val = JS_ToString(ctx, argv[0]);
+    if (JS_IsException(str_val)) return JS_EXCEPTION;
     size_t len;
-    const char* str = JS_ToCStringLen(ctx, &len, argv[0]);
+    const char* str = JS_ToCStringLen(ctx, &len, str_val);
+    JS_FreeValue(ctx, str_val);
     if (!str) return JS_EXCEPTION;
 
-    /* Strip whitespace and validate */
-    size_t out_cap = (len * 3) / 4 + 1;
-    char* out = static_cast<char*>(js_malloc(ctx, out_cap));
+    size_t out_cap = (len / 4) * 3 + 3;
+    uint8_t* out = static_cast<uint8_t*>(js_malloc(ctx, out_cap));
     if (!out) {
         JS_FreeCString(ctx, str);
         return JS_EXCEPTION;
     }
 
-    uint32_t accum = 0;
-    int bits = 0;
-    size_t j = 0;
-    int pad = 0;
-
-    for (size_t i = 0; i < len; i++) {
-        char ch = str[i];
-        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f') continue;
-        if (ch == '=') {
-            pad++;
-            continue;
-        }
-        if (pad > 0) {
-            /* Data after padding */
-            js_free(ctx, out);
-            JS_FreeCString(ctx, str);
-            return JS_ThrowSyntaxError(ctx,
-                                       "The string to be decoded is not correctly encoded");
-        }
-        uint8_t val = b64_decode_table[(uint8_t)ch];
-        if (val == 255) {
-            js_free(ctx, out);
-            JS_FreeCString(ctx, str);
-            return JS_ThrowSyntaxError(ctx,
-                                       "The string to be decoded is not correctly encoded");
-        }
-        accum = (accum << 6) | val;
-        bits += 6;
-        if (bits >= 8) {
-            bits -= 8;
-            out[j++] = (char)((accum >> bits) & 0xFF);
-        }
-    }
-
+    int err = 0;
+    size_t j = b64_decode(str, len, out, &err);
     JS_FreeCString(ctx, str);
+    if (err) {
+        js_free(ctx, out);
+        return JS_ThrowSyntaxError(ctx,
+                                   "The string to be decoded is not correctly encoded");
+    }
 
     /* Convert decoded bytes to a JS string. Bytes 0x80-0xFF must become
      * their corresponding Unicode code points (U+0080-U+00FF), which in
