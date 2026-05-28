@@ -204,7 +204,7 @@ mikro test --env .env
 
 Test files import from `mikrojs/test`:
 
-```ts
+```ts twoslash
 import {describe, test, assert} from 'mikrojs/test'
 
 describe('my feature', () => {

@@ -9,7 +9,7 @@ Writing TypeScript for an ESP32 is different from writing it for Node.js or a br
 
 ## Memory
 
-The chips Mikro.js targets have 384-520 KB of on-die SRAM, all of it shared between Wi-Fi/BLE stacks, the QuickJS runtime, your app, and any loaded modules. How much you have free after boot depends on the chip and which radios are active. A C3 leaves significantly less than a C6 or S3 with the same radios up. Some boards include PSRAM (2-8 MB of external RAM), which lets larger apps allocate beyond the SRAM budget.
+The chips Mikro.js targets have 384-520 KB of internal SRAM, all of it shared between WiFi/BLE stacks, the QuickJS runtime, your app, and any loaded modules. How much you have free after boot depends on the chip and which radios are active. An ESP32-C3 leaves significantly less than an ESP32-C6 or ESP32-S3 with the same radios up. Some boards include PSRAM (2-8 MB of external RAM), which lets larger apps allocate beyond the SRAM budget.
 
 ### Check your usage
 
@@ -24,24 +24,24 @@ Usage:
   Reserved: 8.0 KB (memReserved for native subsystems)
 ```
 
-**Available** is the number you care about most: how much you can still use. **System peak** shows the highest usage since boot, which helps catch transient spikes you might otherwise miss.
+**Available** is what's left to use. **System peak** is the highest usage seen since boot.
 
 ### What uses memory
 
-| What                          | Typical cost         |
-| ----------------------------- | -------------------- |
-| Runtime startup               | ~75-80 KB (fixed)    |
-| Each imported module          | A few KB each        |
-| WiFi connection               | ~40 KB               |
-| HTTPS request (TLS handshake) | ~40-50 KB on top     |
-| Your app code                 | Proportional to size |
+| What                          | Typical cost                            |
+| ----------------------------- | --------------------------------------- |
+| Runtime startup               | ~75-80 KB (fixed)                       |
+| Each imported module          | ~1 KB+ per module, more for larger ones |
+| WiFi connection               | ~40 KB                                  |
+| HTTPS request (TLS handshake) | ~40-50 KB on top                        |
+| Your app code                 | Proportional to size                    |
 
 WiFi + HTTPS is the biggest consumer. A simple blinky barely makes a dent, but a WiFi app doing HTTPS might leave you with ~100KB free.
 
 ### Practical tips
 
 - **Connect to WiFi once** and stay connected. Don't reconnect repeatedly.
-- **Use HTTP for local endpoints** if memory is tight. TLS is expensive.
+- **Use HTTP for local endpoints** when RAM is scarce. TLS is expensive.
 - **Build strings with arrays.** Concatenating in a loop creates a new string each time. Build an array and `.join()` once.
 - **Use dynamic imports** to load modules only when needed:
 
@@ -97,7 +97,7 @@ export default defineConfig({
 - **16-32 KB**: if your app doesn't use the network stack (e.g. sensor logger over UART, BLE-only).
 - **Don't go below ~8 KB.** Native subsystems always need some room.
 
-If JavaScript runs out of memory, you get a catchable `InternalError`. If the system heap runs out (native code), you get a hard reset. The reserve keeps these from happening at the same time.
+If JavaScript runs out of memory, you get an `InternalError`. It's catchable, but the handler runs with almost no memory left, so the realistic options are logging a short pre-built message and restarting. If the system heap runs out (native code), you get a hard reset. The reserve keeps these from happening at the same time.
 
 ### Finding memory issues
 
@@ -157,7 +157,7 @@ Mikro.js runs a single-threaded event loop, like Node.js. WiFi, timers, and ever
 
 On device, the filesystem uses [LittleFS](https://github.com/littlefs-project/littlefs) on a flash partition. Files persist across reboots and deep sleep.
 
-Flash memory has limited write cycles (~100,000 per sector). Don't write on every loop iteration. Buffer data in RAM and write periodically, or use [`rtcStorage`](/api/kv) for frequently changing values.
+Flash memory has limited write cycles (~100,000 per sector), so avoid writing on every loop iteration. Buffer data in RAM and write periodically, or use [`rtcStorage`](/api/kv) for smaller, frequently changing values.
 
 ## Error handling matters more
 
@@ -177,7 +177,7 @@ if (!result.ok) {
 }
 ```
 
-For truly unrecoverable errors (missing config, hardware failure at boot), use `.orPanic()`. On device, you can configure automatic restart on panic so the device recovers.
+For truly unrecoverable errors (missing config, hardware failure at boot), use `.orPanic()`. The runtime always restarts the device after an uncaught exception so apps in the field can self-heal; tune the grace window via [`panicRestartDelay`](/config#panicrestartdelay).
 
 ## Host simulator
 
@@ -194,23 +194,34 @@ my-project/
   package.json
 ```
 
-Each stub file exports a default object with `methods` that handle the builtin's calls. Only override what you need; unspecified methods use defaults:
+Each stub is a module that exports a class implementing the builtin's interface (`SimWifi`, `SimPin`, `SimI2c`, etc. from `mikrojs/sim`), replacing the native module in the simulator. The scaffolded stub implements every method with a sensible default; edit the bodies you care about:
 
-```ts
-// sim/wifi.stub.ts
-import type {SimStub} from 'mikrojs/sim'
+```ts twoslash
+// sim/pin.stub.ts
+import {ok} from 'mikrojs/result'
+import type {SimPin} from 'mikrojs/sim'
 
-export default {
-  methods: {
-    connect(ssid: string, _passphrase: string) {
-      console.log('[sim] wifi.connect:', ssid)
-      const info = {ip: '10.0.0.42', netmask: '255.255.255.0', gateway: '10.0.0.1'}
-      return {ok: true as const, value: Promise.resolve({ok: true as const, value: info})}
-    },
-  },
-} satisfies SimStub<'wifi'>
+export class Pin implements SimPin {
+  pinMode(pin: number, mode: number) {
+    console.log('[sim] pinMode:', pin, mode)
+    return ok()
+  }
+  digitalWrite(pin: number, value: number) {
+    console.log('[sim] digitalWrite:', pin, value)
+    return ok()
+  }
+  digitalRead(_pin: number) {
+    return 0
+  }
+  analogRead(_pin: number, _attenuation: number) {
+    return ok(2048)
+  }
+  analogReadMillivolts(_pin: number, _attenuation: number) {
+    return ok(1650)
+  }
+}
 ```
 
-Stubs run in Node.js (not QuickJS), so they can use `fetch`, filesystem APIs, or any other Node.js capability for realistic simulation.
+Stubs run inside QuickJS, the same runtime as your app, so Node.js APIs like `fetch` and filesystem access are not available.
 
 Builtins that work without stubs: `console`, `kv`, `nvs_kv` (in-memory storage), timers, `sys`.

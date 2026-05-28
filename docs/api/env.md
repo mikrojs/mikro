@@ -12,7 +12,7 @@ import {env} from 'mikrojs/env'
 Read environment variables stored in NVS on the device. Provides explicit methods for required vs. optional access, replacing direct `import.meta.env` property access.
 
 ::: warning Storage is not encrypted
-Environment variables are stored as plaintext in NVS flash. Anyone with physical access to the device can dump the flash and read them.
+NVS values are plaintext; anyone with physical access can dump them. See [Environment Variables](/environment-variables) for the full picture.
 :::
 
 ## env.require(key)

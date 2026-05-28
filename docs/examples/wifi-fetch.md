@@ -43,7 +43,7 @@ bunx mikro env set WIFI_PASSPHRASE
 
 ## Code
 
-```ts
+```ts twoslash
 import {env} from 'mikrojs/env'
 import {request} from 'mikrojs/http/request'
 import {memoryUsage} from 'mikrojs/sys'
@@ -84,7 +84,7 @@ console.log('free heap: %dKB', (mem.heapTotal - mem.heapUsed) / 1000)
 
 ## Walkthrough
 
-1. **Country code.** `wifi.country` must be set before connecting. This configures the regulatory domain for your region's WiFi channels.
+1. **Country code.** [`wifi.country`](/config#wifi-country) must be set before connecting. This configures the regulatory domain for your region's WiFi channels.
 
 2. **Environment variables.** WiFi credentials come from `env.require()`, which panics with a clear message if a variable is missing. Environment variables are stored in NVS on device. Set them with `mikro env set`.
 
@@ -128,21 +128,25 @@ cd my-wifi-fetch
 
 ```sh [pnpm]
 pnpm install
+pnpm mikro flash  # only needed once per board
 pnpm mikro dev
 ```
 
 ```sh [npm]
 npm install
+npx mikro flash  # only needed once per board
 npx mikro dev
 ```
 
 ```sh [yarn]
 yarn install
+yarn mikro flash  # only needed once per board
 yarn mikro dev
 ```
 
 ```sh [bun]
 bun install
+bunx mikro flash  # only needed once per board
 bunx mikro dev
 ```
 

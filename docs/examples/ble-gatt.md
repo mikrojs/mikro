@@ -11,7 +11,7 @@ Demonstrates connect/disconnect events, notifications, write dispatch, and the d
 
 ## Hardware
 
-- Any ESP32 family board with BLE (C3, C6, S3, original ESP32).
+- Any ESP32 family board with BLE (ESP32-C3, ESP32-C6, ESP32-S3, original ESP32).
 - USB cable for flashing and serial logging.
 - A phone with [nRF Connect for Mobile](https://www.nordicsemi.com/Products/Development-tools/nRF-Connect-for-mobile) or similar. macOS users can use [LightBlue](https://apps.apple.com/us/app/lightblue/id557428110) for reads, but writes and subscribe support vary by tool.
 
@@ -101,6 +101,62 @@ if (!result.ok) {
   }
 }
 ```
+
+## Create project
+
+::: code-group
+
+```sh [pnpm]
+pnpm create mikrojs my-ble-gatt --template ble-gatt
+```
+
+```sh [npm]
+npm create mikrojs -- my-ble-gatt --template ble-gatt
+```
+
+```sh [yarn]
+yarn create mikrojs my-ble-gatt --template ble-gatt
+```
+
+```sh [bun]
+bun create mikrojs my-ble-gatt --template ble-gatt
+```
+
+:::
+
+## Run it
+
+```sh
+cd my-ble-gatt
+```
+
+::: code-group
+
+```sh [pnpm]
+pnpm install
+pnpm mikro flash  # only needed once per board
+pnpm mikro dev
+```
+
+```sh [npm]
+npm install
+npx mikro flash  # only needed once per board
+npx mikro dev
+```
+
+```sh [yarn]
+yarn install
+yarn mikro flash  # only needed once per board
+yarn mikro dev
+```
+
+```sh [bun]
+bun install
+bunx mikro flash  # only needed once per board
+bunx mikro dev
+```
+
+:::
 
 ## What you'll see
 

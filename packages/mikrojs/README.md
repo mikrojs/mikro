@@ -24,11 +24,11 @@
 ## Features
 
 - **Fast feedback loop**: interactive dev console with watch mode and incremental builds that deploy to your device in a few seconds
-- **Full TypeScript**: type-checked hardware APIs with modern JavaScript support. Errors are in the type signature, not hidden behind try/catch
-- **Batteries included**: GPIO, PWM, I2C, SPI, UART, WiFi, HTTP, NeoPixel, deep sleep, SNTP, CBOR, schema validation, key-value storage, and more
-- **Host simulator**: run and test your code on your computer with `mikro sim dev`. No microcontroller needed
+- **Full TypeScript**: near-complete ES2024 support, type-checked hardware APIs, and editor autocomplete
+- **Batteries included**: GPIO, PWM, I2C, SPI, UART, WiFi, HTTP, UDP, NeoPixel, deep sleep, SNTP, CBOR, schema validation, key-value storage, and more
+- **Host simulator**: run your code on your computer with `mikro sim dev`. No microcontroller needed
 - **No exceptions**: typed Result errors instead of try/catch. Every failure is visible in the type signature
-- **Built-in testing**: write tests with familiar describe/it syntax. Run on-device, in the simulator, or against stubbed hardware modules
+- **Built-in testing**: test suites with resource leak detection and more. Run in the simulator or on a real device
 
 ## Quickstart
 
@@ -64,12 +64,12 @@ The core runtime is a standalone C++ library with no ESP-IDF dependencies, makin
 
 - **Engine**: [QuickJS-NG](https://github.com/quickjs-ng/quickjs) ([near-complete ES2024 coverage](https://test262.fyi/#|qjs_ng))
 - **Runtime**: Standalone C++ library with cooperative, single-threaded event loop
-- **Platform**: ESP-IDF >= 6.0.1 (ESP32, ESP32-C3, ESP32-S3, ESP32-C6), desktop (macOS, Linux)
+- **Platform**: ESP-IDF >= 6.0.1 (ESP32, ESP32-C3, ESP32-S3, ESP32-C5, ESP32-C6), desktop (macOS, Linux)
 - **Modules**: Four-source resolution: virtual modules, native C modules, bytecode builtins, filesystem (LittleFS)
 - **Bytecode**: TypeScript bundled with esbuild, compiled to QuickJS bytecode at build time
 - **Tooling**: Node.js CLI (Ink/React), Node-API addon for host-side development and simulation
 
-The project has drawn inspiration and borrowed parts of the implementation from [txiki.js](https://github.com/saghul/txiki.js), a small and powerful JavaScript runtime built on QuickJS.
+The project has drawn inspiration from [txiki.js](https://github.com/saghul/txiki.js), a small and powerful JavaScript runtime built on QuickJS.
 
 ## License
 

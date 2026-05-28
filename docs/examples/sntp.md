@@ -43,7 +43,7 @@ bunx mikro env set WIFI_PASSPHRASE
 
 ## Code
 
-```ts
+```ts twoslash
 import {env} from 'mikrojs/env'
 import {sleep} from 'mikrojs/sleep'
 import {sntp} from 'mikrojs/sntp'
@@ -117,21 +117,25 @@ cd my-sntp
 
 ```sh [pnpm]
 pnpm install
+pnpm mikro flash  # only needed once per board
 pnpm mikro dev
 ```
 
 ```sh [npm]
 npm install
+npx mikro flash  # only needed once per board
 npx mikro dev
 ```
 
 ```sh [yarn]
 yarn install
+yarn mikro flash  # only needed once per board
 yarn mikro dev
 ```
 
 ```sh [bun]
 bun install
+bunx mikro flash  # only needed once per board
 bunx mikro dev
 ```
 

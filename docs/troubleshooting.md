@@ -84,7 +84,7 @@ If safe mode itself is broken (firmware corruption, an early-init crash before t
 `mikro erase` is a full factory reset: it removes firmware, application code, environment variables, and all stored data. You'll need to re-flash and redeploy after.
 :::
 
-Boards with USB Serial/JTAG (ESP32-C3, C6, S3, etc.) usually only have a RESET button. On those, the BOOT pin is exposed as a header you can briefly tie to GND, or the board may auto-enter download mode when esptool talks to it. `mikro erase` and `mikro flash` will handle the auto-entry on most boards without needing to touch buttons.
+Boards with USB Serial/JTAG (ESP32-C3, ESP32-C6, ESP32-S3, etc.) usually only have a RESET button. On those, the BOOT pin is exposed as a header you can briefly tie to GND, or the board may auto-enter download mode when esptool talks to it. `mikro erase` and `mikro flash` will handle the auto-entry on most boards without needing to touch buttons.
 
 ## Post-mortem from logs
 
@@ -100,5 +100,5 @@ mikro logs pull ./logs   # archive both as separate files for later inspection
 The file logger uses `flush: 'error'` by default, so warn/error lines hit flash immediately and survive a hard crash. Routine `console.log` output is buffered and may be lost if the reset happens before the buffer fills — switch to `flush: 'line'` (at the cost of more flash wear) if you need every line to survive.
 
 ::: tip Always-on for prod
-Enable `logFile: true` in your production `mikro.config.ts`. It costs ~2 KB of RAM and rotates within a `2 × maxSize` flash budget, but it's the difference between "device crashed, no idea why" and "device crashed, here's what it logged."
+Enable [`logFile: true`](/config#logfile) in your production `mikro.config.ts`. It costs ~2 KB of RAM and rotates within a `2 × maxSize` flash budget, but it's the difference between "device crashed, no idea why" and "device crashed, here's what it logged."
 :::

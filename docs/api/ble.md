@@ -9,7 +9,7 @@ description: Bluetooth Low Energy peripheral, broadcaster and GATT server
 import {ble, peripheral} from 'mikrojs/ble'
 ```
 
-Bluetooth Low Energy peripheral support. Two modes:
+Bluetooth Low Energy peripheral currently supports two modes:
 
 - **Broadcaster**: connectionless advertising with custom payload. For beacons, presence, and sensor broadcasts picked up by Home Assistant or similar.
 - **GATT peripheral**: a connectable device with services and characteristics. Central devices (phones, other boards) can discover the GATT table, read and write characteristics, subscribe to notifications, and observe connection lifecycle.
@@ -100,7 +100,7 @@ Radio transmit power in dBm. Range depends on the chip (typically -24 to +9 on E
 stop(): Result<void, BleError>
 ```
 
-Fully tears down the BLE stack: disconnects any active centrals, stops advertising, unregisters the GATT table, disables the BT controller, and reclaims all BLE-related RAM. The next BLE call re-initializes from scratch. Idempotent.
+Tears down the BLE stack: disconnects any active centrals, stops advertising, unregisters the GATT table, disables the BT controller, and reclaims all BLE-related RAM. The next BLE call re-initializes from scratch. Idempotent.
 
 ## Advertising
 
@@ -287,7 +287,7 @@ Only the peripheral role is implemented. Scanning for other devices, connecting 
 
 ### No pairing, bonding, or encryption
 
-All characteristics are accessible without authentication. The `security` field on `Characteristic` only accepts the value `'open'`. If your use case needs secure BLE (e.g. WiFi credential provisioning), you need to implement application-level crypto on top.
+All characteristics are accessible without authentication. The `security` field on `Characteristic` only accepts the value `'open'`.
 
 ### No rejectable writes
 

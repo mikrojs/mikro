@@ -11,7 +11,7 @@ Useful for presence beacons, simple sensor broadcasts, iBeacon-style advertisers
 
 ## Hardware
 
-- Any ESP32 family board with BLE (C3, C6, S3, original ESP32). ESP32-S2 has no BLE radio and is not supported.
+- Any ESP32 family board with BLE (ESP32-C3, ESP32-C6, ESP32-S3, original ESP32). ESP32-S2 has no BLE radio and is not supported.
 - USB cable for flashing and serial logging.
 - A phone with [nRF Connect for Mobile](https://www.nordicsemi.com/Products/Development-tools/nRF-Connect-for-mobile) or [LightBlue](https://apps.apple.com/us/app/lightblue/id557428110) to observe the beacon.
 
@@ -77,3 +77,61 @@ In nRF Connect / LightBlue, scan for nearby devices and look for `mikrojs-beacon
 - **RSSI**: updates continuously as you move.
 
 Every ~5 seconds the temperature bytes drift slightly as the loop adds random noise.
+
+## Create project
+
+::: code-group
+
+```sh [pnpm]
+pnpm create mikrojs my-ble-beacon --template ble-beacon
+```
+
+```sh [npm]
+npm create mikrojs -- my-ble-beacon --template ble-beacon
+```
+
+```sh [yarn]
+yarn create mikrojs my-ble-beacon --template ble-beacon
+```
+
+```sh [bun]
+bun create mikrojs my-ble-beacon --template ble-beacon
+```
+
+:::
+
+## Run it
+
+```sh
+cd my-ble-beacon
+```
+
+::: code-group
+
+```sh [pnpm]
+pnpm install
+pnpm mikro flash  # only needed once per board
+pnpm mikro dev
+```
+
+```sh [npm]
+npm install
+npx mikro flash  # only needed once per board
+npx mikro dev
+```
+
+```sh [yarn]
+yarn install
+yarn mikro flash  # only needed once per board
+yarn mikro dev
+```
+
+```sh [bun]
+bun install
+bunx mikro flash  # only needed once per board
+bunx mikro dev
+```
+
+:::
+
+[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/ble-beacon)

@@ -14,7 +14,7 @@ Validates JSON data received over HTTP using typed schemas. This is a typical us
 
 ## Code
 
-```ts
+```ts twoslash
 import * as s from 'mikrojs/schema'
 
 // Define a schema for the API response
@@ -76,21 +76,25 @@ cd my-schema
 
 ```sh [pnpm]
 pnpm install
+pnpm mikro flash  # only needed once per board
 pnpm mikro dev
 ```
 
 ```sh [npm]
 npm install
+npx mikro flash  # only needed once per board
 npx mikro dev
 ```
 
 ```sh [yarn]
 yarn install
+yarn mikro flash  # only needed once per board
 yarn mikro dev
 ```
 
 ```sh [bun]
 bun install
+bunx mikro flash  # only needed once per board
 bunx mikro dev
 ```
 
