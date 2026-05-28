@@ -25,7 +25,7 @@ catalog:
   '@eslint/js': ^10.0.1
   eslint: ^10.2.1
   eslint-plugin-import: ^2.32.0
-  eslint-plugin-package-json: ^0.91.1
+  eslint-plugin-package-json: ^1.0.0
   eslint-plugin-react-hooks: canary
   eslint-plugin-simple-import-sort: ^13.0.0
   globals: ^17.5.0
