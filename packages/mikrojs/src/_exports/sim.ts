@@ -1,8 +1,9 @@
 /**
  * Types for simulator stub definitions.
  *
- * This module is types-only. Users write `import type {SimStub} from 'mikrojs/sim'`
- * which erases at compile time, preventing accidental runtime import in app code.
+ * This module is types-only. Users write `import type {SimWifi} from 'mikrojs/sim'`
+ * (or the matching per-builtin type) which erases at compile time, preventing
+ * accidental runtime import in app code.
  */
 
 import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'

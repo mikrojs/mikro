@@ -107,6 +107,51 @@ For long strips (>8 LEDs), power the strip from an external 5V supply, not the b
       'Count wake-ups from deep sleep using RTC memory. The counter survives deep sleep but resets on power loss.',
     hardware: 'Any ESP32 board.',
   },
+  {
+    name: 'schema',
+    description:
+      'Define and validate runtime data shapes with `mikrojs/schema`, including tagged unions.',
+    hardware: 'Any ESP32 board.',
+  },
+  {
+    name: 'uart',
+    description: 'Send and receive bytes over UART using a loopback wire.',
+    hardware:
+      'Any ESP32 board with at least two free GPIO pins.\n\nChange `TX_PIN` and `RX_PIN` in `app/main.ts` to match your board.',
+    wiring: `\`\`\`
+  ESP32C6
+  ┌──────┐
+  │ GPIO ├──┐
+  │  16  │  │  jumper wire
+  │ GPIO ├──┘
+  │  17  │
+  └──────┘
+\`\`\`
+
+Connect GPIO 16 (RX) to GPIO 17 (TX) with a jumper wire so the example can read back its own writes.`,
+  },
+  {
+    name: 'udp-discovery',
+    description:
+      'Devices on the same LAN find each other via UDP multicast announcements every couple of seconds.',
+    hardware: 'Any ESP32 board with WiFi + a WiFi network.',
+    wifiSetup: true,
+    envVars: ['WIFI_SSID', 'WIFI_PASSPHRASE'],
+  },
+  {
+    name: 'ble-beacon',
+    description:
+      'Broadcast a sensor reading in BLE advertising packets. No connections; just transmit.',
+    hardware:
+      'Any ESP32 family board with BLE (ESP32-C3, ESP32-C6, ESP32-S3, original ESP32). ESP32-S2 has no BLE radio.',
+  },
+  {
+    name: 'ble-gatt',
+    description:
+      'Connectable GATT peripheral with live notifications and a writable command characteristic.',
+    hardware:
+      'Any ESP32 family board with BLE (ESP32-C3, ESP32-C6, ESP32-S3, original ESP32). ESP32-S2 has no BLE radio.',
+  },
 ] as const
 
 export interface ScaffoldOptions {

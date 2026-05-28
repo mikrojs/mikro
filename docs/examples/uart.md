@@ -15,7 +15,7 @@ Send and receive serial data over UART. This example uses a loopback wiring (TX 
 
 ## Code
 
-```ts
+```ts twoslash
 import {sleep} from 'mikrojs/sleep'
 import {Uart} from 'mikrojs/uart'
 
@@ -94,21 +94,25 @@ cd my-uart
 
 ```sh [pnpm]
 pnpm install
+pnpm mikro flash  # only needed once per board
 pnpm mikro dev
 ```
 
 ```sh [npm]
 npm install
+npx mikro flash  # only needed once per board
 npx mikro dev
 ```
 
 ```sh [yarn]
 yarn install
+yarn mikro flash  # only needed once per board
 yarn mikro dev
 ```
 
 ```sh [bun]
 bun install
+bunx mikro flash  # only needed once per board
 bunx mikro dev
 ```
 

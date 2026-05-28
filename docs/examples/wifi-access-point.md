@@ -15,7 +15,7 @@ Configure the ESP32 as a WiFi access point (soft AP) that other devices can conn
 
 ## Code
 
-```ts
+```ts twoslash
 import {sleep} from 'mikrojs/sleep'
 import {wifi} from 'mikrojs/wifi'
 
@@ -57,7 +57,7 @@ while (true) {
 
 ## Walkthrough
 
-1. **Country code.** `wifi.country` must be set before any WiFi operation. It determines which channels and power levels are legal in your region.
+1. **Country code.** [`wifi.country`](/config#wifi-country) must be set before any WiFi operation. It determines which channels and power levels are legal in your region.
 
 2. **Access point config.** `wifi.ap.start()` takes an SSID, passphrase (minimum 8 characters), channel number, and maximum client count. `.orPanic()` crashes with a clear message if startup fails.
 
@@ -99,21 +99,25 @@ cd my-wifi-ap
 
 ```sh [pnpm]
 pnpm install
+pnpm mikro flash  # only needed once per board
 pnpm mikro dev
 ```
 
 ```sh [npm]
 npm install
+npx mikro flash  # only needed once per board
 npx mikro dev
 ```
 
 ```sh [yarn]
 yarn install
+yarn mikro flash  # only needed once per board
 yarn mikro dev
 ```
 
 ```sh [bun]
 bun install
+bunx mikro flash  # only needed once per board
 bunx mikro dev
 ```
 

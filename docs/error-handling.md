@@ -121,7 +121,7 @@ async function readAndPublish(pin: number) {
 }
 ```
 
-This is the equivalent of Rust's `?` operator, just spelled out. Notice how TypeScript infers a return type equivalent to `Result<void, PinError | PublishError>`, capturing every way the function can fail. Each early return propagates its own error type, and the caller sees exactly which errors are possible.
+Notice how TypeScript infers a return type equivalent to `Result<void, PinError | PublishError>`, capturing every way the function can fail. Each early return propagates its own error type, and the caller sees exactly which errors are possible.
 
 If `publish` were to throw instead, that would be a panic: an unexpected bug, not a recoverable error. See [What about exceptions?](#what-about-exceptions) below.
 
@@ -153,7 +153,7 @@ import {analogRead} from 'mikrojs/pin'
 const value = analogRead(34).orPanic('ADC must work at this point')
 ```
 
-This is the equivalent of Rust's `.expect()`. Use it sparingly, only when you've decided that failure at this point means the program cannot continue.
+Use it sparingly, only when you've decided that failure at this point means the program cannot continue.
 
 ### Exhaustive matching
 
@@ -189,9 +189,9 @@ This gives you:
 - **A union type:** `SensorError` is `{name: "NotConnected"} | {name: "ReadFailed", message: string} | {name: "OutOfRange", value: number, min: number, max: number}`
 - **Exhaustive switching:** TypeScript enforces that you handle every variant in a `switch` block, or via [`matchError`](/api/result#matcherror)
 
-Errors are plain objects; no class hierarchies, no prototypes. They're cheap to create and easy to log over serial.
+Errors are plain data, not class instances. Cheap to create and easy to inspect.
 
-For variants with only one or two call sites, an inline `err({name: 'X' as const, ...})` literal is fine — the factory pattern is just discoverability over the same shape.
+For variants with only one or two call sites, an inline `err({name: 'X' as const, ...})` literal is fine; the factory pattern is just discoverability over the same shape.
 
 ## What about exceptions?
 
@@ -212,14 +212,14 @@ Note that some standard JavaScript functions can still throw, such as `JSON.pars
 
 When you need to intentionally crash (e.g. missing required configuration), use `env.require` from [`mikrojs/env`](/api/env) or `panic` from [`mikrojs/sys`](/api/sys):
 
-```ts
+```ts twoslash
 import {env} from 'mikrojs/env'
 
 // env.require() panics with a clear message if the variable is not set
 const ssid = env.require('WIFI_SSID')
 ```
 
-The runtime always restarts the device on an uncaught exception so deployed apps can self-heal. Tune `panicRestartDelay` (the grace window between the exception and the actual reboot) to match your environment — longer for friendlier dev iteration, shorter for faster convergence in the field:
+The runtime always restarts the device on an uncaught exception so deployed apps can self-heal. Tune [`panicRestartDelay`](/config#panicrestartdelay) (the grace window between the exception and the actual reboot) to match your environment. Longer for friendlier dev iteration, shorter for faster convergence in the field:
 
 ```ts twoslash
 import {defineConfig} from 'mikrojs'
@@ -230,6 +230,10 @@ export default defineConfig({
 ```
 
 This is the right response to a panic: restart and try again. Result errors, on the other hand, are handled in your code and never trigger a restart.
+
+::: warning Battery-powered devices
+Auto-restart only self-heals if the panic was transient. If the same panic recurs every boot (a coding bug, a permanently missing sensor, bad NVS state), the device crash-loops and a battery-powered one will drain itself doing so. Save `.orPanic()` for boot-time invariants you can fix by reflashing; for anything that might fail in the field, handle the `Result`.
+:::
 
 ## Lint rules
 

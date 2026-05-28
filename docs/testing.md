@@ -11,7 +11,7 @@ Mikro.js includes a built-in test framework and a CLI command for running tests 
 
 Create a test file:
 
-```ts
+```ts twoslash
 // test/math.test.ts
 import {describe, test, assert} from 'mikrojs/test'
 
@@ -50,7 +50,7 @@ Import `describe`, `test`, and `assert` from [`mikrojs/test`](/api/test).
 
 ### Suites and tests
 
-```ts
+```ts twoslash
 import {describe, test, assert} from 'mikrojs/test'
 
 describe('my module', () => {
@@ -69,7 +69,9 @@ describe('my module', () => {
 
 ### Skipping tests
 
-```ts
+```ts twoslash
+import {describe, test} from 'mikrojs/test'
+// ---cut---
 test.skip('not ready yet', () => {
   // this won't run, but shows as skipped in output
 })
@@ -83,7 +85,9 @@ Use `test.fixme` / `describe.fixme` to flag broken tests that need to be fixed (
 
 ### Focusing tests
 
-```ts
+```ts twoslash
+import {describe, test} from 'mikrojs/test'
+// ---cut---
 test.only('the one I care about', () => {
   // only this test runs; all others in the file are skipped
 })
@@ -107,7 +111,8 @@ mikro test 'test/wifi/**/*.test.ts'
 
 Use `skipIf` and `runIf` to conditionally skip tests or suites based on a truthy/falsy expression:
 
-```ts
+```ts twoslash
+import {describe, test, assert} from 'mikrojs/test'
 import {env} from 'mikrojs/env'
 
 const hasWifi = env.get('WIFI_SSID') && env.get('WIFI_PASSPHRASE')
@@ -140,16 +145,22 @@ These are available on both `test` and `describe`:
 
 `skipIf` and `runIf` return a function, so the test/suite name comes in the second call:
 
-```ts
-test.skipIf(isDev)('prod only', () => { ... })
-describe.runIf(hasHardware)('gpio', () => { ... })
+```ts twoslash
+import {describe, test} from 'mikrojs/test'
+declare const isDev: boolean
+declare const hasHardware: boolean
+// ---cut---
+test.skipIf(isDev)('prod only', () => {})
+describe.runIf(hasHardware)('gpio', () => {})
 ```
 
 ### Todo tests
 
 Mark tests you plan to write later. No function body is needed:
 
-```ts
+```ts twoslash
+import {test} from 'mikrojs/test'
+// ---cut---
 test.todo('handle reconnect after deep sleep')
 test.todo('retry on timeout')
 ```
@@ -160,7 +171,9 @@ Todo tests show as blue in the output and are counted separately from skipped te
 
 Use `test.each` or `describe.each` to run the same test with different inputs:
 
-```ts
+```ts twoslash
+import {describe, test} from 'mikrojs/test'
+// ---cut---
 test.each([0, 1, 2])('pin %s toggles', (pin) => {
   // runs three tests: "pin 0 toggles", "pin 1 toggles", "pin 2 toggles"
 })
@@ -176,7 +189,10 @@ Name interpolation supports `%s` (string coercion), `%#` (index), and `%o` (JSON
 
 `each` composes with `skipIf` and `runIf`:
 
-```ts
+```ts twoslash
+import {test} from 'mikrojs/test'
+declare const isCI: boolean
+// ---cut---
 test.skipIf(isCI).each([1, 2, 3])('hardware test %s', (pin) => {
   /* ... */
 })
@@ -186,21 +202,22 @@ test.skipIf(isCI).each([1, 2, 3])('hardware test %s', (pin) => {
 
 `beforeAll` and `afterAll` run once per suite. `beforeEach` and `afterEach` run around every test:
 
-```ts
-import {describe, test, assert, beforeAll, afterAll, beforeEach, afterEach} from 'mikrojs/test'
+```ts twoslash
+import {describe, test, assert, afterAll, afterEach} from 'mikrojs/test'
 import {nvsStorage} from 'mikrojs/kv/nvs'
 
 describe('storage', () => {
+  const val = nvsStorage.createValue('test-key')
+
   afterAll(() => {
     nvsStorage.clear()
   })
 
   afterEach(() => {
-    nvsStorage.delete('test-key')
+    val.delete()
   })
 
   test('write and read', () => {
-    const val = nvsStorage.createValue('test-key')
     val.set('hello')
     assert.equal(val.get(), 'hello')
   })
@@ -232,7 +249,7 @@ See the full [`mikrojs/test` API reference](/api/test) for details.
 
 Since Mikro.js APIs return `Result` types, `assert.ok` and `assert.err` are particularly useful:
 
-```ts
+```ts twoslash
 import {describe, test, assert} from 'mikrojs/test'
 import {encode, decode} from 'mikrojs/cbor'
 
@@ -273,7 +290,7 @@ mikro test 'test/math.test.ts'
 
 The `MIKRO_ENV` variable is automatically set to `"test"` during test runs. Use it for conditional behavior:
 
-```ts
+```ts twoslash
 import {env} from 'mikrojs/env'
 
 if (env.get('MIKRO_ENV') === 'test') {
@@ -285,7 +302,7 @@ if (env.get('MIKRO_ENV') === 'test') {
 
 Tests that depend on hardware or network can use `runIf` with env vars:
 
-```ts
+```ts twoslash
 import {env} from 'mikrojs/env'
 import {describe, test, assert} from 'mikrojs/test'
 

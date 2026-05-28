@@ -30,19 +30,22 @@ For example, [`pretty-ms`](https://www.npmjs.com/package/pretty-ms) works becaus
 
 ## How it works under the hood
 
-Unlike traditional bundlers (webpack, esbuild), Mikro.js does not bundle your code into a single file. Instead:
+By default, Mikro.js does **not** bundle your code into a single file. The CLI traces your import graph from `app/main.ts`, transforms each file, and writes the result to a deploy tree that mirrors your project's directory layout:
 
-1. The CLI traces your import graph starting from your entry file (`app/main.ts`)
-2. Every imported file is discovered, including files inside `node_modules`
-3. All discovered files are copied to a build directory, preserving the directory structure
-4. Files are minified and optionally compiled to QuickJS bytecode
-5. The entire build directory is deployed to the device's filesystem
+1. Trace the import graph starting from `app/main.ts`
+2. Discover every imported file, including those inside `node_modules`
+3. Strip TypeScript types and minify each file
+4. Precompile JavaScript modules to QuickJS bytecode for faster startup
+5. Write the result to the deploy tree, preserving relative paths
+6. Deploy the tree to the device's filesystem
 
-This means each imported npm package adds files to the device's flash storage. The device's ES module loader resolves imports at runtime using the same `package.json` `exports` field that Node.js uses.
+The device's ES module loader resolves imports at runtime the same way Node.js does, using `package.json` `exports`.
+
+Set [`build.bundle: true`](/config#buildbundle) to ship a single bundle instead. Smaller deploy and tree-shaking, at the cost of full reuploads on every change.
 
 ## Memory considerations
 
-Every package you import adds to your program's memory footprint. On an ESP32 with 80-150KB of free heap, this matters.
+Every package you import adds to your program's memory footprint. With only 80-150 KB of free heap on most ESP32s, that adds up fast.
 
 - Prefer small, focused packages over large utility libraries. Many popular npm packages are designed for servers or browsers and are simply too large for a microcontroller.
 - Check `memoryUsage()` after importing a package to understand its impact

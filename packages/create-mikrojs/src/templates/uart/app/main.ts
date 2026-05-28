@@ -1,0 +1,34 @@
+import { sleep } from "mikrojs/sleep";
+import { Uart } from "mikrojs/uart";
+
+// UART loopback example for ESP32C6: connect TX (GPIO 17) to RX (GPIO 16) with a jumper wire.
+// Change TX_PIN / RX_PIN to match your board.
+const TX_PIN = 16;
+const RX_PIN = 17;
+
+await sleep(2000);
+const uart = new Uart(1, { tx: TX_PIN, rx: RX_PIN, baudRate: 115200 });
+
+uart.begin().orPanic("Failed to start UART");
+
+const message = new TextEncoder().encode("Hello from UART!\n");
+uart.write(message).orPanic("Failed to write");
+
+const reader = uart.read();
+
+if (!reader.ok) {
+  console.error("Failed to start reading: %s", reader.error.name);
+} else {
+  // Give data a moment to loop back
+  await sleep(1000);
+  for await (const chunk of reader.value) {
+    if (!chunk.ok) {
+      console.error("UART read error: %s", chunk.error.name);
+      break;
+    }
+    console.log("Received: %s", new TextDecoder().decode(chunk.value));
+  }
+}
+
+uart.end().orPanic("Failed to stop UART");
+console.log("Done!");

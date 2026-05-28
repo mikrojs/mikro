@@ -73,7 +73,7 @@ lightSleep(5000) // wake in 5 seconds
 Throws if the chip refuses to sleep. This is unrecoverable in practice and indicates a programming error: no wakeup source configured, a GPIO wakeup already in its trigger state, or a peripheral that's busy (mid-handshake WiFi, active SPI DMA, etc.). Fix the caller rather than catching the throw.
 
 ::: info Light sleep drops the USB console
-On chips with built-in USB Serial/JTAG (C3, C6, S3, and others), light sleep powers down the USB peripheral. The host sees the device disconnect, and `mikro dev` (or `idf.py monitor`) is left holding a port that no longer exists. Any `console.log` after the sleep won't make it through.
+On chips with built-in USB Serial/JTAG (ESP32-C3, ESP32-C6, ESP32-S3, and others), light sleep powers down the USB peripheral. The host sees the device disconnect, and `mikro dev` (or `idf.py monitor`) is left holding a port that no longer exists. Any `console.log` after the sleep won't make it through.
 
 The device keeps running normally; only the log stream is affected. Restart the monitor to see output again after wake.
 :::
@@ -109,7 +109,7 @@ Wake when `pin` reaches `level`. Any GPIO works.
 
 ### `ext0` (deep sleep)
 
-Wake when an RTC-capable pin reaches `level`. **ESP32, ESP32-S2, ESP32-S3 only** — throws on C3, C6, H2 (use `ext1` instead).
+Wake when an RTC-capable pin reaches `level`. **ESP32, ESP32-S2, ESP32-S3 only** — throws on ESP32-C3, ESP32-C6, ESP32-H2 (use `ext1` instead).
 
 ### `ext1` (deep sleep)
 
@@ -117,7 +117,7 @@ Wake as soon as any of the RTC-capable `pins` matches `mode`: `'any-low'` fires 
 
 ### `RtcGpio`
 
-Type alias for `number` documenting that the pin must be RTC-capable. Set varies per chip: C6/H2 = 0–7, C3 = 0–5, S2/S3 = 0–21, ESP32 = subset of 0–39. Not statically validated; non-RTC pins throw at runtime.
+Type alias for `number` documenting that the pin must be RTC-capable. Set varies per chip: ESP32-C6/H2 = 0–7, ESP32-C3 = 0–5, ESP32-S2/S3 = 0–21, ESP32 = subset of 0–39. Not statically validated; non-RTC pins throw at runtime.
 
 Invalid inputs (bad `level` string, pins that don't support wakeup, capability missing on the current chip) throw. These are programmer errors; fix the call rather than catching.
 
@@ -131,7 +131,7 @@ For code that needs to target multiple ESP32 variants, gate `ext0` / `ext1` call
 function canWakeFromExt0(): boolean
 ```
 
-Returns `true` on chips that support EXT0 wakeup (ESP32, ESP32-S2, ESP32-S3). `false` on C3, C6, H2, and other newer variants — use `ext1` there.
+Returns `true` on chips that support EXT0 wakeup (ESP32, ESP32-S2, ESP32-S3). `false` on ESP32-C3, ESP32-C6, ESP32-H2, and other newer variants — use `ext1` there.
 
 ### canWakeFromExt1()
 
@@ -139,4 +139,4 @@ Returns `true` on chips that support EXT0 wakeup (ESP32, ESP32-S2, ESP32-S3). `f
 function canWakeFromExt1(): boolean
 ```
 
-Returns `true` on every chip mikrojs targets except ESP32-C3. C3 has neither EXT0 nor EXT1; deep-sleep wake on C3 is timer-only.
+Returns `true` on every chip mikrojs targets except ESP32-C3. ESP32-C3 has neither EXT0 nor EXT1; deep-sleep wake on ESP32-C3 is timer-only.

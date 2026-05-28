@@ -15,7 +15,7 @@ A "breathing" LED effect: smoothly fades an LED in and out using PWM. See the [p
 
 ## Code
 
-```ts
+```ts twoslash
 import {Pwm} from 'mikrojs/pwm'
 
 // GPIO 15 is the built-in LED on XIAO ESP32C6. Replace with your board's LED pin.
@@ -79,21 +79,25 @@ cd my-pwm-led
 
 ```sh [pnpm]
 pnpm install
+pnpm mikro flash  # only needed once per board
 pnpm mikro dev
 ```
 
 ```sh [npm]
 npm install
+npx mikro flash  # only needed once per board
 npx mikro dev
 ```
 
 ```sh [yarn]
 yarn install
+yarn mikro flash  # only needed once per board
 yarn mikro dev
 ```
 
 ```sh [bun]
 bun install
+bunx mikro flash  # only needed once per board
 bunx mikro dev
 ```
 

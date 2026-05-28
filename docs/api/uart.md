@@ -66,7 +66,7 @@ Creates a new UART instance. Provide at least one of `tx` or `rx`. The available
 \* At least one of `tx` or `rx` must be provided.
 
 ::: warning UART0
-UART0 is typically used for the console/REPL. On chips with USB Serial/JTAG (ESP32-C6, S3, etc.), UART0 pins are free when the console runs over USB. If you open a port that the console is using, `begin()` will return a `DriverInstallFailed` error.
+UART0 is typically used for the console/REPL. On chips with USB Serial/JTAG (ESP32-C6, ESP32-S3, etc.), UART0 pins are free when the console runs over USB. If you open a port that the console is using, `begin()` will return a `DriverInstallFailed` error.
 :::
 
 ## Methods
