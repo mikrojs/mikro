@@ -220,6 +220,46 @@ TEST_CASE("btoa handles binary data (latin1 range)" * doctest::test_suite("text_
     teardown();
 }
 
+TEST_CASE("btoa coerces non-string arguments" * doctest::test_suite("text_encoding")) {
+    setup();
+    /* Per spec the argument is run through ToString before encoding. */
+    JSValue r = eval(R"(
+        btoa(123) === 'MTIz' &&
+        btoa(null) === 'bnVsbA==' &&
+        btoa(true) === 'dHJ1ZQ=='
+    )");
+    CHECK_MESSAGE(JS_ToBool(ctx, r), "btoa should ToString-coerce its argument");
+    JS_FreeValue(ctx, r);
+    teardown();
+}
+
+TEST_CASE("atob rejects malformed padding" * doctest::test_suite("text_encoding")) {
+    setup();
+    /* WHATWG forgiving-base64 rejects bad length/padding: length % 4 == 1, a
+     * stray '=', or '=' when the length is not a multiple of 4. */
+    JSValue r = eval(R"(
+        const bad = ['Zg=', 'Z', '=', 'Zm9v=', 'Zm9v==', '====', 'Zm==='];
+        bad.every(s => {
+            try { atob(s); return false; }
+            catch (e) { return e instanceof SyntaxError; }
+        });
+    )");
+    CHECK_MESSAGE(JS_ToBool(ctx, r), "atob should reject malformed padding with SyntaxError");
+    JS_FreeValue(ctx, r);
+    teardown();
+}
+
+TEST_CASE("atob accepts valid unpadded base64" * doctest::test_suite("text_encoding")) {
+    setup();
+    /* Missing padding is allowed when the length is not 1 (mod 4). */
+    JSValue r = eval(R"(
+        atob('Zg') === 'f' && atob('Zm8') === 'fo' && atob('Zm9vYg') === 'foob'
+    )");
+    CHECK_MESSAGE(JS_ToBool(ctx, r), "atob should accept valid unpadded base64");
+    JS_FreeValue(ctx, r);
+    teardown();
+}
+
 TEST_CASE("TextDecoder: utf-8 label accepted" * doctest::test_suite("text_encoding")) {
     setup();
     JSValue r = eval(R"(
