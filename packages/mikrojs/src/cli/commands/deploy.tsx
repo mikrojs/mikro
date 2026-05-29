@@ -153,6 +153,7 @@ export async function run(
       minifier,
       minifyLevel,
       logLevel,
+      env: 'production',
     }),
     {defaultValue: undefined},
   )

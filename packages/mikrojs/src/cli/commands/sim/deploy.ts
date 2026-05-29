@@ -85,9 +85,10 @@ export async function run(config: RunConfig): Promise<void> {
 
   try {
     log('Building…')
-    await lastValueFrom(build(entry, buildDir, {minify, bytecode, minifier, minifyLevel}), {
-      defaultValue: undefined,
-    })
+    await lastValueFrom(
+      build(entry, buildDir, {minify, bytecode, minifier, minifyLevel, env: 'development'}),
+      {defaultValue: undefined},
+    )
 
     const files = await collectFiles(buildDir)
     const totalBytes = files.reduce((sum, f) => sum + f.data.length, 0)

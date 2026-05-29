@@ -182,7 +182,14 @@ async function runImpl(config: RunConfig): Promise<void> {
   log(`Building ${entry}…`)
   const bundle = config.noBundle === true ? false : config.bundle === true ? true : undefined
   await lastValueFrom(
-    build(entry, buildDir, {minify, bytecode: true, minifier, minifyLevel, bundle}),
+    build(entry, buildDir, {
+      minify,
+      bytecode: true,
+      minifier,
+      minifyLevel,
+      bundle,
+      env: 'development',
+    }),
     {defaultValue: undefined},
   )
   const files = await collectFiles(buildDir)

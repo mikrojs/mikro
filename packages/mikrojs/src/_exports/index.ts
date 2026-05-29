@@ -157,7 +157,44 @@ export interface MikroJSConfig {
   sim?: MikroJSSimConfig
   /** Build-time options. Stripped from the bundled config before deploy. */
   build?: MikroJSBuildConfig
+  /** Per-environment overrides. Each entry is shallow-merged over the base
+   * config (the surrounding fields) for that environment. The `env` map is
+   * removed from the config deployed to the device. See {@link MikroEnv} for
+   * how each environment maps to commands.
+   *
+   * The merge is shallow: each field in an override replaces the base value
+   * wholesale (no field-by-field merging, so an override can't leave stray
+   * fields behind). To keep some of a base group like `build`, spread it.
+   * Every environment merges over the base independently; an omitted
+   * environment is just the base.
+   *
+   * ```ts
+   * export default defineConfig({
+   *   build: {minifyLevel: 'max'},
+   *   env: {
+   *     // Write logs to flash and deep-sleep after a crash.
+   *     production: {logFile: true, onPanic: {mode: 'deepSleep', delay: 0, duration: 600000}},
+   *     // Keep all logs; wait before restarting after a crash.
+   *     development: {build: {logLevel: 'debug'}, onPanic: {mode: 'restart', delay: 5000}},
+   *   },
+   * })
+   * ``` */
+  env?: Partial<Record<MikroEnv, MikroJSConfigOverride>>
 }
+
+/** The environment a build runs in:
+ * - `production` — `mikro deploy`, `mikro build`
+ * - `development` — `mikro dev`, `mikro sim deploy`/`dev`/`profile`
+ * - `test` — `mikro test`, `mikro sim test`
+ *
+ * This is the config environment only — the granular `.env.<mode>` file a
+ * command loads (e.g. `.env.simulator`, `.env.test`) is a separate concern. */
+export type MikroEnv = 'development' | 'production' | 'test'
+
+/** Fields that may be overridden per environment: every {@link MikroJSConfig}
+ * field except `env` itself (overrides don't nest). */
+export type MikroJSConfigOverride = Omit<MikroJSConfig, 'env'>
+
 export function defineConfig<T extends MikroJSConfig>(config: T) {
   return config
 }

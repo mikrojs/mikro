@@ -74,6 +74,7 @@ export async function run(config: InferValue<typeof args>) {
         minifier,
         minifyLevel,
         logLevel,
+        env: 'production',
       }),
       {defaultValue: undefined},
     )
@@ -178,7 +179,8 @@ function Run(props: {
   const [state, dispatch] = useReducer(buildReducer, initialState)
 
   const _build = useMemo(
-    () => build(entry, outDir, {minify, bytecode, minifier, minifyLevel, logLevel}),
+    () =>
+      build(entry, outDir, {minify, bytecode, minifier, minifyLevel, logLevel, env: 'production'}),
     [entry, outDir, minify, bytecode, minifier, minifyLevel, logLevel],
   )
 

@@ -17,7 +17,13 @@ import {
   throwError,
 } from 'rxjs'
 
-import type {LogLevel, MikroJSConfig, Minifier, MinifyLevel} from '../../_exports/index.js'
+import type {
+  LogLevel,
+  MikroEnv,
+  MikroJSConfig,
+  Minifier,
+  MinifyLevel,
+} from '../../_exports/index.js'
 import {isBuiltinModule} from '../../constants.js'
 import {loadMikroConfig} from './loadMikroConfig.js'
 import {minifyJs} from './minify.js'
@@ -149,8 +155,8 @@ export async function trace(entries: string[]) {
   }
 }
 
-export function loadConfig(entry: string): Promise<MikroJSConfig | null> {
-  return loadMikroConfig(pathlib.dirname(pathlib.resolve(entry)))
+export function loadConfig(entry: string, env?: MikroEnv): Promise<MikroJSConfig | null> {
+  return loadMikroConfig(pathlib.dirname(pathlib.resolve(entry)), env)
 }
 
 /** Default directory for file logging when the user opts in via
@@ -164,7 +170,9 @@ const DEFAULT_LOG_DIR = '/appfs/logs'
 // form so the device-side JSON parser (mik_app_config.cpp) can read them
 // without a nested-object pass.
 function serializeRuntimeConfig(config: MikroJSConfig): Record<string, unknown> {
-  const {sim: _sim, build: _build, wifi, logFile, fsReadMax, onPanic, ...rest} = config
+  // `env` is resolved away at load time; drop it defensively so the override
+  // map can never leak into the device JSON.
+  const {sim: _sim, build: _build, env: _env, wifi, logFile, fsReadMax, onPanic, ...rest} = config
   const out: Record<string, unknown> = {...rest}
   if (fsReadMax !== undefined) out.fsReadMax = parseSize(fsReadMax)
   if (wifi?.country) out['wifi.country'] = wifi.country
@@ -194,6 +202,9 @@ export function build(
     logLevel?: LogLevel
     rootDir?: string
     bundle?: boolean
+    /** Config environment to resolve from mikro.config.ts ('development' or
+     * 'production'). Defaults to 'production'. */
+    env?: MikroEnv
   },
 ): Observable<BuildEvent> {
   // rootDir is the directory that becomes the root of the deploy tree.
@@ -204,7 +215,7 @@ export function build(
   // Defaults to dirname(entry). Test runner overrides with the user's app dir
   // so that tests deeper than entry's parent still co-locate correctly.
   const rootDir = options.rootDir ?? pathlib.dirname(entry)
-  return defer(() => loadConfig(entry)).pipe(
+  return defer(() => loadConfig(entry, options.env)).pipe(
     mergeMap((config) => {
       const shouldBundle = options.bundle ?? config?.build?.bundle ?? false
       const minifier = options.minifier ?? config?.build?.minifier ?? 'esbuild'
@@ -420,6 +431,9 @@ export function buildTests(
     minifyLevel?: MinifyLevel
     logLevel?: LogLevel
     rootDir: string
+    /** Config environment to resolve from mikro.config.ts. Tests always build
+     * in 'development'. */
+    env?: MikroEnv
   },
 ): Observable<BuildEvent> {
   if (entries.length === 0) {
@@ -427,7 +441,7 @@ export function buildTests(
   }
   const rootDir = options.rootDir
   // Load config from the first entry's directory; assume all tests share a project.
-  return defer(() => loadConfig(entries[0]!)).pipe(
+  return defer(() => loadConfig(entries[0]!, options.env)).pipe(
     mergeMap((config) => {
       const minifier = options.minifier ?? config?.build?.minifier ?? 'esbuild'
       const minifyLevel = options.minifyLevel ?? config?.build?.minifyLevel ?? 'default'

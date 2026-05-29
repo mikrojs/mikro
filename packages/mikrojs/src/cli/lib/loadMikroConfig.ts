@@ -3,13 +3,32 @@ import {readFile} from 'node:fs/promises'
 import {stripTypeScriptTypes} from 'node:module'
 import * as pathlib from 'node:path'
 
-import type {MikroJSConfig} from '../../_exports/index.js'
+import type {MikroEnv, MikroJSConfig} from '../../_exports/index.js'
 
 /**
- * Walk up from `startDir` looking for `mikro.config.ts`. Returns the parsed
- * config (TS types stripped, `defineConfig` shimmed) or `null` if none found.
+ * Resolve the config for `env`: the base config (every field except `env`)
+ * shallow-merged with its `env[env]` overrides, with the `env` map stripped.
+ * The merge is shallow — each field in the override replaces the base value
+ * wholesale, so an override can't leave stray fields behind. Returns null
+ * only when no config file was found.
  */
-export async function loadMikroConfig(startDir: string): Promise<MikroJSConfig | null> {
+export function resolveConfig(config: MikroJSConfig | null, env: MikroEnv): MikroJSConfig | null {
+  if (config === null) return null
+  const {env: overrides, ...base} = config
+  const override = overrides?.[env]
+  return override ? {...base, ...override} : base
+}
+
+/**
+ * Walk up from `startDir` looking for `mikro.config.ts`. Returns the config
+ * resolved for `env` (TS types stripped, `defineConfig` shimmed) or `null` if
+ * none found. Defaults to `production` so a bare lookup yields the shipped
+ * config.
+ */
+export async function loadMikroConfig(
+  startDir: string,
+  env: MikroEnv = 'production',
+): Promise<MikroJSConfig | null> {
   let dir = pathlib.resolve(startDir)
   const root = pathlib.parse(dir).root
   while (dir !== root) {
@@ -34,7 +53,7 @@ export async function loadMikroConfig(startDir: string): Promise<MikroJSConfig |
       )
       const dataUrl = `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
       const mod = await import(dataUrl)
-      return mod.default as MikroJSConfig
+      return resolveConfig(mod.default as MikroJSConfig, env)
     }
     dir = pathlib.dirname(dir)
   }
