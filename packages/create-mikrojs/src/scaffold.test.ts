@@ -94,9 +94,9 @@ describe.each(TEMPLATES)('template: $name', ({name}) => {
     expect(pkg.engines).toBeUndefined()
   })
 
-  it('creates tsconfig.json with mikrojs runtime types', () => {
+  it('creates tsconfig.json extending the mikrojs base config', () => {
     const tsconfig = JSON.parse(readFileSync(path.join(targetDir, 'tsconfig.json'), 'utf-8'))
-    expect(tsconfig.compilerOptions.types).toContain('mikrojs/runtime')
+    expect(tsconfig.extends).toBe('mikrojs/tsconfig')
     expect(tsconfig.include).toContain('app/**/*')
     expect(tsconfig.include).toContain('mikro.config.ts')
   })

@@ -29,6 +29,7 @@
   "files": [
     "dist",
     "runtime.d.ts",
+    "tsconfig.base.json",
     "!**/__test__",
     "!**/*.test.js",
     "!**/*.test.d.ts"
@@ -158,6 +159,7 @@
       "development": "./src/_exports/test.ts",
       "import": "./dist/_exports/test.js"
     },
+    "./tsconfig": "./tsconfig.base.json",
     "./uart": {
       "development": "./src/_exports/uart.ts",
       "import": "./dist/_exports/uart.js"
@@ -204,6 +206,7 @@
       "./schema": "./dist/_exports/schema.js",
       "./sim": "./dist/_exports/sim.js",
       "./test": "./dist/_exports/test.js",
+      "./tsconfig": "./tsconfig.base.json",
       "./uart": "./dist/_exports/uart.js",
       "./udp": "./dist/_exports/udp.js",
       "./runtime": "./runtime.d.ts",
