@@ -103,7 +103,9 @@ async function runTail(sub: {
 async function runPull(sub: {dest: string | undefined; port: string | undefined}): Promise<void> {
   const {dest, port} = sub
 
-  const mikroConfig = await loadMikroConfig(process.cwd())
+  // Logs are pulled from a deployed device, which was built in production
+  // mode — resolve the same env override so logFile.dir matches what's on flash.
+  const mikroConfig = await loadMikroConfig(process.cwd(), 'production')
   const logFile = mikroConfig?.logFile
   if (!logFile) {
     console.error(

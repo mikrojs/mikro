@@ -159,6 +159,9 @@ export async function runTestManifest(
       minifier: options.minifier,
       minifyLevel: options.minifyLevel,
       rootDir,
+      // Tests resolve the `test` config env. (The granular .env.<mode> the run
+      // loads is tracked separately via mikroEnv.)
+      env: 'test',
     }),
     {defaultValue: undefined},
   )

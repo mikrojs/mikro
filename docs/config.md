@@ -171,6 +171,70 @@ Simulator-specific options. These are stripped from the config before deploying 
 
 All size options accept a number of bytes or a string with K/M suffix (e.g. `'300k'`, `'1m'`).
 
+## Per-environment overrides {#env}
+
+Put shared config at the top level and override it per environment under `env`. There are three environments, each tied to commands:
+
+| Environment   | Commands                                        |
+| ------------- | ----------------------------------------------- |
+| `production`  | `mikro deploy`, `mikro build`                   |
+| `development` | `mikro dev`, `mikro sim deploy`/`dev`/`profile` |
+| `test`        | `mikro test`, `mikro sim test`                  |
+
+The active environment's overrides are merged over the base. The `env` map itself is not deployed:
+
+```ts twoslash
+import {defineConfig} from 'mikrojs'
+
+export default defineConfig({
+  // Shared by every environment.
+  wifi: {country: 'NO'},
+
+  env: {
+    production: {
+      // Drop debug logging and minify for a smaller build.
+      build: {minifyLevel: 'max', logLevel: 'warn'},
+      // Deep-sleep after a crash to save power.
+      onPanic: {mode: 'deepSleep', delay: 0, duration: 600000},
+      // Write logs to flash for later inspection.
+      logFile: true,
+    },
+    development: {
+      // Keep all log output.
+      build: {logLevel: 'debug'},
+      // Wait 5 seconds before restarting after a crash, leaving time to redeploy.
+      onPanic: {mode: 'restart', delay: 5000},
+    },
+    test: {
+      // Test fixtures may exceed the production readFile() limit.
+      fsReadMax: '256k',
+    },
+  },
+})
+```
+
+Fields you don't override come from the base; every environment here keeps `wifi.country`. An environment with no `env` entry uses the base config unchanged.
+
+The merge is shallow: an override replaces a whole top-level field. Overriding `build` replaces the entire `build` object, not just the keys you set, so spread the base to keep the rest:
+
+```ts twoslash
+import {defineConfig} from 'mikrojs'
+
+const build = {minifier: 'esbuild', minifyLevel: 'max'} as const
+
+export default defineConfig({
+  build,
+  env: {
+    // Keep minifier + minifyLevel, raise the log level.
+    development: {build: {...build, logLevel: 'debug'}},
+  },
+})
+```
+
+::: tip Config environment vs `.env.<mode>`
+The config environment is not the `.env.<mode>` file a command loads. `mikro sim dev` uses the `development` config but reads `.env.simulator`. The `.env` file can be finer-grained.
+:::
+
 ## Full example
 
 ```ts twoslash

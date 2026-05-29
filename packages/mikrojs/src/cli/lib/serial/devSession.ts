@@ -177,9 +177,16 @@ export function createDevSession(options: {
     return concat(
       // Build phase
       of({status: buildStatus} satisfies DevSessionState),
-      build(entry, buildDir, {minify, bytecode, minifier, minifyLevel, logLevel}).pipe(
-        ignoreElements(),
-      ),
+      // Dev-watch is always the development config env, regardless of which
+      // `.env.<mode>` file `mode` selects.
+      build(entry, buildDir, {
+        minify,
+        bytecode,
+        minifier,
+        minifyLevel,
+        logLevel,
+        env: 'development',
+      }).pipe(ignoreElements()),
 
       // Deploy phase
       defer(async () => {

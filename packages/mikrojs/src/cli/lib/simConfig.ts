@@ -1,6 +1,6 @@
 import * as pathlib from 'node:path'
 
-import type {MikroJSConfig} from '../../_exports/index.js'
+import type {MikroEnv, MikroJSConfig} from '../../_exports/index.js'
 import {loadMikroConfig} from './loadMikroConfig.js'
 import {parseSize} from './parseSize.js'
 import {getMikroDir} from './projectRoot.js'
@@ -29,9 +29,13 @@ export function resolveSimConfig(config: MikroJSConfig | null): ResolvedSimConfi
 
 /**
  * Convenience: walk up from `startDir` (or cwd) looking for `mikro.config.ts`,
- * then resolve the sim section with defaults filled in.
+ * then resolve the sim section with defaults filled in. The simulator is a
+ * local flow, so it always resolves the `development` config environment.
  */
-export async function loadSimConfig(startDir?: string): Promise<ResolvedSimConfig> {
-  const config = await loadMikroConfig(startDir ?? process.cwd())
+export async function loadSimConfig(
+  startDir?: string,
+  env: MikroEnv = 'development',
+): Promise<ResolvedSimConfig> {
+  const config = await loadMikroConfig(startDir ?? process.cwd(), env)
   return resolveSimConfig(config)
 }
