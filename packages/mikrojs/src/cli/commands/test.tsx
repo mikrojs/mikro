@@ -5,6 +5,7 @@ import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import {argument, flag, option} from '@optique/core/primitives'
 import {string} from '@optique/core/valueparser'
+import {path} from '@optique/run'
 
 import {agentEmit, agentResult, isAgentMode} from '../lib/agent.js'
 import {loadEnvFiles, validateNvsKeys} from '../lib/deploy.js'
@@ -36,12 +37,12 @@ export const args = command(
       }),
     ),
     env: optional(
-      option('--env', string({metavar: 'FILE'}), {
+      option('--env-file', path({metavar: 'FILE', type: 'file', mustExist: true}), {
         description: message`Path to .env file`,
       }),
     ),
-    noEnvFile: optional(
-      flag('--no-env-file', {
+    noAutoEnv: optional(
+      flag('--no-auto-env', {
         description: message`Skip auto-loading of .env and .env.test from the project root`,
       }),
     ),
@@ -153,7 +154,7 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
     cwd: resolveProjectRoot(),
     mode: 'test',
     envFile: config.env,
-    noEnvFile: config.noEnvFile === true,
+    noAutoEnv: config.noAutoEnv === true,
   })
   validateNvsKeys(envVars)
   if (envVars.length > 0) {

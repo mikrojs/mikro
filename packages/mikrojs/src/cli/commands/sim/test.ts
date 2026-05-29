@@ -5,6 +5,7 @@ import {command, constant, message, multiple, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import {argument, flag, option} from '@optique/core/primitives'
 import {string} from '@optique/core/valueparser'
+import {path} from '@optique/run'
 
 import {agentEmit, agentError, agentResult, isAgentMode} from '../../lib/agent.js'
 import {loadEnvFiles} from '../../lib/deploy.js'
@@ -29,9 +30,9 @@ export const args = command(
         description: message`Test file paths and/or glob patterns. Pass one or more. Default: **/*.test.ts`,
       }),
     ),
-    env: optional(option('--env', string({metavar: 'FILE'}))),
-    noEnvFile: optional(
-      flag('--no-env-file', {
+    env: optional(option('--env-file', path({metavar: 'FILE', type: 'file', mustExist: true}))),
+    noAutoEnv: optional(
+      flag('--no-auto-env', {
         description: message`Skip auto-loading of .env and .env.simulator from the project root`,
       }),
     ),
@@ -79,7 +80,7 @@ interface RunConfig {
   filters?: readonly string[]
   env?: string
   secrets?: string
-  noEnvFile?: boolean
+  noAutoEnv?: boolean
   noMinify?: boolean
   minifier?: string
   minifyLevel?: string
@@ -141,7 +142,7 @@ export async function run(config: RunConfig): Promise<void> {
     cwd: resolveProjectRoot(),
     mode: 'simulator',
     envFile: config.env,
-    noEnvFile: config.noEnvFile === true,
+    noAutoEnv: config.noAutoEnv === true,
   })
   if (envVars.length > 0) log(`Loaded ${envVars.length} env var(s) from file`)
   const timeoutMs = config.timeout ? parseInt(config.timeout, 10) : 60_000

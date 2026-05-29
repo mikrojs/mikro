@@ -104,12 +104,12 @@ export const args = command(
     ),
     json: optional(flag('--json', {description: message`Output as JSON`})),
     env: optional(
-      option('--env', string({metavar: 'FILE'}), {
+      option('--env-file', path({metavar: 'FILE', type: 'file', mustExist: true}), {
         description: message`Path to .env file with environment variables`,
       }),
     ),
-    noEnvFile: optional(
-      flag('--no-env-file', {
+    noAutoEnv: optional(
+      flag('--no-auto-env', {
         description: message`Skip auto-loading of .env and .env.development from the project root`,
       }),
     ),
@@ -150,7 +150,7 @@ interface RunConfig {
   minifyLevel?: string
   json?: boolean
   env?: string
-  noEnvFile?: boolean
+  noAutoEnv?: boolean
 }
 
 export async function run(config: RunConfig): Promise<void> {
@@ -194,7 +194,7 @@ async function runImpl(config: RunConfig): Promise<void> {
       cwd: resolveProjectRoot(),
       mode: 'development',
       envFile: config.env,
-      noEnvFile: config.noEnvFile === true,
+      noAutoEnv: config.noAutoEnv === true,
     })),
   ]
 

@@ -77,7 +77,7 @@ export function createDevSession(options: {
   minifyLevel?: MinifyLevel
   logLevel?: LogLevel
   envFile?: string
-  noEnvFile?: boolean
+  noAutoEnv?: boolean
   /** Drives `MIKRO_ENV` and the `.env.<mode>` file picked up by
    *  `loadEnvFiles`. `mikro dev` passes `'development'` (default);
    *  `mikro sim dev` passes `'simulator'`. */
@@ -97,7 +97,7 @@ export function createDevSession(options: {
     minifyLevel,
     logLevel,
     envFile,
-    noEnvFile,
+    noAutoEnv,
     mode = 'development',
   } = options
   const buildDir = pathlib.join(getMikroDir(), 'build')
@@ -190,7 +190,7 @@ export function createDevSession(options: {
             cwd: projectRoot,
             mode,
             envFile,
-            noEnvFile,
+            noAutoEnv,
           })),
         ]
         validateNvsKeys(envVars)

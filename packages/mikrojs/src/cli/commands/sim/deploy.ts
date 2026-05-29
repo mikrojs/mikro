@@ -24,12 +24,12 @@ export const args = command(
     subcommand: constant('deploy' as const),
     entry: optional(argument(path({metavar: 'ENTRY', mustExist: true, type: 'file'}))),
     env: optional(
-      option('--env', string({metavar: 'FILE'}), {
+      option('--env-file', path({metavar: 'FILE', type: 'file', mustExist: true}), {
         description: message`Path to .env file with environment variables`,
       }),
     ),
-    noEnvFile: optional(
-      flag('--no-env-file', {
+    noAutoEnv: optional(
+      flag('--no-auto-env', {
         description: message`Skip auto-loading of .env and .env.simulator from the project root`,
       }),
     ),
@@ -60,7 +60,7 @@ export const args = command(
 interface RunConfig {
   entry?: string
   env?: string
-  noEnvFile?: boolean
+  noAutoEnv?: boolean
   erase?: boolean
   noRestart?: boolean
   noMinify?: boolean
@@ -99,7 +99,7 @@ export async function run(config: RunConfig): Promise<void> {
         cwd: resolveProjectRoot(),
         mode: 'simulator',
         envFile: config.env,
-        noEnvFile: config.noEnvFile === true,
+        noAutoEnv: config.noAutoEnv === true,
       })),
     ]
 
