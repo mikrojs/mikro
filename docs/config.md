@@ -21,21 +21,33 @@ export default defineConfig({
 
 These options are bundled into the deployed app and read by the firmware at boot.
 
-| Option              | Type                | Default          | Description                                         |
-| ------------------- | ------------------- | ---------------- | --------------------------------------------------- |
-| `panicRestartDelay` | `number` (ms)       | `1000`           | Grace window between uncaught exception and restart |
-| `stackSize`         | `number` (bytes)    | firmware default | QuickJS C stack size                                |
-| `memReserved`       | `number` (bytes)    | `65536` (64 KB)  | Heap reserved for native subsystems                 |
-| `wifi.country`      | `WifiCountryCode`   | none             | WiFi regulatory country code                        |
-| `wifi.hostname`     | `string`            | `mikrojs-<id>`   | DHCP hostname advertised by the STA interface       |
-| `logFile`           | `true \| object`    | off              | Enable on-device file logging                       |
-| `logFile.dir`       | `string`            | `'/appfs/logs'`  | Directory the log file lives in                     |
-| `logFile.maxSize`   | `number \| string`  | `'64k'`          | Rotate when file exceeds this size                  |
-| `logFile.flush`     | `'line' \| 'error'` | `'error'`        | When to flush buffered writes to flash              |
+| Option            | Type                | Default                          | Description                                      |
+| ----------------- | ------------------- | -------------------------------- | ------------------------------------------------ |
+| `onPanic`         | `object`            | `{mode: 'restart', delay: 1000}` | What the device does after an uncaught exception |
+| `stackSize`       | `number` (bytes)    | firmware default                 | QuickJS C stack size                             |
+| `memReserved`     | `number` (bytes)    | `65536` (64 KB)                  | Heap reserved for native subsystems              |
+| `wifi.country`    | `WifiCountryCode`   | none                             | WiFi regulatory country code                     |
+| `wifi.hostname`   | `string`            | `mikrojs-<id>`                   | DHCP hostname advertised by the STA interface    |
+| `logFile`         | `true \| object`    | off                              | Enable on-device file logging                    |
+| `logFile.dir`     | `string`            | `'/appfs/logs'`                  | Directory the log file lives in                  |
+| `logFile.maxSize` | `number \| string`  | `'64k'`                          | Rotate when file exceeds this size               |
+| `logFile.flush`   | `'line' \| 'error'` | `'error'`                        | When to flush buffered writes to flash           |
 
-### `panicRestartDelay`
+### `onPanic`
 
-The runtime always restarts the device when an uncaught exception reaches the top level so apps in the field can self-heal. `panicRestartDelay` controls the grace window (in milliseconds) between the exception and the actual `esp_restart()`. During this window the protocol REPL stays responsive so the host can land `mikro deploy` / `mikro clean` / `mikro ... --recover` commands and break a tight crash loop. Longer windows are friendlier to dev iteration; shorter windows make a self-healing device converge faster. See [Error Handling](/error-handling) for details.
+When an uncaught exception reaches the top level (a "panic"), the device restarts. `onPanic` configures what happens between the exception and that restart.
+
+`delay` is the time in milliseconds the device waits before acting (default `1000`). While it waits, the protocol REPL stays responsive, so you can run `mikro deploy`, `mikro clean`, or `mikro ... --recover` to break a crash loop. Use a longer delay during development to give yourself time to recover the device; use a shorter delay in production so it restarts sooner.
+
+- **`{mode: 'restart', delay?}`** (default): restart after the delay.
+- **`{mode: 'deepSleep', delay?, duration}`**: enter deep sleep for `duration` ms after the delay, then restart on wake. This draws far less power than restarting straight away, which matters for battery-powered devices. The device is unreachable while asleep, so set a longer `delay` during development to keep a window for recovery.
+
+```ts
+// Battery device: sleep immediately, retry every 10 minutes
+onPanic: {mode: 'deepSleep', delay: 0, duration: 600000}
+```
+
+See [Error Handling](/error-handling) for details.
 
 ### `stackSize`
 
@@ -165,7 +177,7 @@ All size options accept a number of bytes or a string with K/M suffix (e.g. `'30
 import {defineConfig} from 'mikrojs'
 
 export default defineConfig({
-  panicRestartDelay: 500,
+  onPanic: {mode: 'restart', delay: 500},
   memReserved: 32 * 1024,
   wifi: {
     country: 'NO', // Norway

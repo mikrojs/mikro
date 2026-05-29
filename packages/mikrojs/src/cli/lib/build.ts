@@ -164,11 +164,16 @@ const DEFAULT_LOG_DIR = '/appfs/logs'
 // form so the device-side JSON parser (mik_app_config.cpp) can read them
 // without a nested-object pass.
 function serializeRuntimeConfig(config: MikroJSConfig): Record<string, unknown> {
-  const {sim: _sim, build: _build, wifi, logFile, fsReadMax, ...rest} = config
+  const {sim: _sim, build: _build, wifi, logFile, fsReadMax, onPanic, ...rest} = config
   const out: Record<string, unknown> = {...rest}
   if (fsReadMax !== undefined) out.fsReadMax = parseSize(fsReadMax)
   if (wifi?.country) out['wifi.country'] = wifi.country
   if (wifi?.hostname) out['wifi.hostname'] = wifi.hostname
+  if (onPanic !== undefined) {
+    out['onPanic.mode'] = onPanic.mode
+    if (onPanic.delay !== undefined) out['onPanic.delay'] = onPanic.delay
+    if (onPanic.mode === 'deepSleep') out['onPanic.duration'] = onPanic.duration
+  }
   if (logFile !== undefined) {
     const opts = logFile === true ? {} : logFile
     out['logFile.dir'] = opts.dir ?? DEFAULT_LOG_DIR

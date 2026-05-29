@@ -219,13 +219,13 @@ import {env} from 'mikrojs/env'
 const ssid = env.require('WIFI_SSID')
 ```
 
-The runtime always restarts the device on an uncaught exception so deployed apps can self-heal. Tune [`panicRestartDelay`](/config#panicrestartdelay) (the grace window between the exception and the actual reboot) to match your environment. Longer for friendlier dev iteration, shorter for faster convergence in the field:
+The runtime restarts the device after an uncaught exception, so a deployed app recovers on its own. Use [`onPanic`](/config#onpanic) to control this: `delay` sets how long the device waits before acting (use a longer delay during development to give yourself time to recover the device, a shorter one in production), and `mode` chooses whether it restarts right away or deep-sleeps to save power first:
 
 ```ts twoslash
 import {defineConfig} from 'mikrojs'
 
 export default defineConfig({
-  panicRestartDelay: 500,
+  onPanic: {mode: 'restart', delay: 500},
 })
 ```
 

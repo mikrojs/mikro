@@ -13,6 +13,8 @@ static const char* TAG = "mik_app_config";
 
 void MIK_DefaultConfig(MIKConfig* config) {
     config->panic_restart_delay_ms = 1000;
+    config->panic_mode = MIK_PANIC_RESTART;
+    config->panic_sleep_duration_ms = 0;
     config->stack_size = 0;
     config->mem_reserved = 64 * 1024;
     config->fs_read_max = 0; /* 0 = runtime default (65536) */
@@ -318,8 +320,18 @@ int MIK_LoadConfig(const char* base_path, MIKConfig* config) {
         if (buf) {
             double num_val;
 
-            if (mik__json_get_number(buf, "panicRestartDelay", &num_val)) {
+            if (mik__json_get_number(buf, "onPanic.delay", &num_val)) {
                 config->panic_restart_delay_ms = (int)num_val;
+            }
+            char panic_mode_str[16];
+            if (mik__json_get_string(buf, "onPanic.mode", panic_mode_str,
+                                     sizeof(panic_mode_str))) {
+                config->panic_mode = strcmp(panic_mode_str, "deepSleep") == 0
+                                         ? MIK_PANIC_DEEP_SLEEP
+                                         : MIK_PANIC_RESTART;
+            }
+            if (mik__json_get_number(buf, "onPanic.duration", &num_val)) {
+                config->panic_sleep_duration_ms = (int)num_val;
             }
             if (mik__json_get_number(buf, "stackSize", &num_val)) {
                 config->stack_size = (size_t)num_val;
