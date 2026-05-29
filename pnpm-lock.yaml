@@ -615,7 +615,7 @@ importers:
         version: 24.12.4
       npm:
         specifier: ^11.13.0
-        version: 11.14.1
+        version: 11.16.0
 
 packages:
 
@@ -4489,8 +4489,8 @@ packages:
     engines: {node: ^20.5.0 || >=22.0.0, npm: '>= 10'}
     hasBin: true
 
-  npm@11.14.1:
-    resolution: {integrity: sha512-aopNZ0eEl6LbxoFcrXLmTEPzNBNxfiQnVgR9RmJBqzm+5h5pFoOmRljpRJbsXxocBeSl7GLcx3MoDf2UlEOjZw==}
+  npm@11.16.0:
+    resolution: {integrity: sha512-A74XL8OxmcegZDMWPkWb5bEQppg8HdYwW3rBD2sPoS4UQHVajfaxBkqyzLeJ3wR0kZ+5xoTjItxXaF7eIXUsyw==}
     engines: {node: ^20.17.0 || >=22.9.0}
     hasBin: true
     bundledDependencies:
@@ -9338,7 +9338,7 @@ snapshots:
       shell-quote: 1.8.3
       which: 5.0.0
 
-  npm@11.14.1: {}
+  npm@11.16.0: {}
 
   object-inspect@1.13.4: {}
 
