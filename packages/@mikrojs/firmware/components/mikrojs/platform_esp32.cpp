@@ -5,6 +5,7 @@
 #include <esp_heap_caps.h>
 #include <esp_mac.h>
 #include <esp_random.h>
+#include <esp_sleep.h>
 #include <esp_system.h>
 #include <esp_rtc_time.h>
 #include <esp_timer.h>
@@ -38,6 +39,16 @@ static uint32_t esp32_random(void) {
 
 static void esp32_restart(void) {
     esp_restart();
+}
+
+static void esp32_deep_sleep_us(uint64_t us) {
+    /* Flush + close the file log so buffered lines reach flash; deep sleep
+     * reboots the chip on wake, same as mik__sleep_deep does for the JS API. */
+    mik_logfile_close();
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    esp_sleep_enable_timer_wakeup(us);
+    esp_deep_sleep_start();
+    /* Never reached */
 }
 
 static void esp32_yield(void) {
@@ -205,6 +216,7 @@ static const MIKPlatform esp32_platform = {
     .get_rtc_us = esp32_get_rtc_us,
     .random = esp32_random,
     .restart = esp32_restart,
+    .deep_sleep_us = esp32_deep_sleep_us,
     .yield = esp32_yield,
     .get_free_system_mem = esp32_get_free_system_mem,
     .get_min_free_system_mem = esp32_get_min_free_system_mem,

@@ -29,8 +29,20 @@ typedef enum MIKLogFlush {
     MIK_LOG_FLUSH_LINE = 1,
 } MIKLogFlush;
 
+/* What the device does after an uncaught exception (a "panic"). Mirror of
+ * the `onPanic.mode` field in the host-side TS config. */
+typedef enum MIKPanicMode {
+    MIK_PANIC_RESTART = 0,    /* default: reboot after the grace window */
+    MIK_PANIC_DEEP_SLEEP = 1, /* deep-sleep panic_sleep_duration_ms; wake reboots */
+} MIKPanicMode;
+
 typedef struct MIKConfig {
+    /* Grace window after a panic, awake and reachable, before the action
+     * fires (applies to both modes). */
     int panic_restart_delay_ms;
+    MIKPanicMode panic_mode;
+    /* Deep-sleep length for MIK_PANIC_DEEP_SLEEP; ignored otherwise. */
+    int panic_sleep_duration_ms;
     size_t stack_size;
     uint32_t mem_reserved;
     uint32_t fs_read_max; /* 0 = keep runtime default (65536) */

@@ -4,7 +4,7 @@ Dev fixture that deploys an app which crash-loops on boot. Used to exercise the 
 
 ## What it does
 
-`app/main.ts` throws an uncaught exception as soon as it runs. The runtime always restarts on uncaught exceptions; `mikro.config.ts` shortens the `panicRestartDelay` grace window so the runtime calls `esp_restart()` quickly after the throw. The next boot autoruns the same broken app, throws again, restarts, forever.
+`app/main.ts` throws an uncaught exception as soon as it runs. The runtime always restarts on uncaught exceptions; `mikro.config.ts` shortens the `onPanic` `delay` grace window so the runtime calls `esp_restart()` quickly after the throw. The next boot autoruns the same broken app, throws again, restarts, forever.
 
 Net effect: the device does enter `MIK_StartReplProtocol` briefly between crashes, but it's gone again before a normal `mikro dev` / `mikro deploy` / `mikro clean` can complete its handshake. The crash cycle is short enough that host-side retries alone aren't enough to catch it.
 

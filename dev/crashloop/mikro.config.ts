@@ -5,6 +5,6 @@ import {defineConfig} from 'mikrojs'
 // `mikro dev` or `mikro clean` can't land a command between reboots. Only
 // `mikro ... --recover` can break out.
 export default defineConfig({
-  panicRestartDelay: 2000,
+  onPanic: {mode: 'restart', delay: 2000},
   logFile: {maxSize: 1024},
 })

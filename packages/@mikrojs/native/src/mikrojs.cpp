@@ -542,6 +542,14 @@ int MIK_Loop(MIKRuntime* mik_rt) {
     if (mik_rt->restart_at_us > 0) {
         const MIKPlatform* platform = MIK_GetPlatform();
         if (platform->get_boot_us() >= mik_rt->restart_at_us) {
+            /* The grace window has elapsed; take the configured panic action.
+             * In deep-sleep mode the timer wake reboots the chip, so the wake
+             * IS the restart — and the live --recover window is forfeit by
+             * design (the CPU is suspended). If the platform has no deep-sleep
+             * hook (hosts), fall through to a plain restart. */
+            if (mik_rt->config.panic_mode == MIK_PANIC_DEEP_SLEEP && platform->deep_sleep_us) {
+                platform->deep_sleep_us((uint64_t)mik_rt->config.panic_sleep_duration_ms * 1000);
+            }
             platform->restart();
         }
         return 0;
