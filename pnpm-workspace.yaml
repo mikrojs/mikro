@@ -47,9 +47,7 @@ minimumReleaseAge: 1440 # minutes
 trustPolicy: no-downgrade
 
 trustPolicyExclude:
-  # 1.0.2 published manually by the maintainer instead of via OIDC trusted
-  # publishing (still has provenance). Same sole maintainer as prior versions;
-  # pulled in by vitest 4.1.7. False positive, not a takeover.
+  # 1.0.2 added staged publishing, which currently triggers a false positive trust downgrade in pnpm < 11.5
   - ast-v8-to-istanbul@1.0.2
   - vite@5.4.21
 
