@@ -81,7 +81,9 @@ Runtime behavior is controlled by `MIKConfig`:
 
 ```c
 typedef struct MIKConfig {
-    int panic_restart_delay_ms;
+    int panic_restart_delay_ms;   // grace window before the panic action
+    MIKPanicMode panic_mode;      // MIK_PANIC_RESTART | MIK_PANIC_DEEP_SLEEP
+    int panic_sleep_duration_ms;  // deep-sleep length (deep-sleep mode only)
     size_t stack_size;
     uint32_t mem_reserved;
     uint32_t fs_read_max;  // 0 = keep runtime default (65536)
@@ -124,7 +126,7 @@ The runtime can be stopped in several ways:
 - **Uncaught exception**: Detected at the top of each loop iteration
 - **Explicit stop**: `MIK_Stop(mik_rt)` sets `stop_requested`
 
-After an uncaught exception, `MIK_Stop()` records a deadline `panic_restart_delay_ms` in the future on `MIKRuntime.restart_at_us`. `MIK_Loop()` keeps the protocol REPL pumping (no more user JS) until the deadline elapses, then calls `platform->restart()` so the host can land deploy / clean / --recover commands during the grace window.
+After an uncaught exception, `MIK_Stop()` records a deadline `panic_restart_delay_ms` in the future on `MIKRuntime.restart_at_us`. `MIK_Loop()` keeps the protocol REPL pumping (no more user JS) until the deadline elapses, then takes the configured panic action: `platform->restart()` (default), or `platform->deep_sleep_us()` for `panic_sleep_duration_ms` when `panic_mode` is `MIK_PANIC_DEEP_SLEEP` (the timer wake reboots the chip). The host can land deploy / clean / --recover commands during the grace window; deep-sleep forfeits that window once asleep.
 
 ## Destruction
 

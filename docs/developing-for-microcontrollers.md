@@ -177,7 +177,7 @@ if (!result.ok) {
 }
 ```
 
-For truly unrecoverable errors (missing config, hardware failure at boot), use `.orPanic()`. The runtime always restarts the device after an uncaught exception so apps in the field can self-heal; tune the grace window via [`panicRestartDelay`](/config#panicrestartdelay).
+For truly unrecoverable errors (missing config, hardware failure at boot), use `.orPanic()`. The runtime always restarts the device after an uncaught exception so apps in the field can self-heal; tune the grace window and recovery behavior via [`onPanic`](/config#onpanic).
 
 ## Host simulator
 

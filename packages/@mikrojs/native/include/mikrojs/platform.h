@@ -14,6 +14,10 @@ typedef struct MIKPlatform {
     int64_t (*get_rtc_us)(void);        /* RTC timer, survives deep sleep */
     uint32_t (*random)(void);
     void (*restart)(void);
+    /** Enter deep sleep for `us` microseconds; the timer wake reboots the
+     *  chip, so this never returns on hardware. NULL on platforms without
+     *  deep sleep (hosts), where callers fall back to restart(). */
+    void (*deep_sleep_us)(uint64_t us);
     void (*yield)(void);
     size_t (*get_free_system_mem)(void);
     size_t (*get_min_free_system_mem)(void); /* All-time low watermark */

@@ -118,13 +118,28 @@ export interface MikroJSLogFileOptions {
   flush?: LogFlush
 }
 
+/** What the device does after an uncaught exception (a "panic").
+ *
+ * `delay` is the grace window (ms) the device stays awake and reachable
+ * before acting. The protocol REPL keeps servicing deploy / clean /
+ * --recover commands during it, so a long enough delay lets the host break
+ * a tight crash loop; short enough keeps the device converging when no one
+ * is watching. Default: `1000`.
+ *
+ * - `restart` (default): reboot after the grace window.
+ * - `deepSleep`: deep-sleep for `duration` ms after the grace window; the
+ *   timer wake reboots the chip (the wake IS the restart). Conserves battery
+ *   for field devices, at the cost of being unreachable while asleep. Keep
+ *   `delay` low (or `0`) in the field; raise it on the bench so you can still
+ *   grab the device before it goes dark. */
+export type MikroJSPanicAction =
+  | {mode: 'restart'; delay?: number}
+  | {mode: 'deepSleep'; delay?: number; duration: number}
+
 export interface MikroJSConfig {
-  /** Grace window (in ms) between an uncaught exception and the
-   * subsequent device restart. The protocol REPL stays responsive to
-   * deploy / clean / --recover commands during this window — long enough
-   * lets the host break a tight crash loop, short enough keeps the device
-   * converging when no one is watching. Default: `1000`. */
-  panicRestartDelay?: number
+  /** Behavior after an uncaught exception. Default:
+   * `{mode: 'restart', delay: 1000}`. */
+  onPanic?: MikroJSPanicAction
   stackSize?: number
   memReserved?: number
   /** Maximum size in bytes for a single readFile() call. Files larger than

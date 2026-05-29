@@ -7,7 +7,7 @@ import {version} from 'mikrojs/sys'
 console.log(`crashloop fixture booting v${version} — this app is designed to crash`)
 
 // Uncaught synchronous throw. The runtime catches this and calls
-// esp_restart() after the panicRestartDelay grace window from
+// esp_restart() after the onPanic delay grace window from
 // mikro.config.ts, so the device enters a tight reboot cycle.
 //
 // Alternative forcible variant (uncomment to bypass the runtime entirely):

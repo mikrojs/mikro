@@ -179,14 +179,33 @@ TEST_CASE("MIK_LoadConfig reads mikro.config.json settings" * doctest::test_suit
     auto dir = make_temp_dir();
     write_file(dir + "/package.json", R"({"name": "test", "main": "./main.js"})");
     write_file(dir + "/mikro.config.json",
-               R"({"panicRestartDelay": 5000, "stackSize": 32768, "memReserved": 131072})");
+               R"({"onPanic.delay": 5000, "stackSize": 32768, "memReserved": 131072})");
 
     MIKConfig config;
     MIK_LoadConfig(dir.c_str(), &config);
 
     CHECK_EQ(5000, config.panic_restart_delay_ms);
+    CHECK_EQ(MIK_PANIC_RESTART, config.panic_mode); /* default when mode absent */
     CHECK_EQ(32768, (int)config.stack_size);
     CHECK_EQ((uint32_t)131072, config.mem_reserved);
+
+    remove_file(dir + "/mikro.config.json");
+    remove_file(dir + "/package.json");
+    rmdir(dir.c_str());
+}
+
+TEST_CASE("MIK_LoadConfig reads onPanic deepSleep mode" * doctest::test_suite("config")) {
+    auto dir = make_temp_dir();
+    write_file(dir + "/package.json", R"({"name": "test", "main": "./main.js"})");
+    write_file(dir + "/mikro.config.json",
+               R"({"onPanic.mode": "deepSleep", "onPanic.delay": 0, "onPanic.duration": 600000})");
+
+    MIKConfig config;
+    MIK_LoadConfig(dir.c_str(), &config);
+
+    CHECK_EQ(MIK_PANIC_DEEP_SLEEP, config.panic_mode);
+    CHECK_EQ(0, config.panic_restart_delay_ms);
+    CHECK_EQ(600000, config.panic_sleep_duration_ms);
 
     remove_file(dir + "/mikro.config.json");
     remove_file(dir + "/package.json");
