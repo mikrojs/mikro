@@ -89,10 +89,10 @@ export interface LoadEnvOptions {
   cwd: string
   /** Mode name used to discover .env.<mode> (e.g. 'development', 'production', 'test'). */
   mode: string
-  /** Explicit --env FILE path (additive, layered after auto-discovery). */
+  /** Explicit --env-file FILE path (additive, layered after auto-discovery). */
   envFile?: string
   /** When true, skips auto-discovery of .env / .env.<mode>. Explicit files still load. */
-  noEnvFile?: boolean
+  noAutoEnv?: boolean
 }
 
 async function readDotenvFile(path: string): Promise<EnvVar[]> {
@@ -106,9 +106,9 @@ async function readDotenvFile(path: string): Promise<EnvVar[]> {
 
 /**
  * Load env vars from .env files with precedence (later overrides earlier):
- *   1. <cwd>/.env                  (auto, skipped when noEnvFile)
- *   2. <cwd>/.env.<mode>           (auto, skipped when noEnvFile)
- *   3. opts.envFile                (explicit --env, error if missing)
+ *   1. <cwd>/.env                  (auto, skipped when noAutoEnv)
+ *   2. <cwd>/.env.<mode>           (auto, skipped when noAutoEnv)
+ *   3. opts.envFile                (explicit --env-file, error if missing)
  *
  * Auto-discovered files are silently skipped if missing.
  * Returned array is deduped by key with last-wins semantics.
@@ -119,7 +119,7 @@ async function readDotenvFile(path: string): Promise<EnvVar[]> {
 export async function loadEnvFiles(opts: LoadEnvOptions): Promise<EnvVar[]> {
   const vars: EnvVar[] = []
 
-  if (!opts.noEnvFile) {
+  if (!opts.noAutoEnv) {
     const base = pathlib.join(opts.cwd, '.env')
     if (await fileExists(base)) {
       vars.push(...(await readDotenvFile(base)))

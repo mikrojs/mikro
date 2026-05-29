@@ -286,7 +286,7 @@ mikro test 'test/math.test.ts'
 
 ### With environment variables
 
-`mikro test` auto-loads `.env` and `.env.test` from the project root. Pass `--env FILE` to layer an extra file on top, or `--no-env-file` to skip auto-discovery. See [Environment Variables](/environment-variables) for the full precedence rules.
+`mikro test` auto-loads `.env` and `.env.test` from the project root. Pass `--env-file FILE` to layer an extra file on top, or `--no-auto-env` to skip auto-discovery. See [Environment Variables](/environment-variables) for the full precedence rules.
 
 The `MIKRO_ENV` variable is automatically set to `"test"` during test runs. Use it for conditional behavior:
 

@@ -52,12 +52,12 @@ describe('loadEnvFiles', () => {
     expect(vars).to.deep.equal([{key: 'FOO', value: 'explicit', secret: true}])
   })
 
-  it('skips auto-discovery when noEnvFile is true', async () => {
+  it('skips auto-discovery when noAutoEnv is true', async () => {
     writeFileSync(pathlib.join(cwd, '.env'), 'FOO=bar\n')
-    expect(await loadEnvFiles({cwd, mode: 'development', noEnvFile: true})).to.deep.equal([])
+    expect(await loadEnvFiles({cwd, mode: 'development', noAutoEnv: true})).to.deep.equal([])
   })
 
-  it('still loads explicit envFile when noEnvFile is true', async () => {
+  it('still loads explicit envFile when noAutoEnv is true', async () => {
     writeFileSync(pathlib.join(cwd, '.env'), 'FOO=auto\n')
     const explicit = pathlib.join(cwd, 'explicit.env')
     writeFileSync(explicit, 'FOO=explicit\n')
@@ -65,7 +65,7 @@ describe('loadEnvFiles', () => {
       cwd,
       mode: 'development',
       envFile: explicit,
-      noEnvFile: true,
+      noAutoEnv: true,
     })
     expect(vars).to.deep.equal([{key: 'FOO', value: 'explicit', secret: true}])
   })

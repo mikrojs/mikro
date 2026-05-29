@@ -51,12 +51,12 @@ export const args = command(
       }),
     ),
     env: optional(
-      option('--env', string({metavar: 'FILE'}), {
+      option('--env-file', path({metavar: 'FILE', type: 'file', mustExist: true}), {
         description: message`Path to .env file with environment variables`,
       }),
     ),
-    noEnvFile: optional(
-      flag('--no-env-file', {
+    noAutoEnv: optional(
+      flag('--no-auto-env', {
         description: message`Skip auto-loading of .env and .env.production from the project root`,
       }),
     ),
@@ -169,7 +169,7 @@ export async function run(
       cwd: resolveProjectRoot(),
       mode: 'production',
       envFile: config.env,
-      noEnvFile: config.noEnvFile === true,
+      noAutoEnv: config.noAutoEnv === true,
     })),
   ]
   validateNvsKeys(envVars)

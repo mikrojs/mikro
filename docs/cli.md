@@ -15,17 +15,17 @@ Start development mode with live reload. Builds your TypeScript, deploys it to t
 mikro dev [ENTRY]
 ```
 
-| Option             | Description                                                           |
-| ------------------ | --------------------------------------------------------------------- |
-| `ENTRY`            | Entry file (default: `main` field in package.json)                    |
-| `-p, --port PORT`  | Serial port (auto-detected if omitted)                                |
-| `--env FILE`       | Extra `.env` file, layered on top of auto-discovery                   |
-| `--no-env-file`    | Skip auto-loading of `.env` and `.env.development`                    |
-| `--force-deploy`   | Force full deploy, ignoring cached checksums                          |
-| `--no-minify`      | Skip minification                                                     |
-| `--no-bytecode`    | Skip bytecode compilation                                             |
-| `--loglevel LEVEL` | Log level: `none`, `error`, `warn`, `info`, `debug`. Default: `debug` |
-| `--json`           | Output as JSON                                                        |
+| Option             | Description                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| `ENTRY`            | Entry file (default: `main` field in package.json)                                                      |
+| `-p, --port PORT`  | Serial port (auto-detected if omitted)                                                                  |
+| `--env-file FILE`  | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
+| `--no-auto-env`    | Skip auto-loading of `.env` and `.env.development`                                                      |
+| `--force-deploy`   | Force full deploy, ignoring cached checksums                                                            |
+| `--no-minify`      | Skip minification                                                                                       |
+| `--no-bytecode`    | Skip bytecode compilation                                                                               |
+| `--loglevel LEVEL` | Log level: `none`, `error`, `warn`, `info`, `debug`. Default: `debug`                                   |
+| `--json`           | Output as JSON                                                                                          |
 
 See [Build options](#build-options) for details on `--no-minify`, `--loglevel`, and other build flags.
 
@@ -43,8 +43,8 @@ mikro deploy [ENTRY]
 | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `ENTRY`            | Entry file (default: `main` field in package.json)                                                               |
 | `-p, --port PORT`  | Serial port (auto-detected if omitted)                                                                           |
-| `--env FILE`       | Extra `.env` file, layered on top of auto-discovery                                                              |
-| `--no-env-file`    | Skip auto-loading of `.env` and `.env.production`                                                                |
+| `--env-file FILE`  | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence)          |
+| `--no-auto-env`    | Skip auto-loading of `.env` and `.env.production`                                                                |
 | `--console`        | Attach console after deploy and restart device                                                                   |
 | `-e, --erase`      | Erase current app before uploading                                                                               |
 | `--recover`        | Reset into safe mode before deploying. See [Troubleshooting](/troubleshooting#recovering-a-crash-looping-device) |
@@ -175,19 +175,19 @@ Run on-device tests. Discovers `*.test.ts` files, deploys them, and reports stru
 mikro test [PATTERN]
 ```
 
-| Option                    | Description                                                 |
-| ------------------------- | ----------------------------------------------------------- |
-| `PATTERN`                 | Glob pattern to filter test files (default: `**/*.test.ts`) |
-| `-p, --port PORT`         | Serial port (auto-detected if omitted)                      |
-| `--env FILE`              | Extra `.env` file, layered on top of auto-discovery         |
-| `--no-env-file`           | Skip auto-loading of `.env` and `.env.test`                 |
-| `--no-minify`             | Skip minification                                           |
-| `--no-bytecode`           | Skip bytecode compilation                                   |
-| `-t, --timeout MS`        | Per-file timeout in ms (default: `60000`)                   |
-| `--update-heap-baselines` | Overwrite committed per-file heap-baseline snapshots        |
-| `--diagnostics`           | Show per-test heap progress and supervisor announcements    |
-| `-y, --yes`               | Skip confirmation prompt                                    |
-| `--json`                  | Output as JSON                                              |
+| Option                    | Description                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `PATTERN`                 | Glob pattern to filter test files (default: `**/*.test.ts`)                                             |
+| `-p, --port PORT`         | Serial port (auto-detected if omitted)                                                                  |
+| `--env-file FILE`         | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
+| `--no-auto-env`           | Skip auto-loading of `.env` and `.env.test`                                                             |
+| `--no-minify`             | Skip minification                                                                                       |
+| `--no-bytecode`           | Skip bytecode compilation                                                                               |
+| `-t, --timeout MS`        | Per-file timeout in ms (default: `60000`)                                                               |
+| `--update-heap-baselines` | Overwrite committed per-file heap-baseline snapshots                                                    |
+| `--diagnostics`           | Show per-test heap progress and supervisor announcements                                                |
+| `-y, --yes`               | Skip confirmation prompt                                                                                |
+| `--json`                  | Output as JSON                                                                                          |
 
 See [Build options](#build-options) for details on `--no-minify` and other build flags.
 
@@ -199,7 +199,7 @@ mikro test
 mikro test 'test/smoke.test.ts'
 
 # Run with env vars
-mikro test --env .env
+mikro test --env-file .env
 ```
 
 Test files import from `mikrojs/test`:
@@ -332,13 +332,13 @@ Watch + build + deploy + REPL against the simulator. The sim equivalent of `mikr
 mikro sim dev [ENTRY]
 ```
 
-| Option          | Description                                         |
-| --------------- | --------------------------------------------------- |
-| `ENTRY`         | Entry file (default: `main` field in package.json)  |
-| `--env FILE`    | Extra `.env` file, layered on top of auto-discovery |
-| `--no-env-file` | Skip auto-loading of `.env` and `.env.simulator`    |
-| `--no-minify`   | Skip minification                                   |
-| `--no-bytecode` | Skip bytecode compilation                           |
+| Option            | Description                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| `ENTRY`           | Entry file (default: `main` field in package.json)                                                      |
+| `--env-file FILE` | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
+| `--no-auto-env`   | Skip auto-loading of `.env` and `.env.simulator`                                                        |
+| `--no-minify`     | Skip minification                                                                                       |
+| `--no-bytecode`   | Skip bytecode compilation                                                                               |
 
 ### mikro sim deploy
 
@@ -348,16 +348,16 @@ One-shot build + deploy to the simulator (no watch). The sim equivalent of `mikr
 mikro sim deploy [ENTRY]
 ```
 
-| Option          | Description                                         |
-| --------------- | --------------------------------------------------- |
-| `ENTRY`         | Entry file (default: `main` field in package.json)  |
-| `--env FILE`    | Extra `.env` file, layered on top of auto-discovery |
-| `--no-env-file` | Skip auto-loading of `.env` and `.env.simulator`    |
-| `-e, --erase`   | Erase current app before uploading                  |
-| `--no-restart`  | Do not restart sim after deploy                     |
-| `--no-minify`   | Skip minification                                   |
-| `--no-bytecode` | Skip bytecode compilation                           |
-| `--json`        | Output as JSON                                      |
+| Option            | Description                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| `ENTRY`           | Entry file (default: `main` field in package.json)                                                      |
+| `--env-file FILE` | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
+| `--no-auto-env`   | Skip auto-loading of `.env` and `.env.simulator`                                                        |
+| `-e, --erase`     | Erase current app before uploading                                                                      |
+| `--no-restart`    | Do not restart sim after deploy                                                                         |
+| `--no-minify`     | Skip minification                                                                                       |
+| `--no-bytecode`   | Skip bytecode compilation                                                                               |
+| `--json`          | Output as JSON                                                                                          |
 
 ### mikro sim repl
 
@@ -375,17 +375,17 @@ Discover and run `*.test.ts` files in the simulator. The sim equivalent of `mikr
 mikro sim test [PATTERN]
 ```
 
-| Option                    | Description                                                 |
-| ------------------------- | ----------------------------------------------------------- |
-| `PATTERN`                 | Glob pattern to filter test files (default: `**/*.test.ts`) |
-| `--env FILE`              | Extra `.env` file, layered on top of auto-discovery         |
-| `--no-env-file`           | Skip auto-loading of `.env` and `.env.simulator`            |
-| `--no-minify`             | Skip minification                                           |
-| `--no-bytecode`           | Skip bytecode compilation                                   |
-| `-t, --timeout MS`        | Per-file timeout in ms (default: `60000`)                   |
-| `--update-heap-baselines` | Overwrite committed per-file heap-baseline snapshots        |
-| `--diagnostics`           | Show per-test heap progress and supervisor announcements    |
-| `--json`                  | Output as JSON                                              |
+| Option                    | Description                                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `PATTERN`                 | Glob pattern to filter test files (default: `**/*.test.ts`)                                             |
+| `--env-file FILE`         | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
+| `--no-auto-env`           | Skip auto-loading of `.env` and `.env.simulator`                                                        |
+| `--no-minify`             | Skip minification                                                                                       |
+| `--no-bytecode`           | Skip bytecode compilation                                                                               |
+| `-t, --timeout MS`        | Per-file timeout in ms (default: `60000`)                                                               |
+| `--update-heap-baselines` | Overwrite committed per-file heap-baseline snapshots                                                    |
+| `--diagnostics`           | Show per-test heap progress and supervisor announcements                                                |
+| `--json`                  | Output as JSON                                                                                          |
 
 ### mikro sim env
 
@@ -426,22 +426,22 @@ Run your app in the simulator and report per-module QuickJS heap usage, so you c
 mikro sim profile [ENTRY]
 ```
 
-| Option               | Description                                                |
-| -------------------- | ---------------------------------------------------------- |
-| `ENTRY`              | Entry file (default: `main` field in package.json)         |
-| `--mem-limit BYTES`  | QuickJS heap ceiling for the profile run (default: `32M`)  |
-| `--memory-budget KB` | Highlight rows against an explicit budget in KB            |
-| `--chip NAME`        | Preset budget for a chip (e.g. `esp32c6`, `esp32s3`)       |
-| `--top N`            | Show only the N largest modules                            |
-| `--sort KEY`         | Sort by `size` (default) or `order` (load order)           |
-| `--min-bytes N`      | Hide modules smaller than N bytes                          |
-| `--include-native`   | Include `native:*` runtime modules (excluded by default)   |
-| `--include-builtins` | Include `mikrojs/*` built-in modules (excluded by default) |
-| `--only-native`      | Show only `native:*` modules                               |
-| `--only-builtins`    | Show only `mikrojs/*` built-ins                            |
-| `--json`             | Output as JSON                                             |
-| `--env FILE`         | Extra `.env` file, layered on top of auto-discovery        |
-| `--no-env-file`      | Skip auto-loading of `.env` and `.env.development`         |
+| Option               | Description                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------- |
+| `ENTRY`              | Entry file (default: `main` field in package.json)                                                      |
+| `--mem-limit BYTES`  | QuickJS heap ceiling for the profile run (default: `32M`)                                               |
+| `--memory-budget KB` | Highlight rows against an explicit budget in KB                                                         |
+| `--chip NAME`        | Preset budget for a chip (e.g. `esp32c6`, `esp32s3`)                                                    |
+| `--top N`            | Show only the N largest modules                                                                         |
+| `--sort KEY`         | Sort by `size` (default) or `order` (load order)                                                        |
+| `--min-bytes N`      | Hide modules smaller than N bytes                                                                       |
+| `--include-native`   | Include `native:*` runtime modules (excluded by default)                                                |
+| `--include-builtins` | Include `mikrojs/*` built-in modules (excluded by default)                                              |
+| `--only-native`      | Show only `native:*` modules                                                                            |
+| `--only-builtins`    | Show only `mikrojs/*` built-ins                                                                         |
+| `--json`             | Output as JSON                                                                                          |
+| `--env-file FILE`    | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
+| `--no-auto-env`      | Skip auto-loading of `.env` and `.env.development`                                                      |
 
 By default, `native:*` runtime modules and `mikrojs/*` built-ins are hidden so you see only your own code's heap cost. Use `--include-native` / `--include-builtins` to add them back, or `--only-native` / `--only-builtins` for a focused view of just those categories.
 
@@ -495,7 +495,7 @@ Then start a fresh shell session and try:
 
 ```sh
 mikro <TAB>              # → dev, deploy, env, build, flash, ...
-mikro dev --<TAB>        # → --port, --env, --no-minify, ...
+mikro dev --<TAB>        # → --port, --env-file, --no-minify, ...
 mikro dev --port <TAB>   # → live serial devices on your machine
 ```
 

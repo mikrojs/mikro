@@ -99,13 +99,13 @@ Every entry is treated as a secret by default. Add a `# @no-secret` comment line
 
 #### Precedence
 
-Auto-loaded in this order, with later files overriding earlier ones:
+Files are loaded in the order below and **merged per key**: a variable set in a later source overrides the same variable from an earlier one, while keys a later source doesn't mention are left untouched. The last source therefore has the highest priority.
 
-1. `.env`
+1. `.env` (lowest priority)
 2. `.env.<mode>`: where `<mode>` matches the `MIKRO_ENV` value the command sets (see [Built-in variables](#mikro-env) below). For example: `.env.development` for `mikro dev`, `.env.production` for `mikro deploy`, `.env.test` for `mikro test`, `.env.simulator` for any `mikro sim …` command.
-3. `--env FILE`: extra file passed explicitly (additive)
+3. `--env-file FILE`: an extra file passed explicitly, layered on top (highest priority)
 
-Auto-discovered files are silently skipped if missing. An explicit `--env` path errors if the file doesn't exist.
+Auto-discovered files (1 and 2) are silently skipped if missing. An explicit `--env-file` errors if the file doesn't exist. `--no-auto-env` removes steps 1 and 2, leaving only `--env-file` if given.
 
 ::: warning .env files should never be committed
 The `create-mikrojs` scaffold gitignores `.env*`. Commit `.env.example` instead to share the shape of the variables your project expects.
@@ -117,14 +117,14 @@ Names must be 15 characters or fewer. The CLI errors with the full list of offen
 
 #### Opting out
 
-Pass `--no-env-file` to skip auto-discovery. An explicit `--env` file still loads:
+Pass `--no-auto-env` to skip auto-discovery. A file passed via `--env-file` still loads:
 
 ```sh
-# Use only what's in the shell environment (CI scenarios)
-npx mikro deploy --no-env-file
+# Skip auto-discovery entirely (deploy with no project env vars)
+npx mikro deploy --no-auto-env
 
-# Skip auto-discovery, but still load this one file
-npx mikro deploy --no-env-file --env=ci.env
+# Skip auto-discovery, but still load this one file (e.g. in CI)
+npx mikro deploy --no-auto-env --env-file=ci.env
 ```
 
 ## Built-in variables

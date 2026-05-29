@@ -55,12 +55,12 @@ export const args = command(
       }),
     ),
     env: optional(
-      option('--env', string({metavar: 'FILE'}), {
+      option('--env-file', path({metavar: 'FILE', type: 'file', mustExist: true}), {
         description: message`Path to .env file with environment variables`,
       }),
     ),
-    noEnvFile: optional(
-      flag('--no-env-file', {
+    noAutoEnv: optional(
+      flag('--no-auto-env', {
         description: message`Skip auto-loading of .env and .env.development from the project root`,
       }),
     ),
@@ -99,7 +99,7 @@ export async function run(config: InferValue<typeof args>) {
           minifyLevel: parseMinifyLevel(config.minifyLevel),
           logLevel: parseLogLevel(config.logLevel),
           envFile: config.env,
-          noEnvFile: config.noEnvFile === true,
+          noAutoEnv: config.noAutoEnv === true,
           externalDeploys$: deploys$.asObservable(),
         })
 
@@ -187,7 +187,7 @@ export default function Dev(props: Props) {
         minifyLevel,
         logLevel,
         envFile: props.args.env,
-        noEnvFile: props.args.noEnvFile === true,
+        noAutoEnv: props.args.noAutoEnv === true,
       })
       return {run$: dev.state$, dispose: () => dev.close()}
     },
@@ -202,7 +202,7 @@ export default function Dev(props: Props) {
       minifyLevel,
       logLevel,
       props.args.env,
-      props.args.noEnvFile,
+      props.args.noAutoEnv,
     ],
   )
 

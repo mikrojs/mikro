@@ -59,12 +59,12 @@ export const args = command(
       }),
     ),
     env: optional(
-      option('--env', string({metavar: 'FILE'}), {
+      option('--env-file', path({metavar: 'FILE', type: 'file', mustExist: true}), {
         description: message`Path to .env file with environment variables`,
       }),
     ),
-    noEnvFile: optional(
-      flag('--no-env-file', {
+    noAutoEnv: optional(
+      flag('--no-auto-env', {
         description: message`Skip auto-loading of .env and .env.simulator from the project root`,
       }),
     ),
@@ -88,7 +88,7 @@ interface DevConfig {
   noHooks?: boolean
   logLevel?: string
   env?: string
-  noEnvFile?: boolean
+  noAutoEnv?: boolean
   noWatch?: boolean
   agent?: boolean
 }
@@ -111,7 +111,7 @@ function devSessionOptions(config: DevConfig) {
     minifyLevel: parseMinifyLevel(config.minifyLevel),
     logLevel: parseLogLevel(config.logLevel),
     envFile: config.env,
-    noEnvFile: config.noEnvFile === true,
+    noAutoEnv: config.noAutoEnv === true,
     mode: 'simulator' as const,
   }
 }
@@ -152,7 +152,7 @@ export async function run(config: DevConfig): Promise<void> {
     minifyLevel: opts.minifyLevel,
     logLevel: opts.logLevel,
     envFile: opts.envFile,
-    noEnvFile: opts.noEnvFile,
+    noAutoEnv: opts.noAutoEnv,
     externalDeploys$: deploys$.asObservable(),
     mode: opts.mode,
   })
@@ -377,7 +377,7 @@ function SimDevMode(props: DevModeProps) {
         minifyLevel: opts.minifyLevel,
         logLevel: opts.logLevel,
         envFile: opts.envFile,
-        noEnvFile: opts.noEnvFile,
+        noAutoEnv: opts.noAutoEnv,
         mode: opts.mode,
       })
 
@@ -432,7 +432,7 @@ function SimDevMode(props: DevModeProps) {
     opts.minifyLevel,
     opts.logLevel,
     opts.envFile,
-    opts.noEnvFile,
+    opts.noAutoEnv,
   ])
 
   if (error && !conn) {
