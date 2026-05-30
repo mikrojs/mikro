@@ -80,18 +80,6 @@ declare interface ImportMetaEnv {
 
 declare interface ImportMeta {
   readonly env: Readonly<ImportMetaEnv>
-  /**
-   * Evict a module from the runtime's module cache, recursively freeing
-   * any transitive dependency whose only importer was the unloaded module.
-   * Builtin modules (native:*, mikrojs/*, @mikrojs/*) are anchored
-   * and cannot be unloaded.
-   *
-   * Intended for use with dynamic imports: a static `import` at the top of
-   * the module creates a binding that pins the imported module's exports,
-   * so unloading it while the binding is live reclaims nothing. Prefer
-   * `const x = await import(spec)` + local scope + `import.meta.unload(spec)`.
-   */
-  unload(specifier: string): Promise<number>
 }
 
 declare class TextEncoder {

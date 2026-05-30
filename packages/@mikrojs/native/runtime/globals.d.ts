@@ -64,28 +64,4 @@ declare interface ImportMeta {
   readonly basename: string
   readonly path: string
   readonly env: Readonly<Record<string, string | undefined>>
-  /**
-   * Evict a module from the runtime's module cache, recursively freeing
-   * any transitive dependency whose only importer was the unloaded module.
-   * Builtin modules (native:*, mikrojs/*, @mikrojs/*) are anchored
-   * and cannot be unloaded.
-   *
-   * Intended for use with dynamic imports: a static `import` at the top of
-   * the module creates a binding that pins the imported module's exports,
-   * so unloading it while the binding is live reclaims nothing. Prefer
-   * `const x = await import(spec)` + local scope + `import.meta.unload(spec)`.
-   *
-   * **Incompatible with `bundle: true`.** When the build bundles modules
-   * into chunks, source-level specifiers like `./phases/display.js` no
-   * longer correspond to loaded module names (they become chunk names like
-   * `display-GYVGL5MB.js`) — the unload call silently resolves to 0 and
-   * frees nothing. Projects that rely on dynamic-import-then-unload for
-   * memory reclaim need `bundle: false` so specifier strings survive to
-   * runtime unchanged.
-   *
-   * Resolves to the number of modules actually freed (root + transitive
-   * orphans), after a GC pass has run so a subsequent `memoryUsage()`
-   * snapshot reflects the reclaim.
-   */
-  unload(specifier: string): Promise<number>
 }

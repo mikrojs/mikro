@@ -133,7 +133,7 @@ include("${MIK_BYTECODE_CMAKE}")
 
 # Force linker to include self-registering native modules
 set(_MIK_MODULES cbor pin i2c spi http wifi rtc nvs_kv sntp sleep neopixel pwm uart)
-set(_MIK_BYTECODE_MODULES cbor env result schema fs http/helpers http/request i2c kv/nvs kv/rtc kv/shared neopixel observable observable/lazy observable/operators pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi)
+set(_MIK_BYTECODE_MODULES cbor env result schema fs http/helpers http/request i2c kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi)
 if(CONFIG_BT_ENABLED)
     list(APPEND _MIK_MODULES ble)
     list(APPEND _MIK_BYTECODE_MODULES ble)

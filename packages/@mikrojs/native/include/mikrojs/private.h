@@ -184,6 +184,16 @@ char* mik_module_normalizer(JSContext* ctx, const char* base_name, const char* n
  * mid-evaluation, or unknown modules. */
 int mik__unload_module(JSContext* ctx, const char* normalized_name);
 
+/* Unload the module whose namespace object is `ns` (reverse lookup via
+ * JS_FindModuleByNamespace, then mik__unload_module by name). Returns the
+ * number of modules freed, 0 if `ns` is not a currently-loaded module's
+ * namespace, or -1 with a pending JS exception. Backs `disposable()`. */
+int mik__unload_namespace(JSContext* ctx, JSValueConst ns);
+
+/* True if `ns` is the namespace of a currently-loaded, non-anchored module
+ * (i.e. one that disposable() is allowed to unload). */
+bool mik__is_unloadable_namespace(JSContext* ctx, JSValueConst ns);
+
 int js_module_set_import_meta(JSContext* ctx, JSValue func_val, bool use_realpath, bool is_main);
 
 JSValue mik__get_args(JSContext* ctx);

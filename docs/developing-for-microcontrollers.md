@@ -54,32 +54,32 @@ if (sensorConnected) {
 
 ### Unload modules you're done with
 
-For apps that run in discrete phases (e.g. sense, then send, then sleep), you can reclaim memory by evicting a phase's modules once it's over. `import.meta.unload(specifier)` frees the module record plus any transitive dependency whose only importer was the unloaded module:
+Some apps run in distinct phases: sense, then send, then sleep. Each one pulls in code you won't need again, and you can free that memory once the phase is over.
+
+Wrap the phase in `withUnload()`: it loads the module, runs your callback with it, then unloads it and reclaims its memory:
 
 ```ts twoslash
 // @noErrors
+import {withUnload} from 'mikrojs/module'
 declare const input: unknown
 // ---cut---
-const result = await (async () => {
-  const {runPhase} = await import('./phases/modem.js')
-  return runPhase(input)
-})()
-
-const freed = await import.meta.unload('./phases/modem.js')
-console.log('freed %d modules', freed)
+const status = await withUnload(import('./phases/modem.js'), (modem) => modem.runPhase(input))
+// the modem phase is unloaded and its heap reclaimed by the time this resolves
 ```
 
-On a real app this can reclaim tens of KB: a modem phase spanning 7 modules reclaimed ~66 KB in one measured case.
+Inside the callback you use the module exactly as you normally would: `modem.runPhase(...)`, destructuring, and so on. When the callback finishes (or throws), the module is unloaded, along with any transitive dependency whose only importer was this module.
 
-Caveats:
+In practice this can free tens of KB. One modem phase of seven modules freed about 66 KB.
 
-- **Imports must go out of scope first.** A `const {fn} = await import(...)` binding at the top of a function pins the module's exported closures, and closures pin the module's lexical environment. If the binding outlives the `unload()` call, almost nothing is reclaimed. Wrap the import + call in an async IIAE (as above) so the binding dies before `unload()` runs. Return values must also be plain data (numbers, strings, plain objects/arrays); returning a closure or a class instance with methods smuggles the module scope back out.
-- **Incompatible with `bundle: true`.** Bundling rewrites source specifiers to chunk names (`./phases/modem.js` becomes `modem-ABC123.js`), so the `unload()` string no longer matches a loaded module and silently frees nothing. Projects that rely on unloading need `bundle: false`.
-- **Builtins can't be unloaded.** `mikrojs/*` and `@mikrojs/*` modules are anchored; calls targeting them are no-ops.
-- **Use-after-unload is undefined behaviour.** If you call into an unloaded module through a surviving reference (a leftover callback, a timer, a stored object), anything can happen. Treat `unload()` as a hard boundary: after the call, the phase is gone.
-- **Only worthwhile for sizeable module trees.** A one- or two-module phase reclaims very little; the technique pays off when a phase pulls in a large tree you don't need again.
+A few things to keep in mind:
 
-If none of those apply, stick with dynamic imports and let refcounting reclaim values as they go out of scope. `unload()` is a last resort for memory-bound phased applications.
+- **Non-standard module behavior.** Standard JavaScript modules evaluate once and stay loaded for the life of the program; nothing in the language unloads them. `withUnload()` evicts the module from the loader cache, so a later `import` re-evaluates it from scratch. Avoid it on modules that run one-time setup or hold singleton state assuming a single evaluation.
+- **Don't return the module's exports from the callback.** Whatever the callback returns outlives the module, so returning one of its functions (or an object holding one) keeps the whole phase alive and frees little or nothing. Return plain values (numbers, strings, simple objects), or nothing.
+- **A module stays loaded if something else still imports it.** Only modules whose last importer was the disposed phase are unloaded; a shared module that another live part of your app imports is left intact.
+- **Built-in modules can't be unloaded.** If the import resolves to a `mikrojs/*` or `native:*` module, `withUnload()` throws.
+- **It pays off for large phases.** Unloading one or two small modules barely helps; the win comes when a phase loads a big tree of code you're done with.
+
+If none of this applies, just use normal dynamic imports. The runtime frees values on its own as they go out of scope. `withUnload()` is for memory-tight apps that work in phases.
 
 ### Configuring `memReserved`
 

@@ -88,6 +88,10 @@
       "development": "./src/_exports/kv/rtc.ts",
       "import": "./dist/_exports/kv/rtc.js"
     },
+    "./module": {
+      "development": "./src/_exports/module.ts",
+      "import": "./dist/_exports/module.js"
+    },
     "./neopixel": {
       "development": "./src/_exports/neopixel.ts",
       "import": "./dist/_exports/neopixel.js"
@@ -185,6 +189,7 @@
       "./http/request": "./dist/_exports/http/request.js",
       "./kv/nvs": "./dist/_exports/kv/nvs.js",
       "./kv/rtc": "./dist/_exports/kv/rtc.js",
+      "./module": "./dist/_exports/module.js",
       "./sleep": "./dist/_exports/sleep.js",
       "./sntp": "./dist/_exports/sntp.js",
       "./wifi": "./dist/_exports/wifi.js",
