@@ -21,7 +21,7 @@ describe.runIf(hasWifi)('wifi e2e', () => {
 
   test('http request', async () => {
     const {request} = await import('mikrojs/http/request')
-    const result = await request('http://httpbin.org/get')
+    const result = await request('http://httpbingo.org/get')
     assert.ok(result)
     assert.truthy(result.ok && result.value.status === 200)
     if (result.ok) await result.value.close()
