@@ -504,6 +504,12 @@ importers:
         specifier: 'catalog:'
         version: 8.60.0(eslint@10.4.0(jiti@2.7.0))(typescript@6.0.3)
 
+  packages/create-mikrojs:
+    dependencies:
+      create-mikro:
+        specifier: workspace:*
+        version: link:../create-mikro
+
   packages/mikro:
     dependencies:
       '@mikrojs/analyze-imports':
