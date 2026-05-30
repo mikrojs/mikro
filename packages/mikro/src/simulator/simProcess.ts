@@ -8,20 +8,8 @@
  * Usage: node simProcess.js --fs-root <path> [--mem-limit <bytes>] [--fs-limit <bytes>] [--sim-dir <path>]
  */
 
-// Suppress the ExperimentalWarning that `node:module.stripTypeScriptTypes`
-// emits on first use. The sim deliberately uses it to strip .ts files before
-// handing source to QuickJS; the warning has no actionable content for us
-// and it leaks into the user's terminal via inherited stderr on every run.
-// Filter by message so we don't swallow other experimental warnings.
-{
-  const origEmitWarning = process.emitWarning.bind(process)
-  process.emitWarning = ((warning: unknown, ...rest: unknown[]) => {
-    const message =
-      typeof warning === 'string' ? warning : (warning as {message?: string} | undefined)?.message
-    if (message && message.includes('stripTypeScriptTypes')) return
-    return (origEmitWarning as (...args: unknown[]) => void)(warning, ...rest)
-  }) as typeof process.emitWarning
-}
+// Side-effect import: must run before any code path that strips .ts types.
+import '../suppressStripTypesWarning.js'
 
 import {createHash} from 'node:crypto'
 import {
