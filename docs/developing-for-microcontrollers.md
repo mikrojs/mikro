@@ -59,12 +59,17 @@ Some apps run in distinct phases: sense, then send, then sleep. Each one pulls i
 Wrap the phase in `withUnload()`: it loads the module, runs your callback with it, then unloads it and reclaims its memory:
 
 ```ts twoslash
-// @noErrors
+// @filename: phases/modem.ts
+export function runPhase(input: unknown) {
+  return {ok: true}
+}
+// @filename: app.ts
 import {withUnload} from 'mikrojs/module'
 declare const input: unknown
 // ---cut---
 const status = await withUnload(import('./phases/modem.js'), (modem) => modem.runPhase(input))
-// the modem phase is unloaded and its heap reclaimed by the time this resolves
+// The modem phase is unloaded and its heap reclaimed by the time
+// this resolves.
 ```
 
 Inside the callback you use the module exactly as you normally would: `modem.runPhase(...)`, destructuring, and so on. When the callback finishes (or throws), the module is unloaded, along with any transitive dependency whose only importer was this module.
