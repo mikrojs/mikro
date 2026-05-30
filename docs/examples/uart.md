@@ -67,19 +67,19 @@ console.log('Done!')
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-uart --template uart
+pnpm create mikro --template uart
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-uart --template uart
+npm create mikro -- --template uart
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-uart --template uart
+yarn create mikro --template uart
 ```
 
 ```sh [bun]
-bun create mikrojs my-uart --template uart
+bun create mikro --template uart
 ```
 
 :::

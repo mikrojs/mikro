@@ -3,7 +3,7 @@
 Scaffolding tool for new Mikro.js projects.
 
 ```sh
-npm create mikro my-project
+npm create mikro
 ```
 
 ## Templates
@@ -23,11 +23,11 @@ npm create mikro my-project
 
 ```sh
 # Interactive (prompts for template)
-npm create mikro my-project
+npm create mikro
 
 # With template
-npm create mikro -- my-project --template blinky
+npm create mikro -- --template blinky
 
 # With pnpm
-pnpm create mikro my-project --template blinky
+pnpm create mikro --template blinky
 ```

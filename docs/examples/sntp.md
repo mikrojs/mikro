@@ -90,19 +90,19 @@ if (!connectResult.ok) {
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-sntp --template sntp
+pnpm create mikro --template sntp
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-sntp --template sntp
+npm create mikro -- --template sntp
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-sntp --template sntp
+yarn create mikro --template sntp
 ```
 
 ```sh [bun]
-bun create mikrojs my-sntp --template sntp
+bun create mikro --template sntp
 ```
 
 :::

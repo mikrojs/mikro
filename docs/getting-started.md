@@ -32,25 +32,25 @@ For network-heavy or memory-intensive apps, the [Seeed Studio XIAO ESP32C5](http
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-app
+pnpm create mikro
 cd my-app
 pnpm install
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-app
+npm create mikro
 cd my-app
 npm install
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-app
+yarn create mikro
 cd my-app
 yarn install
 ```
 
 ```sh [bun]
-bun create mikrojs my-app
+bun create mikro
 cd my-app
 bun install
 ```

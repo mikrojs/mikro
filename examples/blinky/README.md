@@ -3,7 +3,7 @@
 The "hello world" of microcontrollers.
 
 ```sh
-npm create mikrojs my-blinky --template blinky
+npm create mikro -- --template blinky
 ```
 
 ## Hardware

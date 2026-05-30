@@ -52,19 +52,19 @@ while (true) {
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-pwm-led --template pwm-led
+pnpm create mikro --template pwm-led
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-pwm-led --template pwm-led
+npm create mikro -- --template pwm-led
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-pwm-led --template pwm-led
+yarn create mikro --template pwm-led
 ```
 
 ```sh [bun]
-bun create mikrojs my-pwm-led --template pwm-led
+bun create mikro --template pwm-led
 ```
 
 :::

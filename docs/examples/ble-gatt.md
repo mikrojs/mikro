@@ -107,19 +107,19 @@ if (!result.ok) {
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-ble-gatt --template ble-gatt
+pnpm create mikro --template ble-gatt
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-ble-gatt --template ble-gatt
+npm create mikro -- --template ble-gatt
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-ble-gatt --template ble-gatt
+yarn create mikro --template ble-gatt
 ```
 
 ```sh [bun]
-bun create mikrojs my-ble-gatt --template ble-gatt
+bun create mikro --template ble-gatt
 ```
 
 :::

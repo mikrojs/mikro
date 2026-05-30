@@ -72,19 +72,19 @@ while (true) {
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-wifi-ap --template wifi-access-point
+pnpm create mikro --template wifi-access-point
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-wifi-ap --template wifi-access-point
+npm create mikro -- --template wifi-access-point
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-wifi-ap --template wifi-access-point
+yarn create mikro --template wifi-access-point
 ```
 
 ```sh [bun]
-bun create mikrojs my-wifi-ap --template wifi-access-point
+bun create mikro --template wifi-access-point
 ```
 
 :::

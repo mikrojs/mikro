@@ -83,19 +83,19 @@ Every ~5 seconds the temperature bytes drift slightly as the loop adds random no
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-ble-beacon --template ble-beacon
+pnpm create mikro --template ble-beacon
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-ble-beacon --template ble-beacon
+npm create mikro -- --template ble-beacon
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-ble-beacon --template ble-beacon
+yarn create mikro --template ble-beacon
 ```
 
 ```sh [bun]
-bun create mikrojs my-ble-beacon --template ble-beacon
+bun create mikro --template ble-beacon
 ```
 
 :::

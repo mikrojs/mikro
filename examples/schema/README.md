@@ -3,7 +3,7 @@
 Validates data at runtime using typed schemas: object shapes, optional fields, and tagged unions with detailed error paths.
 
 ```sh
-npm create mikrojs my-schema --template schema
+npm create mikro -- --template schema
 ```
 
 ## Run

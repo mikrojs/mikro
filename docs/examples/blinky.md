@@ -71,19 +71,19 @@ Connect the LED's longer leg (anode) to GPIO 15 through a 220-ohm resistor. Conn
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-blinky --template blinky
+pnpm create mikro --template blinky
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-blinky --template blinky
+npm create mikro -- --template blinky
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-blinky --template blinky
+yarn create mikro --template blinky
 ```
 
 ```sh [bun]
-bun create mikrojs my-blinky --template blinky
+bun create mikro --template blinky
 ```
 
 :::
