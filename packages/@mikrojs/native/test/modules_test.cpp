@@ -324,15 +324,61 @@ TEST_CASE("unload: rejects unknown module" * doctest::test_suite("modules")) {
     MIK_FreeRuntime(rt);
 }
 
-TEST_CASE("unload: import.meta.unload evicts a dynamically imported module"
+TEST_CASE("disposable: native helpers reject builtins and no-op on re-dispose"
           * doctest::test_suite("modules")) {
     TmpDir dir;
-    std::string leaf = dir.write("leaf.js", "export const v = 99;\n");
+    std::string leaf = dir.write("leaf.js", "export const v = 7;\n");
+
+    MIKRuntime* rt = MIK_NewRuntime();
+    MIK_SetFSBasePath(rt, "");
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    dyn_import(ctx, leaf, "__ns");
+    REQUIRE(is_loaded(ctx, leaf));
+    JSValue g = JS_GetGlobalObject(ctx);
+    JSValue ns = JS_GetPropertyStr(ctx, g, "__ns");
+
+    /* A file-backed module namespace is unloadable; disposing frees 1 module. */
+    CHECK(mik__is_unloadable_namespace(ctx, ns));
+    CHECK_EQ(1, mik__unload_namespace(ctx, ns));
+    CHECK_FALSE(is_loaded(ctx, leaf));
+
+    /* Re-dispose is a no-op: the module is gone from the registry. */
+    CHECK_EQ(0, mik__unload_namespace(ctx, ns));
+
+    /* Anchored namespaces (builtins) are not unloadable. mikrojs/result is a
+     * core builtin that loads on host; importing it fully instantiates its
+     * namespace. */
+    dyn_import(ctx, "mikrojs/result", "__res");
+    JSValue resns = JS_GetPropertyStr(ctx, g, "__res");
+    REQUIRE(JS_IsObject(resns));
+    CHECK_FALSE(mik__is_unloadable_namespace(ctx, resns));
+
+    /* Non-object / non-namespace inputs are inert. */
+    CHECK_FALSE(mik__is_unloadable_namespace(ctx, JS_UNDEFINED));
+    CHECK_EQ(0, mik__unload_namespace(ctx, JS_NewInt32(ctx, 5)));
+
+    JS_FreeValue(ctx, resns);
+    JS_FreeValue(ctx, ns);
+    JS_FreeValue(ctx, g);
+    MIK_FreeRuntime(rt);
+    unlink(leaf.c_str());
+}
+
+TEST_CASE("withUnload: real mikrojs/module export unloads (e2e)"
+          * doctest::test_suite("modules")) {
+    TmpDir dir;
+    std::string leaf = dir.write(
+        "leaf.js",
+        "globalThis.__leafEvals = (globalThis.__leafEvals || 0) + 1;\n"
+        "export const v = 99;\n");
+    /* The real shipped withUnload() from mikrojs/module — no inlined
+     * copy. mikrojs/module imports only native:sys (pure C, host-available), so
+     * unlike mikrojs/sys it needs no native:sleep stub. */
     std::string entry_src =
-        "const a = await import('" + leaf + "');\n"
-        "globalThis.__firstLoaded = a.v;\n"
-        "await import.meta.unload('" + leaf + "');\n"
-        "globalThis.__afterUnload = true;\n"
+        "import {withUnload} from 'mikrojs/module';\n"
+        "globalThis.__firstLoaded = await withUnload(import('" + leaf + "'), m => m.v);\n"
+        "globalThis.__afterDispose = true;\n"
         "const b = await import('" + leaf + "');\n"
         "globalThis.__secondLoaded = b.v;\n";
     std::string entry = dir.write("entry.js", entry_src.c_str());
@@ -341,14 +387,11 @@ TEST_CASE("unload: import.meta.unload evicts a dynamically imported module"
     MIK_SetFSBasePath(rt, "");
     JSContext* ctx = MIK_GetJSContext(rt);
 
-    /* Drive via a separate module so the entry itself is loaded through
-     * the mikrojs loader (which attaches import.meta.unload). */
     std::string driver =
         "import('" + entry + "').then("
         "  () => { globalThis.__ok = 1; },"
         "  e => { globalThis.__err = String(e) + '\\n' + (e && e.stack || ''); });";
-    JSValue rv = JS_Eval(ctx, driver.c_str(), driver.size(), "<driver>",
-                         JS_EVAL_TYPE_MODULE);
+    JSValue rv = JS_Eval(ctx, driver.c_str(), driver.size(), "<driver>", JS_EVAL_TYPE_MODULE);
     REQUIRE_FALSE(JS_IsException(rv));
     JS_FreeValue(ctx, rv);
     mik__execute_jobs(ctx);
@@ -358,58 +401,31 @@ TEST_CASE("unload: import.meta.unload evicts a dynamically imported module"
     if (!JS_IsUndefined(err)) {
         const char* s = JS_ToCString(ctx, err);
         if (s) {
-            fprintf(stderr, "[im.unload caught] %s\n", s);
+            fprintf(stderr, "[disposable e2e caught] %s\n", s);
             JS_FreeCString(ctx, s);
         }
     }
     JS_FreeValue(ctx, err);
     JSValue first = JS_GetPropertyStr(ctx, g, "__firstLoaded");
-    JSValue after = JS_GetPropertyStr(ctx, g, "__afterUnload");
+    JSValue after = JS_GetPropertyStr(ctx, g, "__afterDispose");
     JSValue second = JS_GetPropertyStr(ctx, g, "__secondLoaded");
-    int first_i = 0, second_i = 0;
+    JSValue evals = JS_GetPropertyStr(ctx, g, "__leafEvals");
+    int first_i = 0, second_i = 0, evals_i = 0;
     JS_ToInt32(ctx, &first_i, first);
     JS_ToInt32(ctx, &second_i, second);
+    JS_ToInt32(ctx, &evals_i, evals);
     CHECK_EQ(99, first_i);
     CHECK_EQ(1, JS_ToBool(ctx, after));
     CHECK_EQ(99, second_i);
+    CHECK_EQ(2, evals_i); /* re-evaluated → real unload through the shipped export */
     JS_FreeValue(ctx, first);
     JS_FreeValue(ctx, after);
     JS_FreeValue(ctx, second);
+    JS_FreeValue(ctx, evals);
     JS_FreeValue(ctx, g);
 
     MIK_FreeRuntime(rt);
     unlink(leaf.c_str());
-    unlink(entry.c_str());
-}
-
-TEST_CASE("unload: import.meta.unload rejects non-string arg"
-          * doctest::test_suite("modules")) {
-    TmpDir dir;
-    std::string entry = dir.write(
-        "entry.js",
-        "try { import.meta.unload(42); } catch (e) { globalThis.__msg = e.message; }\n");
-
-    MIKRuntime* rt = MIK_NewRuntime();
-    MIK_SetFSBasePath(rt, "");
-    JSContext* ctx = MIK_GetJSContext(rt);
-
-    std::string driver = "import('" + entry + "');";
-    JSValue rv = JS_Eval(ctx, driver.c_str(), driver.size(), "<driver>",
-                         JS_EVAL_TYPE_MODULE);
-    REQUIRE_FALSE(JS_IsException(rv));
-    JS_FreeValue(ctx, rv);
-    mik__execute_jobs(ctx);
-
-    JSValue g = JS_GetGlobalObject(ctx);
-    JSValue msg = JS_GetPropertyStr(ctx, g, "__msg");
-    const char* s = JS_ToCString(ctx, msg);
-    REQUIRE(s != nullptr);
-    CHECK(std::string(s).find("specifier must be a string") != std::string::npos);
-    JS_FreeCString(ctx, s);
-    JS_FreeValue(ctx, msg);
-    JS_FreeValue(ctx, g);
-
-    MIK_FreeRuntime(rt);
     unlink(entry.c_str());
 }
 

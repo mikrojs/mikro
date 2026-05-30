@@ -89,8 +89,9 @@ static void mik__add_exports(JSContext* ctx, JSModuleDef* m, const char* const* 
 }
 
 static const char* const sys_exports[] = {
-    "evalScript", "memoryUsage", "jsMemoryUsage", "gc",       "setTime",      "uptime",
-    "restart",    "version",     "board",         "firmware", "deviceId",     "activeTimers"};
+    "evalScript", "memoryUsage", "jsMemoryUsage",  "gc",          "setTime",
+    "uptime",     "restart",     "version",        "board",       "firmware",
+    "deviceId",   "activeTimers", "unloadNamespace", "isUnloadableNamespace"};
 
 static int mik__sys_module_init(JSContext* ctx, JSModuleDef* m) {
     JSValue ns = JS_NewObjectProto(ctx, JS_NULL);

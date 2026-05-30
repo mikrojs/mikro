@@ -96,6 +96,24 @@ static JSValue mik__sys_gc(JSContext* ctx, JSValue this_val, int argc, JSValue* 
     return JS_UNDEFINED;
 }
 
+/* Backs withUnload()'s unload step. Unloads the module whose
+ * namespace is argv[0]; returns the number of modules freed (0 if not a
+ * loaded module's namespace). Refcounting reclaims the memory once the
+ * caller's reference drops; no GC here. */
+static JSValue mik__sys_unload_namespace(JSContext* ctx, JSValue this_val, int argc,
+                                         JSValue* argv) {
+    int rv = mik__unload_namespace(ctx, argv[0]);
+    if (rv < 0) return JS_EXCEPTION;
+    return JS_NewInt32(ctx, rv);
+}
+
+/* True if argv[0] is the namespace of a loaded, non-anchored module.
+ * withUnload() uses this to reject builtins (native:/mikrojs//@mikrojs/). */
+static JSValue mik__sys_is_unloadable_namespace(JSContext* ctx, JSValue this_val, int argc,
+                                                JSValue* argv) {
+    return JS_NewBool(ctx, mik__is_unloadable_namespace(ctx, argv[0]));
+}
+
 static JSValue mik__sys_active_timers(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     MIKRuntime* mik_rt = static_cast<MIKRuntime*>(JS_GetContextOpaque(ctx));
     CHECK_NOT_NULL(mik_rt);
@@ -220,6 +238,11 @@ void mik__sys_api_init(JSContext* ctx, JSValue ns) {
     JS_SetPropertyStr(ctx, ns, "jsMemoryUsage",
                       JS_NewCFunction(ctx, mik__sys_js_memory_usage, "jsMemoryUsage", 0));
     JS_SetPropertyStr(ctx, ns, "gc", JS_NewCFunction(ctx, mik__sys_gc, "gc", 0));
+    JS_SetPropertyStr(ctx, ns, "unloadNamespace",
+                      JS_NewCFunction(ctx, mik__sys_unload_namespace, "unloadNamespace", 1));
+    JS_SetPropertyStr(
+        ctx, ns, "isUnloadableNamespace",
+        JS_NewCFunction(ctx, mik__sys_is_unloadable_namespace, "isUnloadableNamespace", 1));
     JS_SetPropertyStr(ctx, ns, "activeTimers",
                       JS_NewCFunction(ctx, mik__sys_active_timers, "activeTimers", 0));
     JS_SetPropertyStr(ctx, ns, "setTime",

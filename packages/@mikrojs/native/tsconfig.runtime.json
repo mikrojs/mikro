@@ -5,6 +5,10 @@
     "types": [],
     "noEmit": true,
     "moduleDetection": "auto",
-    "customConditions": ["development"]
+    "customConditions": ["development"],
+    // ESNext.Disposable provides Disposable / Symbol.dispose, so runtime
+    // modules can use `using` / explicit resource management (ES2024 lib is
+    // inherited from root but predates the disposable types).
+    "lib": ["ES2024", "ESNext.Disposable"]
   }
 }

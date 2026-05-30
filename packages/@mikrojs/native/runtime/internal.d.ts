@@ -46,6 +46,11 @@ declare module 'native:sys' {
   }
   export function jsMemoryUsage(): JsMemoryUsage
   export function gc(): void
+  /** Unload the module whose namespace object is `ns`; returns the number of
+   *  modules freed (0 if `ns` is not a loaded module's namespace). */
+  export function unloadNamespace(ns: object): number
+  /** True if `ns` is the namespace of a loaded, non-anchored (non-builtin) module. */
+  export function isUnloadableNamespace(ns: object): boolean
   export function activeTimers(): number
   export function setTime(millisSinceEpoch: number): void
   export function uptime(): {boot: number; rtc: number}

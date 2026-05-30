@@ -360,39 +360,6 @@ JSModuleDef* mik_module_loader(JSContext* ctx, const char* module_name, void* op
 #define MIK__PATHSEP '/'
 #define MIK__PATHSEP_STR "/"
 
-/* import.meta.unload(specifier) implementation. Resolves `specifier` via
- * the standard normalizer using the captured base path (the owning
- * module's logical path, stripped of the `file://` prefix), evicts the
- * resulting module + orphaned deps via mik__unload_module, then runs a
- * GC pass so the caller's next memoryUsage() snapshot reflects the free. */
-static JSValue mik__import_meta_unload(JSContext* ctx, JSValueConst this_val,
-                                       int argc, JSValueConst* argv,
-                                       int magic, JSValueConst* func_data) {
-    (void)magic;
-    (void)this_val;
-    if (argc < 1 || !JS_IsString(argv[0])) {
-        return JS_ThrowTypeError(ctx, "import.meta.unload: specifier must be a string");
-    }
-    const char* specifier = JS_ToCString(ctx, argv[0]);
-    if (!specifier) return JS_EXCEPTION;
-    const char* base = JS_ToCString(ctx, func_data[0]);
-    if (!base) {
-        JS_FreeCString(ctx, specifier);
-        return JS_EXCEPTION;
-    }
-    char* normalized = mik_module_normalizer(ctx, base, specifier, nullptr);
-    JS_FreeCString(ctx, specifier);
-    JS_FreeCString(ctx, base);
-    if (!normalized) return JS_EXCEPTION;
-
-    int rv = mik__unload_module(ctx, normalized);
-    js_free(ctx, normalized);
-    if (rv < 0) return JS_EXCEPTION;
-
-    JS_RunGC(JS_GetRuntime(ctx));
-    return JS_NewInt32(ctx, rv);
-}
-
 int js_module_set_import_meta(JSContext* ctx, JSValue func_val, bool use_realpath, bool is_main) {
     JSModuleDef* m;
     char buf[PATH_MAX + 16] = {0};
@@ -452,16 +419,6 @@ int js_module_set_import_meta(JSContext* ctx, JSValue func_val, bool use_realpat
     if (mik_rt && !JS_IsUndefined(mik_rt->env_obj)) {
         JS_DefinePropertyValueStr(ctx, meta_obj, "env", JS_DupValue(ctx, mik_rt->env_obj),
                                   JS_PROP_C_W_E);
-    }
-
-    /* Attach import.meta.unload(specifier). Needs the owning module's
-     * logical path (not URL) as the normalizer base. Only exposed for
-     * file-backed modules; synthetic modules don't have a stable path. */
-    if (use_realpath) {
-        JSValue base_str = JS_NewString(ctx, buf + 7 /* strip "file://" */);
-        JSValue unload_fn = JS_NewCFunctionData(ctx, mik__import_meta_unload, 1, 0, 1, &base_str);
-        JS_FreeValue(ctx, base_str);
-        JS_DefinePropertyValueStr(ctx, meta_obj, "unload", unload_fn, JS_PROP_C_W_E);
     }
 
     JS_FreeValue(ctx, meta_obj);
@@ -941,4 +898,33 @@ int mik__unload_module(JSContext* ctx, const char* normalized_name) {
     }
 
     return freed_count;
+}
+
+/* Resolve `ns` to the loaded module it is the namespace of, returning its
+ * normalized name as a C string (caller frees via JS_FreeCString), or NULL
+ * if `ns` is not an object or not a loaded module's namespace. */
+static const char* mik__module_name_from_ns(JSContext* ctx, JSValueConst ns) {
+    if (!JS_IsObject(ns)) return nullptr;
+    JSModuleDef* m = JS_FindModuleByNamespace(ctx, ns);
+    if (!m) return nullptr;
+    JSAtom atom = JS_GetModuleName(ctx, m);
+    const char* name = JS_AtomToCString(ctx, atom);
+    JS_FreeAtom(ctx, atom);
+    return name;
+}
+
+int mik__unload_namespace(JSContext* ctx, JSValueConst ns) {
+    const char* name = mik__module_name_from_ns(ctx, ns);
+    if (!name) return 0; /* not a loaded module's namespace: idempotent no-op */
+    int rv = mik__unload_module(ctx, name);
+    JS_FreeCString(ctx, name);
+    return rv;
+}
+
+bool mik__is_unloadable_namespace(JSContext* ctx, JSValueConst ns) {
+    const char* name = mik__module_name_from_ns(ctx, ns);
+    if (!name) return false;
+    bool ok = !mik__is_anchored_name(name);
+    JS_FreeCString(ctx, name);
+    return ok;
 }
