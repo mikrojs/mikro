@@ -56,13 +56,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm --silent releaser plan --context release >> "$GITHUB_OUTPUT"
 
-      # Mint mikrodroid App token only for pr-preview, where we need to
-      # remove the trigger label as the bot. Other modes don't have
-      # side effects in this job. Required mikrodroid App permissions:
-      # Pull requests: Write (label endpoints on a PR require the
-      # pull-requests permission even though the URL is /issues/.../labels).
+      # Mint mikrodroid App token only for the label-triggered preview modes
+      # (pr-preview, release-preview), where we need to remove the trigger
+      # label as the bot. Other modes don't have side effects in this job.
+      # Required mikrodroid App permissions: Pull requests: Write (label
+      # endpoints on a PR require the pull-requests permission even though the
+      # URL is /issues/.../labels).
       - name: Generate mikrodroid token
-        if: steps.plan.outputs.mode == 'pr-preview'
+        if: steps.plan.outputs.mode == 'pr-preview' || steps.plan.outputs.mode == 'release-preview'
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
@@ -75,7 +76,7 @@ jobs:
       # left in a "still labeled" state if any downstream step fails. The
       # label is a trigger, not a status — status lives in the Actions UI.
       - name: Remove preview label
-        if: steps.plan.outputs.mode == 'pr-preview'
+        if: steps.plan.outputs.mode == 'pr-preview' || steps.plan.outputs.mode == 'release-preview'
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -256,10 +257,18 @@ jobs:
       # `inputs.dry_run` is null on `pull_request` triggers; the GHA expression
       # `null && X || ''` evaluates to '' there, which is the desired no-flag
       # case. Don't "simplify" — the explicit truthy check is correct.
+      #
+      # --skip-existing on preview modes: safety net for partial-publish
+      # recovery and the plan→publish race. The common "label re-added, nothing
+      # changed" case is already short-circuited in the plan job (should_run
+      # =false, so this job never runs); this mainly catches a package that
+      # landed on the registry between plan and here. Without it a duplicate
+      # publish would fail the workflow.
       - name: Publish
         run: |
           pnpm --silent releaser publish \
             --tag ${{ needs.plan.outputs.npm_tag }} \
+            ${{ (needs.plan.outputs.mode == 'pr-preview' || needs.plan.outputs.mode == 'release-preview') && '--skip-existing' || '' }} \
             ${{ inputs.dry_run && '--dry-run' || '' }}
         env:
           # OIDC trusted publishing: no token needed. Trust relationships are
@@ -289,8 +298,8 @@ jobs:
             --latest \
             --firmware-dir packages/@mikrojs/firmware/prebuilds
 
-      - name: Comment on PR (pr-preview only)
-        if: needs.plan.outputs.mode == 'pr-preview' && inputs.dry_run != true
+      - name: Comment on PR (preview modes only)
+        if: (needs.plan.outputs.mode == 'pr-preview' || needs.plan.outputs.mode == 'release-preview') && inputs.dry_run != true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
