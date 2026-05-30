@@ -410,7 +410,7 @@ importers:
         version: 8.0.0
       node-addon-api:
         specifier: ^8.7.0
-        version: 8.7.0
+        version: 8.8.0
       node-gyp-build:
         specifier: ^4.8.4
         version: 4.8.4
@@ -4455,8 +4455,8 @@ packages:
     resolution: {integrity: sha512-8VOpLHFrOQlAH+qA0ZzuGRlALRA6/LVh8QJldbrC4DY0hXoMP0l4Acq8TzFC018HztWiRqyCEj2aTWY2UvnJUg==}
     engines: {node: ^18 || ^20 || >= 21}
 
-  node-addon-api@8.7.0:
-    resolution: {integrity: sha512-9MdFxmkKaOYVTV+XVRG8ArDwwQ77XIgIPyKASB1k3JPq3M8fGQQQE3YpMOrKm6g//Ktx8ivZr8xo1Qmtqub+GA==}
+  node-addon-api@8.8.0:
+    resolution: {integrity: sha512-c5Ko1fZJIJmzhFIkhRN76WTq+fC6tWnGy9CXA0fA+XygsWZmEwG8vmbkNqxMyoaa0Tin4djul49NzdVcJJcjeA==}
     engines: {node: ^18 || ^20 || >= 21}
 
   node-api-headers@1.8.0:
@@ -9324,7 +9324,7 @@ snapshots:
 
   node-addon-api@8.3.0: {}
 
-  node-addon-api@8.7.0: {}
+  node-addon-api@8.8.0: {}
 
   node-api-headers@1.8.0: {}
 
