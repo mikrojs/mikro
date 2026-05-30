@@ -1,3 +1,4 @@
+import {noBigInt} from './rules/no-bigint.js'
 import {noDeviceImportsInConfig} from './rules/no-device-imports-in-config.js'
 import {noDotCatch} from './rules/no-dot-catch.js'
 import {noEval} from './rules/no-eval.js'
@@ -22,6 +23,7 @@ const plugin = {
     'no-dot-catch': noDotCatch,
     'no-eval': noEval,
     'no-intl': noIntl,
+    'no-bigint': noBigInt,
     'no-temporal': noTemporal,
     'no-sparse-arrays': noSparseArrays,
     'no-device-imports-in-config': noDeviceImportsInConfig,
@@ -47,6 +49,7 @@ Object.assign(plugin.configs, {
         '@mikrojs/no-dot-catch': 'error',
         '@mikrojs/no-eval': 'error',
         '@mikrojs/no-intl': 'error',
+        '@mikrojs/no-bigint': 'error',
         '@mikrojs/no-temporal': 'error',
         '@mikrojs/no-sparse-arrays': 'warn',
         '@mikrojs/no-device-imports-in-config': 'error',
