@@ -11,7 +11,7 @@ import {MONOREPO_ROOT} from '../util/repo.js'
 import {computeVersion, getRecommendedBump, type ReleaseType} from '../util/version.js'
 import {getPublishablePackages, readCanonicalVersion, writeVersion} from '../util/workspace.js'
 
-export type Mode = 'release' | 'next' | 'canary' | 'pr-preview'
+export type Mode = 'release' | 'release-preview' | 'next' | 'canary' | 'pr-preview'
 
 export const args = command(
   'bump',
@@ -91,6 +91,25 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
       breakingIsMinorOn0x,
     })
     return {version, npmTag: 'latest', mode}
+  }
+
+  if (mode === 'release-preview') {
+    // Triggered by `release:preview` on the rolling release PR, whose
+    // package.json is already bumped to the version about to ship. Publish
+    // THAT version as a `next` prerelease (no further increment) under the
+    // `next` dist-tag: a dry run of the pending release.
+    const suffix = `${git.commitCount}.g${git.commitHash}`
+    return {
+      version: computeVersion({
+        currentVersion,
+        semverIncrement,
+        preid: 'next',
+        suffix,
+        noIncrement: true,
+      }),
+      npmTag: 'next',
+      mode,
+    }
   }
 
   if (mode === 'next') {

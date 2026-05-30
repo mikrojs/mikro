@@ -9,11 +9,19 @@ import {PREVIEW_LABEL, RELEASE_BRANCH} from '../util/constants.js'
 import {readGitInfo} from '../util/git.js'
 import {type EventPayload, hasLabel, isSameRepoPr, readGitHubEvent} from '../util/githubEvent.js'
 import {octokit, repoSlug} from '../util/octokit.js'
+import {isPublished} from '../util/registry.js'
 import {getRecommendedBump} from '../util/version.js'
-import {readCanonicalVersion} from '../util/workspace.js'
+import {getPublishablePackages, readCanonicalVersion} from '../util/workspace.js'
 import {computeBumpPure} from './bump.js'
 
-export type Mode = 'release' | 'next' | 'canary' | 'pr-preview' | 'create-release-pr' | 'skip'
+export type Mode =
+  | 'release'
+  | 'release-preview'
+  | 'next'
+  | 'canary'
+  | 'pr-preview'
+  | 'create-release-pr'
+  | 'skip'
 
 export interface Plan {
   mode: Mode
@@ -86,6 +94,19 @@ export function decideReleasePure(eventName: string | undefined, payload: EventP
       hasLabel(payload, PREVIEW_LABEL)
     ) {
       if (pr.state !== 'open') return SKIP('PR not open', pr.number)
+      // On the rolling release PR, a preview publishes the pending release
+      // under the `next` dist-tag — a dry run of the release about to ship.
+      // On any other PR it's a per-PR `pr-<N>` preview.
+      if (pr.head?.ref === RELEASE_BRANCH) {
+        return {
+          mode: 'release-preview',
+          shouldRun: true,
+          npmTag: 'next',
+          pr: pr.number,
+          reason: `${PREVIEW_LABEL} label added on release PR ${pr.number} → next`,
+          version: null,
+        }
+      }
       return {
         mode: 'pr-preview',
         shouldRun: true,
@@ -175,6 +196,7 @@ async function computePlannedVersion(plan: Plan): Promise<string | null> {
   if (!plan.shouldRun) return null
   if (
     plan.mode !== 'release' &&
+    plan.mode !== 'release-preview' &&
     plan.mode !== 'next' &&
     plan.mode !== 'canary' &&
     plan.mode !== 'pr-preview'
@@ -199,6 +221,23 @@ async function computePlannedVersion(plan: Plan): Promise<string | null> {
   return result.version
 }
 
+// Pure: would this run be a no-op because the exact preview version is already
+// on the registry? Only the preview modes can no-op (they're the ones that can
+// reproduce a version — e.g. the `release:preview` label re-added with no new
+// commits). Requires EVERY package present: a partial publish must still run
+// to finish the rest. Exported for tests; `published` is injected so the
+// decision is testable without npm I/O.
+export function isPreviewAlreadyPublished(
+  mode: Mode,
+  version: string | null,
+  packageNames: string[],
+  published: (name: string, version: string) => boolean,
+): boolean {
+  if (mode !== 'pr-preview' && mode !== 'release-preview') return false
+  if (!version || packageNames.length === 0) return false
+  return packageNames.every((name) => published(name, version))
+}
+
 export async function run(opts: PlanArgs): Promise<void> {
   let plan: Plan
   if (opts.context === 'create-release-pr') {
@@ -213,6 +252,33 @@ export async function run(opts: PlanArgs): Promise<void> {
   }
 
   plan.version = await computePlannedVersion(plan)
+
+  // Cheap early-exit: if a preview re-run (e.g. the `release:preview` label
+  // re-added with no new commits) would reproduce a version already on the
+  // registry, skip the whole build/publish pipeline rather than burning the
+  // 10–15 min build matrix only for `publish --skip-existing` to no-op at the
+  // end. `mode`/`pr` are preserved (only `should_run` flips) so the plan job
+  // still clears the trigger label — one-shot semantics stay intact.
+  if (plan.shouldRun && (plan.mode === 'pr-preview' || plan.mode === 'release-preview')) {
+    const names = getPublishablePackages().map((pkg) => pkg.name)
+    const version = plan.version
+    // Resolve registry lookups up front so isPreviewAlreadyPublished stays
+    // pure and sync.
+    const onRegistry = new Set<string>()
+    if (version) {
+      await Promise.all(
+        names.map(async (name) => {
+          if (await isPublished(name, version)) onRegistry.add(`${name}@${version}`)
+        }),
+      )
+    }
+    if (
+      isPreviewAlreadyPublished(plan.mode, version, names, (n, v) => onRegistry.has(`${n}@${v}`))
+    ) {
+      plan.shouldRun = false
+      plan.reason = `${plan.mode} ${version} already published: skipping build/publish`
+    }
+  }
 
   if (opts.json) {
     console.log(JSON.stringify(plan))

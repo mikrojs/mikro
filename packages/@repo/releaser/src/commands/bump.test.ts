@@ -97,6 +97,19 @@ describe('computeBumpPure', () => {
     })
   })
 
+  test('release-preview mode: prerelease of the already-bumped version, next tag', () => {
+    // No double-bump: the release PR already bumped to 0.10.0, so the preview
+    // stays on 0.10.0 (not 0.11.0) and publishes under `next`.
+    expect(
+      computeBumpPure({
+        ...baseInputs,
+        mode: 'release-preview',
+        currentVersion: '0.10.0',
+        semverIncrement: 'minor',
+      }),
+    ).toEqual({version: '0.10.0-next.7.gabc1234', mode: 'release-preview', npmTag: 'next'})
+  })
+
   test('canary mode appends commits-ahead suffix and .gsha', () => {
     expect(computeBumpPure({...baseInputs, mode: 'canary'})).toEqual({
       version: '0.3.0-canary.7.gabc1234',
