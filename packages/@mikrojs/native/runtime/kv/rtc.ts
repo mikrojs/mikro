@@ -1,4 +1,4 @@
-import {KVError, makeCreateValue} from 'mikrojs/kv/shared'
+import {KVError, makeCreateValue} from 'mikro/kv/shared'
 import {clear, get, info, remove, set} from 'native:rtc'
 
 import type {RtcStorage} from './types.js'

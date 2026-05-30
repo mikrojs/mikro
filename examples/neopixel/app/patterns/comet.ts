@@ -1,6 +1,6 @@
-import type {NeoPixel} from 'mikrojs/neopixel'
-import {ok} from 'mikrojs/result'
-import {sleep} from 'mikrojs/sleep'
+import type {NeoPixel} from 'mikro/neopixel'
+import {ok} from 'mikro/result'
+import {sleep} from 'mikro/sleep'
 
 import {hsv} from '../color.js'
 

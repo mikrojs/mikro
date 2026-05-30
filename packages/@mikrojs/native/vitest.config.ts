@@ -9,19 +9,19 @@ export default defineConfig({
      * sub-paths. */
     alias: [
       {
-        find: 'mikrojs/observable/operators',
+        find: 'mikro/observable/operators',
         replacement: path.resolve(import.meta.dirname, 'runtime/observable/operators.ts'),
       },
       {
-        find: 'mikrojs/observable',
+        find: 'mikro/observable',
         replacement: path.resolve(import.meta.dirname, 'runtime/observable/observable.ts'),
       },
       {
-        find: 'mikrojs/result',
+        find: 'mikro/result',
         replacement: path.resolve(import.meta.dirname, 'runtime/result/result.ts'),
       },
       {
-        find: 'mikrojs/http/helpers',
+        find: 'mikro/http/helpers',
         replacement: path.resolve(import.meta.dirname, 'runtime/http/helpers.ts'),
       },
       {

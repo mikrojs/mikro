@@ -14,7 +14,7 @@
  * Expand only when a second call site asks for it.
  */
 
-import {err, ok} from 'mikrojs/result'
+import {err, ok} from 'mikro/result'
 
 import type {Result} from '../result/types.js'
 

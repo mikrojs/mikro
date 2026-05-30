@@ -6,7 +6,7 @@ description: Network time synchronization
 # sntp
 
 ```ts twoslash
-import {sntp} from 'mikrojs/sntp'
+import {sntp} from 'mikro/sntp'
 ```
 
 Synchronize the system clock with an NTP server. SNTP is a lightweight variant of NTP suitable for microcontrollers. The default export is an `Sntp` singleton.
@@ -14,7 +14,7 @@ Synchronize the system clock with an NTP server. SNTP is a lightweight variant o
 ## Usage
 
 ```ts twoslash
-import {sntp} from 'mikrojs/sntp'
+import {sntp} from 'mikro/sntp'
 
 const result = await sntp.sync({
   timezone: 'CET-1CEST,M3.5.0,M10.5.0/3',
@@ -37,7 +37,7 @@ sync(options: SntpOptions & {background: true}): Promise<Result<SntpSyncResultWi
 Synchronize the system clock. By default, syncs once and returns. With `background: true`, keeps syncing periodically and returns a `stop()` function.
 
 ```ts twoslash
-import {sntp} from 'mikrojs/sntp'
+import {sntp} from 'mikro/sntp'
 // ---cut---
 // One-shot sync
 const result = await sntp.sync()
@@ -60,7 +60,7 @@ setTimezone(tz: string): void
 Set the POSIX timezone string without syncing. Affects how `Date` objects display local time.
 
 ```ts twoslash
-import {sntp} from 'mikrojs/sntp'
+import {sntp} from 'mikro/sntp'
 // ---cut---
 sntp.setTimezone('CET-1CEST,M3.5.0,M10.5.0/3') // Central European Time
 ```

@@ -9,7 +9,7 @@
  * lazy-load efficiency.
  */
 
-import {err, ok} from 'mikrojs/result'
+import {err, ok} from 'mikro/result'
 
 import type {Result} from '../result/types.js'
 

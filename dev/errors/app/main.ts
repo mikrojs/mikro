@@ -1,4 +1,4 @@
-import {sleep} from 'mikrojs/sleep'
+import {sleep} from 'mikro/sleep'
 
 await sleep(1000)
 console.log('hello…')

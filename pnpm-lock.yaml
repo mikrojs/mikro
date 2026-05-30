@@ -87,9 +87,9 @@ importers:
       lefthook:
         specifier: ^2.1.6
         version: 2.1.9
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:packages/mikrojs
+        version: link:packages/mikro
       npm-run-all2:
         specifier: ^8.0.4
         version: 8.0.4
@@ -145,57 +145,57 @@ importers:
 
   dev/crashloop:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   dev/e2e:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   dev/errors:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   dev/kitchen-sink:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   dev/logging:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   dev/oom:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   dev/probe:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   dev/sram-pressure:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   dev/stackoverflow:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   docs:
     devDependencies:
@@ -205,9 +205,9 @@ importers:
       '@types/markdown-it':
         specifier: ^14.1.2
         version: 14.1.2
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../packages/mikrojs
+        version: link:../packages/mikro
       vite:
         specifier: 'catalog:'
         version: 8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0)
@@ -232,15 +232,15 @@ importers:
 
   examples/blank:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   examples/ble-beacon:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -248,9 +248,9 @@ importers:
 
   examples/ble-gatt:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -258,9 +258,9 @@ importers:
 
   examples/blinky:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -268,27 +268,27 @@ importers:
 
   examples/neopixel:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   examples/pwm-led:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   examples/rtc-counter:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   examples/schema:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -296,21 +296,21 @@ importers:
 
   examples/sleep:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   examples/sntp:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   examples/uart:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
     devDependencies:
       typescript:
         specifier: ^6.0.3
@@ -318,9 +318,9 @@ importers:
 
   examples/udp-discovery:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
     devDependencies:
       '@types/node':
         specifier: catalog:node24
@@ -328,15 +328,15 @@ importers:
 
   examples/wifi-access-point:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   examples/wifi-fetch:
     dependencies:
-      mikrojs:
+      mikro:
         specifier: workspace:*
-        version: link:../../packages/mikrojs
+        version: link:../../packages/mikro
 
   packages/@mikrojs/analyze-imports:
     dependencies:
@@ -472,12 +472,6 @@ importers:
 
   packages/create-mikro:
     dependencies:
-      create-mikrojs:
-        specifier: workspace:*
-        version: link:../create-mikrojs
-
-  packages/create-mikrojs:
-    dependencies:
       '@clack/prompts':
         specifier: ^1.2.0
         version: 1.4.0
@@ -510,7 +504,7 @@ importers:
         specifier: 'catalog:'
         version: 8.60.0(eslint@10.4.0(jiti@2.7.0))(typescript@6.0.3)
 
-  packages/mikrojs:
+  packages/mikro:
     dependencies:
       '@mikrojs/analyze-imports':
         specifier: workspace:*

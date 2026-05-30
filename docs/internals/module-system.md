@@ -24,7 +24,7 @@ When JavaScript executes an `import` statement, the module loader checks four so
           │ miss
           ▼
  ┌──────────────────┐
- │ 3. Bytecode       │  Pre-compiled TS, mikrojs/* and @mikrojs/*
+ │ 3. Bytecode       │  Pre-compiled TS, mikro/* and @mikrojs/*
  │    builtin        │
  └────────┬─────────┘
           │ miss
@@ -80,17 +80,17 @@ MIK_REGISTER_MODULE(wifi, "native:wifi",
 See [Event Loop: Loop consumers](/internals/event-loop#loop-consumers) for how consume/destroy work.
 
 ::: info Why the prefix?
-The `native:` prefix marks internal C/C++ modules. User code imports public APIs from `mikrojs/*` (e.g., `mikrojs/pin`), which are TypeScript wrappers compiled to bytecode builtins around the internal `native:*` modules.
+The `native:` prefix marks internal C/C++ modules. User code imports public APIs from `mikro/*` (e.g., `mikro/pin`), which are TypeScript wrappers compiled to bytecode builtins around the internal `native:*` modules.
 :::
 
 ### 3. Bytecode builtins
 
 Bytecode builtins are TypeScript modules pre-compiled to QuickJS bytecode and embedded in the binary.
 
-Core builtins (the `mikrojs/*` public API) are compiled during the CMake build and stored in a static table in `builtins.cpp`. External builtins from driver/board packages register via constructors, similar to native modules:
+Core builtins (the `mikro/*` public API) are compiled during the CMake build and stored in a static table in `builtins.cpp`. External builtins from driver/board packages register via constructors, similar to native modules:
 
 ```c
-MIK_REGISTER_BUILTIN(pin, "mikrojs/pin", qjsc_pin, qjsc_pin_size);
+MIK_REGISTER_BUILTIN(pin, "mikro/pin", qjsc_pin, qjsc_pin_size);
 //                   ^id   ^name          ^data     ^size
 ```
 
@@ -106,7 +106,7 @@ If no virtual, native, or builtin module matches, the loader falls back to the f
 
 File paths are resolved relative to `fs_base_path` (set during runtime creation). On ESP32, this points to the LittleFS partition. On desktop, it points to the project directory.
 
-Bare specifiers (not starting with `.`, `/`, `native:`, or `mikrojs/`) are resolved as npm packages via `node_modules` directory walking. The normalizer parses the package name, walks up from the importing module's directory looking for `node_modules/<package>/package.json`, and resolves the entry point via the `exports` field.
+Bare specifiers (not starting with `.`, `/`, `native:`, or `mikro/`) are resolved as npm packages via `node_modules` directory walking. The normalizer parses the package name, walks up from the importing module's directory looking for `node_modules/<package>/package.json`, and resolves the entry point via the `exports` field.
 
 A preprocessor hook can transform source before compilation. The Node.js addon uses this to strip TypeScript types from `.ts` files.
 
@@ -131,9 +131,9 @@ Most hardware APIs follow a two-layer pattern:
 ```
 User code
     │
-    ▼  import {pinMode} from 'mikrojs/pin'
+    ▼  import {pinMode} from 'mikro/pin'
 ┌────────────────────┐
-│ mikrojs/pin        │  TypeScript wrapper (bytecode builtin)
+│ mikro/pin          │  TypeScript wrapper (bytecode builtin)
 │ - Type-safe API    │  - Validates arguments
 │ - Result types     │  - Maps enums to native values
 │ - Error mapping    │  - Returns typed Result<T, PinError>

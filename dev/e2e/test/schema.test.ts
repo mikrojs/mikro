@@ -10,8 +10,8 @@ import {
   taggedUnion,
   union,
   unknown,
-} from 'mikrojs/schema'
-import {assert, describe, test} from 'mikrojs/test'
+} from 'mikro/schema'
+import {assert, describe, test} from 'mikro/test'
 
 describe('schema', () => {
   test('string validates strings', () => {

@@ -1,6 +1,6 @@
-import {map} from 'mikrojs/observable/operators'
-import {sleep} from 'mikrojs/sleep'
-import {wifi} from 'mikrojs/wifi'
+import {map} from 'mikro/observable/operators'
+import {sleep} from 'mikro/sleep'
+import {wifi} from 'mikro/wifi'
 
 // Start the access point
 wifi.ap

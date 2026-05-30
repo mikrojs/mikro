@@ -7,7 +7,7 @@
 
 #include <doctest.h>
 
-/* Shared helper: evaluate a module that imports mikrojs/reader, run
+/* Shared helper: evaluate a module that imports mikro/reader, run
  * async tests, and pin the result on globalThis.__result (a string
  * summary). Check expected is a substring of __result.
  *
@@ -53,8 +53,8 @@ static void run_reader_test(const char* test_name, const char* js_code,
 TEST_CASE("BufferedReader.readUntil returns bytes before delimiter" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
-        import {BufferedReader} from 'mikrojs/reader'
-        import {ok} from 'mikrojs/result'
+        import {BufferedReader} from 'mikro/reader'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok(new Uint8Array([104, 105, 13, 10, 98, 121, 101, 13, 10]))  // "hi\r\nbye\r\n"
@@ -78,8 +78,8 @@ TEST_CASE("BufferedReader.readUntil returns bytes before delimiter" *
 TEST_CASE("BufferedReader.readUntil spans multiple source chunks" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
-        import {BufferedReader} from 'mikrojs/reader'
-        import {ok} from 'mikrojs/result'
+        import {BufferedReader} from 'mikro/reader'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok(new Uint8Array([104, 101]))    // "he"
@@ -97,8 +97,8 @@ TEST_CASE("BufferedReader.readUntil spans multiple source chunks" *
 TEST_CASE("BufferedReader.readUntil rejects empty delimiter" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
-        import {BufferedReader} from 'mikrojs/reader'
-        import {ok} from 'mikrojs/result'
+        import {BufferedReader} from 'mikro/reader'
+        import {ok} from 'mikro/result'
 
         async function* source() { yield ok(new Uint8Array([0])) }
 
@@ -115,8 +115,8 @@ TEST_CASE("BufferedReader.readUntil rejects empty delimiter" *
 TEST_CASE("BufferedReader.readUntil returns StreamClosed when source ends early" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
-        import {BufferedReader} from 'mikrojs/reader'
-        import {ok} from 'mikrojs/result'
+        import {BufferedReader} from 'mikro/reader'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok(new Uint8Array([1, 2, 3]))  // no delimiter, then end
@@ -131,8 +131,8 @@ TEST_CASE("BufferedReader.readUntil returns StreamClosed when source ends early"
 TEST_CASE("BufferedReader.readUntil propagates source err" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
-        import {BufferedReader} from 'mikrojs/reader'
-        import {ok, err} from 'mikrojs/result'
+        import {BufferedReader} from 'mikro/reader'
+        import {ok, err} from 'mikro/result'
 
         async function* source() {
             yield ok(new Uint8Array([1, 2]))
@@ -148,8 +148,8 @@ TEST_CASE("BufferedReader.readUntil propagates source err" *
 TEST_CASE("BufferedReader.readBytes returns exactly count bytes" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
-        import {BufferedReader} from 'mikrojs/reader'
-        import {ok} from 'mikrojs/result'
+        import {BufferedReader} from 'mikro/reader'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))
@@ -171,8 +171,8 @@ TEST_CASE("BufferedReader.readBytes returns exactly count bytes" *
 TEST_CASE("BufferedReader.readBytes spans multiple source chunks" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
-        import {BufferedReader} from 'mikrojs/reader'
-        import {ok} from 'mikrojs/result'
+        import {BufferedReader} from 'mikro/reader'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok(new Uint8Array([1, 2]))
@@ -190,8 +190,8 @@ TEST_CASE("BufferedReader.readBytes spans multiple source chunks" *
 TEST_CASE("BufferedReader.readBytes of 0 returns empty buffer without pulling" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
-        import {BufferedReader} from 'mikrojs/reader'
-        import {ok} from 'mikrojs/result'
+        import {BufferedReader} from 'mikro/reader'
+        import {ok} from 'mikro/result'
 
         let pulled = false
         async function* source() {
@@ -208,8 +208,8 @@ TEST_CASE("BufferedReader.readBytes of 0 returns empty buffer without pulling" *
 
 TEST_CASE("BufferedReader.drain discards buffered bytes" * doctest::test_suite("reader")) {
     const char* code = R"JS(
-        import {BufferedReader} from 'mikrojs/reader'
-        import {ok} from 'mikrojs/result'
+        import {BufferedReader} from 'mikro/reader'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok(new Uint8Array([1, 2, 3, 4, 5]))
@@ -233,8 +233,8 @@ TEST_CASE("BufferedReader.drain discards buffered bytes" * doctest::test_suite("
 TEST_CASE("BufferedReader readUntil and readBytes interleave on same buffer" *
           doctest::test_suite("reader")) {
     const char* code = R"JS(
-        import {BufferedReader} from 'mikrojs/reader'
-        import {ok} from 'mikrojs/result'
+        import {BufferedReader} from 'mikro/reader'
+        import {ok} from 'mikro/result'
 
         // Simulates a modem-style protocol: header line, then length-prefixed
         // binary payload. The header is CRLF-terminated; the payload is raw.

@@ -1,8 +1,8 @@
 /* eslint-disable no-console */
-import {env} from 'mikrojs/env'
-import {assert, beforeAll, describe, test} from 'mikrojs/test'
-import {bind} from 'mikrojs/udp'
-import {wifi} from 'mikrojs/wifi'
+import {env} from 'mikro/env'
+import {assert, beforeAll, describe, test} from 'mikro/test'
+import {bind} from 'mikro/udp'
+import {wifi} from 'mikro/wifi'
 
 const WIFI_SSID = env.get('WIFI_SSID')
 const WIFI_PASSPHRASE = env.get('WIFI_PASSPHRASE')

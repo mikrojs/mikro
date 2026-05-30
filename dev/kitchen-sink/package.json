@@ -15,6 +15,6 @@
     "dev": "mikro dev"
   },
   "dependencies": {
-    "mikrojs": "workspace:*"
+    "mikro": "workspace:*"
   }
 }

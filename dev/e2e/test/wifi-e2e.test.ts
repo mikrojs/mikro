@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
-import {env} from 'mikrojs/env'
-import {assert, describe, test} from 'mikrojs/test'
+import {env} from 'mikro/env'
+import {assert, describe, test} from 'mikro/test'
 
 // These tests only run when WIFI_SSID and WIFI_PASSPHRASE env vars are set.
 // They exercise wifi connection, fetch, and sntp against real networks.
@@ -12,7 +12,7 @@ const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
 
 describe.runIf(hasWifi)('wifi e2e', () => {
   test('connect to wifi', async () => {
-    const {wifi} = await import('mikrojs/wifi')
+    const {wifi} = await import('mikro/wifi')
     const result = await wifi.connect(WIFI_SSID!, WIFI_PASSPHRASE!)
     assert.equal(result.ok, true)
     assert.truthy(result.ok && result.value.ip, 'should have an IP address')
@@ -20,7 +20,7 @@ describe.runIf(hasWifi)('wifi e2e', () => {
   })
 
   test('http request', async () => {
-    const {request} = await import('mikrojs/http/request')
+    const {request} = await import('mikro/http/request')
     const result = await request('http://httpbingo.org/get')
     assert.ok(result)
     assert.truthy(result.ok && result.value.status === 200)
@@ -28,7 +28,7 @@ describe.runIf(hasWifi)('wifi e2e', () => {
   })
 
   test('sntp sync', async () => {
-    const {sntp} = await import('mikrojs/sntp')
+    const {sntp} = await import('mikro/sntp')
     const result = await sntp.sync({servers: ['pool.ntp.org']})
     assert.ok(result)
     const now = Date.now()
@@ -37,7 +37,7 @@ describe.runIf(hasWifi)('wifi e2e', () => {
   })
 
   test('wifi disconnect', async () => {
-    const {wifi} = await import('mikrojs/wifi')
+    const {wifi} = await import('mikro/wifi')
     assert.ok(wifi.disconnect())
   })
 })

@@ -11,7 +11,7 @@ const config = {
       ignoreDependencies: ['wrangler'],
     },
     docs: {
-      ignoreDependencies: ['mikrojs', 'wrangler'],
+      ignoreDependencies: ['mikro', 'wrangler'],
     },
     'packages/@mikrojs/firmware': {
       ignoreDependencies: ['@mikrojs/native', '@mikrojs/quickjs', 'esbuild'],
@@ -24,7 +24,7 @@ const config = {
       // "unused".
       entry: ['app/*.ts'],
     },
-    'packages/mikrojs': {
+    'packages/mikro': {
       entry: ['src/cli/cliWrapper.ts', 'src/cli/cli.ts', 'src/_exports/*.ts'],
       project: ['src/**/*.{ts,tsx}'],
       // @mikrojs/quickjs: native addon resolved at runtime
@@ -34,7 +34,7 @@ const config = {
     'packages/@mikrojs/analyze-imports': {
       ignore: ['test/unit/**', 'test/symlink/**', 'dist/**'],
     },
-    'packages/create-mikrojs': {
+    'packages/create-mikro': {
       // eslint, prettier, typescript-eslint, @mikrojs/eslint-plugin are
       // invoked by scaffold.test.ts via node_modules/.bin paths (to lint
       // and format-check scaffolded projects), not via JS imports — knip
@@ -70,7 +70,7 @@ const config = {
     'taze.config.ts',
     'packages/@mikrojs/quickjs/deps/**',
     // todo: ideally we should run knip here too, but not sure how
-    'packages/create-mikrojs/src/templates/**',
+    'packages/create-mikro/src/templates/**',
     // mikro.config.ts is discovered at runtime by the CLI, not imported
     '**/mikro.config.ts',
     // sim stubs are loaded dynamically by mikro sim dev, not imported

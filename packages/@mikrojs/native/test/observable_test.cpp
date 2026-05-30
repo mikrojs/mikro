@@ -103,7 +103,7 @@ TEST_CASE("Observable module is importable" * doctest::test_suite("observable"))
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "globalThis.__type = typeof Observable\n");
     CHECK_FALSE(JS_IsException(rv));
     JS_FreeValue(ctx, rv);
@@ -119,7 +119,7 @@ TEST_CASE("Observable subscribe delivers next + complete" * doctest::test_suite(
 
     JSValue rv = eval_module(
         ctx,
-        "import {Observable} from 'mikrojs/observable'\n"
+        "import {Observable} from 'mikro/observable'\n"
         "let log = []\n"
         "new Observable(sub => {\n"
         "  sub.next(1); sub.next(2); sub.next(3); sub.complete()\n"
@@ -140,7 +140,7 @@ TEST_CASE("subscribe accepts function shorthand" * doctest::test_suite("observab
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "let acc = 0\n"
                              "new Observable(sub => { sub.next(5); sub.next(7); sub.complete() })\n"
                              "  .subscribe(v => { acc += v })\n"
@@ -159,7 +159,7 @@ TEST_CASE("subscribe accepts undefined / no args" * doctest::test_suite("observa
     /* The callback should still run even with no observer — useful for
      * driving producer setup side effects. */
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "let ran = false\n"
                              "new Observable(sub => { ran = true; sub.complete() }).subscribe()\n"
                              "globalThis.__ran = ran\n");
@@ -176,7 +176,7 @@ TEST_CASE("next() after complete() is a no-op" * doctest::test_suite("observable
 
     JSValue rv = eval_module(
         ctx,
-        "import {Observable} from 'mikrojs/observable'\n"
+        "import {Observable} from 'mikro/observable'\n"
         "let count = 0\n"
         "new Observable(sub => {\n"
         "  sub.next(1); sub.complete(); sub.next(2); sub.next(3)\n"
@@ -195,7 +195,7 @@ TEST_CASE("teardowns run in reverse insertion order on complete" *
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "let trace = []\n"
                              "new Observable(sub => {\n"
                              "  sub.addTeardown(() => trace.push('a'))\n"
@@ -217,7 +217,7 @@ TEST_CASE("unsubscribe runs teardowns but NOT observer.complete" *
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "let trace = []\n"
                              "const obs = new Observable(sub => {\n"
                              "  sub.addTeardown(() => trace.push('teardown'))\n"
@@ -240,7 +240,7 @@ TEST_CASE("unsubscribe is idempotent" * doctest::test_suite("observable")) {
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "let count = 0\n"
                              "const s = new Observable(sub => {\n"
                              "  sub.addTeardown(() => { count++ })\n"
@@ -264,7 +264,7 @@ TEST_CASE("observer.next throw is scheduled async, dispatch continues" *
      * scheduled callback and verify it throws when invoked manually. */
     JSValue rv = eval_module(
         ctx,
-        "import {Observable} from 'mikrojs/observable'\n"
+        "import {Observable} from 'mikro/observable'\n"
         "const scheduled = []\n"
         "globalThis.setTimeout = (fn, ms) => { scheduled.push({fn, ms}); return 0 }\n"
         "let count = 0\n"
@@ -296,7 +296,7 @@ TEST_CASE("teardown throw schedules async re-throw, subsequent teardowns still r
 
     JSValue rv = eval_module(
         ctx,
-        "import {Observable} from 'mikrojs/observable'\n"
+        "import {Observable} from 'mikro/observable'\n"
         "const scheduled = []\n"
         "globalThis.setTimeout = (fn, ms) => { scheduled.push({fn, ms}); return 0 }\n"
         "let trace = []\n"
@@ -329,7 +329,7 @@ TEST_CASE("producer setup throw bubbles to caller" * doctest::test_suite("observ
 
     JSValue rv = eval_module(
         ctx,
-        "import {Observable} from 'mikrojs/observable'\n"
+        "import {Observable} from 'mikro/observable'\n"
         "let caught = ''\n"
         "try {\n"
         "  new Observable(sub => { throw new Error('producer-fail') }).subscribe()\n"
@@ -348,7 +348,7 @@ TEST_CASE("Observable.from(iterable) drains synchronously" *
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "let log = []\n"
                              "Observable.from([10, 20, 30]).subscribe({\n"
                              "  next: v => log.push(v),\n"
@@ -368,7 +368,7 @@ TEST_CASE("Observable.from(promise) emits then completes" *
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "let log = []\n"
                              "Observable.from(Promise.resolve('hi')).subscribe({\n"
                              "  next: v => log.push(v),\n"
@@ -406,7 +406,7 @@ TEST_CASE("Observable.from(observable) is passthrough" *
 
     JSValue rv = eval_module(
         ctx,
-        "import {Observable} from 'mikrojs/observable'\n"
+        "import {Observable} from 'mikro/observable'\n"
         "const a = new Observable(sub => { sub.next(1); sub.complete() })\n"
         "const b = Observable.from(a)\n"
         "globalThis.__same = (a === b)\n");
@@ -423,7 +423,7 @@ TEST_CASE("Observable.from rejects unsupported sources" *
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "let caught = ''\n"
                              "try { Observable.from(42) } catch (e) { caught = e.message }\n"
                              "globalThis.__caught = caught\n");
@@ -444,7 +444,7 @@ TEST_CASE("pipe() composes operator functions" * doctest::test_suite("observable
      * the JS operator package. */
     JSValue rv = eval_module(
         ctx,
-        "import {Observable} from 'mikrojs/observable'\n"
+        "import {Observable} from 'mikro/observable'\n"
         "const inc = src => new Observable(sub => {\n"
         "  const u = src.subscribe({\n"
         "    next: v => sub.next(v + 1),\n"
@@ -476,7 +476,7 @@ TEST_CASE("pipe() with no operators returns the source" *
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "let log = []\n"
                              "Observable.from([1, 2]).pipe().subscribe(v => log.push(v))\n"
                              "globalThis.__log = log.join(',')\n");
@@ -493,7 +493,7 @@ TEST_CASE("withEmitters: multicast to multiple subscribers" *
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "const {observable, next} = Observable.withEmitters()\n"
                              "let a = [], b = []\n"
                              "observable.subscribe(v => a.push(v))\n"
@@ -516,7 +516,7 @@ TEST_CASE("withEmitters: late subscriber after complete gets immediate complete"
 
     JSValue rv = eval_module(
         ctx,
-        "import {Observable} from 'mikrojs/observable'\n"
+        "import {Observable} from 'mikro/observable'\n"
         "const {observable, next, complete} = Observable.withEmitters()\n"
         "next(1); complete()\n"
         "let log = []\n"
@@ -540,7 +540,7 @@ TEST_CASE("withEmitters: complete() is idempotent" *
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "const {observable, next, complete} = Observable.withEmitters()\n"
                              "let count = 0\n"
                              "observable.subscribe({\n"
@@ -565,7 +565,7 @@ TEST_CASE("withEmitters: unsubscribe during dispatch doesn't break iteration" *
      * Subscriber C (registered after) should still receive the value via
      * the dispatch snapshot. */
     JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikrojs/observable'\n"
+                             "import {Observable} from 'mikro/observable'\n"
                              "const {observable, next} = Observable.withEmitters()\n"
                              "let aGot = [], bGot = [], cGot = []\n"
                              "let subA, subB, subC\n"

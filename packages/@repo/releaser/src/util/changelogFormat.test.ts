@@ -65,16 +65,16 @@ describe('formatChangelog', () => {
   })
 
   test('uses PR number for ref when available', () => {
-    vi.stubEnv('GITHUB_REPOSITORY', 'mikrojs/mikrojs')
+    vi.stubEnv('GITHUB_REPOSITORY', 'mikrojs/mikro')
     const out = formatChangelog([commit({type: 'feat', subject: 'thing', prNumber: 42})])
-    expect(out).toContain('([#42](https://github.com/mikrojs/mikrojs/pull/42))')
+    expect(out).toContain('([#42](https://github.com/mikrojs/mikro/pull/42))')
   })
 
   test('falls back to short hash when no PR number', () => {
-    vi.stubEnv('GITHUB_REPOSITORY', 'mikrojs/mikrojs')
+    vi.stubEnv('GITHUB_REPOSITORY', 'mikrojs/mikro')
     const out = formatChangelog([commit({type: 'feat', subject: 'thing', prNumber: null})])
     expect(out).toContain(
-      '([0123456](https://github.com/mikrojs/mikrojs/commit/0123456789abcdef0123456789abcdef01234567))',
+      '([0123456](https://github.com/mikrojs/mikro/commit/0123456789abcdef0123456789abcdef01234567))',
     )
   })
 

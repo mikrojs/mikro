@@ -8,8 +8,8 @@ import {
   type Request,
   RequestError,
   type RequestOptions,
-} from 'mikrojs/http/helpers'
-import {err, ok} from 'mikrojs/result'
+} from 'mikro/http/helpers'
+import {err, ok} from 'mikro/result'
 
 import type {ErrResult, Result} from '../result/types.js'
 

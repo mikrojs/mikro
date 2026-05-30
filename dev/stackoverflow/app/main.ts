@@ -1,4 +1,4 @@
-import {sleep} from 'mikrojs/sleep'
+import {sleep} from 'mikro/sleep'
 
 function run(frames: number) {
   console.log(`stack frame no ${frames}`)

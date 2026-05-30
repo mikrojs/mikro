@@ -48,7 +48,7 @@ And this uncertainty is **contagious**. Any function that calls `analogRead` mig
 Every Mikro.js function that can fail returns a [`Result`](/api/result):
 
 ```ts twoslash
-import {analogRead} from 'mikrojs/pin'
+import {analogRead} from 'mikro/pin'
 
 const result = analogRead(34)
 //    ^?
@@ -85,7 +85,7 @@ The key differences:
 A `Result<T, E>` is either an `Ok` holding a value of type `T`, or an `Err` holding an error of type `E`:
 
 ```ts twoslash
-import {ok, err} from 'mikrojs/result'
+import {ok, err} from 'mikro/result'
 
 const success = ok(42)
 //    ^?
@@ -102,8 +102,8 @@ const failure = err('oops')
 The most common pattern is checking and returning early:
 
 ```ts twoslash
-import {ok, err, type Result} from 'mikrojs/result'
-import {analogRead, type PinError} from 'mikrojs/pin'
+import {ok, err, type Result} from 'mikro/result'
+import {analogRead, type PinError} from 'mikro/pin'
 declare const PublishError: {
   NetworkError: (message: string) => {name: 'NetworkError'; message: string}
 }
@@ -130,7 +130,7 @@ If `publish` were to throw instead, that would be a panic: an unexpected bug, no
 Use `.map()` to transform the success value without unwrapping:
 
 ```ts twoslash
-import {analogReadMillivolts} from 'mikrojs/pin'
+import {analogReadMillivolts} from 'mikro/pin'
 // ---cut---
 const voltage = analogReadMillivolts(34).map((mv) => mv / 1000)
 ```
@@ -138,7 +138,7 @@ const voltage = analogReadMillivolts(34).map((mv) => mv / 1000)
 Use `.andThen()` to chain operations that themselves return Results:
 
 ```ts twoslash
-import {pinMode, digitalWrite} from 'mikrojs/pin'
+import {pinMode, digitalWrite} from 'mikro/pin'
 // ---cut---
 const result = pinMode(4, 'OUTPUT').andThen(() => digitalWrite(4, 1))
 ```
@@ -148,7 +148,7 @@ const result = pinMode(4, 'OUTPUT').andThen(() => digitalWrite(4, 1))
 When failure is unrecoverable and you want to crash explicitly, use `.orPanic()`:
 
 ```ts twoslash
-import {analogRead} from 'mikrojs/pin'
+import {analogRead} from 'mikro/pin'
 // ---cut---
 const value = analogRead(34).orPanic('ADC must work at this point')
 ```
@@ -160,7 +160,7 @@ Use it sparingly, only when you've decided that failure at this point means the 
 Use `.match()` to handle both cases:
 
 ```ts twoslash
-import {analogRead} from 'mikrojs/pin'
+import {analogRead} from 'mikro/pin'
 // ---cut---
 const message = analogRead(34).match({
   ok: (value) => `Reading: ${value}`,
@@ -210,10 +210,10 @@ If you see an exception in Mikro.js, it means something is broken, not that a se
 
 Note that some standard JavaScript functions can still throw, such as `JSON.parse()` with invalid input, `atob()` with a malformed string, or `decodeURIComponent()` with invalid sequences. These are not Mikro.js APIs, so they follow standard JavaScript behavior. Use `try`/`catch` around these if the input is untrusted.
 
-When you need to intentionally crash (e.g. missing required configuration), use `env.require` from [`mikrojs/env`](/api/env) or `panic` from [`mikrojs/sys`](/api/sys):
+When you need to intentionally crash (e.g. missing required configuration), use `env.require` from [`mikro/env`](/api/env) or `panic` from [`mikro/sys`](/api/sys):
 
 ```ts twoslash
-import {env} from 'mikrojs/env'
+import {env} from 'mikro/env'
 
 // env.require() panics with a clear message if the variable is not set
 const ssid = env.require('WIFI_SSID')
@@ -222,7 +222,7 @@ const ssid = env.require('WIFI_SSID')
 The runtime restarts the device after an uncaught exception, so a deployed app recovers on its own. Use [`onPanic`](/config#onpanic) to control this: `delay` sets how long the device waits before acting (use a longer delay during development to give yourself time to recover the device, a shorter one in production), and `mode` chooses whether it restarts right away or deep-sleeps to save power first:
 
 ```ts twoslash
-import {defineConfig} from 'mikrojs'
+import {defineConfig} from 'mikro'
 
 export default defineConfig({
   onPanic: {mode: 'restart', delay: 500},
@@ -249,7 +249,7 @@ Other rules flag `throw`, `try/catch`, `Promise.reject()`, and `.catch()` to kee
 ## Quick reference
 
 ```ts
-import {ok, err, matchError, type Result} from 'mikrojs/result'
+import {ok, err, matchError, type Result} from 'mikro/result'
 
 // Check a result
 if (result.ok) {

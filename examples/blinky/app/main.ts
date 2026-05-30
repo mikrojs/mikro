@@ -1,5 +1,5 @@
-import {digitalWrite, pinMode} from 'mikrojs/pin'
-import {sleep} from 'mikrojs/sleep'
+import {digitalWrite, pinMode} from 'mikro/pin'
+import {sleep} from 'mikro/sleep'
 
 let value: 0 | 1 = 0
 // GPIO 15 is the built-in LED on XIAO ESP32C6. Replace with your board's LED pin.

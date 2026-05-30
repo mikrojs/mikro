@@ -15,9 +15,9 @@ Counts how many times the device has woken up from deep sleep. The counter is st
 ## Code
 
 ```ts twoslash
-import {rtcStorage} from 'mikrojs/kv/rtc'
-import * as s from 'mikrojs/schema'
-import {deepSleep, sleep} from 'mikrojs/sleep'
+import {rtcStorage} from 'mikro/kv/rtc'
+import * as s from 'mikro/schema'
+import {deepSleep, sleep} from 'mikro/sleep'
 
 // Read the wake counter from RTC memory (survives deep sleep).
 // optional() because the key may not exist on first boot.
@@ -105,4 +105,4 @@ bunx mikro dev
 
 You should see `Wake #0`, then after the deep sleep cycle `Wake #1`, `Wake #2`, and so on. Power-cycle the board to reset the counter.
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/rtc-counter)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/rtc-counter)

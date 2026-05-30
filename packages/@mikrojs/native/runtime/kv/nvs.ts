@@ -1,4 +1,4 @@
-import {KVError, makeCreateValue} from 'mikrojs/kv/shared'
+import {KVError, makeCreateValue} from 'mikro/kv/shared'
 import {clear, get, info, remove, set} from 'native:nvs_kv'
 
 import type {NvsStorage} from './types.js'

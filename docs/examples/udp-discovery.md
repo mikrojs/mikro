@@ -44,11 +44,11 @@ bunx mikro env set WIFI_PASSPHRASE
 ## Code
 
 ```ts twoslash
-import {env} from 'mikrojs/env'
-import {sleep} from 'mikrojs/sleep'
-import {deviceId} from 'mikrojs/sys'
-import {bind} from 'mikrojs/udp'
-import {wifi} from 'mikrojs/wifi'
+import {env} from 'mikro/env'
+import {sleep} from 'mikro/sleep'
+import {deviceId} from 'mikro/sys'
+import {bind} from 'mikro/udp'
+import {wifi} from 'mikro/wifi'
 
 const GROUP = '224.0.0.251'
 const PORT = 7654
@@ -152,4 +152,4 @@ bun run peer -- --name desk
 
 The board will log `discovered laptop-... at 192.168.x.y` and the laptop will log the board's `deviceId`. Stop the peer with Ctrl-C.
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/udp-discovery)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/udp-discovery)

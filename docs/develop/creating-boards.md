@@ -11,7 +11,7 @@ Board packages come in two styles depending on their drivers:
 
 1. **Native boards** use drivers with native C code. They need `cmake.js`, ESP-IDF components, and `MIK_REGISTER_BUILTIN`. The board's runtime is compiled to firmware bytecode. Use this for QSPI displays and other peripherals that need direct hardware access.
 
-2. **Pure JS boards** use drivers that are regular JavaScript (via `mikrojs/spi`, `mikrojs/i2c`, etc.). No `cmake.js`, no ESP-IDF component. The board is bundled and deployed with the user's app. Use this when the existing core APIs are sufficient.
+2. **Pure JS boards** use drivers that are regular JavaScript (via `mikro/spi`, `mikro/i2c`, etc.). No `cmake.js`, no ESP-IDF component. The board is bundled and deployed with the user's app. Use this when the existing core APIs are sufficient.
 
 ## What a board package provides
 
@@ -24,7 +24,7 @@ Board packages come in two styles depending on their drivers:
 
 ```
 packages/@mikrojs/acme/
-  package.json                         # mikrojs.boards manifest + exports
+  package.json                         # mikro.boards manifest + exports
   cmake.js                             # exports componentPaths array
   tsconfig.json
   boards/
@@ -39,7 +39,7 @@ packages/@mikrojs/acme/
 
 ```
 packages/@mikrojs/acme/
-  package.json                         # mikrojs.boards manifest + exports
+  package.json                         # mikro.boards manifest + exports
   tsconfig.json
   src/
     acme-devboard.ts                   # re-exports drivers with board pins
@@ -49,7 +49,7 @@ No `cmake.js`, no `boards/` directory with CMake files. Just a TypeScript module
 
 ## Step 1: package.json
 
-The `mikrojs.boards` field declares what boards this package provides:
+The `mikro.boards` field declares what boards this package provides:
 
 ```json
 {
@@ -61,7 +61,7 @@ The `mikrojs.boards` field declares what boards this package provides:
     "./acme-devboard": "./boards/acme-devboard/acme-devboard.ts",
     "./cmake": "./cmake.js"
   },
-  "mikrojs": {
+  "mikro": {
     "boards": {
       "./acme-devboard": {
         "chip": "esp32c6",
@@ -78,7 +78,7 @@ The `mikrojs.boards` field declares what boards this package provides:
 }
 ```
 
-The keys in `mikrojs.boards` are subpath exports (prefixed with `./`). This ties the board declaration directly to the package's export map, preventing drift. The board name (without `./`) is what users pass to `MIKROJS_BOARD` and what appears in `sys.board().name`.
+The keys in `mikro.boards` are subpath exports (prefixed with `./`). This ties the board declaration directly to the package's export map, preventing drift. The board name (without `./`) is what users pass to `MIKROJS_BOARD` and what appears in `sys.board().name`.
 
 ## Step 2: cmake.js
 
@@ -118,7 +118,7 @@ These are merged with the project's base `sdkconfig.defaults`. Board-specific va
 ```ts
 import {readSensor} from '@mikrojs/driver-bme280/bme280'
 import {createDisplay} from '@mikrojs/driver-ssd1306/ssd1306'
-import type {Result} from 'mikrojs/result'
+import type {Result} from 'mikro/result'
 
 // Board-specific pin assignments
 const I2C_SDA = 6

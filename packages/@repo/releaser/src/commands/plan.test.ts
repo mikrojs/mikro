@@ -3,7 +3,7 @@ import {describe, expect, test} from 'vitest'
 import type {EventPayload} from '../util/githubEvent.js'
 import {decideReleasePure} from './plan.js'
 
-const REPO = 'mikrojs/mikrojs'
+const REPO = 'mikrojs/mikro'
 
 function pr(
   overrides: Partial<NonNullable<EventPayload['pull_request']>> = {},

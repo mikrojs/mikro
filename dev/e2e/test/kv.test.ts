@@ -1,7 +1,7 @@
-import {nvsStorage} from 'mikrojs/kv/nvs'
-import {rtcStorage} from 'mikrojs/kv/rtc'
-import {number, object, string} from 'mikrojs/schema'
-import {afterAll, assert, describe, test} from 'mikrojs/test'
+import {nvsStorage} from 'mikro/kv/nvs'
+import {rtcStorage} from 'mikro/kv/rtc'
+import {number, object, string} from 'mikro/schema'
+import {afterAll, assert, describe, test} from 'mikro/test'
 
 describe('kv: rtcStorage', () => {
   afterAll(() => {

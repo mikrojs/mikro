@@ -1,6 +1,6 @@
 // Simulator stub for pin
 // Runs inside the mikrojs runtime (QuickJS), not Node.js. Node built-ins are not available.
-import type {SimPin} from 'mikrojs/sim'
+import type {SimPin} from 'mikro/sim'
 
 const state: Record<number, {mode?: number; value?: number}> = {}
 

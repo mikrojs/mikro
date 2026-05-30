@@ -12,9 +12,9 @@
 // header pin is convenient on your breadboard.
 //
 // Run with: pnpm mikro dev app/light-gpio.ts
-import {pinMode} from 'mikrojs/pin'
-import {lightSleep, sleep} from 'mikrojs/sleep'
-import {getWakeupCause} from 'mikrojs/sys'
+import {pinMode} from 'mikro/pin'
+import {lightSleep, sleep} from 'mikro/sleep'
+import {getWakeupCause} from 'mikro/sys'
 
 import {blinkLed} from './led.js'
 import {pins} from './pins.js'

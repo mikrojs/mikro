@@ -1,6 +1,6 @@
-import {Observable} from 'mikrojs/observable'
-import {filter, finalize, map, take, takeUntil} from 'mikrojs/observable/operators'
-import {assert, describe, test} from 'mikrojs/test'
+import {Observable} from 'mikro/observable'
+import {filter, finalize, map, take, takeUntil} from 'mikro/observable/operators'
+import {assert, describe, test} from 'mikro/test'
 
 /* On-device sanity for the Observable runtime: verifies the C++ class
  * registers under `native:observable`, the operator bytecode bundle loads

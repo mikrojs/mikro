@@ -1,13 +1,13 @@
-import {withUnload} from 'mikrojs/module'
-import {memoryUsage} from 'mikrojs/sys'
-import {assert, describe, test} from 'mikrojs/test'
+import {withUnload} from 'mikro/module'
+import {memoryUsage} from 'mikro/sys'
+import {assert, describe, test} from 'mikro/test'
 
 type Evals = Record<string, number>
 
 describe('withUnload', () => {
   test('rejects a builtin (anchored) module', async () => {
     // Builtins (mikrojs/*, native:*) are anchored and cannot be unloaded.
-    await assert.rejects(() => withUnload(import('mikrojs/result'), (m) => m))
+    await assert.rejects(() => withUnload(import('mikro/result'), (m) => m))
   })
 
   test('unloads a nested module tree and reclaims its heap', async () => {

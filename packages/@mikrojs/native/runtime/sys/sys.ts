@@ -1,4 +1,4 @@
-import {err, ok, PanicError, type Result} from 'mikrojs/result'
+import {err, ok, PanicError, type Result} from 'mikro/result'
 import {getWakeupCause as nativeGetWakeupCause} from 'native:sleep'
 import * as native from 'native:sys'
 

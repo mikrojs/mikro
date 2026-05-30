@@ -1,5 +1,5 @@
-import {env} from 'mikrojs/env'
-import {assert, describe, test} from 'mikrojs/test'
+import {env} from 'mikro/env'
+import {assert, describe, test} from 'mikro/test'
 
 describe('env', () => {
   test('get returns undefined for missing key', () => {

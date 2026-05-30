@@ -6,9 +6,9 @@ description: Push-shaped, composable event streams
 # observable
 
 ```ts twoslash
-import {Observable} from 'mikrojs/observable'
-import {filter, finalize, map, take, takeUntil} from 'mikrojs/observable/operators'
-import type {Observer, Subscriber, Subscription} from 'mikrojs/observable'
+import {Observable} from 'mikro/observable'
+import {filter, finalize, map, take, takeUntil} from 'mikro/observable/operators'
+import type {Observer, Subscriber, Subscription} from 'mikro/observable'
 ```
 
 `Observable<Ok, Err>` is a push-shaped, composable event stream. Native event sources (wifi connection state, ble peripheral lifecycle, UDP datagrams) expose Observables instead of `.on/.off` callbacks. User code can also build its own event sources via `Observable.withEmitters()`.
@@ -31,7 +31,7 @@ If the source is "things happen, here is a record of each happening", that's an 
 ## Subscribing
 
 ```ts twoslash
-import {wifi} from 'mikrojs/wifi'
+import {wifi} from 'mikro/wifi'
 // ---cut---
 const sub = wifi.onConnect.subscribe((info) => {
   console.log('connected to %s', info.ip)
@@ -50,8 +50,8 @@ sub.unsubscribe()
 ## Composing with `pipe()`
 
 ```ts twoslash
-import {wifi} from 'mikrojs/wifi'
-import {filter, map, take} from 'mikrojs/observable/operators'
+import {wifi} from 'mikro/wifi'
+import {filter, map, take} from 'mikro/observable/operators'
 // ---cut---
 wifi.onConnect
   .pipe(
@@ -66,7 +66,7 @@ Operators are pure functions — pass them to `pipe()` in order. Custom operator
 
 ## Operators
 
-Imported from `mikrojs/observable/operators`. Each is a factory that returns the actual operator function.
+Imported from `mikro/observable/operators`. Each is a factory that returns the actual operator function.
 
 ### map(fn)
 
@@ -119,7 +119,7 @@ const finalize: (fn: () => void) => <A>(source: Observable<A>) => Observable<A>
 The callback runs once per subscriber. Push values via `subscriber.next(...)`, signal end-of-stream with `subscriber.complete()`, register cleanup with `subscriber.addTeardown(...)`.
 
 ```ts twoslash
-import {Observable} from 'mikrojs/observable'
+import {Observable} from 'mikro/observable'
 // ---cut---
 const ticks = new Observable<number>((subscriber) => {
   let i = 0
@@ -139,7 +139,7 @@ The constructor produces a **cold** Observable — every subscriber re-runs the 
 Returns `{observable, next, complete}`. The `observable` is shared by all subscribers; `next(value)` fans the value out to every active subscriber.
 
 ```ts twoslash
-import {Observable} from 'mikrojs/observable'
+import {Observable} from 'mikro/observable'
 // ---cut---
 const events = Observable.withEmitters<{type: string; data: unknown}>()
 
@@ -159,7 +159,7 @@ Late subscribers after `complete()` receive an immediate completion. Calling `ne
 Convert an iterable, promise, or other Observable into an `Observable`.
 
 ```ts twoslash
-import {Observable} from 'mikrojs/observable'
+import {Observable} from 'mikro/observable'
 // ---cut---
 Observable.from([1, 2, 3]).subscribe((v) => console.log(v))
 // 1, 2, 3 emitted synchronously, then complete
@@ -179,8 +179,8 @@ There is no `error` notification channel. Two cases:
 **Failures that are part of a stream's contract** (e.g. an HTTP fetch that may fail) flow as `Result.err(...)` values through `next()`, just like a successful value:
 
 ```ts twoslash
-import {Observable} from 'mikrojs/observable'
-import type {Result} from 'mikrojs/result'
+import {Observable} from 'mikro/observable'
+import type {Result} from 'mikro/result'
 declare const httpStream: () => Observable<Result<Uint8Array, {name: 'NetworkError'}>>
 // ---cut---
 httpStream().subscribe((r) => {

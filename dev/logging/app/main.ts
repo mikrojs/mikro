@@ -1,4 +1,4 @@
-import {sleep} from 'mikrojs/sleep'
+import {sleep} from 'mikro/sleep'
 
 console.debug('Debug!')
 console.log('Log!')

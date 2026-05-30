@@ -15,12 +15,12 @@
     "dev": "mikro dev"
   },
   "dependencies": {
-    "mikrojs": "workspace:*"
+    "mikro": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.3"
   },
-  "mikrojs": {
+  "mikro": {
     "predeploy": [
       "tsc --noEmit --pretty"
     ]

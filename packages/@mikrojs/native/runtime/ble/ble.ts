@@ -1,5 +1,5 @@
-import {lazyEvent} from 'mikrojs/observable/lazy'
-import {err, ok} from 'mikrojs/result'
+import {lazyEvent} from 'mikro/observable/lazy'
+import {err, ok} from 'mikro/result'
 import {Ble as NativeBle} from 'native:ble'
 
 import type {Result} from '../result/types.js'

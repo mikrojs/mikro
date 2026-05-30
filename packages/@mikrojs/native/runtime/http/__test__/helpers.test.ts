@@ -1,4 +1,4 @@
-import {ok} from 'mikrojs/result'
+import {ok} from 'mikro/result'
 import {describe, expect, it} from 'vitest'
 
 import type {Result} from '../../result/types.js'

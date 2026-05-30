@@ -13,7 +13,7 @@ Create a test file:
 
 ```ts twoslash
 // test/math.test.ts
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 
 describe('math', () => {
   test('addition', () => {
@@ -46,12 +46,12 @@ Failures show in red with the error message indented below. Skipped tests show i
 
 ## Writing tests
 
-Import `describe`, `test`, and `assert` from [`mikrojs/test`](/api/test).
+Import `describe`, `test`, and `assert` from [`mikro/test`](/api/test).
 
 ### Suites and tests
 
 ```ts twoslash
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 
 describe('my module', () => {
   test('sync test', () => {
@@ -59,7 +59,7 @@ describe('my module', () => {
   })
 
   test('async test', async () => {
-    const {sleep} = await import('mikrojs/sleep')
+    const {sleep} = await import('mikro/sleep')
     const start = Date.now()
     await sleep(50)
     assert.truthy(Date.now() - start >= 40)
@@ -70,7 +70,7 @@ describe('my module', () => {
 ### Skipping tests
 
 ```ts twoslash
-import {describe, test} from 'mikrojs/test'
+import {describe, test} from 'mikro/test'
 // ---cut---
 test.skip('not ready yet', () => {
   // this won't run, but shows as skipped in output
@@ -86,7 +86,7 @@ Use `test.fixme` / `describe.fixme` to flag broken tests that need to be fixed (
 ### Focusing tests
 
 ```ts twoslash
-import {describe, test} from 'mikrojs/test'
+import {describe, test} from 'mikro/test'
 // ---cut---
 test.only('the one I care about', () => {
   // only this test runs; all others in the file are skipped
@@ -112,15 +112,15 @@ mikro test 'test/wifi/**/*.test.ts'
 Use `skipIf` and `runIf` to conditionally skip tests or suites based on a truthy/falsy expression:
 
 ```ts twoslash
-import {describe, test, assert} from 'mikrojs/test'
-import {env} from 'mikrojs/env'
+import {describe, test, assert} from 'mikro/test'
+import {env} from 'mikro/env'
 
 const hasWifi = env.get('WIFI_SSID') && env.get('WIFI_PASSPHRASE')
 
 // skip the entire suite when credentials are missing
 describe.runIf(hasWifi)('wifi', () => {
   test('connect', async () => {
-    const {wifi} = await import('mikrojs/wifi')
+    const {wifi} = await import('mikro/wifi')
     const result = await wifi.connect(env.get('WIFI_SSID')!, env.get('WIFI_PASSPHRASE')!)
     assert.ok(result)
   })
@@ -146,7 +146,7 @@ These are available on both `test` and `describe`:
 `skipIf` and `runIf` return a function, so the test/suite name comes in the second call:
 
 ```ts twoslash
-import {describe, test} from 'mikrojs/test'
+import {describe, test} from 'mikro/test'
 declare const isDev: boolean
 declare const hasHardware: boolean
 // ---cut---
@@ -159,7 +159,7 @@ describe.runIf(hasHardware)('gpio', () => {})
 Mark tests you plan to write later. No function body is needed:
 
 ```ts twoslash
-import {test} from 'mikrojs/test'
+import {test} from 'mikro/test'
 // ---cut---
 test.todo('handle reconnect after deep sleep')
 test.todo('retry on timeout')
@@ -172,7 +172,7 @@ Todo tests show as blue in the output and are counted separately from skipped te
 Use `test.each` or `describe.each` to run the same test with different inputs:
 
 ```ts twoslash
-import {describe, test} from 'mikrojs/test'
+import {describe, test} from 'mikro/test'
 // ---cut---
 test.each([0, 1, 2])('pin %s toggles', (pin) => {
   // runs three tests: "pin 0 toggles", "pin 1 toggles", "pin 2 toggles"
@@ -190,7 +190,7 @@ Name interpolation supports `%s` (string coercion), `%#` (index), and `%o` (JSON
 `each` composes with `skipIf` and `runIf`:
 
 ```ts twoslash
-import {test} from 'mikrojs/test'
+import {test} from 'mikro/test'
 declare const isCI: boolean
 // ---cut---
 test.skipIf(isCI).each([1, 2, 3])('hardware test %s', (pin) => {
@@ -203,8 +203,8 @@ test.skipIf(isCI).each([1, 2, 3])('hardware test %s', (pin) => {
 `beforeAll` and `afterAll` run once per suite. `beforeEach` and `afterEach` run around every test:
 
 ```ts twoslash
-import {describe, test, assert, afterAll, afterEach} from 'mikrojs/test'
-import {nvsStorage} from 'mikrojs/kv/nvs'
+import {describe, test, assert, afterAll, afterEach} from 'mikro/test'
+import {nvsStorage} from 'mikro/kv/nvs'
 
 describe('storage', () => {
   const val = nvsStorage.createValue('test-key')
@@ -243,15 +243,15 @@ The `assert` object provides common assertion methods:
 | `assert.ok(result)`            | Asserts `Result` is ok, returns value    |
 | `assert.err(result)`           | Asserts `Result` is error, returns error |
 
-See the full [`mikrojs/test` API reference](/api/test) for details.
+See the full [`mikro/test` API reference](/api/test) for details.
 
 ### Testing Results
 
 Since Mikro.js APIs return `Result` types, `assert.ok` and `assert.err` are particularly useful:
 
 ```ts twoslash
-import {describe, test, assert} from 'mikrojs/test'
-import {encode, decode} from 'mikrojs/cbor'
+import {describe, test, assert} from 'mikro/test'
+import {encode, decode} from 'mikro/cbor'
 
 describe('cbor', () => {
   test('roundtrip', () => {
@@ -291,7 +291,7 @@ mikro test 'test/math.test.ts'
 The `MIKRO_ENV` variable is automatically set to `"test"` during test runs. Use it for conditional behavior:
 
 ```ts twoslash
-import {env} from 'mikrojs/env'
+import {env} from 'mikro/env'
 
 if (env.get('MIKRO_ENV') === 'test') {
   // test-specific setup
@@ -303,15 +303,15 @@ if (env.get('MIKRO_ENV') === 'test') {
 Tests that depend on hardware or network can use `runIf` with env vars:
 
 ```ts twoslash
-import {env} from 'mikrojs/env'
-import {describe, test, assert} from 'mikrojs/test'
+import {env} from 'mikro/env'
+import {describe, test, assert} from 'mikro/test'
 
 const ssid = env.get('WIFI_SSID')
 const pass = env.get('WIFI_PASSPHRASE')
 
 describe.runIf(ssid && pass)('wifi', () => {
   test('connect', async () => {
-    const {wifi} = await import('mikrojs/wifi')
+    const {wifi} = await import('mikro/wifi')
     const result = await wifi.connect(ssid!, pass!)
     assert.equal(result.ok, true)
   })

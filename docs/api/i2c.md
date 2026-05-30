@@ -6,7 +6,7 @@ description: I2C bus communication for sensors and peripherals
 # i2c
 
 ```ts twoslash
-import {I2c} from 'mikrojs/i2c'
+import {I2c} from 'mikro/i2c'
 ```
 
 Communicate with I2C devices such as temperature sensors, displays, and EEPROMs.
@@ -14,7 +14,7 @@ Communicate with I2C devices such as temperature sensors, displays, and EEPROMs.
 ## Usage
 
 ```ts twoslash
-import {I2c} from 'mikrojs/i2c'
+import {I2c} from 'mikro/i2c'
 
 const bus = new I2c(0, {sda: 6, scl: 7, freq: 400000})
 bus.begin().orPanic('I2C init failed')

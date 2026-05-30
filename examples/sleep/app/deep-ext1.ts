@@ -17,8 +17,8 @@
 // source fired ('ext1' or 'timer').
 //
 // Run with: pnpm mikro dev app/deep-ext1.ts
-import {canWakeFromExt1, deepSleep, sleep} from 'mikrojs/sleep'
-import {board, getWakeupCause} from 'mikrojs/sys'
+import {canWakeFromExt1, deepSleep, sleep} from 'mikro/sleep'
+import {board, getWakeupCause} from 'mikro/sys'
 
 import {blinkLed} from './led.js'
 

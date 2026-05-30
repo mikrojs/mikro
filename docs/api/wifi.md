@@ -6,7 +6,7 @@ description: WiFi station and access point
 # wifi
 
 ```ts twoslash
-import {wifi} from 'mikrojs/wifi'
+import {wifi} from 'mikro/wifi'
 ```
 
 The default export is a `Wifi` singleton. Use it to connect to networks, scan for access points, and start an AP.
@@ -14,7 +14,7 @@ The default export is a `Wifi` singleton. Use it to connect to networks, scan fo
 ## Connecting
 
 ```ts twoslash
-import {wifi} from 'mikrojs/wifi'
+import {wifi} from 'mikro/wifi'
 // ---cut---
 const result = await wifi.connect('MyNetwork', 'password123')
 if (!result.ok) {
@@ -49,7 +49,7 @@ scan(opts?: ScanOptions): Promise<Result<ScanResult[], WifiError>>
 Scans for nearby networks. Returns an array of `ScanResult` objects.
 
 ```ts twoslash
-import {wifi} from 'mikrojs/wifi'
+import {wifi} from 'mikro/wifi'
 // ---cut---
 const result = await wifi.scan()
 if (result.ok) {
@@ -110,7 +110,7 @@ ipConfig(opts: StaticIpConfig): Result<void, WifiError>
 ## Station events
 
 ```ts twoslash
-import {wifi} from 'mikrojs/wifi'
+import {wifi} from 'mikro/wifi'
 // ---cut---
 wifi.onConnect.subscribe((info) => {
   console.log('Connected: %s', info.ip)
@@ -131,7 +131,7 @@ wifi.onRssiLow.subscribe((rssi) => {
 | `onDisconnect` | `Observable<WifiDisconnectReason>` | Disconnected from network            |
 | `onRssiLow`    | `Observable<number>`               | Signal dropped below `rssiThreshold` |
 
-Each property is an `Observable<T>` (see [`mikrojs/observable`](/api/observable)). Subscribers fire on the JS loop thread; call `unsubscribe()` on the returned `Subscription` to stop receiving values.
+Each property is an `Observable<T>` (see [`mikro/observable`](/api/observable)). Subscribers fire on the JS loop thread; call `unsubscribe()` on the returned `Subscription` to stop receiving values.
 
 ## Access point
 
@@ -144,7 +144,7 @@ start(options: ApStartOptions): Result<void, WifiError>
 ```
 
 ```ts twoslash
-import {wifi} from 'mikrojs/wifi'
+import {wifi} from 'mikro/wifi'
 // ---cut---
 wifi.ap.start({ssid: 'my-device', passphrase: 'secret123'}).orPanic('AP failed')
 ```
@@ -173,7 +173,7 @@ deauthStation(mac: string): Result<void, WifiError>
 ### wifi.ap events
 
 ```ts twoslash
-import {wifi} from 'mikrojs/wifi'
+import {wifi} from 'mikro/wifi'
 // ---cut---
 wifi.ap.onStationConnect.subscribe((info) => {
   console.log('client connected: %s', info.mac)

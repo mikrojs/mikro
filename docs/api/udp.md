@@ -6,7 +6,7 @@ description: Datagram sockets for IPv4 and IPv6
 # udp
 
 ```ts twoslash
-import {bind} from 'mikrojs/udp'
+import {bind} from 'mikro/udp'
 ```
 
 UDP sockets for IPv4 and IPv6. The module unblocks CoAP, mDNS / DNS-SD, NTP-style protocols, and custom binary protocols between mikrojs nodes. UDP itself is link-agnostic, so it works equally over WiFi STA, WiFi AP, or future Thread / Ethernet.
@@ -14,7 +14,7 @@ UDP sockets for IPv4 and IPv6. The module unblocks CoAP, mDNS / DNS-SD, NTP-styl
 ## Usage
 
 ```ts twoslash
-import {bind} from 'mikrojs/udp'
+import {bind} from 'mikro/udp'
 
 const result = await bind({port: 5683})
 if (!result.ok) {
@@ -41,7 +41,7 @@ bind(options: BindOptions): Promise<Result<UdpSocket, UdpError>>
 Creates a UDP socket and binds it to a local address and port. Default is dual-stack (accepts both IPv4 and IPv6). Pass `port: 0` for an ephemeral port; the actual port is readable on `socket.port`.
 
 ```ts twoslash
-import {bind} from 'mikrojs/udp'
+import {bind} from 'mikro/udp'
 // ---cut---
 // Dual-stack on an ephemeral port
 const r = await bind({port: 0})
@@ -64,7 +64,7 @@ send(data: Uint8Array | string, to: PeerAddress): Promise<Result<void, UdpError>
 Sends a single datagram. String data is UTF-8 encoded. The `to` argument must include `family` so the address can be parsed unambiguously.
 
 ```ts twoslash
-import {bind} from 'mikrojs/udp'
+import {bind} from 'mikro/udp'
 declare const socket: NonNullable<Awaited<ReturnType<typeof bind>>['value']>
 // ---cut---
 const result = await socket.send('ping', {
@@ -83,7 +83,7 @@ joinMulticastGroup(group: {address: string}): Result<void, UdpError>
 Joins an IPv4 or IPv6 multicast group. The socket's family determines which group type is accepted. An IPv4 interface (e.g. WiFi connected) must be up before joining an IPv4 group.
 
 ```ts twoslash
-import {bind} from 'mikrojs/udp'
+import {bind} from 'mikro/udp'
 declare const socket: NonNullable<Awaited<ReturnType<typeof bind>>['value']>
 // ---cut---
 // mDNS multicast group
@@ -118,10 +118,10 @@ Closes the socket. Idempotent. Subsequent `send` calls resolve to `{name: 'Close
 
 ## Receiving
 
-`socket.onMessage` is an `Observable<UdpMessage>` (see `mikrojs/observable`). Subscribe to receive packets — each emission is `{msg, from}` with a freshly allocated `Uint8Array` and a `PeerAddress` describing the sender. The first subscribe attaches the native dispatch; the last `unsubscribe()` detaches it again.
+`socket.onMessage` is an `Observable<UdpMessage>` (see `mikro/observable`). Subscribe to receive packets — each emission is `{msg, from}` with a freshly allocated `Uint8Array` and a `PeerAddress` describing the sender. The first subscribe attaches the native dispatch; the last `unsubscribe()` detaches it again.
 
 ```ts twoslash
-import {bind} from 'mikrojs/udp'
+import {bind} from 'mikro/udp'
 declare const socket: NonNullable<Awaited<ReturnType<typeof bind>>['value']>
 // ---cut---
 socket.onMessage.subscribe(({msg, from}) => {
@@ -137,7 +137,7 @@ The receive buffer is 1500 bytes (typical Ethernet MTU). Datagrams larger than t
 Each socket has a bounded receive queue (default 8). When full, the newest datagram is dropped and `socket.dropped` is incremented. There is no separate drop event; applications that care can poll the counter periodically.
 
 ```ts twoslash
-import {bind} from 'mikrojs/udp'
+import {bind} from 'mikro/udp'
 // ---cut---
 // Larger queue for a busy responder
 const r = await bind({port: 5683, recvQueue: 32})

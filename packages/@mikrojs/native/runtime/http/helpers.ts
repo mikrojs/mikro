@@ -3,7 +3,7 @@
 // LTE modem over UART) implement the `Request` type directly and reuse
 // `prepareBody` + `makeResponse` for the boring parts.
 
-import {err, ok} from 'mikrojs/result'
+import {err, ok} from 'mikro/result'
 
 import type {Result} from '../result/types.js'
 

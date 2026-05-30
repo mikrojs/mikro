@@ -27,7 +27,7 @@ This page explains how the pieces fit together. The goal is "enough to understan
 **Driver packages** come in two flavors:
 
 - **Native drivers**: ESP-IDF components with C/C++ code, registered via `MIK_REGISTER_MODULE` and `MIK_REGISTER_BUILTIN`. Compiled into firmware. Use for QSPI displays and other peripherals needing direct hardware access.
-- **Pure JS drivers**: Regular npm packages that use core APIs like `mikrojs/spi`. Bundled and deployed with the user's app. No native code, no `cmake.js`.
+- **Pure JS drivers**: Regular npm packages that use core APIs like `mikro/spi`. Bundled and deployed with the user's app. No native code, no `cmake.js`.
 
 **Board packages** are thin layers that depend on drivers and provide board-specific pin assignments. Native boards include sdkconfig and ESP-IDF components. Pure JS boards are just TypeScript re-exports.
 
@@ -98,7 +98,7 @@ mikrojs_generate_bytecode(
 )
 ```
 
-**esbuild** bundles each TypeScript module into a single JavaScript file. All `mikrojs/*` and `@mikrojs/*` imports are marked as external since they resolve at runtime inside the firmware.
+**esbuild** bundles each TypeScript module into a single JavaScript file. All `mikro/*` and `@mikrojs/*` imports are marked as external since they resolve at runtime inside the firmware.
 
 **qjsc** (the QuickJS bytecode compiler) takes the bundled JS and produces a C header with a `const uint8_t[]` array. This is built from the same QuickJS source as the runtime engine, guaranteeing bytecode version compatibility.
 
@@ -107,10 +107,10 @@ mikrojs_generate_bytecode(
 When JavaScript executes an `import` statement, the module loader checks several sources in order:
 
 1. **Native modules**: Names starting with `native:` are looked up in the native module registry (the linked list populated by `MIK_REGISTER_MODULE`).
-2. **Bytecode builtins**: Names matching registered builtins (e.g., `@mikrojs/driver-bme280/bme280`, `mikrojs/result`) are deserialized from embedded bytecode.
+2. **Bytecode builtins**: Names matching registered builtins (e.g., `@mikrojs/driver-bme280/bme280`, `mikro/result`) are deserialized from embedded bytecode.
 3. **Filesystem**: Relative paths (starting with `.` or `/`) are loaded from the device filesystem (LittleFS). JSON files are auto-wrapped. `.bjs` files are loaded as pre-compiled bytecode.
 
-The module normalizer passes through `native:`, `mikrojs/`, and `@mikrojs/` prefixed names unchanged. Relative paths are resolved against the importing module's directory.
+The module normalizer passes through `native:`, `mikro/`, and `@mikrojs/` prefixed names unchanged. Relative paths are resolved against the importing module's directory.
 
 ## How board packages wire in
 

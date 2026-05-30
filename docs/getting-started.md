@@ -5,7 +5,7 @@ description: Set up your first Mikro.js project and blink an LED
 
 ::: warning Early development
 Mikro.js is in its early days and is not intended for safety-critical or production use.
-Expect APIs to change, and expect bugs (but we'd love to [hear about](https://github.com/mikrojs/mikrojs/issues) them!)
+Expect APIs to change, and expect bugs (but we'd love to [hear about](https://github.com/mikrojs/mikro/issues) them!)
 :::
 
 # Getting Started
@@ -67,6 +67,10 @@ my-app/
 └── tsconfig.json
 ```
 
+::: tip Renamed from `mikrojs`
+The package and CLI were renamed from `mikrojs` to `mikro` with no compatibility shim. Use the `mikro` dependency, the `mikro` command, and `mikro/`-prefixed imports (e.g. `import {pinMode} from 'mikro/pin'`). The `@mikrojs/*` package scope is unchanged.
+:::
+
 ## Plug in your board
 
 Connect your ESP32 board to your computer with a USB cable.
@@ -122,8 +126,8 @@ bunx mikro dev
 This connects to your board, deploys your code, and watches for changes. Now open `app/main.ts` in your preferred code editor or IDE and write a blink program:
 
 ```ts twoslash
-import {digitalWrite, pinMode} from 'mikrojs/pin'
-import {sleep} from 'mikrojs/sleep'
+import {digitalWrite, pinMode} from 'mikro/pin'
+import {sleep} from 'mikro/sleep'
 
 // GPIO 15 is the built-in LED on XIAO ESP32C6. Replace with your board's LED pin.
 const LED = 15

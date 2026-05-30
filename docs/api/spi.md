@@ -6,7 +6,7 @@ description: SPI bus communication
 # spi
 
 ```ts twoslash
-import {Spi} from 'mikrojs/spi'
+import {Spi} from 'mikro/spi'
 ```
 
 Communicate with SPI devices such as displays, SD cards, and radio modules.
@@ -14,7 +14,7 @@ Communicate with SPI devices such as displays, SD cards, and radio modules.
 ## Usage
 
 ```ts twoslash
-import {Spi} from 'mikrojs/spi'
+import {Spi} from 'mikro/spi'
 
 const spi = new Spi(1, {clk: 4, mosi: 5, miso: 6, cs: 7, freq: 1000000})
 spi.begin().orPanic('SPI init failed')

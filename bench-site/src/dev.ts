@@ -23,7 +23,7 @@ function arg(name: string, fallback?: string): string | undefined {
 const port = parseInt(arg('port', '5178')!, 10)
 const dataUrl = arg(
   'data-url',
-  'https://raw.githubusercontent.com/mikrojs/mikrojs/bench-data/dev/bench/data.js',
+  'https://raw.githubusercontent.com/mikrojs/mikro/bench-data/dev/bench/data.js',
 )!
 const dataFile = arg('data-file')
 

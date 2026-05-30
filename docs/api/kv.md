@@ -8,16 +8,16 @@ description: Key-value storage with RTC and NVS backing stores
 Key-value storage with two backing stores: RTC memory (volatile, fast) and NVS flash (persistent, wear-limited). Each backend lives at its own subpath so apps that only need one don't pay for the other's native code.
 
 ```ts twoslash
-import {rtcStorage} from 'mikrojs/kv/rtc'
-import {nvsStorage} from 'mikrojs/kv/nvs'
+import {rtcStorage} from 'mikro/kv/rtc'
+import {nvsStorage} from 'mikro/kv/nvs'
 ```
 
 ## Choosing a store
 
-| Store        | Import path      | Survives deep sleep | Survives power off | Capacity | Write wear              |
-| ------------ | ---------------- | ------------------- | ------------------ | -------- | ----------------------- |
-| `rtcStorage` | `mikrojs/kv/rtc` | Yes                 | No                 | ~2 KB    | None (RAM)              |
-| `nvsStorage` | `mikrojs/kv/nvs` | Yes                 | Yes                | ~24 KB   | ~100k cycles per sector |
+| Store        | Import path    | Survives deep sleep | Survives power off | Capacity | Write wear              |
+| ------------ | -------------- | ------------------- | ------------------ | -------- | ----------------------- |
+| `rtcStorage` | `mikro/kv/rtc` | Yes                 | No                 | ~2 KB    | None (RAM)              |
+| `nvsStorage` | `mikro/kv/nvs` | Yes                 | Yes                | ~24 KB   | ~100k cycles per sector |
 
 `rtcStorage` is plain RAM with no write-wear concerns. `nvsStorage` is flash-backed and survives power cycles, but has limited write endurance. Avoid high-frequency writes on flash; use `rtcStorage` for those and only flush to NVS when needed.
 
@@ -50,9 +50,9 @@ Create a handle to a named value. Without a schema, values are untyped (`unknown
 Values are [CBOR](/api/cbor)-encoded. Supported schema types: `s.number()`, `s.string()`, `s.boolean()`, `s.optional()`, `s.array()`, and `s.object()`. See [schema](/api/schema) for details.
 
 ```ts twoslash
-import {nvsStorage} from 'mikrojs/kv/nvs'
-import {rtcStorage} from 'mikrojs/kv/rtc'
-import * as s from 'mikrojs/schema'
+import {nvsStorage} from 'mikro/kv/nvs'
+import {rtcStorage} from 'mikro/kv/rtc'
+import * as s from 'mikro/schema'
 // ---cut---
 const counter = rtcStorage.createValue('counter', {schema: s.optional(s.number())})
 const brightness = nvsStorage.createValue('brightness', {schema: s.optional(s.number())})
@@ -64,8 +64,8 @@ const state = rtcStorage.createValue('state', {
 With an error handler for corrupt data:
 
 ```ts twoslash
-import {nvsStorage} from 'mikrojs/kv/nvs'
-import * as s from 'mikrojs/schema'
+import {nvsStorage} from 'mikro/kv/nvs'
+import * as s from 'mikro/schema'
 const SensorReading = s.object({temp: s.number(), humidity: s.number()})
 // ---cut---
 const fallback = {temp: 0, humidity: 0}
@@ -101,8 +101,8 @@ get(): T | undefined
 Read the value. Returns `undefined` if the key doesn't exist. On corrupt or invalid data, calls `onReadError` (default: deletes the key, returns `undefined`).
 
 ```ts twoslash
-import {rtcStorage} from 'mikrojs/kv/rtc'
-import * as s from 'mikrojs/schema'
+import {rtcStorage} from 'mikro/kv/rtc'
+import * as s from 'mikro/schema'
 const counter = rtcStorage.createValue('counter', {schema: s.optional(s.number())})
 // ---cut---
 const value = counter.get() ?? 0
@@ -117,8 +117,8 @@ set(value: T | undefined): Result<T, KVError>
 Write a value. Returns the written value on success. Passing `undefined` deletes the key (same as `delete()`).
 
 ```ts twoslash
-import {rtcStorage} from 'mikrojs/kv/rtc'
-import * as s from 'mikrojs/schema'
+import {rtcStorage} from 'mikro/kv/rtc'
+import * as s from 'mikro/schema'
 const counter = rtcStorage.createValue('counter', {schema: s.optional(s.number())})
 // ---cut---
 counter.set(42).orPanic('store failed')
@@ -134,8 +134,8 @@ update(updater: (value: T | undefined) => T | undefined): Result<T, KVError>
 Read, transform, and write. Returns the updated value on success. Receives `undefined` if key is missing. Return `undefined` to delete.
 
 ```ts twoslash
-import {rtcStorage} from 'mikrojs/kv/rtc'
-import * as s from 'mikrojs/schema'
+import {rtcStorage} from 'mikro/kv/rtc'
+import * as s from 'mikro/schema'
 const counter = rtcStorage.createValue('counter', {schema: s.optional(s.number())})
 // ---cut---
 counter.update((n) => (n ?? 0) + 1)

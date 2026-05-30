@@ -1,4 +1,4 @@
-import {NeoPixel} from 'mikrojs/neopixel'
+import {NeoPixel} from 'mikro/neopixel'
 
 import {breathe} from './patterns/breathe.js'
 import {colorWipe} from './patterns/color-wipe.js'

@@ -1,4 +1,4 @@
 {
-  "extends": "mikrojs/tsconfig",
+  "extends": "mikro/tsconfig",
   "include": ["env.d.ts", "app/**/*", "mikro.config.ts"]
 }

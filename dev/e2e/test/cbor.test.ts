@@ -1,5 +1,5 @@
-import {decode, encode} from 'mikrojs/cbor'
-import {assert, describe, test} from 'mikrojs/test'
+import {decode, encode} from 'mikro/cbor'
+import {assert, describe, test} from 'mikro/test'
 
 function roundtrip(label: string, value: unknown) {
   test(`roundtrip: ${label}`, () => {

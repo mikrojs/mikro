@@ -7,7 +7,7 @@
  * `packages/mikrojs` and by user apps via their tsconfig.
  */
 
-import type {Result} from 'mikrojs/result'
+import type {Result} from 'mikro/result'
 
 export type ReaderError = {name: 'Timeout'; ms: number} | {name: 'StreamClosed'}
 

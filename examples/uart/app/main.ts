@@ -1,5 +1,5 @@
-import {sleep} from 'mikrojs/sleep'
-import {Uart} from 'mikrojs/uart'
+import {sleep} from 'mikro/sleep'
+import {Uart} from 'mikro/uart'
 
 // UART loopback example for ESP32C6: connect TX (GPIO 17) to RX (GPIO 16) with a jumper wire
 const TX_PIN = 16

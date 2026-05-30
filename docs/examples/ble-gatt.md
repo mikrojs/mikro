@@ -18,8 +18,8 @@ Demonstrates connect/disconnect events, notifications, write dispatch, and the d
 ## Code
 
 ```ts twoslash
-import {ble, peripheral} from 'mikrojs/ble'
-import {sleep} from 'mikrojs/sleep'
+import {ble, peripheral} from 'mikro/ble'
+import {sleep} from 'mikro/sleep'
 
 ble.name = 'mikrojs-hello'
 

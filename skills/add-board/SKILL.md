@@ -52,12 +52,12 @@ packages/@mikrojs/{vendor}/
     "./cmake": "./cmake.js"
   },
   "engines": {
-    "mikrojs": ">=0.0.0"
+    "mikro": ">=0.0.0"
   },
   "dependencies": {
     "@mikrojs/driver-{driver}": "workspace:*"
   },
-  "mikrojs": {
+  "mikro": {
     "boards": {
       "./{board-name}": {
         "chip": "{chip}",
@@ -152,7 +152,7 @@ The `REQUIRES` field lists the ESP-IDF component names for all drivers this boar
 ### 5. Per-board builtins.cpp
 
 ```cpp
-#include "mikrojs/mikrojs.h"
+#include "mikro/mikrojs.h"
 
 #include "gen/mik_{vendor_safe}_{board_safe}.h"
 

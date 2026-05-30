@@ -72,7 +72,7 @@ Board packages add drivers, pin maps, and sdkconfig defaults for a specific deve
    MIKROJS_BOARD=acme-devboard idf.py build flash monitor
    ```
 
-The `MIKROJS_BOARD` environment variable selects the board definition from the package's `mikrojs.boards` manifest. The board's `sdkconfig.defaults` is automatically merged with the base config during the CMake configure step.
+The `MIKROJS_BOARD` environment variable selects the board definition from the package's `mikro.boards` manifest. The board's `sdkconfig.defaults` is automatically merged with the base config during the CMake configure step.
 
 ## Running on-device tests
 

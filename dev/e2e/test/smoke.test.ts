@@ -1,4 +1,4 @@
-import {assert, describe, test} from 'mikrojs/test'
+import {assert, describe, test} from 'mikro/test'
 
 describe('smoke', () => {
   test('1 + 1 = 2', () => {

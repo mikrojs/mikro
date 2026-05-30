@@ -49,7 +49,7 @@ pnpm mikro console --recover   # open REPL on a broken device without deploying
 If you want a crash loop that doesn't rely on the panic-restart path, replace the throw in `app/main.ts` with:
 
 ```ts
-import {restart} from 'mikrojs/sys'
+import {restart} from 'mikro/sys'
 restart()
 ```
 

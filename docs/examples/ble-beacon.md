@@ -18,8 +18,8 @@ Useful for presence beacons, simple sensor broadcasts, iBeacon-style advertisers
 ## Code
 
 ```ts twoslash
-import {ble, peripheral} from 'mikrojs/ble'
-import {sleep} from 'mikrojs/sleep'
+import {ble, peripheral} from 'mikro/ble'
+import {sleep} from 'mikro/sleep'
 
 ble.name = 'mikrojs-beacon'
 
@@ -134,4 +134,4 @@ bunx mikro dev
 
 :::
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/ble-beacon)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/ble-beacon)

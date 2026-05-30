@@ -4,20 +4,20 @@ type NR<T> = {ok: true; value: T} | {ok: false; error: {code: number; message: s
 
 // Internal shared runtime modules. Registered as builtins so sibling bundles
 // can reference them at runtime to dedupe shared code, but not exposed via
-// the public `mikrojs/*` subpath exports so user apps can't accidentally
+// the public `mikro/*` subpath exports so user apps can't accidentally
 // import them. Keep these in sync with the MODULES list in the firmware +
 // @mikrojs/native CMakeLists.
-declare module 'mikrojs/kv/shared' {
+declare module 'mikro/kv/shared' {
   export {KVError, makeCreateValue, type NativeKvFns} from './kv/shared.js'
 }
 
-declare module 'mikrojs/observable/lazy' {
+declare module 'mikro/observable/lazy' {
   export {lazyEvent} from './observable/lazy.js'
 }
 
 declare module 'native:cbor' {
   import type {CborError} from '@mikrojs/native/runtime/cbor/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
   export function encode(value: unknown): Result<Uint8Array, CborError>
   export function decode(data: Uint8Array): Result<unknown, CborError>
 }
@@ -122,7 +122,7 @@ declare module 'native:stdio' {
 
 declare module 'native:pin' {
   import type {PinError} from '@mikrojs/native/runtime/pin/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
   export type PinMode = 0x01 | 0x03 | 0x05
   export function pinMode(pin: number, value: PinMode): Result<void, PinError>
   export function digitalWrite(pin: number, value: 0 | 1): Result<void, PinError>
@@ -143,8 +143,8 @@ declare module 'native:sleep' {
 }
 
 declare module 'native:http' {
-  import type {RequestError} from 'mikrojs/http/helpers'
-  import type {Result} from 'mikrojs/result'
+  import type {RequestError} from 'mikro/http/helpers'
+  import type {Result} from 'mikro/result'
 
   import type {ErrResult} from './result/types.js'
   type HeadersMsg = {status: number; headers: [string, string][]}
@@ -165,7 +165,7 @@ declare module 'native:http' {
 }
 declare module 'native:i2c' {
   import type {I2cError} from '@mikrojs/native/runtime/i2c/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
 
   export interface I2cBaseOptions {
     freq?: number
@@ -197,7 +197,7 @@ declare module 'native:i2c' {
 }
 declare module 'native:spi' {
   import type {SpiError} from '@mikrojs/native/runtime/spi/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
 
   export interface SpiOptions {
     clk: number
@@ -226,7 +226,7 @@ declare module 'native:spi' {
 
 declare module 'native:sntp' {
   import type {SntpError} from '@mikrojs/native/runtime/sntp/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
   /**
    * Native errors: the outer Result covers init/config failures (InitFailed);
    * the inner Result on resolve covers post-start errors (Cancelled).
@@ -262,7 +262,7 @@ declare module 'native:nvs_kv' {
 
 declare module 'native:pwm' {
   import type {PwmError} from '@mikrojs/native/runtime/pwm/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
 
   export declare const Pwm: {
     prototype: Pwm
@@ -279,7 +279,7 @@ declare module 'native:pwm' {
 
 declare module 'native:neopixel' {
   import type {NeoPixelError} from '@mikrojs/native/runtime/neopixel/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
 
   export declare const NeoPixel: {
     prototype: NeoPixel
@@ -297,7 +297,7 @@ declare module 'native:neopixel' {
 
 declare module 'native:uart' {
   import type {UartError} from '@mikrojs/native/runtime/uart/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
 
   export interface UartOptions {
     tx?: number
@@ -329,7 +329,7 @@ declare module 'native:uart' {
 
 declare module 'native:ble' {
   import type {BleError} from '@mikrojs/native/runtime/ble/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
 
   type R<T> = Result<T, BleError>
 
@@ -383,7 +383,7 @@ declare module 'native:ble' {
 
 declare module 'native:wifi' {
   import type {WifiError} from '@mikrojs/native/runtime/wifi/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
 
   type R<T> = Result<T, WifiError>
 
@@ -469,7 +469,7 @@ declare module 'native:udp' {
     UdpError,
     UdpFamily,
   } from '@mikrojs/native/runtime/udp/types'
-  import type {Result} from 'mikrojs/result'
+  import type {Result} from 'mikro/result'
 
   export interface NativeUdpSocket {
     readonly port: number

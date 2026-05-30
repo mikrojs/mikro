@@ -1,7 +1,7 @@
-import {err, ok} from 'mikrojs/result'
+import {err, ok} from 'mikro/result'
 // Typed loosely to avoid deep type instantiation from Infer<S> in parse's generics.
 // Type safety is provided by the storage interface overloads in types.ts.
-import {parse as _parse} from 'mikrojs/schema'
+import {parse as _parse} from 'mikro/schema'
 
 import type {NativeError} from '../result/types.js'
 

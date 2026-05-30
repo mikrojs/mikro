@@ -15,9 +15,9 @@
     "dev": "mikro dev"
   },
   "dependencies": {
-    "mikrojs": "workspace:*"
+    "mikro": "workspace:*"
   },
-  "mikrojs": {
+  "mikro": {
     "predeploy": [
       "tsc --noEmit --pretty"
     ]

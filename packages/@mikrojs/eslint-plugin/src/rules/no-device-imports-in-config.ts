@@ -1,7 +1,7 @@
 import {ESLintUtils, type TSESTree} from '@typescript-eslint/utils'
 
 const createRule = ESLintUtils.RuleCreator(
-  (name) => `https://github.com/mikrojs/mikrojs/blob/main/docs/rules/${name}.md`,
+  (name) => `https://github.com/mikrojs/mikro/blob/main/docs/rules/${name}.md`,
 )
 
 const DEFAULT_CONFIG_FILES = ['mikro.config.ts', 'mikro.config.js']
@@ -14,11 +14,11 @@ export const noDeviceImportsInConfig = createRule<Options, 'noDeviceImport'>({
     type: 'problem',
     docs: {
       description:
-        'Disallow on-device module imports (mikrojs/*) in build-time config files. These run in Node, not on-device.',
+        'Disallow on-device module imports (mikro/*) in build-time config files. These run in Node, not on-device.',
     },
     messages: {
       noDeviceImport:
-        'Cannot import on-device module "{{source}}" in a build-time config file. Only the bare `mikrojs` import is allowed here; `mikrojs/*` subpaths are device-only.',
+        'Cannot import on-device module "{{source}}" in a build-time config file. Only the bare `mikro` import is allowed here; `mikro/*` subpaths are device-only.',
     },
     schema: [
       {
@@ -45,7 +45,7 @@ export const noDeviceImportsInConfig = createRule<Options, 'noDeviceImport'>({
 
     function check(source: TSESTree.StringLiteral | null | undefined, node: TSESTree.Node) {
       if (!source || typeof source.value !== 'string') return
-      if (source.value.startsWith('mikrojs/')) {
+      if (source.value.startsWith('mikro/')) {
         context.report({node, messageId: 'noDeviceImport', data: {source: source.value}})
       }
     }

@@ -40,7 +40,7 @@ if (!result.ok) return result
 
 **Severity:** error
 
-Flags `throw` statements. Expected errors should be returned as `Result` types. For truly unrecoverable situations, use `panic()` from `mikrojs/sys`.
+Flags `throw` statements. Expected errors should be returned as `Result` types. For truly unrecoverable situations, use `panic()` from `mikro/sys`.
 
 ```typescript
 // Bad
@@ -85,7 +85,7 @@ try {
 
 **Severity:** error
 
-Flags `Promise.reject()` calls and `reject()` callback invocations. Use `err()` from `mikrojs/result` instead.
+Flags `Promise.reject()` calls and `reject()` callback invocations. Use `err()` from `mikro/result` instead.
 
 ```typescript
 // Bad: caller has to try/catch to handle this

@@ -1,4 +1,4 @@
-import {defineConfig} from 'mikrojs'
+import {defineConfig} from 'mikro'
 
 export default defineConfig({
   memReserved: 8 * 1024,

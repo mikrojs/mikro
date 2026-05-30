@@ -24,7 +24,7 @@ concurrency:
 # Tagged releases are handled by release.yml, which uses the same firmware-build
 # composite action and bundles the binaries into the published @mikrojs/firmware
 # npm package. This workflow only produces artifacts for ad-hoc / PR / dispatch
-# builds, consumed via `mikro flash --from=mikrojs/mikrojs@<sha>`.
+# builds, consumed via `mikro flash --from=mikrojs/mikro@<sha>`.
 
 permissions:
   contents: read

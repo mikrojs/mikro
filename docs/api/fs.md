@@ -17,7 +17,7 @@ import {
   rename,
   unlink,
   exists,
-} from 'mikrojs/fs'
+} from 'mikro/fs'
 ```
 
 File I/O against the on-device LittleFS partition. Paths resolve against the app's filesystem root; `..` segments are normalized and cannot escape it.
@@ -40,7 +40,7 @@ function readFile(path: string, encoding: 'utf-8'): Result<string, FSError>
 Passing `'utf-8'` returns a decoded string instead.
 
 ```ts twoslash
-import {readFile} from 'mikrojs/fs'
+import {readFile} from 'mikro/fs'
 // ---cut---
 const data = readFile('/app/static/logo.pbm').orPanic('missing logo')
 const config = readFile('/data/config.json', 'utf-8').orPanic('missing config')
@@ -61,11 +61,11 @@ function readStream(
 
 The outer `Result` wraps the initial `open`. Once iterating, each yielded item is itself a `Result<Uint8Array, FSError>`: ok-wrapped chunks on success, a single terminal err item if a mid-stream read fails. The underlying handle closes on EOF, error, or early consumer break.
 
-Composes with `mikrojs/stream` for text and line processing:
+Composes with `mikro/stream` for text and line processing:
 
 ```ts twoslash
-import {readStream} from 'mikrojs/fs'
-import {decodeUtf8, splitLines} from 'mikrojs/stream'
+import {readStream} from 'mikro/fs'
+import {decodeUtf8, splitLines} from 'mikro/stream'
 // ---cut---
 const stream = readStream('/data/events.log').orPanic('log missing')
 for await (const line of splitLines(decodeUtf8(stream))) {
@@ -99,7 +99,7 @@ function writeFile(
 - `append` (default `false`): when `true`, append instead of truncating
 
 ```ts twoslash
-import {writeFile} from 'mikrojs/fs'
+import {writeFile} from 'mikro/fs'
 // ---cut---
 writeFile('/data/config.json', JSON.stringify({count: 1})).orPanic('write')
 writeFile('/data/events.log', `${Date.now()} boot\n`, {append: true})
@@ -123,7 +123,7 @@ interface StatResult {
 ```
 
 ```ts twoslash
-import {stat} from 'mikrojs/fs'
+import {stat} from 'mikro/fs'
 // ---cut---
 const r = stat('/data/config.json')
 if (r.ok) console.log(`${r.value.size} bytes`)
@@ -138,7 +138,7 @@ function exists(path: string): boolean
 ```
 
 ```ts twoslash
-import {exists} from 'mikrojs/fs'
+import {exists} from 'mikro/fs'
 // ---cut---
 if (exists('/data/config.json')) {
   // ...
@@ -162,7 +162,7 @@ interface DirEntry {
 ```
 
 ```ts twoslash
-import {readDir} from 'mikrojs/fs'
+import {readDir} from 'mikro/fs'
 // ---cut---
 const r = readDir('/data')
 if (r.ok) {
@@ -183,7 +183,7 @@ function mkdir(path: string, options?: {recursive?: boolean}): Result<void, FSEr
 `recursive: true` creates intermediate directories as needed.
 
 ```ts twoslash
-import {mkdir} from 'mikrojs/fs'
+import {mkdir} from 'mikro/fs'
 // ---cut---
 mkdir('/data/cache/images', {recursive: true}).orPanic('mkdir')
 ```
@@ -231,7 +231,7 @@ All fs errors share the `FSError` discriminated union. Discriminate on `.name`.
 | `Unknown`           | `code, errno, message` | Anything not covered above               |
 
 ```ts twoslash
-import {writeFile} from 'mikrojs/fs'
+import {writeFile} from 'mikro/fs'
 // ---cut---
 const r = writeFile('/data/log.txt', 'hello')
 if (!r.ok) {
@@ -256,7 +256,7 @@ Maximum size in bytes for a single `readFile` call. Files larger than this fail 
 
 ```ts
 // mikro.config.ts
-import {defineConfig} from 'mikrojs'
+import {defineConfig} from 'mikro'
 
 export default defineConfig({
   fsReadMax: '128k',

@@ -1,4 +1,4 @@
-import {ok} from 'mikrojs/result'
+import {ok} from 'mikro/result'
 import * as native from 'native:uart'
 
 import type {Result} from '../result/types.js'

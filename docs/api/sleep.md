@@ -6,7 +6,7 @@ description: Delays, deep sleep, light sleep, and wakeup sources
 # sleep
 
 ```ts twoslash
-import {sleep, deepSleep, lightSleep} from 'mikrojs/sleep'
+import {sleep, deepSleep, lightSleep} from 'mikro/sleep'
 ```
 
 Simple delays, deep sleep for battery-powered projects, and light sleep for power-saving idle periods.
@@ -22,7 +22,7 @@ function sleep(ms: number): Promise<void>
 Async delay. Equivalent to `await new Promise(r => setTimeout(r, ms))` but more readable.
 
 ```ts twoslash
-import {sleep} from 'mikrojs/sleep'
+import {sleep} from 'mikro/sleep'
 
 await sleep(1000) // wait 1 second
 ```
@@ -38,7 +38,7 @@ Enter deep sleep until one of the configured `sources` wakes the device. The chi
 Pass a number as shorthand for a timer-only wakeup in milliseconds:
 
 ```ts twoslash
-import {deepSleep} from 'mikrojs/sleep'
+import {deepSleep} from 'mikro/sleep'
 // ---cut---
 deepSleep(60_000) // wake in 60 seconds
 ```
@@ -46,7 +46,7 @@ deepSleep(60_000) // wake in 60 seconds
 You can combine sources. The chip wakes when any of them fires:
 
 ```ts twoslash
-import {deepSleep} from 'mikrojs/sleep'
+import {deepSleep} from 'mikro/sleep'
 // ---cut---
 deepSleep({
   timer: 60 * 60 * 1000, // 1 hour
@@ -65,7 +65,7 @@ Enter light sleep until one of the configured `sources` wakes the device. Execut
 Pass a number as shorthand for a timer-only wakeup in milliseconds:
 
 ```ts twoslash
-import {lightSleep} from 'mikrojs/sleep'
+import {lightSleep} from 'mikro/sleep'
 // ---cut---
 lightSleep(5000) // wake in 5 seconds
 ```

@@ -33,4 +33,4 @@ RAM is determined by the chip and module: 384-520 KB of internal SRAM, shared by
 
 ## Other boards
 
-Any board with a supported chip and at least 4 MB flash should work, regardless of manufacturer: Adafruit, SparkFun, Waveshare, LILYGO, WeAct, generic DevKits. If you try one, [let us know](https://github.com/mikrojs/mikrojs/issues).
+Any board with a supported chip and at least 4 MB flash should work, regardless of manufacturer: Adafruit, SparkFun, Waveshare, LILYGO, WeAct, generic DevKits. If you try one, [let us know](https://github.com/mikrojs/mikro/issues).

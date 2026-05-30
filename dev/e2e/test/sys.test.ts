@@ -1,5 +1,5 @@
-import {board, firmware, gc, memoryUsage, MonotonicTimestamp, uptime, version} from 'mikrojs/sys'
-import {assert, describe, test} from 'mikrojs/test'
+import {board, firmware, gc, memoryUsage, MonotonicTimestamp, uptime, version} from 'mikro/sys'
+import {assert, describe, test} from 'mikro/test'
 
 describe('sys', () => {
   test('version is a string', () => {

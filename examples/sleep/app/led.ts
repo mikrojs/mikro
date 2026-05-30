@@ -2,8 +2,8 @@
 // user LED via the chip-aware `pins` map. All known XIAO LEDs are
 // active-low (write 0 = on, 1 = off), so `setLed(true)` lights it up.
 
-import {digitalWrite, pinMode} from 'mikrojs/pin'
-import {sleep} from 'mikrojs/sleep'
+import {digitalWrite, pinMode} from 'mikro/pin'
+import {sleep} from 'mikro/sleep'
 
 import {pins} from './pins.js'
 

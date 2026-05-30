@@ -43,10 +43,10 @@ const INSTALL_LATEST = `## Install latest
 
 \`\`\`sh
 # Create new project
-pnpm create mikrojs
+pnpm create mikro
 
 # Upgrade existing project
-pnpm add mikrojs
+pnpm add mikro
 pnpm mikro flash
 \`\`\``
 
@@ -55,10 +55,10 @@ function installPinned(version: string): string {
 
 \`\`\`sh
 # Create new project
-pnpm create mikrojs@${version}
+pnpm create mikro@${version}
 
 # Upgrade existing project
-pnpm add mikrojs@${version}
+pnpm add mikro@${version}
 pnpm mikro flash
 \`\`\``
 }

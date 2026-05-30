@@ -1,6 +1,6 @@
-import {rtcStorage} from 'mikrojs/kv/rtc'
-import * as s from 'mikrojs/schema'
-import {deepSleep, sleep} from 'mikrojs/sleep'
+import {rtcStorage} from 'mikro/kv/rtc'
+import * as s from 'mikro/schema'
+import {deepSleep, sleep} from 'mikro/sleep'
 
 // Read the wake counter from RTC memory (survives deep sleep).
 // optional() because the key may not exist on first boot.

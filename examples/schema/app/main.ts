@@ -1,4 +1,4 @@
-import * as s from 'mikrojs/schema'
+import * as s from 'mikro/schema'
 
 // Define a schema for sensor readings
 const SensorReading = s.object({

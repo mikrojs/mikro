@@ -18,9 +18,9 @@ The classic first program: blink an LED on and off. Uses the [pin](/api/pin) and
 <template #code>
 
 ```ts twoslash
-import {digitalWrite, pinMode} from 'mikrojs/pin'
-import {sleep} from 'mikrojs/sleep'
-import {memoryUsage} from 'mikrojs/sys'
+import {digitalWrite, pinMode} from 'mikro/pin'
+import {sleep} from 'mikro/sleep'
+import {memoryUsage} from 'mikro/sys'
 
 const mem = memoryUsage()
 console.log('free heap: %dKB', (mem.heapTotal - mem.heapUsed) / 1000)
@@ -124,4 +124,4 @@ bunx mikro dev
 
 You should see the LED blinking and memory usage printed to the console every second.
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/blinky)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/blinky)

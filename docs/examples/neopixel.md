@@ -20,8 +20,8 @@ Drive WS2812 / SK6812 RGB LEDs with animated patterns. See the [neopixel API ref
 
 ```ts twoslash
 // @noErrors
-import {NeoPixel} from 'mikrojs/neopixel'
-import {sleep} from 'mikrojs/sleep'
+import {NeoPixel} from 'mikro/neopixel'
+import {sleep} from 'mikro/sleep'
 
 const PIN = 8
 const NUM_LEDS = 24
@@ -127,7 +127,7 @@ bunx mikro dev
 
 The LEDs will cycle through animated patterns, each lasting 8 seconds.
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/neopixel)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/neopixel)
 
 ---
 

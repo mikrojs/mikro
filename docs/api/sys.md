@@ -17,7 +17,7 @@ import {
   firmware,
   deviceId,
   version,
-} from 'mikrojs/sys'
+} from 'mikro/sys'
 ```
 
 System-level functions for memory monitoring, timing, garbage collection, device info, and environment variables.
@@ -33,7 +33,7 @@ function memoryUsage(): MemoryUsage
 Returns current heap usage.
 
 ```ts twoslash
-import {memoryUsage} from 'mikrojs/sys'
+import {memoryUsage} from 'mikro/sys'
 // ---cut---
 const mem = memoryUsage()
 const free = mem.heapTotal - mem.heapUsed
@@ -49,7 +49,7 @@ function uptime(): Uptime
 Returns time since boot and RTC time.
 
 ```ts twoslash
-import {uptime} from 'mikrojs/sys'
+import {uptime} from 'mikro/sys'
 // ---cut---
 const {boot, rtc} = uptime()
 console.log('Up for %d ms', boot)
@@ -86,7 +86,7 @@ function getWakeupCause(): string
 Returns why the device booted. Useful for branching logic right after a deep sleep cycle.
 
 ```ts twoslash
-import {getWakeupCause} from 'mikrojs/sys'
+import {getWakeupCause} from 'mikro/sys'
 // ---cut---
 const cause = getWakeupCause()
 console.log('Woke up because: %s', cause)
@@ -119,7 +119,7 @@ const board: BoardInfo
 Board and hardware info, evaluated once at startup.
 
 ```ts twoslash
-import {board} from 'mikrojs/sys'
+import {board} from 'mikro/sys'
 // ---cut---
 console.log('%s - %d core(s)', board.chip, board.cores)
 console.log('Features: %s', board.features.join(', '))
@@ -145,7 +145,7 @@ const firmware: FirmwareInfo
 Firmware build identifiers. Useful for debugging and detecting firmware changes.
 
 ```ts twoslash
-import {firmware} from 'mikrojs/sys'
+import {firmware} from 'mikro/sys'
 // ---cut---
 console.log('Build: %s', firmware.hash)
 console.log('Date: %s', firmware.date)
@@ -166,7 +166,7 @@ const version: string
 The mikrojs firmware version, baked in at build time from the workspace `package.json` (e.g. `"0.1.0"`). Always a valid [semver](https://semver.org/) string. Falls back to `"0.0.0-dev"` if the build did not set `MIK_FW_VERSION`.
 
 ```ts twoslash
-import {version} from 'mikrojs/sys'
+import {version} from 'mikro/sys'
 // ---cut---
 console.log('mikrojs %s', version)
 ```
@@ -180,7 +180,7 @@ const deviceId: string
 A unique device identifier encoded as [Crockford's Base32](https://www.crockford.com/base32.html) (10 lowercase characters, no special symbols).
 
 ```ts twoslash
-import {deviceId} from 'mikrojs/sys'
+import {deviceId} from 'mikro/sys'
 // ---cut---
 console.log('Device: %s', deviceId)
 // e.g. "5dsgr8kwev"
@@ -236,7 +236,7 @@ interface BoardInfo {
 A timestamp based on uptime that is not affected by NTP adjustments. Useful for measuring elapsed time reliably, and for logging events before the device clock is synced via NTP.
 
 ```ts twoslash
-import {MonotonicTimestamp} from 'mikrojs/sys'
+import {MonotonicTimestamp} from 'mikro/sys'
 // ---cut---
 const start = MonotonicTimestamp.now()
 // ... do work ...
@@ -248,7 +248,7 @@ Logging events before NTP sync:
 
 ```ts twoslash
 // ---cut---
-import {MonotonicTimestamp} from 'mikrojs/sys'
+import {MonotonicTimestamp} from 'mikro/sys'
 
 const events: Array<{ts: MonotonicTimestamp; msg: string}> = []
 

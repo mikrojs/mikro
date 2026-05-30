@@ -6,7 +6,7 @@ description: Pulse-width modulation for LED dimming, motor control, and more
 # pwm
 
 ```ts twoslash
-import {Pwm} from 'mikrojs/pwm'
+import {Pwm} from 'mikro/pwm'
 ```
 
 Control PWM output for LED dimming, motor speed control, servo positioning, and other analog-like outputs.
@@ -14,7 +14,7 @@ Control PWM output for LED dimming, motor speed control, servo positioning, and 
 ## Usage
 
 ```ts twoslash
-import {Pwm} from 'mikrojs/pwm'
+import {Pwm} from 'mikro/pwm'
 
 const led = new Pwm(20, {freq: 5000, duty: 0.5})
 
@@ -50,7 +50,7 @@ duty(value?: number): Result<number, PwmError>
 Get or set the duty cycle (0.0–1.0). Called without arguments, returns the current duty. Called with a value, sets it and returns the new value.
 
 ```ts twoslash
-import {Pwm} from 'mikrojs/pwm'
+import {Pwm} from 'mikro/pwm'
 const led = new Pwm(20, {freq: 5000})
 // ---cut---
 led.duty(0.75) // set to 75%
@@ -74,7 +74,7 @@ fade(targetDuty: number, durationMs: number): Promise<Result<void, PwmError>>
 Hardware-accelerated fade to the target duty cycle over the given duration. This uses the ESP32's LEDC hardware fading, so the fade runs without CPU involvement.
 
 ```ts twoslash
-import {Pwm} from 'mikrojs/pwm'
+import {Pwm} from 'mikro/pwm'
 const led = new Pwm(20, {freq: 5000})
 // ---cut---
 await led.fade(0, 1000) // fade to off over 1 second

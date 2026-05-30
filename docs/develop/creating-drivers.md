@@ -9,9 +9,9 @@ Drivers come in two flavors:
 
 1. **Native drivers** have a C/C++ module compiled into firmware as an ESP-IDF component. They export `./cmake` and use `MIK_REGISTER_MODULE` / `MIK_REGISTER_BUILTIN`. Use this when you need direct hardware access (QSPI, DMA, custom peripherals).
 
-2. **Pure JS drivers** are regular npm packages that use existing APIs like `mikrojs/spi` or `mikrojs/i2c`. No native code, no `cmake.js`, no ESP-IDF component. They're bundled and deployed with the user's app. Use this when existing APIs are sufficient.
+2. **Pure JS drivers** are regular npm packages that use existing APIs like `mikro/spi` or `mikro/i2c`. No native code, no `cmake.js`, no ESP-IDF component. They're bundled and deployed with the user's app. Use this when existing APIs are sufficient.
 
-This walkthrough covers a **native driver**. For pure JS drivers, create a regular npm package that imports from `mikrojs/spi`, `mikrojs/i2c`, etc., and export a factory function.
+This walkthrough covers a **native driver**. For pure JS drivers, create a regular npm package that imports from `mikro/spi`, `mikro/i2c`, etc., and export a factory function.
 
 ## Package structure
 
@@ -169,8 +169,8 @@ target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}
 `runtime/bme280/bme280.ts`:
 
 ```ts
-import type {Result} from 'mikrojs/result'
-import {ok, err} from 'mikrojs/result'
+import type {Result} from 'mikro/result'
+import {ok, err} from 'mikro/result'
 import type {Reading} from './types.js'
 
 // Import the native module (compiled into firmware)
@@ -260,6 +260,6 @@ declare module 'native:bme280' {
 
 ## Important notes
 
-- **`@mikrojs/*` imports are external**: esbuild marks all `mikrojs/*` and `@mikrojs/*` imports as external during bundling. They resolve at runtime in the firmware.
+- **`@mikrojs/*` imports are external**: esbuild marks all `mikro/*` and `@mikrojs/*` imports as external during bundling. They resolve at runtime in the firmware.
 - **C vs C++ source files**: Vendor C libraries (like sensor SDKs) should be compiled as `.c` files. Mixing them into `.cpp` files can cause issues with `-Werror` due to C++ strictness.
 - **DMA buffers**: If your peripheral uses DMA (SPI displays, etc.), allocate buffers with `heap_caps_malloc(size, MALLOC_CAP_DMA)`. DMA requires internal SRAM; PSRAM will not work.

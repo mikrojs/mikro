@@ -13,10 +13,10 @@ Environment variables are stored as plaintext in NVS flash. Anyone with physical
 
 ## Reading environment variables
 
-The `mikrojs/env` module provides explicit methods for reading environment variables:
+The `mikro/env` module provides explicit methods for reading environment variables:
 
 ```ts twoslash
-import {env} from 'mikrojs/env'
+import {env} from 'mikro/env'
 
 // Required: panics if not set (catches typos and missing config early)
 const ssid = env.require('WIFI_SSID')
@@ -145,7 +145,7 @@ The CLI automatically sets `MIKRO_ENV` based on the command being run:
 You can use this to change behavior based on the current environment:
 
 ```ts twoslash
-import {env} from 'mikrojs/env'
+import {env} from 'mikro/env'
 
 if (env.get('MIKRO_ENV') === 'development') {
   // verbose logging, etc.
@@ -156,7 +156,7 @@ If you explicitly set `MIKRO_ENV` in your `.env` file, your value takes preceden
 
 ## Secrets vs. regular variables
 
-The `secret` flag describes the _intent_ of a value. It controls whether the value is shown in `mikro env list`. It does not change how or where the value is stored. All environment variables, secret or not, live in the same plaintext NVS storage and are equally available at runtime via [`mikrojs/env`](/api/env) and `import.meta.env`. See [Setting environment variables](#setting-environment-variables) above for how to mark values as secret or non-secret.
+The `secret` flag describes the _intent_ of a value. It controls whether the value is shown in `mikro env list`. It does not change how or where the value is stored. All environment variables, secret or not, live in the same plaintext NVS storage and are equally available at runtime via [`mikro/env`](/api/env) and `import.meta.env`. See [Setting environment variables](#setting-environment-variables) above for how to mark values as secret or non-secret.
 
 ## Simulator
 

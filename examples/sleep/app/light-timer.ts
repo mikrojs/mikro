@@ -13,8 +13,8 @@
 // On battery/standalone this whole concern goes away — drop the pause.
 //
 // Run with: pnpm mikro dev app/light-timer.ts
-import {lightSleep, sleep} from 'mikrojs/sleep'
-import {getWakeupCause} from 'mikrojs/sys'
+import {lightSleep, sleep} from 'mikro/sleep'
+import {getWakeupCause} from 'mikro/sys'
 
 import {blinkLed} from './led.js'
 

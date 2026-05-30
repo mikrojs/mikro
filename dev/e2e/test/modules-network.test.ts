@@ -1,4 +1,4 @@
-import {assert, describe, test} from 'mikrojs/test'
+import {assert, describe, test} from 'mikro/test'
 
 // Network-related modules in a separate file: wifi, fetch, and sntp
 // each cost ~6-8KB of bytecode. Combined with pin/pwm/etc they exceed
@@ -6,7 +6,7 @@ import {assert, describe, test} from 'mikrojs/test'
 
 describe('module: wifi', () => {
   test('exports exist', async () => {
-    const mod = await import('mikrojs/wifi')
+    const mod = await import('mikro/wifi')
     assert.type(mod.wifi, 'object')
     assert.type(mod.wifi.connect, 'function')
     assert.type(mod.wifi.disconnect, 'function')
@@ -17,14 +17,14 @@ describe('module: wifi', () => {
 
 describe('module: http/request', () => {
   test('exports exist', async () => {
-    const mod = await import('mikrojs/http/request')
+    const mod = await import('mikro/http/request')
     assert.type(mod.request, 'function')
   })
 })
 
 describe('module: sntp', () => {
   test('exports exist', async () => {
-    const mod = await import('mikrojs/sntp')
+    const mod = await import('mikro/sntp')
     assert.type(mod.sntp, 'object')
     assert.type(mod.sntp.sync, 'function')
   })

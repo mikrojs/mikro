@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-import 'create-mikrojs'
+import '../dist/index.js'
