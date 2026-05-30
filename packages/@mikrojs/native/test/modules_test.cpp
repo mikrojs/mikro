@@ -429,6 +429,75 @@ TEST_CASE("withUnload: real mikrojs/module export unloads (e2e)"
     unlink(entry.c_str());
 }
 
+TEST_CASE("withUnload: unloads even when the callback throws"
+          * doctest::test_suite("modules")) {
+    TmpDir dir;
+    std::string leaf = dir.write(
+        "leaf.js",
+        "globalThis.__leafEvals = (globalThis.__leafEvals || 0) + 1;\n"
+        "export const v = 7;\n");
+    /* The callback throws; withUnload's finally must still unload the module,
+     * and the rejection must propagate to the caller. */
+    std::string entry_src =
+        "import {withUnload} from 'mikrojs/module';\n"
+        "try {\n"
+        "  await withUnload(import('" + leaf + "'), () => { throw new Error('boom'); });\n"
+        "} catch (e) {\n"
+        "  globalThis.__caught = e.message;\n"
+        "}\n"
+        "const b = await import('" + leaf + "');\n"
+        "globalThis.__reloaded = b.v;\n";
+    std::string entry = dir.write("entry.js", entry_src.c_str());
+
+    MIKRuntime* rt = MIK_NewRuntime();
+    MIK_SetFSBasePath(rt, "");
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    std::string driver =
+        "import('" + entry + "').then("
+        "  () => { globalThis.__ok = 1; },"
+        "  e => { globalThis.__err = String(e) + '\\n' + (e && e.stack || ''); });";
+    JSValue rv = JS_Eval(ctx, driver.c_str(), driver.size(), "<driver>", JS_EVAL_TYPE_MODULE);
+    REQUIRE_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+    mik__execute_jobs(ctx);
+
+    JSValue g = JS_GetGlobalObject(ctx);
+    JSValue err = JS_GetPropertyStr(ctx, g, "__err");
+    if (!JS_IsUndefined(err)) {
+        const char* s = JS_ToCString(ctx, err);
+        if (s) {
+            fprintf(stderr, "[withUnload throw e2e caught] %s\n", s);
+            JS_FreeCString(ctx, s);
+        }
+    }
+    JS_FreeValue(ctx, err);
+
+    /* The callback's error reached the caller. */
+    JSValue caught = JS_GetPropertyStr(ctx, g, "__caught");
+    const char* cs = JS_ToCString(ctx, caught);
+    REQUIRE(cs != nullptr);
+    CHECK_EQ(std::string("boom"), std::string(cs));
+    JS_FreeCString(ctx, cs);
+    JS_FreeValue(ctx, caught);
+
+    /* Re-import re-evaluated the module → it was unloaded despite the throw. */
+    JSValue evals = JS_GetPropertyStr(ctx, g, "__leafEvals");
+    JSValue reloaded = JS_GetPropertyStr(ctx, g, "__reloaded");
+    int evals_i = 0, reloaded_i = 0;
+    JS_ToInt32(ctx, &evals_i, evals);
+    JS_ToInt32(ctx, &reloaded_i, reloaded);
+    CHECK_EQ(2, evals_i);
+    CHECK_EQ(7, reloaded_i);
+    JS_FreeValue(ctx, evals);
+    JS_FreeValue(ctx, reloaded);
+    JS_FreeValue(ctx, g);
+
+    MIK_FreeRuntime(rt);
+    unlink(leaf.c_str());
+    unlink(entry.c_str());
+}
+
 TEST_CASE("unload: frees module body bytecode" * doctest::test_suite("modules")) {
     TmpDir dir;
     /* Large module body with inline string literals. After unload we expect
