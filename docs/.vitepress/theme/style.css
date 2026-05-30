@@ -326,3 +326,18 @@
 .tip[data-tip]:hover::after {
   opacity: 1;
 }
+
+/* npmx social-link icon: keep brand colors, switch variant with the site theme.
+   VitePress renders the social SVG inline, so these reach the classed paths. */
+.npmx-sq {
+  fill: #0a0a0a;
+}
+.npmx-sl {
+  fill: #006fc2;
+}
+.dark .npmx-sq {
+  fill: #fff;
+}
+.dark .npmx-sl {
+  fill: #51c8fc;
+}

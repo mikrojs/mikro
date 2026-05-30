@@ -163,6 +163,12 @@ export default defineConfig({
     socialLinks: [
       {icon: 'bluesky', link: 'https://bsky.app/profile/mikrojs.dev'},
       {icon: 'github', link: 'https://github.com/mikrojs/mikro'},
+      {
+        icon: {
+          svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-16 -16 185 185"><g transform="translate(16.704 9.9827)"><path class="npmx-sq" d="m0.93476 97.205h24.081v23.693h-24.081z"/><path class="npmx-sl" d="m103.12-9.2307-3.6211 10.246-46.309 131-3.6211 10.246h15.537l3.6211-10.246 11.717-33.148 38.211-108.1z"/></g></svg>',
+        },
+        link: 'https://npmx.dev/package/mikro',
+      },
     ],
 
     editLink: {
