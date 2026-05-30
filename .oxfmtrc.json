@@ -5,7 +5,7 @@
     "packages/@mikrojs/native/deps/",
     "packages/@mikrojs/quickjs/deps/",
     "packages/@mikrojs/analyze-imports/test/*",
-    "packages/create-mikrojs/src/templates/",
+    "packages/create-mikro/src/templates/",
     "pack-test/",
     "**/CHANGELOG.md"
   ],

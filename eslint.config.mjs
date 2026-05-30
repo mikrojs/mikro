@@ -20,7 +20,7 @@ export default [
       '**/build-test/**',
       '**/.mikro/**',
       '**/node_modules/**',
-      'packages/create-mikrojs/src/templates/**',
+      'packages/create-mikro/src/templates/**',
       '**/vitest.config.ts',
       'packages/@mikrojs/native/src/__test__/**',
       'docs/.vitepress/dist/**',
@@ -100,7 +100,7 @@ export default [
 
   // React hooks (Ink CLI)
   {
-    files: ['packages/mikrojs/**/*.tsx'],
+    files: ['packages/mikro/**/*.tsx'],
     plugins: {'react-hooks': reactHooks},
     rules: reactHooks.configs['recommended-latest'].rules,
   },

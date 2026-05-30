@@ -1,1 +1,1 @@
-packages/mikrojs/README.md
+packages/mikro/README.md

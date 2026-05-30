@@ -1,4 +1,4 @@
-import {err, ok} from 'mikrojs/result'
+import {err, ok} from 'mikro/result'
 import {describe, expect, it} from 'vitest'
 
 import {RequestError} from '../helpers.js'

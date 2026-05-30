@@ -5,7 +5,7 @@
  * Returns 127.0.0.1 instead of the default 192.168.1.100 so tests that exercise
  * real UDP/TCP loopback (udp.test.ts) succeed under `mikro sim test`.
  */
-import type {SimWifi} from 'mikrojs/sim'
+import type {SimWifi} from 'mikro/sim'
 
 let connected = false
 const LOCAL_IP = '127.0.0.1'

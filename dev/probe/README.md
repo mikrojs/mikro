@@ -1,8 +1,8 @@
 # Probe
 
-Measures steady-state import retention of every `mikrojs/*` builtin on the target device.
+Measures steady-state import retention of every `mikro/*` builtin on the target device.
 
-Deploy and the device will print a per-module line (`delta=<KB>`) for each builtin it can load, followed by a ranked summary. Use this to pick optimization targets (e.g. don't import `mikrojs/http/request` just to get a type) and to spot regressions after changing the runtime.
+Deploy and the device will print a per-module line (`delta=<KB>`) for each builtin it can load, followed by a ranked summary. Use this to pick optimization targets (e.g. don't import `mikro/http/request` just to get a type) and to spot regressions after changing the runtime.
 
 ```sh
 pnpm mikro deploy

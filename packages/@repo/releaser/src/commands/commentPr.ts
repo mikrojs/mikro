@@ -35,7 +35,7 @@ function body(version: string, tag: string): string {
     'Install with:',
     '',
     '```sh',
-    `pnpm add mikrojs@${tag}`,
+    `pnpm add mikro@${tag}`,
     '```',
   ].join('\n')
 }

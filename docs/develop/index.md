@@ -24,7 +24,7 @@ This section covers building Mikro.js firmware from source, creating driver pack
 ## Getting the source
 
 ```sh
-git clone --recurse-submodules https://github.com/mikrojs/mikrojs.git
+git clone --recurse-submodules https://github.com/mikrojs/mikro.git
 cd mikrojs
 pnpm install
 ```

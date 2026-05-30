@@ -1,8 +1,8 @@
-import {env} from 'mikrojs/env'
-import {sleep} from 'mikrojs/sleep'
-import {deviceId} from 'mikrojs/sys'
-import {bind} from 'mikrojs/udp'
-import {wifi} from 'mikrojs/wifi'
+import {env} from 'mikro/env'
+import {sleep} from 'mikro/sleep'
+import {deviceId} from 'mikro/sys'
+import {bind} from 'mikro/udp'
+import {wifi} from 'mikro/wifi'
 
 // IPv4 site-local discovery group. 224.0.0.251 is the mDNS group, which
 // home routers almost always forward (Bonjour/AirPlay/Chromecast use it).

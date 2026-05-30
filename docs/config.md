@@ -8,7 +8,7 @@ description: Complete reference for mikro.config.ts
 Project configuration lives in `mikro.config.ts` at the root of your project, next to `package.json`.
 
 ```ts twoslash
-import {defineConfig} from 'mikrojs'
+import {defineConfig} from 'mikro'
 
 export default defineConfig({
   // options here
@@ -126,7 +126,7 @@ Build-time options that control how your code is compiled and bundled. These are
 
 ### `build.bundle` {#buildbundle}
 
-Bundle user code into a single module via esbuild, with tree-shaking. Firmware builtins (`mikrojs/*` and `@mikrojs/*` packages with native code) stay external.
+Bundle user code into a single module via esbuild, with tree-shaking. Firmware builtins (`mikro/*` and `@mikrojs/*` packages with native code) stay external.
 
 Bundling reduces QuickJS per-module overhead and strips unused code paths, at the cost of less informative stack traces.
 
@@ -184,7 +184,7 @@ Put shared config at the top level and override it per environment under `env`. 
 The active environment's overrides are merged over the base. The `env` map itself is not deployed:
 
 ```ts twoslash
-import {defineConfig} from 'mikrojs'
+import {defineConfig} from 'mikro'
 
 export default defineConfig({
   // Shared by every environment.
@@ -218,7 +218,7 @@ Fields you don't override come from the base; every environment here keeps `wifi
 The merge is shallow: an override replaces a whole top-level field. Overriding `build` replaces the entire `build` object, not just the keys you set, so spread the base to keep the rest:
 
 ```ts twoslash
-import {defineConfig} from 'mikrojs'
+import {defineConfig} from 'mikro'
 
 const build = {minifier: 'esbuild', minifyLevel: 'max'} as const
 
@@ -238,7 +238,7 @@ The config environment is not the `.env.<mode>` file a command loads. `mikro sim
 ## Full example
 
 ```ts twoslash
-import {defineConfig} from 'mikrojs'
+import {defineConfig} from 'mikro'
 
 export default defineConfig({
   onPanic: {mode: 'restart', delay: 500},

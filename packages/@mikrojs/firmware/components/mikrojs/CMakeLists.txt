@@ -142,8 +142,8 @@ mikrojs_force_include_modules(${_MIK_MODULES})
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${MIK_RUNTIME_DIR}"
     MODULES ${_MIK_BYTECODE_MODULES}
-    MODULE_PREFIX "mikrojs"
-    SYMBOL_PREFIX "mikrojs"
+    MODULE_PREFIX "mikro"
+    SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode
     WORKING_DIRECTORY "${MIKROJS_PROJECT_DIR}"
 )

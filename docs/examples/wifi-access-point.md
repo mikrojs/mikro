@@ -16,8 +16,8 @@ Configure the ESP32 as a WiFi access point (soft AP) that other devices can conn
 ## Code
 
 ```ts twoslash
-import {sleep} from 'mikrojs/sleep'
-import {wifi} from 'mikrojs/wifi'
+import {sleep} from 'mikro/sleep'
+import {wifi} from 'mikro/wifi'
 
 // Start the access point
 wifi.ap
@@ -125,4 +125,4 @@ bunx mikro dev
 
 After deploying, look for the "MikroJS-AP" network on your phone or laptop. Connect with password `hello1234`. You should see the connection logged in the console.
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/wifi-access-point)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/wifi-access-point)

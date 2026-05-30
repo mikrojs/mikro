@@ -45,7 +45,7 @@ TEST_CASE("Bare module names pass through unchanged" * doctest::test_suite("modu
     JSRuntime* rt = JS_NewRuntime();
     JSContext* ctx = JS_NewContext(rt);
 
-    assert_normalizes_to(ctx, "main.js", "mikrojs/fs", "mikrojs/fs");
+    assert_normalizes_to(ctx, "main.js", "mikro/fs", "mikro/fs");
     assert_normalizes_to(ctx, "main.js", "lodash", "lodash");
 
     JS_FreeContext(ctx);
@@ -294,7 +294,7 @@ TEST_CASE("unload: rejects builtin prefixes" * doctest::test_suite("modules")) {
     MIKRuntime* rt = MIK_NewRuntime();
     JSContext* ctx = MIK_GetJSContext(rt);
 
-    CHECK_EQ(-1, mik__unload_module(ctx, "mikrojs/fs"));
+    CHECK_EQ(-1, mik__unload_module(ctx, "mikro/fs"));
     JSValue exc = JS_GetException(ctx);
     CHECK(JS_IsError(exc));
     JS_FreeValue(ctx, exc);
@@ -304,7 +304,7 @@ TEST_CASE("unload: rejects builtin prefixes" * doctest::test_suite("modules")) {
     CHECK(JS_IsError(exc));
     JS_FreeValue(ctx, exc);
 
-    CHECK_EQ(-1, mik__unload_module(ctx, "mikrojs/sleep"));
+    CHECK_EQ(-1, mik__unload_module(ctx, "mikro/sleep"));
     exc = JS_GetException(ctx);
     CHECK(JS_IsError(exc));
     JS_FreeValue(ctx, exc);
@@ -346,10 +346,10 @@ TEST_CASE("disposable: native helpers reject builtins and no-op on re-dispose"
     /* Re-dispose is a no-op: the module is gone from the registry. */
     CHECK_EQ(0, mik__unload_namespace(ctx, ns));
 
-    /* Anchored namespaces (builtins) are not unloadable. mikrojs/result is a
+    /* Anchored namespaces (builtins) are not unloadable. mikro/result is a
      * core builtin that loads on host; importing it fully instantiates its
      * namespace. */
-    dyn_import(ctx, "mikrojs/result", "__res");
+    dyn_import(ctx, "mikro/result", "__res");
     JSValue resns = JS_GetPropertyStr(ctx, g, "__res");
     REQUIRE(JS_IsObject(resns));
     CHECK_FALSE(mik__is_unloadable_namespace(ctx, resns));
@@ -365,18 +365,18 @@ TEST_CASE("disposable: native helpers reject builtins and no-op on re-dispose"
     unlink(leaf.c_str());
 }
 
-TEST_CASE("withUnload: real mikrojs/module export unloads (e2e)"
+TEST_CASE("withUnload: real mikro/module export unloads (e2e)"
           * doctest::test_suite("modules")) {
     TmpDir dir;
     std::string leaf = dir.write(
         "leaf.js",
         "globalThis.__leafEvals = (globalThis.__leafEvals || 0) + 1;\n"
         "export const v = 99;\n");
-    /* The real shipped withUnload() from mikrojs/module — no inlined
-     * copy. mikrojs/module imports only native:sys (pure C, host-available), so
-     * unlike mikrojs/sys it needs no native:sleep stub. */
+    /* The real shipped withUnload() from mikro/module — no inlined
+     * copy. mikro/module imports only native:sys (pure C, host-available), so
+     * unlike mikro/sys it needs no native:sleep stub. */
     std::string entry_src =
-        "import {withUnload} from 'mikrojs/module';\n"
+        "import {withUnload} from 'mikro/module';\n"
         "globalThis.__firstLoaded = await withUnload(import('" + leaf + "'), m => m.v);\n"
         "globalThis.__afterDispose = true;\n"
         "const b = await import('" + leaf + "');\n"
@@ -439,7 +439,7 @@ TEST_CASE("withUnload: unloads even when the callback throws"
     /* The callback throws; withUnload's finally must still unload the module,
      * and the rejection must propagate to the caller. */
     std::string entry_src =
-        "import {withUnload} from 'mikrojs/module';\n"
+        "import {withUnload} from 'mikro/module';\n"
         "try {\n"
         "  await withUnload(import('" + leaf + "'), () => { throw new Error('boom'); });\n"
         "} catch (e) {\n"

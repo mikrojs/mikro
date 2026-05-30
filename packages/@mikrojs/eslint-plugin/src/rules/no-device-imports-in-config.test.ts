@@ -12,7 +12,7 @@ const ruleTester = new RuleTester()
 ruleTester.run('no-device-imports-in-config', noDeviceImportsInConfig, {
   valid: [
     {
-      code: "import {defineConfig} from 'mikrojs'",
+      code: "import {defineConfig} from 'mikro'",
       filename: 'mikro.config.ts',
     },
     {
@@ -20,37 +20,37 @@ ruleTester.run('no-device-imports-in-config', noDeviceImportsInConfig, {
       filename: 'mikro.config.ts',
     },
     {
-      code: "import {pin} from 'mikrojs/pin'",
+      code: "import {pin} from 'mikro/pin'",
       filename: 'app.ts',
     },
     {
-      code: "import {wifi} from 'mikrojs/wifi'\nimport {pin} from 'mikrojs/pin'",
+      code: "import {wifi} from 'mikro/wifi'\nimport {pin} from 'mikro/pin'",
       filename: 'src/main.ts',
     },
   ],
   invalid: [
     {
-      code: "import {pin} from 'mikrojs/pin'",
+      code: "import {pin} from 'mikro/pin'",
       filename: 'mikro.config.ts',
       errors: [{messageId: 'noDeviceImport'}],
     },
     {
-      code: "import {wifi} from 'mikrojs/wifi'",
+      code: "import {wifi} from 'mikro/wifi'",
       filename: 'mikro.config.js',
       errors: [{messageId: 'noDeviceImport'}],
     },
     {
-      code: "const m = await import('mikrojs/pin')",
+      code: "const m = await import('mikro/pin')",
       filename: 'mikro.config.ts',
       errors: [{messageId: 'noDeviceImport'}],
     },
     {
-      code: "export {pin} from 'mikrojs/pin'",
+      code: "export {pin} from 'mikro/pin'",
       filename: 'mikro.config.ts',
       errors: [{messageId: 'noDeviceImport'}],
     },
     {
-      code: "export * from 'mikrojs/wifi'",
+      code: "export * from 'mikro/wifi'",
       filename: 'mikro.config.ts',
       errors: [{messageId: 'noDeviceImport'}],
     },

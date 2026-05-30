@@ -200,7 +200,7 @@ static JSModuleDef* mik_module_load_from_fs(JSContext* ctx, const char* module_n
 
 static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_name,
                                             void* opaque) {
-    static const char mikrojs_prefix[] = "mikrojs/";
+    static const char mikro_prefix[] = "mikro/";
 
     /* Virtual modules take priority over builtins — allows host-side JS to
      * override any native:* C module (e.g. mocking device modules for dev). */
@@ -239,7 +239,7 @@ static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_n
         return nullptr;
     }
 
-    if (strncmp(mikrojs_prefix, module_name, strlen(mikrojs_prefix)) == 0) {
+    if (strncmp(mikro_prefix, module_name, strlen(mikro_prefix)) == 0) {
         JSModuleDef* builtin_m = mik__load_builtin(ctx, module_name);
         if (builtin_m) return builtin_m;
         /* mik__load_builtin returns NULL either because the module isn't in
@@ -655,11 +655,11 @@ static char* mik__resolve_node_modules(JSContext* ctx, const char* base_dir,
     return NULL;
 }
 
-/* Anchored names (native:, mikrojs/, @mikrojs/) are never unloaded
+/* Anchored names (native:, mikro/, @mikrojs/) are never unloaded
  * and don't contribute meaningfully to the import graph for orphan
  * detection. We skip recording edges where the target is anchored. */
 static bool mik__is_anchored_name(const char* name) {
-    return strncmp(name, "native:", 7) == 0 || strncmp(name, "mikrojs/", 8) == 0 ||
+    return strncmp(name, "native:", 7) == 0 || strncmp(name, "mikro/", 6) == 0 ||
            strncmp(name, "@mikrojs/", 9) == 0;
 }
 
@@ -683,8 +683,8 @@ static char* mik__module_normalizer_impl(JSContext* ctx, const char* base_name,
 
     static const char internal_prefix[] = "native:";
     if (strncmp(name, internal_prefix, strlen(internal_prefix)) == 0) {
-        // Only built-in modules (native:, mikrojs/, @mikrojs/) may import native: internals
-        if (strncmp(base_name, "native:", 7) != 0 && strncmp(base_name, "mikrojs/", 8) != 0 &&
+        // Only built-in modules (native:, mikro/, @mikrojs/) may import native: internals
+        if (strncmp(base_name, "native:", 7) != 0 && strncmp(base_name, "mikro/", 6) != 0 &&
             strncmp(base_name, "@mikrojs/", 9) != 0) {
             JS_ThrowTypeError(ctx, "Failed to resolve module specifier '%s'", name);
             return NULL;
@@ -693,7 +693,7 @@ static char* mik__module_normalizer_impl(JSContext* ctx, const char* base_name,
 
     if (name[0] != '.' && name[0] != '/') {
         /* Built-in modules pass through unchanged */
-        if (strncmp(name, "mikrojs/", 8) == 0 || strncmp(name, "native:", 7) == 0) {
+        if (strncmp(name, "mikro/", 6) == 0 || strncmp(name, "native:", 7) == 0) {
             return js_strdup(ctx, name);
         }
         /* Check if this bare specifier matches an external builtin (board/driver

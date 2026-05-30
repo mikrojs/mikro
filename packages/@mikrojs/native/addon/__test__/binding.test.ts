@@ -61,13 +61,13 @@ describe('MikroRuntime', () => {
     expect(() => runtime!.evalModule('/nonexistent.js')).toThrow()
   })
 
-  it('mikrojs/result prototype methods work end-to-end', () => {
+  it('mikro/result prototype methods work end-to-end', () => {
     mkdirSync(TEST_DIR, {recursive: true})
 
     // Exercise the shared Result prototype installed by mik_result.cpp.
     // Writes the outcomes into globals so the harness can't silently pass.
     const source = [
-      "import {ok, err} from 'mikrojs/result'",
+      "import {ok, err} from 'mikro/result'",
       'const mapped = ok(10).map(n => n * 2)',
       'const matched = err("boom").match({ok: () => "nope", err: (e) => `got ${e}`})',
       'let panicked = null',
@@ -78,7 +78,7 @@ describe('MikroRuntime', () => {
       'globalThis.__panicName = panicked?.name',
       'globalThis.__panicCause = panicked?.cause',
     ].join('\n')
-    const bytecode = compileBytecode(source, '/result_test.js', ['mikrojs/result'])
+    const bytecode = compileBytecode(source, '/result_test.js', ['mikro/result'])
     writeFileSync(join(TEST_DIR, 'result_test.bjs'), bytecode)
 
     runtime = new MikroRuntime({fsBasePath: TEST_DIR})

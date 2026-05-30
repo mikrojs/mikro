@@ -13,7 +13,7 @@
   "devDependencies": {
     "@shikijs/vitepress-twoslash": "^4.0.2",
     "@types/markdown-it": "^14.1.2",
-    "mikrojs": "workspace:*",
+    "mikro": "workspace:*",
     "vite": "catalog:",
     "vitepress": "next",
     "vitepress-plugin-group-icons": "^1.7.5",

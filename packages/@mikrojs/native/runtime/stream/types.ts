@@ -11,7 +11,7 @@
  * errors widen the error type with a `StreamError` variant.
  */
 
-import type {Result} from 'mikrojs/result'
+import type {Result} from 'mikro/result'
 
 export type StreamError = {name: 'Timeout'; ms: number} | {name: 'StreamClosed'}
 

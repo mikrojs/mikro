@@ -6,7 +6,7 @@ description: Bluetooth Low Energy peripheral, broadcaster and GATT server
 # ble
 
 ```ts twoslash
-import {ble, peripheral} from 'mikrojs/ble'
+import {ble, peripheral} from 'mikro/ble'
 ```
 
 Bluetooth Low Energy peripheral currently supports two modes:
@@ -19,7 +19,7 @@ Central role (scanning, connecting to other peripherals) is not currently suppor
 ## Broadcaster example
 
 ```ts twoslash
-import {ble, peripheral} from 'mikrojs/ble'
+import {ble, peripheral} from 'mikro/ble'
 // ---cut---
 ble.name = 'mikrojs-beacon'
 
@@ -38,7 +38,7 @@ if (!handle.ok) {
 ## GATT peripheral example
 
 ```ts twoslash
-import {ble, peripheral} from 'mikrojs/ble'
+import {ble, peripheral} from 'mikro/ble'
 // ---cut---
 ble.name = 'mikrojs-sensor'
 
@@ -115,7 +115,7 @@ Starts advertising with the given options. On first call, lazily initializes the
 Returns an `AdvertiseHandle` with `stop()`, `setValue()`, and `notify()` methods.
 
 ```ts twoslash
-import {peripheral} from 'mikrojs/ble'
+import {peripheral} from 'mikro/ble'
 // ---cut---
 const result = await peripheral.advertise({
   name: 'mikrojs-sensor',
@@ -203,7 +203,7 @@ Updates the cached value AND sends a notification to every subscribed central. T
 ## Peripheral events
 
 ```ts twoslash
-import {peripheral} from 'mikrojs/ble'
+import {peripheral} from 'mikro/ble'
 // ---cut---
 peripheral.onConnect.subscribe((info) => {
   console.log('connected: %s mtu: %d', info.address, info.mtu)
@@ -224,7 +224,7 @@ peripheral.onMtu.subscribe((info) => {
 | `onDisconnect` | `ConnectionInfo` | A central has disconnected. `mtu` reflects the last known value    |
 | `onMtu`        | `MtuInfo`        | ATT MTU renegotiated mid-session (typically shortly after connect) |
 
-Each property is an `Observable<T>` (see `mikrojs/observable`). Subscribers fire on the JS loop thread; subscribe before calling `advertise()` so no events are missed during startup. To stay discoverable after a central disconnects, call `peripheral.advertise()` again from the `onDisconnect` subscriber. Call `unsubscribe()` on the returned `Subscription` to stop receiving values.
+Each property is an `Observable<T>` (see `mikro/observable`). Subscribers fire on the JS loop thread; subscribe before calling `advertise()` so no events are missed during startup. To stay discoverable after a central disconnects, call `peripheral.advertise()` again from the `onDisconnect` subscriber. Call `unsubscribe()` on the returned `Subscription` to stop receiving values.
 
 ## Types
 

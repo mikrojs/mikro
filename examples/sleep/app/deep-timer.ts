@@ -5,8 +5,8 @@
 // LED 3× so each cycle is visible.
 //
 // Run with: pnpm mikro dev app/deep-timer.ts
-import {deepSleep, sleep} from 'mikrojs/sleep'
-import {getWakeupCause} from 'mikrojs/sys'
+import {deepSleep, sleep} from 'mikro/sleep'
+import {getWakeupCause} from 'mikro/sys'
 
 import {blinkLed} from './led.js'
 

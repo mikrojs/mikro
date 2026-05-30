@@ -6,7 +6,7 @@ description: CBOR binary encoding and decoding
 # cbor
 
 ```ts twoslash
-import {encode, decode} from 'mikrojs/cbor'
+import {encode, decode} from 'mikro/cbor'
 ```
 
 Encode and decode [CBOR](https://cbor.io), a compact binary format similar to JSON but smaller and faster to parse. Used internally by the [kv](/api/kv) storage module.
@@ -23,7 +23,7 @@ Supported types: `number`, `string`, `boolean`, `null`, `undefined`, `Uint8Array
 
 ```ts twoslash
 // @noErrors
-import {encode} from 'mikrojs/cbor'
+import {encode} from 'mikro/cbor'
 // ---cut---
 const bytes = encode({temp: 22.5, humidity: 65}).orPanic('encode failed')
 // bytes is a Uint8Array
@@ -39,7 +39,7 @@ Decode CBOR bytes back to a JavaScript value.
 
 ```ts twoslash
 // @noErrors
-import {encode, decode} from 'mikrojs/cbor'
+import {encode, decode} from 'mikro/cbor'
 // ---cut---
 const bytes = encode(42).orPanic('encode')
 const value = decode(bytes).orPanic('decode')

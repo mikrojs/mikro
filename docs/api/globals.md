@@ -111,7 +111,7 @@ class AbortSignal {
 Cooperative cancellation. Most useful with [`request`](/api/http-request) for timeouts:
 
 ```ts twoslash
-import {request} from 'mikrojs/http/request'
+import {request} from 'mikro/http/request'
 
 // Cancel if no response within 5 seconds
 const result = await request('https://api.example.com/data', {
@@ -126,7 +126,7 @@ if (!result.ok && result.error.name === 'Aborted') {
 Manual cancellation:
 
 ```ts twoslash
-import {request} from 'mikrojs/http/request'
+import {request} from 'mikro/http/request'
 // ---cut---
 const controller = new AbortController()
 setTimeout(() => controller.abort(), 3000)
@@ -161,7 +161,7 @@ Browsers use `DOMException` with `name: "AbortError"` and `name: "TimeoutError"`
 
 ```ts twoslash
 // @noErrors
-import {request} from 'mikrojs/http/request'
+import {request} from 'mikro/http/request'
 declare const url: string
 // ---cut---
 const timeout = AbortSignal.timeout(10000)
@@ -176,23 +176,23 @@ const result = await request(url, {
 
 Available inside ES modules:
 
-| Property               | Type                                  | Description                                                                                                                                                 |
-| ---------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `import.meta.url`      | `string`                              | URL of the current module                                                                                                                                   |
-| `import.meta.main`     | `boolean`                             | Whether this is the entry module                                                                                                                            |
-| `import.meta.dirname`  | `string`                              | Directory of the current module                                                                                                                             |
-| `import.meta.basename` | `string`                              | Filename of the current module                                                                                                                              |
-| `import.meta.path`     | `string`                              | Full path of the current module                                                                                                                             |
-| `import.meta.env`      | `Record<string, string \| undefined>` | Environment variables (from NVS on device). Returns `undefined` for missing keys. Prefer [`mikrojs/env`](/api/env) for explicit required/optional handling. |
+| Property               | Type                                  | Description                                                                                                                                               |
+| ---------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `import.meta.url`      | `string`                              | URL of the current module                                                                                                                                 |
+| `import.meta.main`     | `boolean`                             | Whether this is the entry module                                                                                                                          |
+| `import.meta.dirname`  | `string`                              | Directory of the current module                                                                                                                           |
+| `import.meta.basename` | `string`                              | Filename of the current module                                                                                                                            |
+| `import.meta.path`     | `string`                              | Full path of the current module                                                                                                                           |
+| `import.meta.env`      | `Record<string, string \| undefined>` | Environment variables (from NVS on device). Returns `undefined` for missing keys. Prefer [`mikro/env`](/api/env) for explicit required/optional handling. |
 
 `dirname`, `basename`, `path`, and `env` are only available for file-based modules (not built-in modules).
 
 ## Why isn't `request` a global?
 
-In browsers and Node.js, `fetch` is a global function. In Mikro.js, you import [`request`](/api/http-request) from `mikrojs/http/request` instead. It returns a [`Result`](/api/result) instead of throwing on network errors and uses a slimmer request/response shape tuned for microcontrollers, so exposing it as a global under the name `fetch` would be misleading.
+In browsers and Node.js, `fetch` is a global function. In Mikro.js, you import [`request`](/api/http-request) from `mikro/http/request` instead. It returns a [`Result`](/api/result) instead of throwing on network errors and uses a slimmer request/response shape tuned for microcontrollers, so exposing it as a global under the name `fetch` would be misleading.
 
 ```ts twoslash
-import {request} from 'mikrojs/http/request'
+import {request} from 'mikro/http/request'
 
 const result = await request('https://example.com')
 if (!result.ok) {

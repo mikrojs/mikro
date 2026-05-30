@@ -1,4 +1,4 @@
-import {Pwm} from 'mikrojs/pwm'
+import {Pwm} from 'mikro/pwm'
 
 // GPIO 15 is the built-in LED on XIAO ESP32C6. Replace with your board's LED pin.
 const LED_PIN = 15

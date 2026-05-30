@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-import {gc, memoryUsage, MonotonicTimestamp} from 'mikrojs/sys'
+import {gc, memoryUsage, MonotonicTimestamp} from 'mikro/sys'
 import {pendingCount as pendingHttpCount} from 'native:http'
 import {activeTimers} from 'native:sys'
 

@@ -18,14 +18,14 @@ import {
   optional,
   union,
   taggedUnion,
-} from 'mikrojs/schema'
-import type {Infer, Schema} from 'mikrojs/schema'
+} from 'mikro/schema'
+import type {Infer, Schema} from 'mikro/schema'
 ```
 
 A lightweight runtime validation library for data crossing trust boundaries: [CBOR](/api/cbor)-decoded protocol messages, device config payloads, or any `unknown` value that needs a verified shape before use.
 
 ::: tip When do I need this?
-Schemas are for data whose shape you can't verify at compile time. If you're just passing values between your own functions, TypeScript's type system already has you covered. Reach for `mikrojs/schema` at the boundaries where untyped data enters your program.
+Schemas are for data whose shape you can't verify at compile time. If you're just passing values between your own functions, TypeScript's type system already has you covered. Reach for `mikro/schema` at the boundaries where untyped data enters your program.
 :::
 
 ## When to use
@@ -55,7 +55,7 @@ import {
   optional,
   union,
   taggedUnion,
-} from 'mikrojs/schema'
+} from 'mikro/schema'
 // ---cut---
 const SensorReading = object({
   temperature: number(),
@@ -77,7 +77,7 @@ boolean() // matches typeof === 'boolean'
 Accepts any value without validation. Infers as `unknown`. Useful for partial validation where some fields are left unchecked.
 
 ```ts twoslash
-import {object, literal, unknown} from 'mikrojs/schema'
+import {object, literal, unknown} from 'mikro/schema'
 // ---cut---
 object({type: literal('data'), payload: unknown()})
 ```
@@ -87,7 +87,7 @@ object({type: literal('data'), payload: unknown()})
 Matches a specific primitive value using strict equality (`===`).
 
 ```ts twoslash
-import {literal} from 'mikrojs/schema'
+import {literal} from 'mikro/schema'
 // ---cut---
 literal('error') // matches only the string 'error'
 literal(42) // matches only the number 42
@@ -99,7 +99,7 @@ literal(true) // matches only true
 Matches an array where every element matches the given schema.
 
 ```ts twoslash
-import {array, string, object, number} from 'mikrojs/schema'
+import {array, string, object, number} from 'mikro/schema'
 // ---cut---
 array(string()) // string[]
 array(object({x: number(), y: number()})) // {x: number, y: number}[]
@@ -110,7 +110,7 @@ array(object({x: number(), y: number()})) // {x: number, y: number}[]
 Matches a plain object with the specified fields. Extra keys are ignored (not rejected).
 
 ```ts twoslash
-import {object, string, number} from 'mikrojs/schema'
+import {object, string, number} from 'mikro/schema'
 // ---cut---
 object({name: string(), age: number()})
 ```
@@ -122,7 +122,7 @@ Missing required fields cause a validation error. To make a field optional, wrap
 Marks an object field as optional. The key may be absent from the object. If the key is present, its value must match the inner schema. A key present with value `undefined` is rejected (consistent with JSON semantics where `undefined` values are omitted during serialization).
 
 ```ts twoslash
-import {object, string, optional} from 'mikrojs/schema'
+import {object, string, optional} from 'mikro/schema'
 // ---cut---
 object({
   name: string(),
@@ -135,7 +135,7 @@ object({
 Matches if the value matches any member schema. Tries each member in order; returns ok on the first match.
 
 ```ts twoslash
-import {union, string, number} from 'mikrojs/schema'
+import {union, string, number} from 'mikro/schema'
 // ---cut---
 union([string(), number()]) // string | number
 ```
@@ -147,7 +147,7 @@ When no member matches, the error reports "value did not match any union member"
 Matches an object by looking up a discriminator field and validating against the corresponding branch. O(1) dispatch instead of trying every branch.
 
 ```ts twoslash
-import {taggedUnion, object, string, number} from 'mikrojs/schema'
+import {taggedUnion, object, string, number} from 'mikro/schema'
 // ---cut---
 const Message = taggedUnion('type', {
   error: object({message: string()}),
@@ -165,7 +165,7 @@ The discriminator field (`type` above) is injected into each branch's inferred t
 Validates `value` against `schema`. Returns a `Result`: `ok` with the typed value, or `err` with a `SchemaError` describing what went wrong and where.
 
 ```ts twoslash
-import {parse, object, string, number, optional} from 'mikrojs/schema'
+import {parse, object, string, number, optional} from 'mikro/schema'
 // ---cut---
 const Device = object({
   chip: string(),
@@ -186,7 +186,7 @@ Validation is fail-fast: it stops at the first error.
 Errors include the path to the offending value using dot-bracket notation:
 
 ```ts twoslash
-import {parse, object, array, string, number} from 'mikrojs/schema'
+import {parse, object, array, string, number} from 'mikro/schema'
 // ---cut---
 const schema = object({
   items: array(object({name: string()})),
@@ -204,8 +204,8 @@ if (!result.ok) {
 Use `Infer<S>` to extract the TypeScript type from a schema without calling `parse`:
 
 ```ts twoslash
-import {object, string, number, optional} from 'mikrojs/schema'
-import type {Infer} from 'mikrojs/schema'
+import {object, string, number, optional} from 'mikro/schema'
+import type {Infer} from 'mikro/schema'
 // ---cut---
 const Device = object({
   chip: string(),

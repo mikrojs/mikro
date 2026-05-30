@@ -1,7 +1,7 @@
 {
   "name": "create-mikro",
   "version": "0.9.0",
-  "description": "Create a new Mikro.js project (alias for create-mikrojs)",
+  "description": "Create a new Mikro.js project",
   "keywords": [
     "esp32",
     "javascript",
@@ -10,32 +10,58 @@
     "quickjs",
     "typescript"
   ],
-  "homepage": "https://github.com/mikrojs/mikrojs#readme",
+  "homepage": "https://github.com/mikrojs/mikro#readme",
   "bugs": {
-    "url": "https://github.com/mikrojs/mikrojs/issues"
+    "url": "https://github.com/mikrojs/mikro/issues"
   },
   "license": "MIT",
   "author": "Bjørge Næss <bjoerge@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mikrojs/mikrojs.git"
+    "url": "git+https://github.com/mikrojs/mikro.git"
   },
   "bin": {
     "create-mikro": "bin/create-mikro.js"
   },
   "files": [
+    "dist",
+    "src/templates",
     "bin"
   ],
   "type": "module",
   "sideEffects": false,
   "exports": {
-    "./package.json": "./package.json"
+    ".": {
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": "./dist/index.js"
+    }
   },
   "scripts": {
-    "publint": "publint"
+    "build:ts": "tsc -p tsconfig.build.json",
+    "inspect": "tsx src/inspect.ts",
+    "prepublishOnly": "tsc -p tsconfig.build.json",
+    "publint": "publint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "create-mikrojs": "workspace:*"
+    "@clack/prompts": "^1.2.0",
+    "@optique/core": "^1.0.2",
+    "@optique/run": "^1.0.2",
+    "type-fest": "^5.6.0"
+  },
+  "devDependencies": {
+    "@mikrojs/eslint-plugin": "workspace:*",
+    "@types/node": "catalog:node24",
+    "eslint": "catalog:",
+    "prettier": "^3.4.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "catalog:"
   },
   "engines": {
     "node": ">=24.0.0"

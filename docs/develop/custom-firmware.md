@@ -86,7 +86,7 @@ extern "C" void app_main(void) {
 
 `MIK_Main()` sets up NVS, LittleFS, the JS runtime, and enters the event loop with full REPL and deploy support.
 
-For custom initialization, see the [full main.cpp source](https://github.com/mikrojs/mikrojs/blob/main/packages/%40mikrojs/firmware/components/mikrojs/mik_main.cpp) as a starting point.
+For custom initialization, see the [full main.cpp source](https://github.com/mikrojs/mikro/blob/main/packages/%40mikrojs/firmware/components/mikrojs/mik_main.cpp) as a starting point.
 
 `main/CMakeLists.txt`:
 

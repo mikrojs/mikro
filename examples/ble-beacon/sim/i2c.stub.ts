@@ -1,6 +1,6 @@
 // Simulator stub for i2c
 // Runs inside the mikrojs runtime (QuickJS), not Node.js. Node built-ins are not available.
-import type {SimI2c} from 'mikrojs/sim'
+import type {SimI2c} from 'mikro/sim'
 
 export class I2c implements SimI2c {
   constructor(_busNo: number, _options?: Record<string, unknown>) {}

@@ -104,7 +104,7 @@ for (const name of moduleNames) {
     target: 'es2024',
     platform: 'neutral',
     format: 'esm',
-    external: ['mikrojs', 'mikrojs/*', '@mikrojs/*', 'native:*'],
+    external: ['mikro', 'mikro/*', '@mikrojs/*', 'native:*'],
   })
 
   const output = result.outputFiles?.[0]
@@ -128,7 +128,7 @@ for (const name of moduleNames) {
   // Extract external imports so CMake can pass them as -M flags to qjsc
   const externals = []
   for (const match of source.matchAll(
-    /(?:from|import)\s*["']((?:native:|mikrojs\/|@mikrojs\/)[^"']+)["']/g,
+    /(?:from|import)\s*["']((?:native:|mikro\/|@mikrojs\/)[^"']+)["']/g,
   )) {
     externals.push(match[1])
   }

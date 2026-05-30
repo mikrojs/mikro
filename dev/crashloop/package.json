@@ -17,6 +17,6 @@
     "recover": "mikro clean --recover"
   },
   "dependencies": {
-    "mikrojs": "workspace:*"
+    "mikro": "workspace:*"
   }
 }

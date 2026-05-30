@@ -7,7 +7,7 @@
 
 #include <doctest.h>
 
-/* Shared helper: evaluate a module that imports mikrojs/stream, run
+/* Shared helper: evaluate a module that imports mikro/stream, run
  * async tests, and pin the result on globalThis.__result (a string
  * summary). Check expected is a substring of __result.
  *
@@ -58,8 +58,8 @@ static void run_stream_test(const char* test_name, const char* js_code,
 
 TEST_CASE("decodeUtf8 converts byte chunks to strings" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {decodeUtf8} from 'mikrojs/stream'
-        import {ok} from 'mikrojs/result'
+        import {decodeUtf8} from 'mikro/stream'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok(new Uint8Array([104, 101, 108, 108, 111]))  // "hello"
@@ -79,8 +79,8 @@ TEST_CASE("decodeUtf8 converts byte chunks to strings" * doctest::test_suite("st
 TEST_CASE("decodeUtf8 handles whole multi-byte sequences in a single chunk" *
           doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {decodeUtf8} from 'mikrojs/stream'
-        import {ok} from 'mikrojs/result'
+        import {decodeUtf8} from 'mikro/stream'
+        import {ok} from 'mikro/result'
 
         // "café" = 63 61 66 c3 a9 — whole sequence in one chunk is fine.
         // Cross-chunk split is documented as NOT supported in V1.
@@ -100,8 +100,8 @@ TEST_CASE("decodeUtf8 handles whole multi-byte sequences in a single chunk" *
 
 TEST_CASE("decodeUtf8 short-circuits on source err" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {decodeUtf8} from 'mikrojs/stream'
-        import {ok, err} from 'mikrojs/result'
+        import {decodeUtf8} from 'mikro/stream'
+        import {ok, err} from 'mikro/result'
 
         async function* source() {
             yield ok(new Uint8Array([0x61]))
@@ -121,8 +121,8 @@ TEST_CASE("decodeUtf8 short-circuits on source err" * doctest::test_suite("strea
 
 TEST_CASE("splitLines splits text on newline" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {splitLines} from 'mikrojs/stream'
-        import {ok} from 'mikrojs/result'
+        import {splitLines} from 'mikro/stream'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok('first\n')
@@ -142,8 +142,8 @@ TEST_CASE("splitLines splits text on newline" * doctest::test_suite("stream")) {
 
 TEST_CASE("splitLines handles lines spanning chunks" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {splitLines} from 'mikrojs/stream'
-        import {ok} from 'mikrojs/result'
+        import {splitLines} from 'mikro/stream'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok('hel')
@@ -163,8 +163,8 @@ TEST_CASE("splitLines handles lines spanning chunks" * doctest::test_suite("stre
 
 TEST_CASE("splitLines supports custom delimiter" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {splitLines} from 'mikrojs/stream'
-        import {ok} from 'mikrojs/result'
+        import {splitLines} from 'mikro/stream'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok('a\r\nb\r\n')
@@ -183,8 +183,8 @@ TEST_CASE("splitLines supports custom delimiter" * doctest::test_suite("stream")
 
 TEST_CASE("splitLines rejects empty delimiter" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {splitLines} from 'mikrojs/stream'
-        import {ok} from 'mikrojs/result'
+        import {splitLines} from 'mikro/stream'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok('anything')
@@ -202,8 +202,8 @@ TEST_CASE("splitLines rejects empty delimiter" * doctest::test_suite("stream")) 
 
 TEST_CASE("splitLines preserves empty lines" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {splitLines} from 'mikrojs/stream'
-        import {ok} from 'mikrojs/result'
+        import {splitLines} from 'mikro/stream'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok('a\n\nb\n')
@@ -222,8 +222,8 @@ TEST_CASE("splitLines preserves empty lines" * doctest::test_suite("stream")) {
 TEST_CASE("collectUntil collects until predicate matches" *
           doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {collectUntil} from 'mikrojs/stream'
-        import {ok} from 'mikrojs/result'
+        import {collectUntil} from 'mikro/stream'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok('+CSQ: 15,99')
@@ -250,8 +250,8 @@ TEST_CASE("collectUntil collects until predicate matches" *
 TEST_CASE("collectUntil returns StreamClosed if no match" *
           doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {collectUntil} from 'mikrojs/stream'
-        import {ok} from 'mikrojs/result'
+        import {collectUntil} from 'mikro/stream'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok('a')
@@ -270,8 +270,8 @@ TEST_CASE("collectUntil returns StreamClosed if no match" *
 
 TEST_CASE("collectUntil propagates source err" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {collectUntil} from 'mikrojs/stream'
-        import {ok, err} from 'mikrojs/result'
+        import {collectUntil} from 'mikro/stream'
+        import {ok, err} from 'mikro/result'
 
         async function* source() {
             yield ok('a')
@@ -300,13 +300,13 @@ TEST_CASE("collectUntil propagates source err" * doctest::test_suite("stream")) 
  * means the 5000ms deadline timer never has to fire. */
 
 /* BufferedReader tests moved to reader_test.cpp — it lives in its own
- * module (`mikrojs/reader`) so byte-reader consumers don't have to
+ * module (`mikro/reader`) so byte-reader consumers don't have to
  * load the async-generator transforms above. */
 
 TEST_CASE("withTimeout passes through fast items" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {withTimeout} from 'mikrojs/stream'
-        import {ok} from 'mikrojs/result'
+        import {withTimeout} from 'mikro/stream'
+        import {ok} from 'mikro/result'
 
         async function* source() {
             yield ok(1)
@@ -326,8 +326,8 @@ TEST_CASE("withTimeout passes through fast items" * doctest::test_suite("stream"
 
 TEST_CASE("withTimeout propagates source err" * doctest::test_suite("stream")) {
     const char* code = R"JS(
-        import {withTimeout} from 'mikrojs/stream'
-        import {ok, err} from 'mikrojs/result'
+        import {withTimeout} from 'mikro/stream'
+        import {ok, err} from 'mikro/result'
 
         async function* source() {
             yield ok(1)

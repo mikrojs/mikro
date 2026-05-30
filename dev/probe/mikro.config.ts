@@ -1,4 +1,4 @@
-import {defineConfig} from 'mikrojs'
+import {defineConfig} from 'mikro'
 
 // `bundle: false` is required: the probe dynamic-imports each builtin one
 // at a time to measure per-module retention. With bundling on, everything

@@ -1,8 +1,8 @@
 /* eslint-disable no-console */
-import {env} from 'mikrojs/env'
-import {request} from 'mikrojs/http/request'
-import {assert, beforeAll, describe, test} from 'mikrojs/test'
-import {wifi} from 'mikrojs/wifi'
+import {env} from 'mikro/env'
+import {request} from 'mikro/http/request'
+import {assert, beforeAll, describe, test} from 'mikro/test'
+import {wifi} from 'mikro/wifi'
 
 // These tests require WIFI_SSID and WIFI_PASSPHRASE env vars to run on
 // the device. They exercise the full JS → native:http → esp_http_client

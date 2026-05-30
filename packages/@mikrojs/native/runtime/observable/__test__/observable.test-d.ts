@@ -1,5 +1,5 @@
 import type {Observable, Subscriber, Subscription} from '@mikrojs/native/runtime/observable/types'
-import type {Result} from 'mikrojs/result'
+import type {Result} from 'mikro/result'
 import {expectTypeOf, test} from 'vitest'
 
 declare const observable: Observable<number>

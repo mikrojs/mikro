@@ -1,5 +1,5 @@
-import {ble, peripheral} from 'mikrojs/ble'
-import {sleep} from 'mikrojs/sleep'
+import {ble, peripheral} from 'mikro/ble'
+import {sleep} from 'mikro/sleep'
 
 // Set a friendly name. If omitted, the runtime uses "mikrojs-<MAC suffix>".
 ble.name = 'mikrojs-beacon'

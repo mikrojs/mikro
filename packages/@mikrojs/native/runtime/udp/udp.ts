@@ -1,4 +1,4 @@
-import {ok} from 'mikrojs/result'
+import {ok} from 'mikro/result'
 import {Observable} from 'native:observable'
 import {bind as nativeBind, type NativeUdpSocket} from 'native:udp'
 

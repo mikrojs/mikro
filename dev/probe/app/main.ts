@@ -1,6 +1,6 @@
-import {gc, memoryUsage} from 'mikrojs/sys'
+import {gc, memoryUsage} from 'mikro/sys'
 
-// Keep the static-import baseline as small as possible: only `mikrojs/sys`.
+// Keep the static-import baseline as small as possible: only `mikro/sys`.
 // Every other builtin is loaded below via dynamic import so we can measure
 // its individual cost. mikro.config.ts sets `bundle: false` so the dynamic
 // imports are real runtime module loads, not build-time inlines.
@@ -8,31 +8,31 @@ import {gc, memoryUsage} from 'mikrojs/sys'
 type Probe = [label: string, loader: () => Promise<unknown>]
 
 const probes: Probe[] = [
-  ['mikrojs/result', () => import('mikrojs/result')],
-  ['mikrojs/sleep', () => import('mikrojs/sleep')],
-  ['mikrojs/cbor', () => import('mikrojs/cbor')],
-  ['mikrojs/console', () => import('mikrojs/console')],
-  ['mikrojs/env', () => import('mikrojs/env')],
-  ['mikrojs/http/helpers', () => import('mikrojs/http/helpers')],
-  ['mikrojs/http/request', () => import('mikrojs/http/request')],
-  ['mikrojs/format', () => import('mikrojs/format')],
-  ['mikrojs/fs', () => import('mikrojs/fs')],
-  ['mikrojs/i2c', () => import('mikrojs/i2c')],
-  ['mikrojs/inspect', () => import('mikrojs/inspect')],
-  ['mikrojs/kv/nvs', () => import('mikrojs/kv/nvs')],
-  ['mikrojs/kv/rtc', () => import('mikrojs/kv/rtc')],
-  ['mikrojs/neopixel', () => import('mikrojs/neopixel')],
-  ['mikrojs/pin', () => import('mikrojs/pin')],
-  ['mikrojs/pwm', () => import('mikrojs/pwm')],
-  ['mikrojs/reader', () => import('mikrojs/reader')],
-  ['mikrojs/schema', () => import('mikrojs/schema')],
-  ['mikrojs/sntp', () => import('mikrojs/sntp')],
-  ['mikrojs/spi', () => import('mikrojs/spi')],
-  ['mikrojs/stdio', () => import('mikrojs/stdio')],
-  ['mikrojs/stream', () => import('mikrojs/stream')],
-  ['mikrojs/uart', () => import('mikrojs/uart')],
-  ['mikrojs/wifi', () => import('mikrojs/wifi')],
-  ['mikrojs/ble', () => import('mikrojs/ble')],
+  ['mikro/result', () => import('mikro/result')],
+  ['mikro/sleep', () => import('mikro/sleep')],
+  ['mikro/cbor', () => import('mikro/cbor')],
+  ['mikro/console', () => import('mikro/console')],
+  ['mikro/env', () => import('mikro/env')],
+  ['mikro/http/helpers', () => import('mikro/http/helpers')],
+  ['mikro/http/request', () => import('mikro/http/request')],
+  ['mikro/format', () => import('mikro/format')],
+  ['mikro/fs', () => import('mikro/fs')],
+  ['mikro/i2c', () => import('mikro/i2c')],
+  ['mikro/inspect', () => import('mikro/inspect')],
+  ['mikro/kv/nvs', () => import('mikro/kv/nvs')],
+  ['mikro/kv/rtc', () => import('mikro/kv/rtc')],
+  ['mikro/neopixel', () => import('mikro/neopixel')],
+  ['mikro/pin', () => import('mikro/pin')],
+  ['mikro/pwm', () => import('mikro/pwm')],
+  ['mikro/reader', () => import('mikro/reader')],
+  ['mikro/schema', () => import('mikro/schema')],
+  ['mikro/sntp', () => import('mikro/sntp')],
+  ['mikro/spi', () => import('mikro/spi')],
+  ['mikro/stdio', () => import('mikro/stdio')],
+  ['mikro/stream', () => import('mikro/stream')],
+  ['mikro/uart', () => import('mikro/uart')],
+  ['mikro/wifi', () => import('mikro/wifi')],
+  ['mikro/ble', () => import('mikro/ble')],
 ]
 
 gc()
@@ -84,5 +84,5 @@ try {
 
 // Halt. Long sleep keeps the runtime alive so the serial output stays on
 // screen and the device doesn't idle-reset between reads.
-const {sleep} = await import('mikrojs/sleep')
+const {sleep} = await import('mikro/sleep')
 await sleep(60 * 60 * 1000)

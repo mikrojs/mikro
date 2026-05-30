@@ -6,7 +6,7 @@ description: Read environment variables with explicit required/optional handling
 # env
 
 ```ts twoslash
-import {env} from 'mikrojs/env'
+import {env} from 'mikro/env'
 ```
 
 Read environment variables stored in NVS on the device. Provides explicit methods for required vs. optional access, replacing direct `import.meta.env` property access.
@@ -25,7 +25,7 @@ Get a required environment variable. Panics with a clear error message if the va
 
 ```ts twoslash
 // @noErrors
-import {env} from 'mikrojs/env'
+import {env} from 'mikro/env'
 // ---cut---
 const ssid = env.require('WIFI_SSID')
 // TypeError: Required environment variable "WIFI_SSID" is not set
@@ -43,7 +43,7 @@ Get an optional environment variable. Returns `undefined` if not set.
 
 ```ts twoslash
 // @noErrors
-import {env} from 'mikrojs/env'
+import {env} from 'mikro/env'
 // ---cut---
 const debug = env.get('DEBUG')
 if (debug) {
@@ -61,7 +61,7 @@ Check whether an environment variable is set.
 
 ```ts twoslash
 // @noErrors
-import {env} from 'mikrojs/env'
+import {env} from 'mikro/env'
 // ---cut---
 if (env.has('LOG_LEVEL')) {
   // configure logging

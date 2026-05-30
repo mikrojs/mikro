@@ -16,7 +16,7 @@ A "breathing" LED effect: smoothly fades an LED in and out using PWM. See the [p
 ## Code
 
 ```ts twoslash
-import {Pwm} from 'mikrojs/pwm'
+import {Pwm} from 'mikro/pwm'
 
 // GPIO 15 is the built-in LED on XIAO ESP32C6. Replace with your board's LED pin.
 const LED_PIN = 15
@@ -105,4 +105,4 @@ bunx mikro dev
 
 You should see the LED smoothly fading in and out in a continuous breathing pattern.
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/pwm-led)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/pwm-led)

@@ -77,12 +77,12 @@ static int read_global_int(JSContext* ctx, const char* name) {
 
 }  // namespace
 
-TEST_CASE("mikrojs/udp module is importable" * doctest::test_suite("udp")) {
+TEST_CASE("mikro/udp module is importable" * doctest::test_suite("udp")) {
     auto* rt = MIK_NewRuntime();
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-        "import {bind} from 'mikrojs/udp';\n"
+        "import {bind} from 'mikro/udp';\n"
         "globalThis.__hasBind = (typeof bind === 'function') ? 'yes' : 'no';\n");
 
     CHECK_FALSE(JS_IsException(rv));
@@ -98,7 +98,7 @@ TEST_CASE("bind() returns a socket bound to an ephemeral port" * doctest::test_s
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-        "import {bind} from 'mikrojs/udp';\n"
+        "import {bind} from 'mikro/udp';\n"
         "globalThis.__done = 0;\n"
         "bind({port: 0, family: 'ipv4'}).then(r => {\n"
         "  if (r.ok) {\n"
@@ -137,7 +137,7 @@ TEST_CASE("send and receive roundtrip on loopback" * doctest::test_suite("udp"))
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-        "import {bind} from 'mikrojs/udp';\n"
+        "import {bind} from 'mikro/udp';\n"
         "globalThis.__received = '';\n"
         "globalThis.__from = null;\n"
         "globalThis.__phase = 'init';\n"
@@ -178,7 +178,7 @@ TEST_CASE("close is idempotent and subsequent send returns Closed" * doctest::te
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-        "import {bind} from 'mikrojs/udp';\n"
+        "import {bind} from 'mikro/udp';\n"
         "globalThis.__done = 0;\n"
         "(async () => {\n"
         "  const r = await bind({port: 0, family: 'ipv4'});\n"
@@ -209,7 +209,7 @@ TEST_CASE("dropped counter increments when no onMessage handler is set"
     /* Bind sock1 without onMessage; blast packets at it from sock2; the
      * loop consumer should drop them and increment sock1.dropped. */
     JSValue rv = eval_module(ctx,
-        "import {bind} from 'mikrojs/udp';\n"
+        "import {bind} from 'mikro/udp';\n"
         "globalThis.__phase = 'init';\n"
         "(async () => {\n"
         "  const r1 = await bind({port: 0, family: 'ipv4'});\n"
@@ -255,7 +255,7 @@ TEST_CASE("ipv4 socket rejects an IPv6 peer on send" * doctest::test_suite("udp"
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-        "import {bind} from 'mikrojs/udp';\n"
+        "import {bind} from 'mikro/udp';\n"
         "globalThis.__done = 0;\n"
         "(async () => {\n"
         "  const r = await bind({port: 0, family: 'ipv4'});\n"
@@ -288,7 +288,7 @@ TEST_CASE("onMessage that finalizes a sibling socket does not corrupt iteration"
     auto* ctx = MIK_GetJSContext(rt);
 
     JSValue rv = eval_module(ctx,
-        "import {bind} from 'mikrojs/udp';\n"
+        "import {bind} from 'mikro/udp';\n"
         "globalThis.__phase = 'init';\n"
         "(async () => {\n"
         "  const r1 = await bind({port: 0, family: 'ipv4'});\n"

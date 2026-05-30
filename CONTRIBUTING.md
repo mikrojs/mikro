@@ -13,7 +13,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 ## Getting started
 
 ```sh
-git clone --recurse-submodules https://github.com/mikrojs/mikrojs
+git clone --recurse-submodules https://github.com/mikrojs/mikro
 cd mikrojs
 pnpm install
 ```

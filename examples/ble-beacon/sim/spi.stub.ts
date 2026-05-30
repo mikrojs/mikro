@@ -1,6 +1,6 @@
 // Simulator stub for spi
 // Runs inside the mikrojs runtime (QuickJS), not Node.js. Node built-ins are not available.
-import type {SimSpi} from 'mikrojs/sim'
+import type {SimSpi} from 'mikro/sim'
 
 export class Spi implements SimSpi {
   constructor(_hostNo: number, _options: Record<string, unknown>) {}

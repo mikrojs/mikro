@@ -59,12 +59,12 @@ static void run(const char* label, const char* source_path, bool last) {
     JSMemoryUsage before;
     JS_ComputeMemoryUsage(rt, &before);
 
-    // Use a "mikrojs/" prefixed name so the module normalizer treats the
+    // Use a "mikro/" prefixed name so the module normalizer treats the
     // entry as a privileged module and allows `native:*` imports — normal
     // user code cannot import native: directly, only the official runtime
     // modules can. For this benchmark we're simulating what a bundled user
     // app WOULD look like if it were allowed to inline runtime modules.
-    ret = MIK_EvalModuleContent(ctx, "mikrojs/bench_app.js", source.c_str(), source.size());
+    ret = MIK_EvalModuleContent(ctx, "mikro/bench_app.js", source.c_str(), source.size());
     if (JS_IsException(ret)) {
         JSValue exc = JS_GetException(ctx);
         const char* msg = JS_ToCString(ctx, exc);

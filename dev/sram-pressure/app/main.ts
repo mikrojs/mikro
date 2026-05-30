@@ -1,7 +1,7 @@
-import {env} from 'mikrojs/env'
-import {request} from 'mikrojs/http/request'
-import {memoryUsage} from 'mikrojs/sys'
-import {wifi} from 'mikrojs/wifi'
+import {env} from 'mikro/env'
+import {request} from 'mikro/http/request'
+import {memoryUsage} from 'mikro/sys'
+import {wifi} from 'mikro/wifi'
 
 const TARGET_URL = env.get('TARGET_URL') ?? 'https://jsonplaceholder.typicode.com/posts/1'
 const STEP_KB = Number(env.get('STEP_KB') ?? '8')

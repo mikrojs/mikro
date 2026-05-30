@@ -1,5 +1,5 @@
-import {Observable} from 'mikrojs/observable'
-import {filter, finalize, map, take, takeUntil} from 'mikrojs/observable/operators'
+import {Observable} from 'mikro/observable'
+import {filter, finalize, map, take, takeUntil} from 'mikro/observable/operators'
 import {describe, expect, test, vi} from 'vitest'
 
 /* Capture setTimeout calls so tests can assert that dispatch errors are

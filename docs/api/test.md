@@ -6,7 +6,7 @@ description: On-device test framework with describe, test, and assert
 # test
 
 ```ts twoslash
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 ```
 
 A lightweight test framework for running tests directly on the device.
@@ -14,7 +14,7 @@ A lightweight test framework for running tests directly on the device.
 ## Writing tests
 
 ```ts
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 
 describe('math', () => {
   test('addition', () => {
@@ -60,7 +60,7 @@ Focus a suite. When any `.only` is present in a file, all non-`.only` suites and
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 // ---cut---
 describe.only('the one I care about', () => {
   test('runs', () => {})
@@ -81,7 +81,7 @@ Mark an entire suite as todo. Every test in it is reported as todo, regardless o
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 // ---cut---
 describe.todo('bluetooth driver', () => {
   test('connects', () => {})
@@ -107,7 +107,7 @@ Skip the suite when `condition` is truthy.
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 // ---cut---
 describe.skipIf(env.get('MIKRO_ENV') === 'test')('prod only', () => {
   test('production check', () => {
@@ -126,8 +126,8 @@ Only run the suite when `condition` is truthy. This is the inverse of `skipIf`.
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert} from 'mikrojs/test'
-import {env} from 'mikrojs/env'
+import {describe, test, assert} from 'mikro/test'
+import {env} from 'mikro/env'
 // ---cut---
 const hasWifi = env.get('WIFI_SSID') && env.get('WIFI_PASSPHRASE')
 
@@ -156,7 +156,7 @@ Skip a test. It will be reported as skipped in the results.
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 // ---cut---
 describe('feature', () => {
   test.skip('not ready yet', () => {
@@ -175,7 +175,7 @@ Focus a single test. When any `.only` is present in a file, all non-`.only` test
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 // ---cut---
 describe('math', () => {
   test.only('this one', () => {
@@ -203,7 +203,7 @@ Skip the test when `condition` is truthy.
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 // ---cut---
 describe('feature', () => {
   test.skipIf(env.get('MIKRO_ENV') === 'test')('prod only', () => {
@@ -222,8 +222,8 @@ Only run the test when `condition` is truthy. This is the inverse of `skipIf`.
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert} from 'mikrojs/test'
-import {env} from 'mikrojs/env'
+import {describe, test, assert} from 'mikro/test'
+import {env} from 'mikro/env'
 // ---cut---
 describe('hardware', () => {
   test.runIf(env.get('HAS_SENSOR'))('read sensor', () => {
@@ -242,7 +242,7 @@ Register a placeholder test with no function body. Todo tests are not executed a
 
 ```ts twoslash
 // @noErrors
-import {describe, test} from 'mikrojs/test'
+import {describe, test} from 'mikro/test'
 // ---cut---
 describe('feature', () => {
   test.todo('handle reconnect after deep sleep')
@@ -259,7 +259,7 @@ Run a test once for each case. Name interpolation: `%s` (string), `%#` (index), 
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 // ---cut---
 describe('math', () => {
   test.each([1, 4, 9])('sqrt of %s', (n) => {
@@ -272,7 +272,7 @@ Also available on `describe`:
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 // ---cut---
 describe.each([9600, 115200])('uart at %s baud', (baud) => {
   test('sends data', () => {
@@ -300,8 +300,8 @@ Run setup/teardown once per suite. If `beforeAll` throws, all tests in the suite
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert, beforeAll, afterAll} from 'mikrojs/test'
-import {nvsStorage} from 'mikrojs/kv/nvs'
+import {describe, test, assert, beforeAll, afterAll} from 'mikro/test'
+import {nvsStorage} from 'mikro/kv/nvs'
 // ---cut---
 describe('storage', () => {
   afterAll(() => {
@@ -327,8 +327,8 @@ Run setup/teardown before and after each test. `beforeEach` runs inside the test
 
 ```ts twoslash
 // @noErrors
-import {describe, test, assert, beforeEach, afterEach} from 'mikrojs/test'
-import {nvsStorage} from 'mikrojs/kv/nvs'
+import {describe, test, assert, beforeEach, afterEach} from 'mikro/test'
+import {nvsStorage} from 'mikro/kv/nvs'
 // ---cut---
 describe('storage', () => {
   afterEach(() => {
@@ -353,7 +353,7 @@ Strict equality using `Object.is`.
 
 ```ts twoslash
 // @noErrors
-import {assert} from 'mikrojs/test'
+import {assert} from 'mikro/test'
 // ---cut---
 assert.equal(1 + 1, 2)
 assert.equal('hello', 'hello')
@@ -369,7 +369,7 @@ Assert value is truthy.
 
 ```ts twoslash
 // @noErrors
-import {assert} from 'mikrojs/test'
+import {assert} from 'mikro/test'
 // ---cut---
 assert.truthy(true)
 assert.truthy('non-empty string')
@@ -382,7 +382,7 @@ Deep equality via `JSON.stringify` comparison.
 
 ```ts twoslash
 // @noErrors
-import {assert} from 'mikrojs/test'
+import {assert} from 'mikro/test'
 // ---cut---
 assert.deepEqual({a: 1, b: 2}, {a: 1, b: 2})
 assert.deepEqual([1, 2, 3], [1, 2, 3])
@@ -394,7 +394,7 @@ Assert that a function throws. Returns the caught error.
 
 ```ts twoslash
 // @noErrors
-import {assert} from 'mikrojs/test'
+import {assert} from 'mikro/test'
 // ---cut---
 const err = assert.throws(() => {
   throw new Error('boom')
@@ -408,7 +408,7 @@ Assert that an async function rejects. Returns the caught error.
 
 ```ts twoslash
 // @noErrors
-import {assert} from 'mikrojs/test'
+import {assert} from 'mikro/test'
 // ---cut---
 const err = await assert.rejects(async () => {
   throw new Error('async boom')
@@ -421,7 +421,7 @@ Assert `typeof value === expected`.
 
 ```ts twoslash
 // @noErrors
-import {assert} from 'mikrojs/test'
+import {assert} from 'mikro/test'
 // ---cut---
 assert.type('hello', 'string')
 assert.type(42, 'number')
@@ -438,8 +438,8 @@ Assert a `Result` is `ok`. Narrows `result` to `OkResult`, so `result.value` is 
 
 ```ts twoslash
 // @noErrors
-import {assert} from 'mikrojs/test'
-import {encode} from 'mikrojs/cbor'
+import {assert} from 'mikro/test'
+import {encode} from 'mikro/cbor'
 // ---cut---
 const encoded = encode({temp: 22.5})
 assert.ok(encoded)
@@ -456,7 +456,7 @@ When running under `mikro test`, the environment variable `MIKRO_ENV` is set to 
 
 ```ts twoslash
 // @noErrors
-import {env} from 'mikrojs/env'
+import {env} from 'mikro/env'
 // ---cut---
 if (env.get('MIKRO_ENV') === 'test') {
   // test-specific setup

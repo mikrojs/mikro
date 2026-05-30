@@ -1,7 +1,7 @@
-import {env} from 'mikrojs/env'
-import {sleep} from 'mikrojs/sleep'
-import {sntp} from 'mikrojs/sntp'
-import {wifi} from 'mikrojs/wifi'
+import {env} from 'mikro/env'
+import {sleep} from 'mikro/sleep'
+import {sntp} from 'mikro/sntp'
+import {wifi} from 'mikro/wifi'
 
 await sleep(2000)
 console.log('Current time at startup: %s', new Date())

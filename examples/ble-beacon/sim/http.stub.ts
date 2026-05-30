@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 // Simulator stub for http
 // Runs inside the mikrojs runtime (QuickJS), not Node.js. Node built-ins are not available.
-import type {SimHttp} from 'mikrojs/sim'
+import type {SimHttp} from 'mikro/sim'
 
 let nextId = 0
 

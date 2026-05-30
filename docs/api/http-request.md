@@ -6,7 +6,7 @@ description: HTTP client
 # http/request
 
 ```ts twoslash
-import {request} from 'mikrojs/http/request'
+import {request} from 'mikro/http/request'
 ```
 
 Make HTTP requests against a network endpoint. Returns a [`Result`](/api/result) so network-level failures are handled explicitly instead of thrown.
@@ -21,7 +21,7 @@ function request(url: string, options?: RequestOptions): Promise<Result<Response
 
 ```ts twoslash
 // @noErrors
-import {request} from 'mikrojs/http/request'
+import {request} from 'mikro/http/request'
 // ---cut---
 const result = await request('https://api.example.com/data')
 if (!result.ok) {
@@ -44,7 +44,7 @@ console.log(data.value)
 
 ```ts twoslash
 // @noErrors
-import {request} from 'mikrojs/http/request'
+import {request} from 'mikro/http/request'
 // ---cut---
 const result = await request('https://api.example.com/data')
 if (!result.ok) {
@@ -69,7 +69,7 @@ console.log(data.value)
 ### POST request
 
 ```ts twoslash
-import {request} from 'mikrojs/http/request'
+import {request} from 'mikro/http/request'
 // ---cut---
 const result = await request('https://api.example.com/data', {
   method: 'POST',
@@ -83,7 +83,7 @@ const result = await request('https://api.example.com/data', {
 ### Request with timeout
 
 ```ts twoslash
-import {request} from 'mikrojs/http/request'
+import {request} from 'mikro/http/request'
 // ---cut---
 const result = await request('https://api.example.com/data', {
   timeoutMs: 5000,
@@ -142,7 +142,7 @@ Every response you don't drain with `text()`, `json()`, `bytes()`, or a `for awa
 
 ### RequestError
 
-Returned by `request` and any custom transport built on top of `mikrojs/http/helpers`.
+Returned by `request` and any custom transport built on top of `mikro/http/helpers`.
 
 | Variant           | Fields                        | Description                                                  |
 | ----------------- | ----------------------------- | ------------------------------------------------------------ |
@@ -161,12 +161,12 @@ Thrown by `Response.text()`, `json()`, `bytes()`, or a second iteration of `body
 
 ## Custom transports
 
-The default `request` is backed by a WiFi-driven HTTP client. If you're driving HTTP through something else (e.g. an LTE modem exposing an AT-command HTTP stack), write a function with the same `Request` signature using helpers from `mikrojs/http/helpers` for the boring parts:
+The default `request` is backed by a WiFi-driven HTTP client. If you're driving HTTP through something else (e.g. an LTE modem exposing an AT-command HTTP stack), write a function with the same `Request` signature using helpers from `mikro/http/helpers` for the boring parts:
 
 ```ts twoslash
 // @noErrors
-import {makeResponse, prepareBody, type Request, RequestError} from 'mikrojs/http/helpers'
-import {err, ok} from 'mikrojs/result'
+import {makeResponse, prepareBody, type Request, RequestError} from 'mikro/http/helpers'
+import {err, ok} from 'mikro/result'
 // ---cut---
 export const request: Request = async (url, opts = {}) => {
   const {body, headers} = prepareBody(opts)
@@ -189,4 +189,4 @@ export const request: Request = async (url, opts = {}) => {
 }
 ```
 
-Import from `mikrojs/http/helpers` instead of `mikrojs/http/request` when you don't need the default implementation; that avoids paying for its WiFi/TLS machinery at startup.
+Import from `mikro/http/helpers` instead of `mikro/http/request` when you don't need the default implementation; that avoids paying for its WiFi/TLS machinery at startup.

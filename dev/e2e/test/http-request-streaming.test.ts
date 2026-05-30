@@ -1,9 +1,9 @@
 /* eslint-disable no-console */
-import {env} from 'mikrojs/env'
-import {request} from 'mikrojs/http/request'
-import {decodeUtf8, splitLines} from 'mikrojs/stream'
-import {assert, beforeAll, describe, test} from 'mikrojs/test'
-import {wifi} from 'mikrojs/wifi'
+import {env} from 'mikro/env'
+import {request} from 'mikro/http/request'
+import {decodeUtf8, splitLines} from 'mikro/stream'
+import {assert, beforeAll, describe, test} from 'mikro/test'
+import {wifi} from 'mikro/wifi'
 
 // Streaming tests live in their own file because each one does a full TLS
 // handshake + body drain that peaks heap usage heavily. Running them

@@ -9,6 +9,6 @@
     "test:sim": "mikro sim test"
   },
   "dependencies": {
-    "mikrojs": "workspace:*"
+    "mikro": "workspace:*"
   }
 }

@@ -202,10 +202,10 @@ mikro test 'test/smoke.test.ts'
 mikro test --env-file .env
 ```
 
-Test files import from `mikrojs/test`:
+Test files import from `mikro/test`:
 
 ```ts twoslash
-import {describe, test, assert} from 'mikrojs/test'
+import {describe, test, assert} from 'mikro/test'
 
 describe('my feature', () => {
   test('works', () => {
@@ -224,7 +224,7 @@ To run tests in the host simulator, use [`mikro sim test`](#mikro-sim).
 
 ## mikro env
 
-Manage environment variables stored on the device. Variables persist across reboots and are accessible via [`mikrojs/env`](/api/env) or `import.meta.env` in your code.
+Manage environment variables stored on the device. Variables persist across reboots and are accessible via [`mikro/env`](/api/env) or `import.meta.env` in your code.
 
 ### mikro env list
 
@@ -436,14 +436,14 @@ mikro sim profile [ENTRY]
 | `--sort KEY`         | Sort by `size` (default) or `order` (load order)                                                        |
 | `--min-bytes N`      | Hide modules smaller than N bytes                                                                       |
 | `--include-native`   | Include `native:*` runtime modules (excluded by default)                                                |
-| `--include-builtins` | Include `mikrojs/*` built-in modules (excluded by default)                                              |
+| `--include-builtins` | Include `mikro/*` built-in modules (excluded by default)                                                |
 | `--only-native`      | Show only `native:*` modules                                                                            |
-| `--only-builtins`    | Show only `mikrojs/*` built-ins                                                                         |
+| `--only-builtins`    | Show only `mikro/*` built-ins                                                                           |
 | `--json`             | Output as JSON                                                                                          |
 | `--env-file FILE`    | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
 | `--no-auto-env`      | Skip auto-loading of `.env` and `.env.development`                                                      |
 
-By default, `native:*` runtime modules and `mikrojs/*` built-ins are hidden so you see only your own code's heap cost. Use `--include-native` / `--include-builtins` to add them back, or `--only-native` / `--only-builtins` for a focused view of just those categories.
+By default, `native:*` runtime modules and `mikro/*` built-ins are hidden so you see only your own code's heap cost. Use `--include-native` / `--include-builtins` to add them back, or `--only-native` / `--only-builtins` for a focused view of just those categories.
 
 The `--mem-limit` is intentionally high (default `32M`) so the measurement run doesn't OOM. The profile output shows whether the app fits in the actual device budget.
 

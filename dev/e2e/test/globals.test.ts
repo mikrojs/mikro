@@ -1,4 +1,4 @@
-import {assert, describe, test} from 'mikrojs/test'
+import {assert, describe, test} from 'mikro/test'
 
 describe('TextEncoder / TextDecoder', () => {
   test('roundtrip ascii', () => {

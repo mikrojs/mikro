@@ -15,7 +15,7 @@ Validates JSON data received over HTTP using typed schemas. This is a typical us
 ## Code
 
 ```ts twoslash
-import * as s from 'mikrojs/schema'
+import * as s from 'mikro/schema'
 
 // Define a schema for the API response
 const WeatherResponse = s.object({
@@ -102,4 +102,4 @@ bunx mikro dev
 
 You should see the valid readings and commands printed, and clear error messages for the invalid ones.
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/schema)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/schema)

@@ -325,10 +325,10 @@ When considering WinterTC or other standard APIs, only implement what has a demo
 All public modules use **named exports only** (no default exports). This keeps import syntax consistent across the entire API surface:
 
 ```ts
-import {wifi} from 'mikrojs/wifi'
-import {Spi} from 'mikrojs/spi'
-import {pinMode, digitalWrite} from 'mikrojs/pin'
-import {sntp} from 'mikrojs/sntp'
+import {wifi} from 'mikro/wifi'
+import {Spi} from 'mikro/spi'
+import {pinMode, digitalWrite} from 'mikro/pin'
+import {sntp} from 'mikro/sntp'
 ```
 
 ## Pre-commit Hooks

@@ -1,7 +1,7 @@
-import {env} from 'mikrojs/env'
-import {request} from 'mikrojs/http/request'
-import {memoryUsage} from 'mikrojs/sys'
-import {wifi} from 'mikrojs/wifi'
+import {env} from 'mikro/env'
+import {request} from 'mikro/http/request'
+import {memoryUsage} from 'mikro/sys'
+import {wifi} from 'mikro/wifi'
 
 const ssid = env.require('WIFI_SSID')
 const passphrase = env.require('WIFI_PASSPHRASE')

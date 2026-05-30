@@ -1,7 +1,7 @@
 import {ESLintUtils, type TSESTree} from '@typescript-eslint/utils'
 
 const createRule = ESLintUtils.RuleCreator(
-  (name) => `https://github.com/mikrojs/mikrojs/blob/main/docs/rules/${name}.md`,
+  (name) => `https://github.com/mikrojs/mikro/blob/main/docs/rules/${name}.md`,
 )
 
 export const noDotCatch = createRule({

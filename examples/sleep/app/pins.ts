@@ -3,7 +3,7 @@
 // GPIO behind the D7 header pad for the light-sleep button example,
 // etc.) based on `board.chip`.
 
-import {board} from 'mikrojs/sys'
+import {board} from 'mikro/sys'
 
 export interface XiaoPinMap {
   /** Built-in user LED (active-low on every XIAO ESP32 board). */

@@ -22,4 +22,4 @@ Each example is a standalone project you can use as a starting point.
 | [BLE Beacon](/examples/ble-beacon)               | Intermediate | Broadcast sensor readings over BLE              |
 | [BLE GATT](/examples/ble-gatt)                   | Advanced     | Connectable GATT peripheral with notify         |
 
-More examples are available in the [examples/](https://github.com/mikrojs/mikrojs/tree/main/examples) directory on GitHub.
+More examples are available in the [examples/](https://github.com/mikrojs/mikro/tree/main/examples) directory on GitHub.

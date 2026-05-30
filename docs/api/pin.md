@@ -6,7 +6,7 @@ description: GPIO digital and analog I/O
 # pin
 
 ```ts twoslash
-import {pinMode, digitalWrite, digitalRead, analogRead, analogReadMillivolts} from 'mikrojs/pin'
+import {pinMode, digitalWrite, digitalRead, analogRead, analogReadMillivolts} from 'mikro/pin'
 ```
 
 Control GPIO pins for digital and analog I/O.
@@ -27,7 +27,7 @@ function pinMode(pin: number, mode: PinMode): Result<void, PinError>
 - `mode`: `'INPUT'`, `'OUTPUT'`, or `'INPUT_PULLUP'`
 
 ```ts twoslash
-import {pinMode} from 'mikrojs/pin'
+import {pinMode} from 'mikro/pin'
 // ---cut---
 pinMode(20, 'OUTPUT').orPanic('Failed to configure pin')
 ```
@@ -41,7 +41,7 @@ function digitalWrite(pin: number, value: 0 | 1): Result<void, PinError>
 ```
 
 ```ts twoslash
-import {digitalWrite} from 'mikrojs/pin'
+import {digitalWrite} from 'mikro/pin'
 // ---cut---
 digitalWrite(20, 1) // pin HIGH
 digitalWrite(20, 0) // pin LOW
@@ -56,7 +56,7 @@ function digitalRead(pin: number): 0 | 1
 ```
 
 ```ts twoslash
-import {digitalRead} from 'mikrojs/pin'
+import {digitalRead} from 'mikro/pin'
 // ---cut---
 const state = digitalRead(5)
 console.log(state ? 'HIGH' : 'LOW')
@@ -73,7 +73,7 @@ function analogRead(pin: number, options?: AnalogReadOptions): Result<number, Pi
 Returns a 12-bit integer (0–4095) proportional to the input voltage.
 
 ```ts twoslash
-import {analogRead} from 'mikrojs/pin'
+import {analogRead} from 'mikro/pin'
 // ---cut---
 const result = analogRead(2)
 if (result.ok) {
@@ -92,7 +92,7 @@ function analogReadMillivolts(pin: number, options?: AnalogReadOptions): Result<
 Returns the input voltage in millivolts.
 
 ```ts twoslash
-import {analogReadMillivolts} from 'mikrojs/pin'
+import {analogReadMillivolts} from 'mikro/pin'
 // ---cut---
 const result = analogReadMillivolts(2)
 if (result.ok) {

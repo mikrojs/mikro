@@ -44,10 +44,10 @@ bunx mikro env set WIFI_PASSPHRASE
 ## Code
 
 ```ts twoslash
-import {env} from 'mikrojs/env'
-import {request} from 'mikrojs/http/request'
-import {memoryUsage} from 'mikrojs/sys'
-import {wifi} from 'mikrojs/wifi'
+import {env} from 'mikro/env'
+import {request} from 'mikro/http/request'
+import {memoryUsage} from 'mikro/sys'
+import {wifi} from 'mikro/wifi'
 
 const ssid = env.require('WIFI_SSID')
 const passphrase = env.require('WIFI_PASSPHRASE')
@@ -154,4 +154,4 @@ bunx mikro dev
 
 You should see the WiFi connection, fetched JSON data, and memory usage in the console output.
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/wifi-fetch)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/wifi-fetch)

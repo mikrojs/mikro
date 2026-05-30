@@ -16,8 +16,8 @@ Send and receive serial data over UART. This example uses a loopback wiring (TX 
 ## Code
 
 ```ts twoslash
-import {sleep} from 'mikrojs/sleep'
-import {Uart} from 'mikrojs/uart'
+import {sleep} from 'mikro/sleep'
+import {Uart} from 'mikro/uart'
 
 // UART loopback: connect TX (GPIO 16) to RX (GPIO 17) with a jumper wire
 const TX_PIN = 16
@@ -120,4 +120,4 @@ bunx mikro dev
 
 You should see "Hello from UART!" echoed back in the console output.
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/uart)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/uart)

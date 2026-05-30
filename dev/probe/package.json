@@ -2,7 +2,7 @@
   "name": "mikrojs-probe-dev",
   "version": "0.0.0",
   "private": true,
-  "description": "Measures steady-state import retention of every mikrojs/* builtin on the target device.",
+  "description": "Measures steady-state import retention of every mikro/* builtin on the target device.",
   "license": "MIT",
   "author": "Bjørge Næss <bjoerge@gmail.com>",
   "files": [
@@ -15,6 +15,6 @@
     "dev": "mikro dev"
   },
   "dependencies": {
-    "mikrojs": "workspace:*"
+    "mikro": "workspace:*"
   }
 }

@@ -1,0 +1,271 @@
+{
+  "name": "mikro",
+  "version": "0.9.0",
+  "description": "Mikro.js: TypeScript for microcontrollers",
+  "keywords": [
+    "embedded",
+    "esp32",
+    "iot",
+    "javascript",
+    "microcontroller",
+    "mikrojs",
+    "quickjs",
+    "typescript"
+  ],
+  "homepage": "https://github.com/mikrojs/mikro#readme",
+  "bugs": {
+    "url": "https://github.com/mikrojs/mikro/issues"
+  },
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikrojs/mikro.git"
+  },
+  "bin": {
+    "mikro": "bin/mikrojs.js"
+  },
+  "files": [
+    "dist",
+    "runtime.d.ts",
+    "tsconfig.base.json",
+    "!**/__test__",
+    "!**/*.test.js",
+    "!**/*.test.d.ts"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "development": "./src/_exports/index.ts",
+      "import": "./dist/_exports/index.js"
+    },
+    "./ble": {
+      "development": "./src/_exports/ble.ts",
+      "import": "./dist/_exports/ble.js"
+    },
+    "./cbor": {
+      "development": "./src/_exports/cbor.ts",
+      "import": "./dist/_exports/cbor.js"
+    },
+    "./console": {
+      "development": "./src/_exports/console.ts",
+      "import": "./dist/_exports/console.js"
+    },
+    "./env": {
+      "development": "./src/_exports/env.ts",
+      "import": "./dist/_exports/env.js"
+    },
+    "./format": {
+      "development": "./src/_exports/format.ts",
+      "import": "./dist/_exports/format.js"
+    },
+    "./fs": {
+      "development": "./src/_exports/fs.ts",
+      "import": "./dist/_exports/fs.js"
+    },
+    "./http/helpers": {
+      "development": "./src/_exports/http/helpers.ts",
+      "import": "./dist/_exports/http/helpers.js"
+    },
+    "./http/request": {
+      "development": "./src/_exports/http/request.ts",
+      "import": "./dist/_exports/http/request.js"
+    },
+    "./i2c": {
+      "development": "./src/_exports/i2c.ts",
+      "import": "./dist/_exports/i2c.js"
+    },
+    "./inspect": {
+      "development": "./src/_exports/inspect.ts",
+      "import": "./dist/_exports/inspect.js"
+    },
+    "./kv/nvs": {
+      "development": "./src/_exports/kv/nvs.ts",
+      "import": "./dist/_exports/kv/nvs.js"
+    },
+    "./kv/rtc": {
+      "development": "./src/_exports/kv/rtc.ts",
+      "import": "./dist/_exports/kv/rtc.js"
+    },
+    "./module": {
+      "development": "./src/_exports/module.ts",
+      "import": "./dist/_exports/module.js"
+    },
+    "./neopixel": {
+      "development": "./src/_exports/neopixel.ts",
+      "import": "./dist/_exports/neopixel.js"
+    },
+    "./observable": {
+      "development": "./src/_exports/observable.ts",
+      "import": "./dist/_exports/observable.js"
+    },
+    "./observable/operators": {
+      "development": "./src/_exports/observable/operators.ts",
+      "import": "./dist/_exports/observable/operators.js"
+    },
+    "./package.json": "./package.json",
+    "./pin": {
+      "development": "./src/_exports/pin.ts",
+      "import": "./dist/_exports/pin.js"
+    },
+    "./pwm": {
+      "development": "./src/_exports/pwm.ts",
+      "import": "./dist/_exports/pwm.js"
+    },
+    "./reader": {
+      "development": "./src/_exports/reader.ts",
+      "import": "./dist/_exports/reader.js"
+    },
+    "./result": {
+      "development": "./src/_exports/result.ts",
+      "import": "./dist/_exports/result.js"
+    },
+    "./runtime": "./runtime.d.ts",
+    "./schema": {
+      "development": "./src/_exports/schema.ts",
+      "import": "./dist/_exports/schema.js"
+    },
+    "./sim": {
+      "development": "./src/_exports/sim.ts",
+      "import": "./dist/_exports/sim.js"
+    },
+    "./sleep": {
+      "development": "./src/_exports/sleep.ts",
+      "import": "./dist/_exports/sleep.js"
+    },
+    "./sntp": {
+      "development": "./src/_exports/sntp.ts",
+      "import": "./dist/_exports/sntp.js"
+    },
+    "./spi": {
+      "development": "./src/_exports/spi.ts",
+      "import": "./dist/_exports/spi.js"
+    },
+    "./stdio": {
+      "development": "./src/_exports/stdio.ts",
+      "import": "./dist/_exports/stdio.js"
+    },
+    "./stream": {
+      "development": "./src/_exports/stream.ts",
+      "import": "./dist/_exports/stream.js"
+    },
+    "./sys": {
+      "development": "./src/_exports/sys.ts",
+      "import": "./dist/_exports/sys.js"
+    },
+    "./test": {
+      "development": "./src/_exports/test.ts",
+      "import": "./dist/_exports/test.js"
+    },
+    "./tsconfig": "./tsconfig.base.json",
+    "./uart": {
+      "development": "./src/_exports/uart.ts",
+      "import": "./dist/_exports/uart.js"
+    },
+    "./udp": {
+      "development": "./src/_exports/udp.ts",
+      "import": "./dist/_exports/udp.js"
+    },
+    "./wifi": {
+      "development": "./src/_exports/wifi.ts",
+      "import": "./dist/_exports/wifi.js"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": "./dist/_exports/index.js",
+      "./result": "./dist/_exports/result.js",
+      "./pin": "./dist/_exports/pin.js",
+      "./pwm": "./dist/_exports/pwm.js",
+      "./reader": "./dist/_exports/reader.js",
+      "./neopixel": "./dist/_exports/neopixel.js",
+      "./observable": "./dist/_exports/observable.js",
+      "./observable/operators": "./dist/_exports/observable/operators.js",
+      "./i2c": "./dist/_exports/i2c.js",
+      "./spi": "./dist/_exports/spi.js",
+      "./ble": "./dist/_exports/ble.js",
+      "./cbor": "./dist/_exports/cbor.js",
+      "./http/helpers": "./dist/_exports/http/helpers.js",
+      "./http/request": "./dist/_exports/http/request.js",
+      "./kv/nvs": "./dist/_exports/kv/nvs.js",
+      "./kv/rtc": "./dist/_exports/kv/rtc.js",
+      "./module": "./dist/_exports/module.js",
+      "./sleep": "./dist/_exports/sleep.js",
+      "./sntp": "./dist/_exports/sntp.js",
+      "./wifi": "./dist/_exports/wifi.js",
+      "./sys": "./dist/_exports/sys.js",
+      "./format": "./dist/_exports/format.js",
+      "./console": "./dist/_exports/console.js",
+      "./env": "./dist/_exports/env.js",
+      "./fs": "./dist/_exports/fs.js",
+      "./stdio": "./dist/_exports/stdio.js",
+      "./stream": "./dist/_exports/stream.js",
+      "./inspect": "./dist/_exports/inspect.js",
+      "./schema": "./dist/_exports/schema.js",
+      "./sim": "./dist/_exports/sim.js",
+      "./test": "./dist/_exports/test.js",
+      "./tsconfig": "./tsconfig.base.json",
+      "./uart": "./dist/_exports/uart.js",
+      "./udp": "./dist/_exports/udp.js",
+      "./runtime": "./runtime.d.ts",
+      "./package.json": "./package.json"
+    }
+  },
+  "scripts": {
+    "build:ts": "tsc -p tsconfig.build.json",
+    "publint": "publint",
+    "test:device": "DEVICE_TEST=1 vitest run src/cli/lib/__test__/protocol-device.test.ts",
+    "typecheck": "tsc --noEmit",
+    "watch": "tsc -p tsconfig.build.json --watch --preserveWatchOutput"
+  },
+  "dependencies": {
+    "@mikrojs/analyze-imports": "workspace:*",
+    "@mikrojs/esptool": "workspace:*",
+    "@mikrojs/firmware": "workspace:*",
+    "@mikrojs/native": "workspace:*",
+    "@mikrojs/quickjs": "workspace:*",
+    "@optique/core": "^1.0.2",
+    "@optique/run": "^1.0.2",
+    "@vercel/detect-agent": "^1.2.3",
+    "cbor2": "^2.3.0",
+    "cli-spinners": "^3.4.0",
+    "figures": "^6.1.0",
+    "ink": "^7.0.1",
+    "ink-select-input": "^6.2.0",
+    "open": "^11.0.0",
+    "preferred-pm": "^5.0.0",
+    "react": "^19.2.5",
+    "rxjs": "^7.8.2",
+    "rxjs-exhaustmap-with-trailing": "^2.1.1",
+    "semver": "^7.7.4",
+    "serialport": "^13.0.0",
+    "uint8array-extras": "^1.5.0",
+    "update-notifier": "^7.3.1"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.15.30",
+    "@types/react": "^19.2.14",
+    "@types/semver": "^7.7.1",
+    "@types/update-notifier": "^6.0.8",
+    "esbuild": "^0.28.0",
+    "ink-testing-library": "^4.0.0",
+    "terser": "^5.46.2",
+    "tsx": "catalog:"
+  },
+  "peerDependencies": {
+    "@swc/core": "^1.0.0",
+    "terser": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@swc/core": {
+      "optional": true
+    },
+    "terser": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

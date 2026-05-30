@@ -6,7 +6,7 @@ description: UART serial communication
 # uart
 
 ```ts twoslash
-import {Uart} from 'mikrojs/uart'
+import {Uart} from 'mikro/uart'
 ```
 
 Communicate with serial peripherals such as cellular modems, GPS modules, sensors, and other microcontrollers over UART.
@@ -14,7 +14,7 @@ Communicate with serial peripherals such as cellular modems, GPS modules, sensor
 ## Usage
 
 ```ts twoslash
-import {Uart} from 'mikrojs/uart'
+import {Uart} from 'mikro/uart'
 
 const uart = new Uart(1, {tx: 17, rx: 16, baudRate: 9600})
 uart.begin().orPanic('UART init failed')
@@ -110,7 +110,7 @@ Each yielded chunk contains whatever bytes have accumulated in the receive buffe
 Only one reader can be active at a time. Calling `read()` while another reader is active returns an `AlreadyReading` error. Breaking out of the `for await` loop cleanly closes the reader, and `read()` can be called again.
 
 ```ts twoslash
-import {Uart} from 'mikrojs/uart'
+import {Uart} from 'mikro/uart'
 const uart = new Uart(1, {tx: 17, rx: 16, baudRate: 115200})
 uart.begin().orPanic('UART init failed')
 // ---cut---

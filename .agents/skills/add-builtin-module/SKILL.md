@@ -1,6 +1,6 @@
 ---
 name: add-builtin-module
-description: Step-by-step guide for adding new built-in JavaScript modules to mikrojs. Use this skill whenever the user wants to add a new JS-level module (not a raw C module), create a higher-level API wrapper around native C bindings, add a new "mikrojs/xxx" import, or asks about the TypeScript-to-bytecode pipeline, esbuild bundling, qjsc compilation, or how built-in modules are registered.
+description: Step-by-step guide for adding new built-in JavaScript modules to mikrojs. Use this skill whenever the user wants to add a new JS-level module (not a raw C module), create a higher-level API wrapper around native C bindings, add a new "mikro/xxx" import, or asks about the TypeScript-to-bytecode pipeline, esbuild bundling, qjsc compilation, or how built-in modules are registered.
 ---
 
 # Adding a Built-in JS Module to mikrojs
@@ -21,7 +21,7 @@ TypeScript source (.ts)
   -> esbuild bundle + minify (.js)     [scripts/bundle-runtime.js]
     -> qjsc bytecode compile (.h)      [scripts/compile-bytecode.sh]
       -> #include in builtins.cpp      [core] or MIK_REGISTER_BUILTIN [driver]
-        -> Available at import("mikrojs/xxx") or import("@mikrojs/driver-xxx")
+        -> Available at import("mikro/xxx") or import("@mikrojs/driver-xxx")
 ```
 
 The pipeline is driven by the `mikrojs_generate_bytecode()` CMake function, which handles both the bundle and compile steps.
@@ -37,7 +37,7 @@ Create `packages/@mikrojs/native/runtime/{name}/{name}.ts`:
 ```typescript
 // packages/@mikrojs/native/runtime/example/example.ts
 import * as native from 'native:example'
-import {type Result, err, ok} from 'mikrojs/result'
+import {type Result, err, ok} from 'mikro/result'
 
 export function read(channel: number): Result<number, {type: 'ReadFailed'}> {
   const result = native.read(channel)
@@ -65,8 +65,8 @@ Follow the `add-native-module` skill to create the `native:xxx` native module wi
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${MIK_RUNTIME_DIR}"
     MODULES result fetch i2c neopixel pin pwm rtc sleep spi sntp stdio sys wifi example
-    MODULE_PREFIX "mikrojs"
-    SYMBOL_PREFIX "mikrojs"
+    MODULE_PREFIX "mikro"
+    SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode
 )
 ```
@@ -84,7 +84,7 @@ Add your module name to the `MODULES` list in both files.
 // Add to the builtins[] table (alphabetical order)
 static const mik_builtin_t builtins[] = {
     // ...
-    {"mikrojs/example", mikrojs_example_bytecode, mikrojs_example_bytecode_size},
+    {"mikro/example", mikrojs_example_bytecode, mikrojs_example_bytecode_size},
     // ...
     {NULL, NULL, 0},
 };
@@ -114,7 +114,7 @@ Create `runtime/{name}/{name}.ts` in the driver package:
 ```typescript
 // packages/@mikrojs/driver-xxx/runtime/xxx/xxx.ts
 import * as native from 'native:xxx'
-import {type Result, err, ok} from 'mikrojs/result'
+import {type Result, err, ok} from 'mikro/result'
 
 export function createDevice(config: DeviceConfig): Result<Device, InitError> {
   const result = native.init(config)

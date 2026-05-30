@@ -44,10 +44,10 @@ bunx mikro env set WIFI_PASSPHRASE
 ## Code
 
 ```ts twoslash
-import {env} from 'mikrojs/env'
-import {sleep} from 'mikrojs/sleep'
-import {sntp} from 'mikrojs/sntp'
-import {wifi} from 'mikrojs/wifi'
+import {env} from 'mikro/env'
+import {sleep} from 'mikro/sleep'
+import {sntp} from 'mikro/sntp'
+import {wifi} from 'mikro/wifi'
 
 await sleep(2000)
 console.log('Current time at startup: %s', new Date())
@@ -143,4 +143,4 @@ bunx mikro dev
 
 You should see the time jump from near-epoch to the correct wall-clock time after the sync completes.
 
-[View source on GitHub](https://github.com/mikrojs/mikrojs/tree/main/examples/sntp)
+[View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/sntp)

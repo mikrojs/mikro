@@ -64,7 +64,7 @@ export function runPhase(input: unknown) {
   return {ok: true}
 }
 // @filename: app.ts
-import {withUnload} from 'mikrojs/module'
+import {withUnload} from 'mikro/module'
 declare const input: unknown
 // ---cut---
 const status = await withUnload(import('./phases/modem.js'), (modem) => modem.runPhase(input))
@@ -81,7 +81,7 @@ A few things to keep in mind:
 - **Non-standard module behavior.** Standard JavaScript modules evaluate once and stay loaded for the life of the program; nothing in the language unloads them. `withUnload()` evicts the module from the loader cache, so a later `import` re-evaluates it from scratch. Avoid it on modules that run one-time setup or hold singleton state assuming a single evaluation.
 - **Don't return the module's exports from the callback.** Whatever the callback returns outlives the module, so returning one of its functions (or an object holding one) keeps the whole phase alive and frees little or nothing. Return plain values (numbers, strings, simple objects), or nothing.
 - **A module stays loaded if something else still imports it.** Only modules whose last importer was the disposed phase are unloaded; a shared module that another live part of your app imports is left intact.
-- **Built-in modules can't be unloaded.** If the import resolves to a `mikrojs/*` or `native:*` module, `withUnload()` throws.
+- **Built-in modules can't be unloaded.** If the import resolves to a `mikro/*` or `native:*` module, `withUnload()` throws.
 - **It pays off for large phases.** Unloading one or two small modules barely helps; the win comes when a phase loads a big tree of code you're done with.
 
 If none of this applies, just use normal dynamic imports. The runtime frees values on its own as they go out of scope. `withUnload()` is for memory-tight apps that work in phases.
@@ -91,7 +91,7 @@ If none of this applies, just use normal dynamic imports. The runtime frees valu
 The runtime reserves part of the heap for native subsystems (WiFi, TLS, drivers). You can tune this in `mikro.config.ts`:
 
 ```ts twoslash
-import {defineConfig} from 'mikrojs'
+import {defineConfig} from 'mikro'
 
 export default defineConfig({
   memReserved: 16 * 1024,
@@ -109,7 +109,7 @@ If JavaScript runs out of memory, you get an `InternalError`. It's catchable, bu
 If you're hitting out-of-memory crashes, use [`memoryUsage()`](/api/sys#memoryusage) to narrow it down:
 
 ```ts twoslash
-import {memoryUsage} from 'mikrojs/sys'
+import {memoryUsage} from 'mikro/sys'
 // ---cut---
 function memCheckpoint(label: string): void {
   const m = memoryUsage()
@@ -133,9 +133,9 @@ Once you've found the hot spot, the fix is usually one of:
 Deep sleep drops power draw from ~80-160mA to ~10-20µA. The tradeoff: the CPU resets on wake, so your program starts from scratch.
 
 ```ts twoslash
-import {deepSleep} from 'mikrojs/sleep'
-import {rtcStorage} from 'mikrojs/kv/rtc'
-import * as s from 'mikrojs/schema'
+import {deepSleep} from 'mikro/sleep'
+import {rtcStorage} from 'mikro/kv/rtc'
+import * as s from 'mikro/schema'
 
 const readings = rtcStorage.createValue('readings', {
   schema: s.optional(s.number()),
@@ -171,7 +171,7 @@ On a server, an unhandled exception crashes the process and a supervisor restart
 This is why Mikro.js uses [typed Results](/error-handling) instead of exceptions. Every failure is visible in the type signature.
 
 ```ts twoslash
-import {wifi} from 'mikrojs/wifi'
+import {wifi} from 'mikro/wifi'
 declare const ssid: string
 declare const passphrase: string
 // ---cut---
@@ -199,12 +199,12 @@ my-project/
   package.json
 ```
 
-Each stub is a module that exports a class implementing the builtin's interface (`SimWifi`, `SimPin`, `SimI2c`, etc. from `mikrojs/sim`), replacing the native module in the simulator. The scaffolded stub implements every method with a sensible default; edit the bodies you care about:
+Each stub is a module that exports a class implementing the builtin's interface (`SimWifi`, `SimPin`, `SimI2c`, etc. from `mikro/sim`), replacing the native module in the simulator. The scaffolded stub implements every method with a sensible default; edit the bodies you care about:
 
 ```ts twoslash
 // sim/pin.stub.ts
-import {ok} from 'mikrojs/result'
-import type {SimPin} from 'mikrojs/sim'
+import {ok} from 'mikro/result'
+import type {SimPin} from 'mikro/sim'
 
 export class Pin implements SimPin {
   pinMode(pin: number, mode: number) {

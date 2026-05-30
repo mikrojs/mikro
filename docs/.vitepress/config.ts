@@ -31,7 +31,7 @@ export default defineConfig({
       transformerTwoslash({
         twoslashOptions: {
           compilerOptions: {
-            // Resolve mikrojs package exports via the "development" condition
+            // Resolve mikro package exports via the "development" condition
             // so Twoslash finds the .ts source files instead of missing .js dist files
             customConditions: ['development'],
           },
@@ -162,11 +162,11 @@ export default defineConfig({
 
     socialLinks: [
       {icon: 'bluesky', link: 'https://bsky.app/profile/mikrojs.dev'},
-      {icon: 'github', link: 'https://github.com/mikrojs/mikrojs'},
+      {icon: 'github', link: 'https://github.com/mikrojs/mikro'},
     ],
 
     editLink: {
-      pattern: 'https://github.com/mikrojs/mikrojs/edit/main/docs/:path',
+      pattern: 'https://github.com/mikrojs/mikro/edit/main/docs/:path',
     },
 
     search: {provider: 'local'},

@@ -20,8 +20,8 @@
 // or 'timer'.
 //
 // Run with: pnpm mikro dev app/deep-ext0.ts
-import {canWakeFromExt0, deepSleep, sleep} from 'mikrojs/sleep'
-import {board, getWakeupCause} from 'mikrojs/sys'
+import {canWakeFromExt0, deepSleep, sleep} from 'mikro/sleep'
+import {board, getWakeupCause} from 'mikro/sys'
 
 import {blinkLed} from './led.js'
 

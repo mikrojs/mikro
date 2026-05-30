@@ -1,4 +1,4 @@
-import {defineConfig} from 'mikrojs'
+import {defineConfig} from 'mikro'
 
 // Combined with the deliberate throw in app/main.ts, the short panic-restart
 // grace window puts the device into a tight crash loop where a normal

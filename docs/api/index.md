@@ -8,9 +8,9 @@ description: Mikro.js module API reference
 Mikro.js provides hardware and system APIs as ES modules. Import them by name:
 
 ```ts twoslash
-import {pinMode, digitalWrite} from 'mikrojs/pin'
-import {wifi} from 'mikrojs/wifi'
-import {request} from 'mikrojs/http/request'
+import {pinMode, digitalWrite} from 'mikro/pin'
+import {wifi} from 'mikro/wifi'
+import {request} from 'mikro/http/request'
 ```
 
 ## Conventions

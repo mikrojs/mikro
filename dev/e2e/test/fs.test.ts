@@ -9,9 +9,9 @@ import {
   stat,
   unlink,
   writeFile,
-} from 'mikrojs/fs'
-import {decodeUtf8, splitLines} from 'mikrojs/stream'
-import {afterEach, assert, describe, test} from 'mikrojs/test'
+} from 'mikro/fs'
+import {decodeUtf8, splitLines} from 'mikro/stream'
+import {afterEach, assert, describe, test} from 'mikro/test'
 
 // All test paths live under /e2e-fs/ so cleanup is a single recursive walk
 // and stray files from a crashed run don't leak into the next suite.

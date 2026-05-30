@@ -7,7 +7,7 @@
 #   mikrojs_generate_bytecode(
 #       RUNTIME_DIR <path>         # Directory containing <mod>/<mod>.ts files
 #       MODULES <mod1> <mod2>      # Module names to compile
-#       MODULE_PREFIX <prefix>     # Module name prefix (e.g. "mikrojs" -> "mikrojs/pin")
+#       MODULE_PREFIX <prefix>     # Module name prefix (e.g. "mikro" -> "mikro/pin")
 #       SYMBOL_PREFIX <prefix>     # C symbol prefix (e.g. "mikrojs" -> "mikrojs_pin_bytecode")
 #       TARGET <name>              # Custom target name (default: gen_bytecode)
 #       WORKING_DIRECTORY <dir>    # Working dir for esbuild (default: CMAKE_CURRENT_SOURCE_DIR)

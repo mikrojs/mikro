@@ -36,7 +36,7 @@ mikrojs runs JavaScript on ESP32 microcontrollers using QuickJS-NG. The runtime 
 mikrojs uses typed Result values instead of exceptions for expected errors. Every hardware API returns `Result<T, E>` where you check `.ok` before accessing `.value`.
 
 ```typescript
-import {pinMode, digitalWrite} from 'mikrojs/pin'
+import {pinMode, digitalWrite} from 'mikro/pin'
 
 // Check the result
 const result = pinMode(4, 'OUTPUT')
@@ -68,7 +68,7 @@ Exceptions (`throw`) are for programmer errors. Result is for expected failures.
 ### Know your budget
 
 ```typescript
-import {memoryUsage, gc} from 'mikrojs/sys'
+import {memoryUsage, gc} from 'mikro/sys'
 
 const mem = memoryUsage()
 const freeKB = (mem.heapTotal - mem.heapUsed) / 1024
@@ -133,7 +133,7 @@ if (mem.heapTotal - mem.heapUsed < 20_000) gc()
 The event loop is single-threaded and cooperative. Long synchronous work blocks everything: WiFi, timers, REPL, and deploy protocol.
 
 ```typescript
-import {sleep} from 'mikrojs/sleep'
+import {sleep} from 'mikro/sleep'
 
 // BAD: blocks the event loop for seconds
 for (let i = 0; i < 1_000_000; i++) {
@@ -154,8 +154,8 @@ for (let i = 0; i < 1_000_000; i++) {
 ### Connect once, stay connected
 
 ```typescript
-import {wifi} from 'mikrojs/wifi'
-import {request} from 'mikrojs/http/request'
+import {wifi} from 'mikro/wifi'
+import {request} from 'mikro/http/request'
 
 // WiFi uses 40-65 KB of heap. Connecting/disconnecting repeatedly wastes memory.
 const conn = await wifi.connect(import.meta.env.WIFI_SSID, import.meta.env.WIFI_PASS)
@@ -207,10 +207,10 @@ Variable names are limited to 15 characters (NVS storage constraint on ESP32).
 ## Deep sleep for battery-powered projects
 
 ```typescript
-import {deepSleep} from 'mikrojs/sleep'
-import {getWakeupCause} from 'mikrojs/sys'
-import {rtcStorage} from 'mikrojs/kv'
-import * as s from 'mikrojs/schema'
+import {deepSleep} from 'mikro/sleep'
+import {getWakeupCause} from 'mikro/sys'
+import {rtcStorage} from 'mikro/kv'
+import * as s from 'mikro/schema'
 
 // RTC memory survives deep sleep (but not power loss)
 const bootCount = rtcStorage.createValue('boots', {schema: s.number()})
@@ -284,7 +284,7 @@ display.fillRect(0, 0, 360, 360, 0xf800)
 const res = await fetch(url)
 
 // RIGHT:
-import {request} from 'mikrojs/http/request'
+import {request} from 'mikro/http/request'
 const res = await request(url)
 ```
 
@@ -304,7 +304,7 @@ if (!result.ok) { ... }
 ### Blocking the event loop
 
 ```typescript
-import {sleep} from 'mikrojs/sleep'
+import {sleep} from 'mikro/sleep'
 
 // WRONG: while(true) without await
 while (true) {
@@ -321,7 +321,7 @@ while (true) {
 ### Allocating in hot loops
 
 ```typescript
-import {sleep} from 'mikrojs/sleep'
+import {sleep} from 'mikro/sleep'
 
 // WRONG: creates a new Uint8Array every iteration
 while (true) {

@@ -15,7 +15,7 @@ hero:
       link: /getting-started
     - theme: alt
       text: View on GitHub
-      link: https://github.com/mikrojs/mikrojs
+      link: https://github.com/mikrojs/mikro
 
 features:
   - title: Fast feedback loop
@@ -40,8 +40,8 @@ Blinky: the "Hello, World!" of tiny devices.
 <template #code>
 
 ```ts twoslash
-import {digitalWrite, pinMode} from 'mikrojs/pin'
-import {sleep} from 'mikrojs/sleep'
+import {digitalWrite, pinMode} from 'mikro/pin'
+import {sleep} from 'mikro/sleep'
 
 // Replace with your board's LED GPIO pin if different
 const LED_PIN = 15

@@ -1,4 +1,4 @@
-import {ok} from 'mikrojs/result'
+import {ok} from 'mikro/result'
 import {Pwm as NativePwm} from 'native:pwm'
 
 import type {Result} from '../result/types.js'

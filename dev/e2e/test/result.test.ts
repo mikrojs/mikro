@@ -1,5 +1,5 @@
-import {err, matchError, ok} from 'mikrojs/result'
-import {assert, describe, test} from 'mikrojs/test'
+import {err, matchError, ok} from 'mikro/result'
+import {assert, describe, test} from 'mikro/test'
 
 describe('result', () => {
   test('ok wraps value', () => {

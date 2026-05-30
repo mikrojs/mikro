@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 // Simulator stub for wifi
 // Runs inside the mikrojs runtime (QuickJS), not Node.js. Node built-ins are not available.
-import type {SimWifi} from 'mikrojs/sim'
+import type {SimWifi} from 'mikro/sim'
 
 let connected = false
 let currentIp = '0.0.0.0'

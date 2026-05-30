@@ -8,15 +8,15 @@
     "imports",
     "mikrojs"
   ],
-  "homepage": "https://github.com/mikrojs/mikrojs#readme",
+  "homepage": "https://github.com/mikrojs/mikro#readme",
   "bugs": {
-    "url": "https://github.com/mikrojs/mikrojs/issues"
+    "url": "https://github.com/mikrojs/mikro/issues"
   },
   "license": "MIT",
   "author": "Bjørge Næss <bjoerge@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mikrojs/mikrojs.git"
+    "url": "git+https://github.com/mikrojs/mikro.git"
   },
   "files": [
     "dist"

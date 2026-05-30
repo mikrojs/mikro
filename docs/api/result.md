@@ -6,8 +6,8 @@ description: Result type for typed error handling
 # result
 
 ```ts twoslash
-import {ok, err, matchError} from 'mikrojs/result'
-import type {Result, OkResult, ErrResult} from 'mikrojs/result'
+import {ok, err, matchError} from 'mikro/result'
+import type {Result, OkResult, ErrResult} from 'mikro/result'
 ```
 
 The `Result` type is how Mikro.js represents operations that can fail. Instead of throwing exceptions, functions return `Result<T, E>` where `T` is the success value and `E` is a typed error.
@@ -26,7 +26,7 @@ function ok<T>(value: T): OkResult<T>
 ```
 
 ```ts twoslash
-import {ok} from 'mikrojs/result'
+import {ok} from 'mikro/result'
 // ---cut---
 const result = ok(42)
 result.ok // true
@@ -42,7 +42,7 @@ function err<E>(error: E): ErrResult<E>
 ```
 
 ```ts twoslash
-import {err} from 'mikrojs/result'
+import {err} from 'mikro/result'
 // ---cut---
 const result = err({name: 'NotFound' as const})
 result.ok // false
@@ -63,7 +63,7 @@ function matchError<E extends {name: string}, R>(
 ```ts twoslash
 type SensorError = {name: 'ReadFailed'; message: string} | {name: 'NotConnected'}
 // ---cut---
-import {matchError} from 'mikrojs/result'
+import {matchError} from 'mikro/result'
 
 declare const e: SensorError
 const summary = matchError(e, {
@@ -99,7 +99,7 @@ Both `OkResult` and `ErrResult` share the same method interface. The behavior de
 
 ```ts twoslash
 // @noErrors
-import {pinMode} from 'mikrojs/pin'
+import {pinMode} from 'mikro/pin'
 // ---cut---
 const result = pinMode(20, 'OUTPUT')
 if (!result.ok) {
@@ -119,7 +119,7 @@ if (!result.ok) {
 Transforms the success value, leaving errors untouched.
 
 ```ts twoslash
-import {ok, err} from 'mikrojs/result'
+import {ok, err} from 'mikro/result'
 // ---cut---
 const doubled = ok(21).map((v) => v * 2) // OkResult<number>, value: 42
 const failed = err('oops').map((v) => v * 2) // ErrResult<string>, unchanged
@@ -130,7 +130,7 @@ const failed = err('oops').map((v) => v * 2) // ErrResult<string>, unchanged
 Transforms the error value, leaving successes untouched.
 
 ```ts twoslash
-import {err} from 'mikrojs/result'
+import {err} from 'mikro/result'
 // ---cut---
 const result = err('oops').mapErr((e) => ({message: e}))
 // ErrResult<{message: string}>
@@ -141,8 +141,8 @@ const result = err('oops').mapErr((e) => ({message: e}))
 Chains a function that itself returns a `Result`. Useful for sequencing operations that can each fail.
 
 ```ts twoslash
-import {ok} from 'mikrojs/result'
-import {pinMode} from 'mikrojs/pin'
+import {ok} from 'mikro/result'
+import {pinMode} from 'mikro/pin'
 // ---cut---
 const result = ok(20)
   .andThen((pin) => pinMode(pin, 'OUTPUT'))
@@ -154,7 +154,7 @@ const result = ok(20)
 Exhaustive pattern matching on the result.
 
 ```ts twoslash
-import {pinMode} from 'mikrojs/pin'
+import {pinMode} from 'mikro/pin'
 const result = pinMode(20, 'OUTPUT')
 // ---cut---
 const message = result.match({
@@ -168,7 +168,7 @@ const message = result.match({
 Returns the value if Ok, or crashes the program with the given message if Err. The error is included as the `cause`.
 
 ```ts twoslash
-import {pinMode} from 'mikrojs/pin'
+import {pinMode} from 'mikro/pin'
 // ---cut---
 const value = pinMode(20, 'OUTPUT').orPanic('Failed to set pin mode')
 ```

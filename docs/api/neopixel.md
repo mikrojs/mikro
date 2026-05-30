@@ -6,7 +6,7 @@ description: WS2812 and SK6812 addressable LED control
 # neopixel
 
 ```ts twoslash
-import {NeoPixel} from 'mikrojs/neopixel'
+import {NeoPixel} from 'mikro/neopixel'
 ```
 
 Drive WS2812 (RGB) and SK6812 (RGBW) addressable LEDs.
@@ -14,7 +14,7 @@ Drive WS2812 (RGB) and SK6812 (RGBW) addressable LEDs.
 ## Usage
 
 ```ts twoslash
-import {NeoPixel} from 'mikrojs/neopixel'
+import {NeoPixel} from 'mikro/neopixel'
 
 const pixels = new NeoPixel(8, {count: 24})
 
