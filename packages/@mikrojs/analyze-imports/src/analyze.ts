@@ -35,7 +35,7 @@ export default async function analyze(
 
   try {
     ast = Parser.parse(code, {
-      ecmaVersion: 2025,
+      ecmaVersion: 2026,
       sourceType: 'module',
       allowAwaitOutsideFunction: true,
     }) as unknown as Node
