@@ -41,7 +41,6 @@ catalogs:
 
 ignoreWorkspaceRootCheck: true
 
-# Note: keep in sync with maturityPeriod in taze.config.ts
 minimumReleaseAge: 1440 # minutes
 
 trustPolicy: no-downgrade
