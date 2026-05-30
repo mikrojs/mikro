@@ -6,12 +6,10 @@ if (process.env.MIKROJS_WORKSPACE === '1') {
   // Pass node flags via NODE_OPTIONS instead of CLI args so any node subprocess
   // we spawn later (notably simProcess via createSimTransport) inherits tsx
   // loading without each spawn site having to special-case workspace mode.
-  const nodeOptions = [
-    process.env.NODE_OPTIONS ?? '',
-    '--no-warnings=ExperimentalWarning',
-    '--conditions=development',
-    '--import=tsx',
-  ]
+  // The stripTypeScriptTypes ExperimentalWarning is handled precisely by
+  // suppressStripTypesWarning.ts (imported in cli.ts and simProcess.ts), so we
+  // don't blanket-disable ExperimentalWarning here and keep other ones visible.
+  const nodeOptions = [process.env.NODE_OPTIONS ?? '', '--conditions=development', '--import=tsx']
     .filter(Boolean)
     .join(' ')
   spawn(

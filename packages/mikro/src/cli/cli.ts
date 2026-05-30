@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// Side-effect import: must run before any code path that strips .ts types.
+import '../suppressStripTypesWarning.js'
+
 import {run} from '@optique/run'
 import {render} from 'ink'
 import {type ComponentType, createElement} from 'react'
