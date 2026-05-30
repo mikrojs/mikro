@@ -1,0 +1,43 @@
+{
+  "name": "create-mikrojs",
+  "version": "0.9.0",
+  "description": "Create a new Mikro.js project (alias for create-mikro)",
+  "keywords": [
+    "esp32",
+    "javascript",
+    "microcontroller",
+    "mikrojs",
+    "quickjs",
+    "typescript"
+  ],
+  "homepage": "https://github.com/mikrojs/mikro#readme",
+  "bugs": {
+    "url": "https://github.com/mikrojs/mikro/issues"
+  },
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikrojs/mikro.git"
+  },
+  "bin": {
+    "create-mikrojs": "bin/create-mikrojs.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "publint": "publint"
+  },
+  "dependencies": {
+    "create-mikro": "workspace:*"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
