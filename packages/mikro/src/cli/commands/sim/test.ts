@@ -16,6 +16,8 @@ import type {TestEvent} from '../../lib/session.js'
 import {SimAlreadyRunningError} from '../../lib/simPid.js'
 import {
   discoverTestFiles,
+  formatBytes,
+  formatMemorySummary,
   runTestManifest,
   type TestFileResult,
   type TestRunOptions,
@@ -184,6 +186,8 @@ export async function run(config: RunConfig): Promise<void> {
             todo: result.todo,
             duration: result.duration,
             ...(typeof result.heapDelta === 'number' ? {heapDelta: result.heapDelta} : {}),
+            ...(typeof result.sysUsed === 'number' ? {sysUsed: result.sysUsed} : {}),
+            ...(typeof result.sysMinFree === 'number' ? {sysMinFree: result.sysMinFree} : {}),
             ...(typeof result.timerDelta === 'number' ? {timerDelta: result.timerDelta} : {}),
             ...(typeof result.pendingDelta === 'number' ? {pendingDelta: result.pendingDelta} : {}),
             ...(result.chip ? {chip: result.chip} : {}),
@@ -242,6 +246,8 @@ export async function run(config: RunConfig): Promise<void> {
         duration: r.duration,
         error: r.error,
         heapDelta: r.heapDelta,
+        sysUsed: r.sysUsed,
+        sysMinFree: r.sysMinFree,
         timerDelta: r.timerDelta,
         pendingDelta: r.pendingDelta,
         chip: r.chip,
@@ -345,23 +351,13 @@ function renderFileSummary(result: TestFileResult): void {
   if (result.failed > 0) parts.push(red(`${result.failed} failed`))
   if (result.skipped > 0) parts.push(yellow(`${result.skipped} skipped`))
   if (result.todo > 0) parts.push(blue(`${result.todo} todo`))
-  console.error(`  ${parts.join(', ')} ${dim(`(${result.duration}ms)`)}`)
+  const meta = [`${result.duration}ms`, ...formatMemorySummary(result)]
+  console.error(`  ${parts.join(', ')} ${dim(`(${meta.join(', ')})`)}`)
 }
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(1)}s`
-}
-
-function formatBytes(n: number): string {
-  const abs = Math.abs(n)
-  if (abs < 1024) return `${n}B`
-  const kb = n / 1024
-  if (abs < 1024 * 1024) {
-    return Number.isInteger(kb) ? `${kb}KB` : `${kb.toFixed(1)}KB`
-  }
-  const mb = n / (1024 * 1024)
-  return Number.isInteger(mb) ? `${mb}MB` : `${mb.toFixed(1)}MB`
 }
 
 function renderAlertSummary(results: TestFileResult[], cwd: string): void {

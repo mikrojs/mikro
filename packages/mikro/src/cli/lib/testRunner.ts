@@ -59,8 +59,19 @@ export interface TestFileResult {
   duration: number
   events: TestEvent[]
   error?: string
-  /** heapUsed delta (bytes) between run start and end, after gc on both sides */
+  /** heapUsed delta (bytes) between run start and end, after gc on both
+   *  sides. Relative to the (post-beforeAll) baseline; drives heap-baseline
+   *  regression tracking. Surfaced as the "retained" figure (the only memory
+   *  signal on the host sim, which has no system heap). */
   heapDelta?: number
+  /** Memory the suite used (bytes): how far free system heap fell from the
+   *  baseline to its sampled low-water. Device-only. */
+  sysUsed?: number
+  /** Lowest free system heap (bytes) sampled during the run: the suite's
+   *  closest sampled approach to OOM. `sysUsed + sysMinFree ≈ baseline free`.
+   *  Per-file (the device runs each file in a fresh runtime). Device-only
+   *  (absent on the host sim). */
+  sysMinFree?: number
   /** Net timer count change between run start and end (should be 0) */
   timerDelta?: number
   /** Net in-flight HTTP request count change (should be 0). Detects fetches
@@ -240,6 +251,46 @@ function applyHeapBaseline(result: TestFileResult, chip: string, update: boolean
   // future regression. Margin: max(512B, 25% of stored).
   const margin = Math.max(512, Math.floor(stored * 0.25))
   result.heapBaselineAction = result.heapDelta < stored - margin ? 'stale' : 'ok'
+}
+
+/** Format a byte count for human-readable test output. */
+export function formatBytes(n: number): string {
+  const abs = Math.abs(n)
+  if (abs < 1024) return `${n}B`
+  const kb = n / 1024
+  if (abs < 1024 * 1024) {
+    return Number.isInteger(kb) ? `${kb}KB` : `${kb.toFixed(1)}KB`
+  }
+  const mb = n / (1024 * 1024)
+  return Number.isInteger(mb) ? `${mb}MB` : `${mb.toFixed(1)}MB`
+}
+
+/**
+ * Memory portion of a file-summary line. Two distinct signals, labelled so the
+ * number's meaning is on the label:
+ *
+ *   peak:     device only (system heap). How far free system heap dipped below
+ *             the baseline at its sampled low (sysUsed), paired with that
+ *             low-water (min free). A high-water mark: "the most this suite
+ *             needed at once," including transient TLS/wifi buffers. Always >= 0.
+ *   retained: both (JS heap). End-of-run heap minus baseline (heapDelta): bytes
+ *             the suite still holds above baseline, i.e. what it didn't release.
+ *             ~0 is good. Can be slightly negative when the run ends lighter than
+ *             baseline (a reference cycle collected since baseline); read that as
+ *             "clean," not "negative usage."
+ */
+export function formatMemorySummary(result: TestFileResult): string[] {
+  const parts: string[] = []
+  if (typeof result.sysUsed === 'number') {
+    parts.push(`peak ${formatBytes(result.sysUsed)}`)
+    if (typeof result.sysMinFree === 'number') {
+      parts.push(`min free ${formatBytes(result.sysMinFree)}`)
+    }
+  }
+  if (typeof result.heapDelta === 'number') {
+    parts.push(`retained ${formatBytes(result.heapDelta)}`)
+  }
+  return parts
 }
 
 function emptyResult(file: string): TestFileResult {
@@ -516,6 +567,8 @@ export async function collectManifestEvents(
       if (typeof d.hb === 'number' && typeof d.ha === 'number') {
         result.heapDelta = (d.ha as number) - (d.hb as number)
       }
+      if (typeof d.su === 'number') result.sysUsed = d.su as number
+      if (typeof d.sf === 'number') result.sysMinFree = d.sf as number
       if (typeof d.tb === 'number' && typeof d.ta === 'number') {
         result.timerDelta = (d.ta as number) - (d.tb as number)
       }
