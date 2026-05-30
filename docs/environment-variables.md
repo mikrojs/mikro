@@ -108,7 +108,7 @@ Files are loaded in the order below and **merged per key**: a variable set in a 
 Auto-discovered files (1 and 2) are silently skipped if missing. An explicit `--env-file` errors if the file doesn't exist. `--no-auto-env` removes steps 1 and 2, leaving only `--env-file` if given.
 
 ::: warning .env files should never be committed
-The `create-mikrojs` scaffold gitignores `.env*`. Commit `.env.example` instead to share the shape of the variables your project expects.
+The `create-mikro` scaffold gitignores `.env*`. Commit `.env.example` instead to share the shape of the variables your project expects.
 :::
 
 #### Variable name limit

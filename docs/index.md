@@ -67,28 +67,28 @@ Get it running:
 ::: code-group
 
 ```sh [npm]
-npm create mikrojs -- my-blinky --template blinky
+npm create mikro -- --template blinky
 cd my-blinky
 npm install
 npx mikro dev
 ```
 
 ```sh [pnpm]
-pnpm create mikrojs my-blinky --template blinky
+pnpm create mikro --template blinky
 cd my-blinky
 pnpm install
 pnpm mikro dev
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-blinky --template blinky
+yarn create mikro --template blinky
 cd my-blinky
 yarn install
 yarn mikro dev
 ```
 
 ```sh [bun]
-bun create mikrojs my-blinky --template blinky
+bun create mikro --template blinky
 cd my-blinky
 bun install
 bunx mikro dev

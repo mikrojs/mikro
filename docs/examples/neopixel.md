@@ -74,19 +74,19 @@ All methods that can fail return a [`Result`](/api/result), so you can use `.orP
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-neopixel --template neopixel
+pnpm create mikro --template neopixel
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-neopixel --template neopixel
+npm create mikro -- --template neopixel
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-neopixel --template neopixel
+yarn create mikro --template neopixel
 ```
 
 ```sh [bun]
-bun create mikrojs my-neopixel --template neopixel
+bun create mikro --template neopixel
 ```
 
 :::

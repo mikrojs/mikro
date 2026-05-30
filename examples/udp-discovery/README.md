@@ -3,7 +3,7 @@
 Periodically broadcasts a "hello" datagram to a multicast group and listens for the same from peers. Deploy to two or more boards on the same WiFi network and watch them find each other.
 
 ```sh
-npm create mikrojs my-discovery --template udp-discovery
+npm create mikro -- --template udp-discovery
 ```
 
 ## Environment variables

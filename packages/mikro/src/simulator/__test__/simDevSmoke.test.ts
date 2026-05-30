@@ -14,7 +14,7 @@
  * because spinning up a real subprocess + esbuild + bytecode pipeline is
  * heavier than other unit tests in this suite.
  *
- * Locally:  SIM_SMOKE=1 pnpm --filter mikrojs exec vitest run simDevSmoke
+ * Locally:  SIM_SMOKE=1 pnpm --filter mikro exec vitest run simDevSmoke
  */
 import {type ChildProcess, spawn} from 'node:child_process'
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs'

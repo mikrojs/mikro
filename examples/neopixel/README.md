@@ -3,7 +3,7 @@
 Cycles through animation patterns on a WS2812 (NeoPixel) LED ring/strip: rainbow, comet, breathe, sparkle, color wipe.
 
 ```sh
-npm create mikrojs my-neopixel --template neopixel
+npm create mikro -- --template neopixel
 ```
 
 ## Hardware

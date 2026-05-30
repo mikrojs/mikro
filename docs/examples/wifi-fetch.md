@@ -101,19 +101,19 @@ console.log('free heap: %dKB', (mem.heapTotal - mem.heapUsed) / 1000)
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-wifi-fetch --template wifi-fetch
+pnpm create mikro --template wifi-fetch
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-wifi-fetch --template wifi-fetch
+npm create mikro -- --template wifi-fetch
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-wifi-fetch --template wifi-fetch
+yarn create mikro --template wifi-fetch
 ```
 
 ```sh [bun]
-bun create mikrojs my-wifi-fetch --template wifi-fetch
+bun create mikro --template wifi-fetch
 ```
 
 :::

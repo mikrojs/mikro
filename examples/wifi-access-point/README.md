@@ -3,7 +3,7 @@
 Turns the ESP32 into a WiFi access point. Logs station connect/disconnect events and periodically lists connected clients.
 
 ```sh
-npm create mikrojs my-wifi-ap --template wifi-access-point
+npm create mikro -- --template wifi-access-point
 ```
 
 After deploying, a network appears:

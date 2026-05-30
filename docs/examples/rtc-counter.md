@@ -52,19 +52,19 @@ deepSleep({timer: 15_000})
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-rtc-counter --template rtc-counter
+pnpm create mikro --template rtc-counter
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-rtc-counter --template rtc-counter
+npm create mikro -- --template rtc-counter
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-rtc-counter --template rtc-counter
+yarn create mikro --template rtc-counter
 ```
 
 ```sh [bun]
-bun create mikrojs my-rtc-counter --template rtc-counter
+bun create mikro --template rtc-counter
 ```
 
 :::

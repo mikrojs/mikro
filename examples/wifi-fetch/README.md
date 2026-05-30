@@ -3,7 +3,7 @@
 Connects to WiFi and fetches JSON from an HTTP API.
 
 ```sh
-npm create mikrojs my-wifi-fetch --template wifi-fetch
+npm create mikro -- --template wifi-fetch
 ```
 
 ## Environment variables

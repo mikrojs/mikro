@@ -49,19 +49,19 @@ if (result.ok) {
 ::: code-group
 
 ```sh [pnpm]
-pnpm create mikrojs my-schema --template schema
+pnpm create mikro --template schema
 ```
 
 ```sh [npm]
-npm create mikrojs -- my-schema --template schema
+npm create mikro -- --template schema
 ```
 
 ```sh [yarn]
-yarn create mikrojs my-schema --template schema
+yarn create mikro --template schema
 ```
 
 ```sh [bun]
-bun create mikrojs my-schema --template schema
+bun create mikro --template schema
 ```
 
 :::

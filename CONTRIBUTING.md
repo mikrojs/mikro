@@ -39,7 +39,7 @@ pnpm fmt                        # Format with oxfmt
 pnpm fmt:check                  # Check formatting
 pnpm precommit                  # Runs lint + fmt:check
 pnpm knip                       # Check for unused code/exports
-pnpm --filter mikrojs build     # Build the mikrojs CLI package
+pnpm --filter mikro build:ts    # Build the mikro CLI package
 pnpm vitest                     # Run JS/TS tests
 ```
 
@@ -101,10 +101,10 @@ Integration tests that exercise the unified TLV serial protocol against a real d
 
 ```sh
 # Auto-detect serial port
-pnpm --filter mikrojs test:device
+pnpm --filter mikro test:device
 
 # Or specify the port explicitly
-DEVICE_PORT=/dev/tty.usbmodem1101 pnpm --filter mikrojs test:device
+DEVICE_PORT=/dev/tty.usbmodem1101 pnpm --filter mikro test:device
 ```
 
 The tests deploy a minimal test app, then exercise eval, console output (log/warn/error), directives, tab completion, deploy (single file, large file, incremental, env vars), config CRUD, unicode handling, and restart/reconnect.

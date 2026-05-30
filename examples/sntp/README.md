@@ -3,7 +3,7 @@
 Connects to WiFi and syncs the device clock via NTP so `new Date()` returns real wall-clock time.
 
 ```sh
-npm create mikrojs my-sntp --template sntp
+npm create mikro -- --template sntp
 ```
 
 ## Environment variables

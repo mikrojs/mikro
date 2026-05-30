@@ -3,7 +3,7 @@
 Fades an LED in and out using PWM. The "breathing" effect.
 
 ```sh
-npm create mikrojs my-pwm-led --template pwm-led
+npm create mikro -- --template pwm-led
 ```
 
 ## Hardware

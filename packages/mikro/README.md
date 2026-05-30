@@ -12,9 +12,9 @@
 
 <div align="center">
 
-[![Open on npmx.dev](https://npmx.dev/api/registry/badge/name/mikrojs)](https://npmx.dev/package/mikrojs)
-[![Open on npmx.dev](https://npmx.dev/api/registry/badge/version/mikrojs)](https://npmx.dev/package/mikrojs)
-[![Open on npmx.dev](https://npmx.dev/api/registry/badge/updated/mikrojs)](https://npmx.dev/package/mikrojs)
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/name/mikro)](https://npmx.dev/package/mikro)
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/version/mikro)](https://npmx.dev/package/mikro)
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/updated/mikro)](https://npmx.dev/package/mikro)
 
 </div>
 
@@ -33,7 +33,7 @@
 ## Quickstart
 
 ```sh
-npm create mikrojs my-app
+npm create mikro
 cd my-app
 npm install
 npx mikro flash   # once per board
