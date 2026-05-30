@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.9.0 (2026-05-30)
+
+### Breaking changes
+
+- **native:** replace import.meta.unload with withDisposableModule() ([#164](https://github.com/mikrojs/mikrojs/pull/164))
+- **cli:** rename env flags to --env-file/--no-auto-env ([#157](https://github.com/mikrojs/mikrojs/pull/157))
+- **native:** support deep-sleep on panic ([#155](https://github.com/mikrojs/mikrojs/pull/155))
+
+### Features
+
+- **mikrojs:** export shared tsconfig base as mikrojs/tsconfig ([#169](https://github.com/mikrojs/mikrojs/pull/169))
+- **eslint-plugin:** add no-bigint rule for the runtime's missing intrinsic ([#165](https://github.com/mikrojs/mikrojs/pull/165))
+- **analyze-imports:** bump ecmaVersion from 2025 to 2026 in parser config ([#162](https://github.com/mikrojs/mikrojs/pull/162))
+- **cli:** support per-environment overrides in mikro.config.ts ([#158](https://github.com/mikrojs/mikrojs/pull/158))
+
+### Bug fixes
+
+- **native:** make atob/btoa spec-compliant ([#142](https://github.com/mikrojs/mikrojs/pull/142))
+
+### Other
+
+- **docs:** fix typing in withUnload twoslash example ([#168](https://github.com/mikrojs/mikrojs/pull/168))
+- **native:** cover withUnload unload-on-throw path ([#167](https://github.com/mikrojs/mikrojs/pull/167))
+- **e2e:** switch from httpbin to httpbingo ([#166](https://github.com/mikrojs/mikrojs/pull/166))
+- remove redundant maturity period configuration and sync notes ([#163](https://github.com/mikrojs/mikrojs/pull/163))
+- **deps:** update dependency taze to v19.14.1 ([#161](https://github.com/mikrojs/mikrojs/pull/161))
+- **deps:** update dependency lefthook to v2.1.9 ([#160](https://github.com/mikrojs/mikrojs/pull/160))
+- **deps:** update pnpm to v11.5.0 ([#156](https://github.com/mikrojs/mikrojs/pull/156))
+- **deps:** update pnpm to v11.4.0 ([#151](https://github.com/mikrojs/mikrojs/pull/151))
+- **deps:** update dependency terser to v5.48.0 ([#149](https://github.com/mikrojs/mikrojs/pull/149))
+- **deps:** update dependency wrangler to v4.95.0 ([#150](https://github.com/mikrojs/mikrojs/pull/150))
+- **deps:** update dependency oxfmt to ^0.52.0 ([#148](https://github.com/mikrojs/mikrojs/pull/148))
+- **deps:** update dependency npm to v11.16.0 ([#147](https://github.com/mikrojs/mikrojs/pull/147))
+- **deps:** update dependency @shikijs/vitepress-twoslash to v4.1.0 ([#145](https://github.com/mikrojs/mikrojs/pull/145))
+- **deps:** update dependency unbarrelify to v1.1.2 ([#143](https://github.com/mikrojs/mikrojs/pull/143))
+- **deps:** update dependency vue to v3.5.35 ([#144](https://github.com/mikrojs/mikrojs/pull/144))
+- **deps:** update dependency tsx to v4.22.3 ([#128](https://github.com/mikrojs/mikrojs/pull/128))
+- **deps:** update dependency knip to v6.14.2 ([#140](https://github.com/mikrojs/mikrojs/pull/140))
+- **deps:** update cloudflare/wrangler-action action to v4 ([#91](https://github.com/mikrojs/mikrojs/pull/91))
+- **deps:** update dependency semver to v7.8.1 ([#66](https://github.com/mikrojs/mikrojs/pull/66))
+- **deps:** update dependency lefthook to v2.1.8 ([#141](https://github.com/mikrojs/mikrojs/pull/141))
+- **deps:** update dependency ink to v7.0.4 ([#138](https://github.com/mikrojs/mikrojs/pull/138))
+- **deps:** update dependency @types/node to v24.12.4 ([#63](https://github.com/mikrojs/mikrojs/pull/63))
+- **deps:** update dependency eslint to v10.4.0 ([#119](https://github.com/mikrojs/mikrojs/pull/119))
+- **deps:** update dependency @sveltejs/acorn-typescript to v1.0.10 ([#135](https://github.com/mikrojs/mikrojs/pull/135))
+- **deps:** update typescript-eslint monorepo to v8.60.0 ([#47](https://github.com/mikrojs/mikrojs/pull/47))
+- **deps:** update dependency eslint-plugin-package-json to v1 ([#129](https://github.com/mikrojs/mikrojs/pull/129))
+- expand abbreviations, improve clarity and consistency across guides ([#139](https://github.com/mikrojs/mikrojs/pull/139))
+- **deps:** update dependency @types/react to v19.2.15 ([#137](https://github.com/mikrojs/mikrojs/pull/137))
+- **deps:** update dependency @swc/core to v1.15.40 ([#136](https://github.com/mikrojs/mikrojs/pull/136))
+- **deps:** update zizmorcore/zizmor-action action to v0.5.6 ([#121](https://github.com/mikrojs/mikrojs/pull/121))
+- **deps:** update dependency vite to v8.0.14 ([#81](https://github.com/mikrojs/mikrojs/pull/81))
+
 ## 0.8.0 (2026-05-21)
 
 ### Breaking changes

@@ -1,6 +1,6 @@
 {
   "name": "@mikrojs/native",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Mikro.js C++ runtime library and Node.js native addon",
   "keywords": [
     "esp32",
