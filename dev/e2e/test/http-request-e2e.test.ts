@@ -103,7 +103,7 @@ describe.runIf(hasWifi && !isSim)('http request e2e', () => {
     }
   })
 
-  test('POST with JSON body round-trips through httpbin /post', async () => {
+  test('POST with JSON body round-trips through httpbingo /post', async () => {
     const result = await request('https://httpbingo.org/post', {
       method: 'POST',
       headers: {'content-type': 'application/json'},
