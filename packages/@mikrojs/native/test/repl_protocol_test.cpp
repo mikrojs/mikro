@@ -275,6 +275,36 @@ TEST_CASE("CMD_EVAL returns MSG_EVAL_ERROR for runtime error" * doctest::test_su
     proto_teardown();
 }
 
+TEST_CASE("REPL survives an eval error and keeps serving" * doctest::test_suite("repl_protocol")) {
+    proto_setup();
+
+    /* Regression: a throw at the REPL prompt is a user typo, not an app
+     * crash. The unhandled-rejection tracker must not set stop_requested
+     * (which would halt MIK_Loop, exit the serve loop, and reboot the
+     * device). After the error, a subsequent eval must still be served. */
+    std::vector<uint8_t> input;
+    append_frame(input, MIK_CMD_EVAL, "throw new Error('boom')");
+    append_frame(input, MIK_CMD_EVAL, "123");
+    append_frame(input, MIK_CMD_EXIT, nullptr);
+
+    auto frames = run_protocol(input);
+
+    auto* err = find_frame(frames, MIK_MSG_EVAL_ERROR);
+    CHECK_MESSAGE(err != nullptr, "Should receive MSG_EVAL_ERROR for the throw");
+
+    /* The eval after the error proves the serve loop survived. */
+    auto* result = find_frame(frames, MIK_MSG_RESULT);
+    CHECK_MESSAGE(result != nullptr,
+                  "Eval after an error must still be served (REPL not halted)");
+    CHECK_MESSAGE(std::string("123") == (result ? result->payload : std::string()),
+                  "Result after the error should be 123");
+
+    CHECK_MESSAGE(!MIK_IsStopRequested(proto_rt),
+                  "A REPL eval error must not request runtime stop");
+
+    proto_teardown();
+}
+
 TEST_CASE("CMD_EVAL rewrites const/let to var" * doctest::test_suite("repl_protocol")) {
     proto_setup();
 
