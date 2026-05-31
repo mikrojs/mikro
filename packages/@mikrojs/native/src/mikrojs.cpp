@@ -150,13 +150,13 @@ static void mik__promise_rejection_tracker(JSContext* ctx, JSValue promise, JSVa
              * Don't JS_Throw here — we're inside a QuickJS callback
              * during promise resolution; throwing would corrupt engine
              * state and cause mik__execute_jobs to dump the error a
-             * second time. MIK_Stop itself gates on whether we're inside
-             * an interactive REPL eval so a typo at the prompt doesn't
-             * reboot the device. */
+             * second time. MIK_Stop gates on whether we're inside an
+             * interactive REPL eval (skipping both the stop request and
+             * the restart) so a typo at the prompt doesn't reboot the
+             * device. */
             if (mik_rt->error_handler_fn) {
                 mik_rt->error_handler_fn(ctx, reason, mik_rt->error_handler_opaque);
             }
-            mik_rt->stop_requested = true;
             MIK_Stop(mik_rt);
             return;
         }
@@ -192,7 +192,6 @@ static void mik__promise_rejection_tracker(JSContext* ctx, JSValue promise, JSVa
                 if (mik_rt->error_handler_fn) {
                     mik_rt->error_handler_fn(ctx, reason, mik_rt->error_handler_opaque);
                 }
-                mik_rt->stop_requested = true;
                 MIK_Stop(mik_rt);
             }
         }
@@ -680,15 +679,22 @@ bool MIK_IsStopRequested(MIKRuntime* mik_rt) {
 
 void MIK_Stop(MIKRuntime* mik_rt) {
     CHECK_NOT_NULL(mik_rt);
+    /* A throw inside an interactive REPL eval is a user typo, not an app
+     * crash; the eval path already reports it. Don't request a stop or
+     * reboot. (Evaluating implies the REPL is active, so this is checked
+     * before the IsReplActive guard below.) */
+    if (mik__repl_is_evaluating()) {
+        return;
+    }
+    /* Signal the loop to halt. This is the single place stop_requested is
+     * set, so the repl-eval gate above can't be bypassed by a caller. Host
+     * embedders (Node addon) observe it via MIK_Loop's return value; the
+     * firmware test supervisor reads it via MIK_IsStopRequested. */
+    mik_rt->stop_requested = true;
     /* Only firmware (protocol REPL attached) auto-restarts on uncaught
      * exceptions. Host embedders (Node addon, standalone tests) own their
      * own process lifecycle and surface errors via the error handler. */
     if (!MIK_IsReplActive()) {
-        return;
-    }
-    /* A throw inside an interactive REPL eval is a user typo, not an app
-     * crash — don't reboot the device. */
-    if (mik__repl_is_evaluating()) {
         return;
     }
     /* In test mode, the supervisor wants stop_requested to bubble up so it
