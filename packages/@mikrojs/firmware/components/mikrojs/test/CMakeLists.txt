@@ -5,6 +5,7 @@ set(_MIK_TEST_SRCS
     fs_js_test.cpp
     fs_pub_test.cpp
     http_test.cpp
+    http_server_test.cpp
     i2c_test.cpp
     modules_extended_test.cpp
     modules_test.cpp
