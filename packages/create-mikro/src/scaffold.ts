@@ -95,6 +95,20 @@ For long strips (>8 LEDs), power the strip from an external 5V supply, not the b
     hardware: 'Any ESP32 board with WiFi.',
   },
   {
+    name: 'http-server',
+    description:
+      'Join WiFi and serve a small HTTP API: JSON status, a path param, and an SSE stream.',
+    hardware: 'Any ESP32 board with WiFi + a WiFi network.',
+    wifiSetup: true,
+    envVars: ['WIFI_SSID', 'WIFI_PASSPHRASE'],
+  },
+  {
+    name: 'captive-portal',
+    description:
+      'A WiFi captive portal: access point + DNS redirect + an HTTP page that opens on join.',
+    hardware: 'Any ESP32 board with WiFi.',
+  },
+  {
     name: 'sntp',
     description: 'Sync the device clock via NTP so `new Date()` returns real wall-clock time.',
     hardware: 'Any ESP32 board with WiFi + a WiFi network with internet access.',
