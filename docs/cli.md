@@ -97,17 +97,42 @@ mikro flash
 `--build-dir` and `--from` are mutually exclusive. Use `--build-dir` if you built firmware from source; use `--from` to pin a specific version.
 :::
 
-## mikro list
+## mikro ls
 
-List connected devices.
+List connected devices. Each line shows the device's name, its serial port path, and details:
 
 ```sh
-mikro list
+mikro ls
 ```
 
-| Option   | Description    |
-| -------- | -------------- |
-| `--json` | Output as JSON |
+```
+swift-otter  /dev/tty.usbmodem1101  (chip=esp32c6, id=2m68224yym)
+```
+
+The name is the device's [alias](#mikro-alias) if you've set one, otherwise a stable generated name derived from its device ID. `id` is the same stable device ID the firmware reports; `chip` appears once you've connected to the device at least once.
+
+| Option   | Description                                                                                     |
+| -------- | ----------------------------------------------------------------------------------------------- |
+| `--json` | Output as JSON (includes `name`, `alias`, `deviceId`, `serialNumber`, `chip`, and USB metadata) |
+
+## mikro alias
+
+Give a device a memorable, personal name. Every device already has a stable generated name — an `adjective-animal` derived from its device ID, like `swift-otter` — and an alias overrides it for display. Aliases are stored per user (`~/.config/mikro/device-aliases.json`), so a board keeps its name across projects.
+
+```sh
+mikro alias              # list aliases
+mikro alias set [NAME]   # alias the connected device (omit NAME to use the generated one)
+mikro alias rm NAME      # remove an alias
+```
+
+| Option            | Description                                                                              |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| `-p, --port PORT` | Device to name (path, serial, or existing alias). Defaults to the only connected device. |
+| `--json`          | Output as JSON                                                                           |
+
+You can also manage aliases interactively: press <kbd>r</kbd> in the device picker, or run `/alias set <name>` / `/alias unset` inside `mikro console` or `mikro dev`.
+
+Anywhere a command takes `--port`, the value can be a device path, its name or alias, serial number, or device ID. When an alias is set, the device resolves by its alias rather than its generated name.
 
 ## mikro console
 
