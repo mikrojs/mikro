@@ -1,0 +1,71 @@
+name: Deploy docs
+
+# Docs are deployed from CI via wrangler (the Cloudflare Git integration is not
+# used for these deploys). Production goes live only on a stable release; pushes
+# to main publish a "latest" preview so main's docs are always viewable without
+# going live.
+on:
+  push:
+    branches: [main]
+  # A published, non-prerelease GitHub Release is the "stable version" gate.
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-docs-${{ github.event_name == 'release' && 'production' || 'preview' }}
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+
+      - uses: ./.github/actions/setup-pnpm
+
+      - run: pnpm build:docs
+
+      # Upload a version without promoting it. `--preview-alias main` gives a
+      # stable URL (main-mikrojs.<subdomain>.workers.dev) that always points at
+      # the latest main build.
+      - name: Upload preview to Cloudflare
+        id: deploy
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs
+          command: versions upload --preview-alias main
+
+      - name: Summarize preview URL
+        env:
+          OUTPUT: ${{ steps.deploy.outputs.command-output }}
+        run: |
+          url=$(printf '%s' "$OUTPUT" | grep -Eo 'https://main-[a-zA-Z0-9.-]+\.workers\.dev' | head -n1)
+          if [ -n "$url" ]; then
+            echo "📚 Docs preview (latest main): $url" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  production:
+    if: github.event_name == 'release' && github.event.release.prerelease == false
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: ./.github/actions/setup-pnpm
+
+      - run: pnpm build:docs
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs
+          command: deploy
