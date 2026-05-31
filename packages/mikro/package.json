@@ -72,6 +72,10 @@
       "development": "./src/_exports/http/request.ts",
       "import": "./dist/_exports/http/request.js"
     },
+    "./http/server": {
+      "development": "./src/_exports/http/server.ts",
+      "import": "./dist/_exports/http/server.js"
+    },
     "./i2c": {
       "development": "./src/_exports/i2c.ts",
       "import": "./dist/_exports/i2c.js"
@@ -188,6 +192,7 @@
       "./cbor": "./dist/_exports/cbor.js",
       "./http/helpers": "./dist/_exports/http/helpers.js",
       "./http/request": "./dist/_exports/http/request.js",
+      "./http/server": "./dist/_exports/http/server.js",
       "./kv/nvs": "./dist/_exports/kv/nvs.js",
       "./kv/rtc": "./dist/_exports/kv/rtc.js",
       "./module": "./dist/_exports/module.js",

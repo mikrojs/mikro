@@ -163,6 +163,38 @@ declare module 'native:http' {
   export function cancel(id: number): void
   export function pendingCount(): number
 }
+
+declare module 'native:http_server' {
+  import type {Result} from 'mikro/result'
+
+  import type {ServerError} from './http/server-impl.js'
+
+  export type NativeRequestDescriptor = {
+    id: number
+    method: string
+    url: string
+    body: Uint8Array
+    bodyTooLarge: boolean
+    contentLength: number
+  }
+  export function start(port: number, maxBodySize?: number): Result<void, ServerError>
+  export function stop(): void
+  export function nextRequest(): Promise<NativeRequestDescriptor | {closed: true}>
+  export function respond(
+    id: number,
+    status: number,
+    headers: [string, string][],
+    body?: Uint8Array,
+  ): void
+  export function respondStart(
+    id: number,
+    status: number,
+    headers: [string, string][],
+  ): Promise<void>
+  export function respondChunk(id: number, data: Uint8Array): Promise<boolean>
+  export function respondEnd(id: number): void
+  export function getHeader(id: number, name: string): string | undefined
+}
 declare module 'native:i2c' {
   import type {I2cError} from '@mikrojs/native/runtime/i2c/types'
   import type {Result} from 'mikro/result'
