@@ -6,12 +6,14 @@ import * as path from 'node:path'
 import {pipeline} from 'node:stream/promises'
 import {promisify} from 'node:util'
 
+import envPaths from 'env-paths'
+
 const execFileAsync = promisify(execFile)
 
 const ESPTOOL_VERSION = 'v5.2.0'
 const GITHUB_REPO = 'espressif/esptool'
 
-const CACHE_DIR = path.join(os.homedir(), '.cache', 'mikrojs', 'esptool')
+const CACHE_DIR = path.join(envPaths('mikro', {suffix: ''}).cache, 'esptool')
 
 type Platform = 'linux' | 'macos' | 'windows'
 type Arch = 'amd64' | 'aarch64' | 'arm64'
