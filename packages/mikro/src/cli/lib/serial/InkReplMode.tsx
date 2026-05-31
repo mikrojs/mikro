@@ -30,6 +30,8 @@ export interface InkReplDriverResult {
 
 export interface InkReplModeProps {
   devicePath: string
+  /** Connected device's USB serial, forwarded so the header can show its alias. */
+  serialNumber?: string
   /** Trigger safe-mode after opening the session. Used by
    *  `console --recover` / `deploy --recover`. */
   recover?: boolean
@@ -50,7 +52,7 @@ export interface InkReplModeProps {
  * for the session's lifetime, and renders `InkReplConsole`.
  */
 export function InkReplMode(props: InkReplModeProps) {
-  const {devicePath, recover = false, logLevel, driver, watch} = props
+  const {devicePath, serialNumber, recover = false, logLevel, driver, watch} = props
 
   const handleEnd = useCallback(() => {
     process.stdout.write('\x1b[<u')
@@ -140,6 +142,7 @@ export function InkReplMode(props: InkReplModeProps) {
     <InkReplConsole
       session={ready.session}
       devicePath={devicePath}
+      serialNumber={serialNumber}
       logLevel={logLevel}
       repl={ready.repl}
       watch={watch}

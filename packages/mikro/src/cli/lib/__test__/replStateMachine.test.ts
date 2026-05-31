@@ -299,11 +299,63 @@ describe('replStateMachine', () => {
         state,
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
+      const s = typeChars(ready, '/info')
+      const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      expect(effects).toContainEqual({type: 'directive', code: '/info'})
+      // Command input is logged immediately
+      expect(next.events.at(-1)).toEqual({type: 'input', code: '/info'})
+    })
+
+    test('/help forwards to the device and appends host-only commands', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
       const s = typeChars(ready, '/help')
       const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      // Still answered by the device...
       expect(effects).toContainEqual({type: 'directive', code: '/help'})
+      // ...with a host-side note mentioning /alias.
+      const last = next.events.at(-1)
+      expect(last?.type).toBe('info')
+      expect(last && 'text' in last ? last.text : '').toContain('/alias')
+    })
+
+    test('/alias set <name> emits a setAlias effect, not a directive', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      const s = typeChars(ready, '/alias set kitchen-sensor')
+      const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      expect(effects).toContainEqual({type: 'setAlias', name: 'kitchen-sensor'})
+      expect(effects.find((e) => e.type === 'directive')).toBeUndefined()
       // Command input is logged immediately
-      expect(next.events.at(-1)).toEqual({type: 'input', code: '/help'})
+      expect(next.events.at(-1)).toEqual({type: 'input', code: '/alias set kitchen-sensor'})
+    })
+
+    test('/alias unset emits an unsetAlias effect', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      const s = typeChars(ready, '/alias unset')
+      const [, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      expect(effects).toContainEqual({type: 'unsetAlias'})
+    })
+
+    test('/alias without set/unset emits setAlias with empty name (usage)', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      const s = typeChars(ready, '/alias')
+      const [, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      expect(effects).toContainEqual({type: 'setAlias', name: ''})
     })
 
     test('/pause sets paused flag', () => {
@@ -1059,6 +1111,49 @@ describe('replStateMachine', () => {
       // Restart
       repl.keyInput('r', {...NO_KEY, ctrl: true})
       expect(calls).toContain('restart')
+
+      sub.unsubscribe()
+    })
+
+    test('/alias with no args surfaces the usage message inline', async () => {
+      const {Subject} = await import('rxjs')
+      const messages$ = new Subject<Extract<ReplAction, {type: 'deviceEvent'}>['event']>()
+      const mockSession = {
+        messages$,
+        eval: () => {},
+        directive: () => {},
+        complete: () => {},
+        exit: () => {},
+        restart: () => {},
+        close: () => {},
+        ready$: messages$,
+        awaitReady$: () => messages$,
+        deploy: () => messages$,
+        config: {list: async () => [], set: async () => {}, delete: async () => {}},
+      }
+
+      const {createRepl: create} = await import('../serial/replStateMachine.js')
+      const repl = create({
+        session: mockSession as any,
+        port: '/dev/test',
+        onEnd: () => {},
+        loadHistory: () => [],
+        saveHistory: () => {},
+      })
+
+      const states: ReplMachineState[] = []
+      const sub = repl.state$.subscribe((s) => states.push(s))
+      messages$.next({type: 'ready', chip: 'ESP32', id: null, version: null})
+
+      for (const ch of '/alias') repl.keyInput(ch, NO_KEY)
+      repl.keyInput('', {...NO_KEY, return: true, ctrl: true})
+
+      // emitAlias defers to a microtask; flush before asserting. Without that
+      // deferral the usage event is dropped by re-entry into the scan reducer.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      const events = states.at(-1)!.events
+      expect(events.some((e) => 'text' in e && /Usage: \/alias/.test(e.text))).toBe(true)
 
       sub.unsubscribe()
     })

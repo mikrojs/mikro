@@ -47,7 +47,13 @@ export default function ConsoleCmd(props: Props) {
   const {port, recover} = props.args
   return (
     <DevicePicker port={port}>
-      {(device) => <InkReplMode devicePath={device.path} recover={recover === true} />}
+      {(device) => (
+        <InkReplMode
+          devicePath={device.path}
+          serialNumber={device.serialNumber}
+          recover={recover === true}
+        />
+      )}
     </DevicePicker>
   )
 }

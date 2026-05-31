@@ -6,6 +6,7 @@ import React, {useCallback, useEffect, useState} from 'react'
 import type {LogLevel} from '../../../_exports/index.js'
 import {EnvEditor, type EnvEditorConfig} from '../../components/EnvEditor.js'
 import {BorderFill, TitledBox} from '../../components/TitledBox.js'
+import {deviceDisplayName} from '../deviceAliases.js'
 import {logLevelAllows} from '../parseMinifier.js'
 import {Spinner} from '../Spinner.js'
 import {TROUBLESHOOTING_HINT_DELAY_MS, TroubleshootingHint} from '../troubleshooting.js'
@@ -33,6 +34,9 @@ export interface ReplConsoleProps {
    *  only appears while something is in progress (e.g. `mikro console`,
    *  where watching doesn't apply). */
   watch?: boolean
+  /** Connected device's USB serial (from the picker), used to resolve its alias
+   *  for the header — reliable even for USB-UART bridge boards. */
+  serialNumber?: string
 }
 
 // ── Event rendering ────────────────────────────────────────
@@ -132,14 +136,15 @@ function testEventText(data: Record<string, unknown>): string {
   }
 }
 
-function eventText(event: ReplLogEvent): string {
+function eventText(event: ReplLogEvent, deviceName?: string): string {
   switch (event.type) {
     case 'connecting':
       return event.port ? `Connecting to ${event.port}…` : 'Connecting…'
     case 'restarting':
       return 'Restarting…'
     case 'ready': {
-      const name = event.id ?? event.chip ?? 'device'
+      const name = deviceName ?? event.id ?? event.chip ?? 'device'
+      // Chip in parens only for a real device (sim has no id, so don't repeat it).
       const chip = event.id && event.chip ? ` (${event.chip})` : ''
       const version = event.version ? ` Mikro.js v${event.version}` : ''
       return `Connected to ${name}${chip}${version}`
@@ -200,7 +205,13 @@ const INITIAL_STATE = createInitialState()
 
 // ── Component ──────────────────────────────────────────────
 
-export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConsoleProps) {
+export function ReplConsole({
+  repl,
+  config,
+  logLevel = 'debug',
+  watch,
+  serialNumber,
+}: ReplConsoleProps) {
   const state = useObservable(repl.state$, INITIAL_STATE)
 
   const handleCloseOverlay = useCallback(() => repl.closeOverlay(), [repl])
@@ -235,6 +246,12 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
 
   // ── Derived render state ───────────────────────────────────
   const conn = state.connection
+
+  // The board's name (alias or suggested), seeded by serial or the live device
+  // id. Undefined for the simulator (no id), which falls back to the chip below.
+  const deviceId = conn.type === 'ready' ? conn.deviceId : null
+  const deviceName =
+    serialNumber || deviceId ? deviceDisplayName(serialNumber, deviceId) : undefined
 
   if (conn.type === 'fallback') {
     return (
@@ -298,7 +315,7 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
     <>
       <Static items={renderableEvents}>
         {(event, index) => {
-          const text = eventText(event)
+          const text = eventText(event, deviceName)
           const color = eventColor(event)
           const isDimmed = event.type === 'input' || event.type === 'debug'
           const timing = event.type === 'input' ? event.timing : undefined
@@ -355,7 +372,7 @@ export function ReplConsole({repl, config, logLevel = 'debug', watch}: ReplConso
                     color="black"
                     backgroundColor={conn.chip === 'simulator' ? 'magenta' : 'blue'}
                   >
-                    {` ${conn.deviceId ?? conn.chip ?? 'device'} `}
+                    {` ${deviceName ?? conn.chip ?? 'device'} `}
                   </Text>
                 ) : conn.type === 'error' ? null : (
                   <Text color="grey">

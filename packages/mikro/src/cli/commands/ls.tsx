@@ -1,22 +1,15 @@
 import {command, constant, message, object, optional} from '@optique/core'
 import type {InferValue} from '@optique/core/parser'
 import {flag} from '@optique/core/primitives'
-import {Text} from 'ink'
+import {Box, Text} from 'ink'
 import {SerialPort} from 'serialport'
 
 import {useDevices} from '../hooks/useDevices.js'
 import {agentResult, isAgentMode} from '../lib/agent.js'
-import Table from '../lib/ink-table/index.js'
-
-const COLUMNS = {
-  path: 'Path',
-  manufacturer: 'Manufacturer',
-  serialNumber: 'Serial Number',
-  locationId: 'Location ID',
-  vendorId: 'Vendor ID',
-  productId: 'Product ID',
-  pnpId: 'PNP ID',
-}
+import {deviceGeneratedName, getDeviceAlias} from '../lib/deviceAliases.js'
+import {getCachedChip, getCachedDeviceId} from '../lib/deviceCache.js'
+import {deviceIdFromSerial} from '../lib/deviceId.js'
+import {formatDeviceList} from '../lib/deviceLabel.js'
 
 export const args = command(
   'ls',
@@ -28,12 +21,21 @@ export const args = command(
 )
 
 export async function run(config: InferValue<typeof args>) {
-  const devices = (await SerialPort.list()).filter((p) => p.serialNumber)
+  const ports = (await SerialPort.list()).filter((p) => p.serialNumber)
 
   if (config.json === true || isAgentMode(config.agent)) {
+    const devices = ports.map((d) => ({
+      ...d,
+      // `name` is the intrinsic generated name; `alias` is the optional override.
+      // They stay distinct here — `name` does not change when an alias is set.
+      name: deviceGeneratedName(d.serialNumber),
+      alias: getDeviceAlias(d.serialNumber),
+      deviceId: deviceIdFromSerial(d.serialNumber) ?? getCachedDeviceId(d.serialNumber),
+      chip: getCachedChip(d.serialNumber),
+    }))
     const nextActions = devices.map((d) => ({
-      command: `mikro console -p ${d.path}`,
-      description: `Connect to ${d.manufacturer ?? 'device'} (${d.serialNumber})`,
+      command: `mikro console -p ${d.alias ?? d.path}`,
+      description: `Connect to ${d.alias ?? d.name ?? 'device'} (${d.serialNumber})`,
     }))
     agentResult('ls', devices, [
       ...nextActions,
@@ -43,16 +45,15 @@ export async function run(config: InferValue<typeof args>) {
     return
   }
 
-  if (devices.length === 0) {
+  if (ports.length === 0) {
     // eslint-disable-next-line no-console
     console.log('No devices found')
     return
   }
 
-  for (const d of devices) {
-    const label = [d.manufacturer, d.serialNumber].filter(Boolean).join(' ')
+  for (const line of formatDeviceList(ports)) {
     // eslint-disable-next-line no-console
-    console.log(`${d.path}  ${label}`)
+    console.log(line)
   }
 }
 
@@ -72,5 +73,11 @@ export default function Ls(_props: Props) {
   if (ports.length === 0) {
     return <Text>No devices found</Text>
   }
-  return <Table data={portsResult.value} getKey={(port) => port.path} columns={COLUMNS} />
+  return (
+    <Box flexDirection="column">
+      {formatDeviceList(ports).map((line, i) => (
+        <Text key={ports[i]!.path}>{line}</Text>
+      ))}
+    </Box>
+  )
 }

@@ -12,6 +12,7 @@ import type {Observable} from 'rxjs'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {type BoardInfo, discoverBoards} from '../lib/boards.js'
+import {formatDeviceList} from '../lib/deviceLabel.js'
 import {type FlasherArgs, getWriteFlashMultiArgs, readFlasherArgs} from '../lib/esptool.js'
 import {type Chip, resolveFrom} from '../lib/firmware.js'
 import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
@@ -292,10 +293,8 @@ export default function FlashCmd(props: Props) {
         {devices.length > 0 ? (
           <Box paddingTop={1} flexDirection="column">
             <Text>Connected devices:</Text>
-            {devices.map((d, i) => (
-              <Text key={d.path}>
-                {i + 1}. {d.path} ({d.manufacturer} {d.serialNumber})
-              </Text>
+            {formatDeviceList(devices).map((line, i) => (
+              <Text key={devices[i]!.path}>{line}</Text>
             ))}
           </Box>
         ) : (
@@ -320,10 +319,8 @@ export default function FlashCmd(props: Props) {
         <Text color="red">
           {figures.cross} Multiple devices found. Use --port to specify which one:
         </Text>
-        {devices.map((d, i) => (
-          <Text key={d.path}>
-            {i + 1}. {d.path} ({d.manufacturer} {d.serialNumber})
-          </Text>
+        {formatDeviceList(devices).map((line, i) => (
+          <Text key={devices[i]!.path}>{line}</Text>
         ))}
       </RenderAndExit>
     )
