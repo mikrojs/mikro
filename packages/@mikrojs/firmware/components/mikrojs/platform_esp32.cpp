@@ -148,7 +148,12 @@ static const char* esp32_get_device_id(void) {
     static char id[11] = {0};  /* 6 bytes (48 bits) -> 10 x 5-bit chars + NUL */
     if (id[0] == '\0') {
         uint8_t m[6];
-        esp_efuse_mac_get_default(m);
+        /* Use the 48-bit base MAC, NOT esp_efuse_mac_get_default(): on 802.15.4
+         * chips (C6/H2) the factory MAC is an 8-byte EUI-64, so that call writes
+         * 8 bytes (overflowing this 6-byte buffer) and a 6-byte read yields the
+         * OUI+FF:FE prefix rather than a unique chip id. esp_read_mac(ESP_MAC_BASE)
+         * returns the proper 48-bit base MAC on every target. */
+        esp_read_mac(m, ESP_MAC_BASE);
         /* Pack 6 bytes into a 48-bit value, then extract 5 bits at a time
          * from the most significant end. */
         uint64_t v = ((uint64_t)m[0] << 40) | ((uint64_t)m[1] << 32) |
