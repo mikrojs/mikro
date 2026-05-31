@@ -2,7 +2,12 @@ import {createRequire} from 'node:module'
 
 import {describe, expect, it} from 'vitest'
 
-import {checkFirmwareCompat, formatAdvisory, formatIncompatibleError} from '../firmwareCompat.js'
+import {
+  checkFirmwareCompat,
+  formatAdvisory,
+  formatBestEffortWarning,
+  formatIncompatibleError,
+} from '../firmwareCompat.js'
 
 const require = createRequire(import.meta.url)
 const cliVersion = (require('../../../../package.json') as {version: string}).version
@@ -102,5 +107,24 @@ describe('formatIncompatibleError', () => {
     const msg = formatIncompatibleError(result, 'npm')
     expect(msg).to.contain('vunknown')
     expect(msg).to.contain('npx mikro flash')
+  })
+})
+
+describe('formatBestEffortWarning', () => {
+  it('suggests installing a matching CLI version when the device reported one', () => {
+    const result = checkFirmwareCompat('0.5.0')
+    const msg = formatBestEffortWarning(result, 'pnpm')
+    expect(msg).to.contain('v0.5.0')
+    expect(msg).to.contain('Attempting anyway')
+    expect(msg).to.contain('pnpm add mikro@0.5.0')
+    expect(msg).to.contain('pnpm mikro flash')
+  })
+
+  it('only suggests reflashing when the device reported no version', () => {
+    const result = checkFirmwareCompat(null)
+    const msg = formatBestEffortWarning(result, 'npm')
+    expect(msg).to.contain('did not report a version')
+    expect(msg).to.contain('npx mikro flash')
+    expect(msg).to.not.contain('mikro@')
   })
 })

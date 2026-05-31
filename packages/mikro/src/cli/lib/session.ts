@@ -43,6 +43,7 @@ import {
   type FirmwareCompatDirection,
   FirmwareIncompatibleError,
   formatAdvisory,
+  formatBestEffortWarning,
   formatIncompatibleError,
 } from './firmwareCompat.js'
 import {detectPreferredPm} from './pkgManager.js'
@@ -78,7 +79,9 @@ import {TROUBLESHOOTING_URL} from './troubleshooting.js'
 // ── Event types ────────────────────────────────────────────────────
 
 export interface FirmwareAdvisory {
-  kind: FirmwareCompatDirection
+  /** 'incompatible' is only set in best-effort mode, where an out-of-range
+   *  firmware is downgraded from a hard error to a warning. */
+  kind: FirmwareCompatDirection | 'incompatible'
   message: string
 }
 
@@ -358,12 +361,24 @@ export class DeviceTimeoutError extends Error {
   }
 }
 
-export interface ConnectReplOptions {}
+export interface ConnectReplOptions {
+  /**
+   * Firmware-version policy for the handshake:
+   *   - 'enforce' (default): an incompatible firmware version throws
+   *     FirmwareIncompatibleError, blocking the command.
+   *   - 'best-effort': an incompatible version is downgraded to a one-time
+   *     warning and the command proceeds anyway. For read-only diagnostic
+   *     commands (logs, env list) where reading a mismatched device's state
+   *     is worth attempting even if the wire protocol may have drifted.
+   */
+  compat?: 'enforce' | 'best-effort'
+}
 
 export function connectRepl(
   transport: Transport,
-  _connectOptions: ConnectReplOptions = {},
+  connectOptions: ConnectReplOptions = {},
 ): ReplSession {
+  const compatPolicy = connectOptions.compat ?? 'enforce'
   const frameParser = new FrameParser()
   let sub: Subscription | undefined
   // Fires once when session.close() runs; lets per-call pipelines (notably
@@ -507,7 +522,16 @@ export function connectRepl(
       }
       const pm = await detectPreferredPm()
       if (compat.status === 'incompatible') {
-        throw new FirmwareIncompatibleError(formatIncompatibleError(compat, pm))
+        if (compatPolicy === 'enforce') {
+          throw new FirmwareIncompatibleError(formatIncompatibleError(compat, pm))
+        }
+        // best-effort: warn once and proceed anyway.
+        const warning = formatBestEffortWarning(compat, pm)
+        if (!advisoryShown) {
+          advisoryShown = true
+          process.stderr.write(warning + '\n')
+        }
+        return {...event, advisory: {kind: 'incompatible', message: warning}}
       }
       // status === 'update_available'
       const message = formatAdvisory(compat, pm)
