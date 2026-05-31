@@ -550,10 +550,10 @@ importers:
         version: 6.1.0
       ink:
         specifier: ^7.0.1
-        version: 7.0.4(@types/react@19.2.15)(react@19.2.6)
+        version: 7.0.5(@types/react@19.2.15)(react@19.2.6)
       ink-select-input:
         specifier: ^6.2.0
-        version: 6.2.0(ink@7.0.4(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)
+        version: 6.2.0(ink@7.0.5(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)
       open:
         specifier: ^11.0.0
         version: 11.0.0
@@ -3802,8 +3802,8 @@ packages:
       '@types/react':
         optional: true
 
-  ink@7.0.4:
-    resolution: {integrity: sha512-4wsM/gMKOT2ZANNTJibI6I9IcwBfobqv/CgaDcwvOaCREZIQxo3iGQS7qPHa2hmA67NYltZWCMtBDELB/mcbJQ==}
+  ink@7.0.5:
+    resolution: {integrity: sha512-zWNjGHQPxSeiSAmDUOq+QPQ6CfmMhmNi85vrJIuy4prafKKUSoZlXEy4wbM7LuLuF1pDURk7qvF4fxrQlLxv3w==}
     engines: {node: '>=22'}
     peerDependencies:
       '@types/react': '>=19.2.0'
@@ -8528,10 +8528,10 @@ snapshots:
 
   ini@4.1.1: {}
 
-  ink-select-input@6.2.0(ink@7.0.4(@types/react@19.2.15)(react@19.2.6))(react@19.2.6):
+  ink-select-input@6.2.0(ink@7.0.5(@types/react@19.2.15)(react@19.2.6))(react@19.2.6):
     dependencies:
       figures: 6.1.0
-      ink: 7.0.4(@types/react@19.2.15)(react@19.2.6)
+      ink: 7.0.5(@types/react@19.2.15)(react@19.2.6)
       react: 19.2.6
       to-rotated: 1.0.0
 
@@ -8539,7 +8539,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.15
 
-  ink@7.0.4(@types/react@19.2.15)(react@19.2.6):
+  ink@7.0.5(@types/react@19.2.15)(react@19.2.6):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.0
       ansi-escapes: 7.3.0
