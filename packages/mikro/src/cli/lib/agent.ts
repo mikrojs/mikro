@@ -1,7 +1,7 @@
 import {createInterface} from 'node:readline'
 
-import {determineAgent} from '@vercel/detect-agent'
 import type {Subscription} from 'rxjs'
+import {isAgent} from 'std-env'
 
 import type {ReplSession} from './session.js'
 
@@ -10,13 +10,11 @@ export interface NextAction {
   description: string
 }
 
-const {isAgent: detectedAgent} = await determineAgent()
-
 /**
  * Check if agent mode is active via --agent flag or AI agent environment detection.
  */
 export function isAgentMode(flagValue?: boolean): boolean {
-  return flagValue === true || detectedAgent
+  return flagValue === true || isAgent
 }
 
 /**

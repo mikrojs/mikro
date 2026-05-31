@@ -333,7 +333,7 @@ import {sntp} from 'mikro/sntp'
 
 ## Pre-commit Hooks
 
-Lefthook runs different pre-commit checks depending on whether the committer is a human or an AI agent (detected via `@vercel/detect-agent`, see `scripts/is-agent.js`).
+Lefthook runs different pre-commit checks depending on whether the committer is a human or an AI agent (detected via `std-env`, see `scripts/is-agent.js`).
 
 - **Human developers**: fast staged-file `lint` + `fmt:check`
 - **AI agents**: staged-file `lint` + `fmt:check`, plus full `build:cpp`, `build:ts`, `knip`, `test:js`, `test:lib`

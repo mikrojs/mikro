@@ -227,7 +227,6 @@
     "@mikrojs/quickjs": "workspace:*",
     "@optique/core": "^1.0.2",
     "@optique/run": "^1.0.2",
-    "@vercel/detect-agent": "^1.2.3",
     "cbor2": "^2.3.0",
     "cli-spinners": "^3.4.0",
     "figures": "^6.1.0",
@@ -240,6 +239,7 @@
     "rxjs-exhaustmap-with-trailing": "^2.1.1",
     "semver": "^7.7.4",
     "serialport": "^13.0.0",
+    "std-env": "^4.1.0",
     "uint8array-extras": "^1.5.0",
     "update-notifier": "^7.3.1"
   },

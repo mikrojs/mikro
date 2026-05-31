@@ -1,1 +1,1 @@
-process.exit((await (await import('@vercel/detect-agent')).determineAgent()).isAgent ? 0 : 1)
+process.exit((await import('std-env')).isAgent ? 0 : 1)
