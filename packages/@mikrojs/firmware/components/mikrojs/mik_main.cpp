@@ -347,15 +347,21 @@ void MIK_Main(void) {
          * (USB-Serial/JTAG). `printf` goes to newlib stdio, which
          * ESP-IDF routes to UART0 and is invisible over USB. */
         const char* core_word = chip_info.cores == 1 ? "core" : "cores";
+        const MIKPlatform* plat = MIK_GetPlatform();
+        const char* dev_id = plat->get_device_id ? plat->get_device_id() : nullptr;
         char banner[160];
         int off = 0;
 #ifdef MIK_FW_VERSION
-        off += snprintf(banner + off, sizeof(banner) - off, "Mikro.js v%s on %s, %d %s",
-                        MIK_FW_VERSION, CONFIG_IDF_TARGET, chip_info.cores, core_word);
+        off += snprintf(banner + off, sizeof(banner) - off, "Mikro.js v%s on %s", MIK_FW_VERSION,
+                        CONFIG_IDF_TARGET);
 #else
-        off += snprintf(banner + off, sizeof(banner) - off, "Mikro.js on %s, %d %s",
-                        CONFIG_IDF_TARGET, chip_info.cores, core_word);
+        off += snprintf(banner + off, sizeof(banner) - off, "Mikro.js on %s", CONFIG_IDF_TARGET);
 #endif
+        /* Stable per-board device id (chip MAC as Crockford Base32). */
+        if (dev_id && dev_id[0]) {
+            off += snprintf(banner + off, sizeof(banner) - off, " (%s)", dev_id);
+        }
+        off += snprintf(banner + off, sizeof(banner) - off, ", %d %s", chip_info.cores, core_word);
         if (has_wifi || has_bt || has_ble) {
             off += snprintf(banner + off, sizeof(banner) - off, ", ");
             bool first = true;
