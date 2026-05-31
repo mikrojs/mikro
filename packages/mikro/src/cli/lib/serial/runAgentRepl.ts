@@ -1,3 +1,5 @@
+import {firstValueFrom} from 'rxjs'
+
 import {
   agentEmit,
   agentError,
@@ -6,6 +8,9 @@ import {
   forwardSessionToAgent,
   type NextAction,
 } from '../agent.js'
+import {FirmwareIncompatibleError} from '../firmwareCompat.js'
+import {flashFirmware} from '../flashFirmware.js'
+import {detectPreferredPm, mikroCommand} from '../pkgManager.js'
 import {openSession, type SessionHandles} from './openSession.js'
 
 export interface AgentReplHooks {
@@ -35,7 +40,7 @@ export interface AgentReplHooks {
  *
  * Per-command behavior slots in via the `hooks` object.
  */
-export async function runAgentRepl<T extends {port?: string; recover?: boolean}>(
+export async function runAgentRepl<T extends {port?: string; recover?: boolean; yes?: boolean}>(
   config: T,
   hooks: AgentReplHooks,
 ): Promise<never> {
@@ -68,8 +73,41 @@ export async function runAgentRepl<T extends {port?: string; recover?: boolean}>
   process.on('SIGTERM', () => process.exit(0))
 
   try {
+    // With --yes, gate on readiness explicitly so the compat check runs (and
+    // can throw FirmwareIncompatibleError) even for commands whose onReady
+    // doesn't touch the session (console has no onReady at all). Without
+    // --yes, keep the old behavior: console must keep forwarding raw output
+    // from a device that never reports ready (post-mortem use).
+    if (config.yes === true) {
+      await firstValueFrom(handles.session.awaitReady$())
+    }
     await hooks.onReady?.(handles)
   } catch (err) {
+    // Non-interactive reflash: with --yes, an incompatible firmware is
+    // flashed with CLI-matched firmware instead of erroring out. We exit
+    // afterward rather than reconnect (the device re-enumerates on reset).
+    if (err instanceof FirmwareIncompatibleError && config.yes === true) {
+      dispose()
+      agentEmit({
+        type: 'raw',
+        text: 'Device firmware incompatible; flashing CLI-matched firmware…\n',
+      })
+      try {
+        await flashFirmware({
+          port: handles.devicePath,
+          onProgress: (m) => agentEmit({type: 'raw', text: m + '\n'}),
+        })
+      } catch (flashErr) {
+        const fmsg = flashErr instanceof Error ? flashErr.message : String(flashErr)
+        agentError(hooks.command, `Flashing failed: ${fmsg}`, {fix: 'Run mikro flash manually'})
+        process.exit(1)
+      }
+      const pm = await detectPreferredPm()
+      agentResult(hooks.command, {firmwareUpdated: true}, [
+        {command: mikroCommand(pm, hooks.command), description: `Re-run ${hooks.command}`},
+      ])
+      process.exit(0)
+    }
     const msg = err instanceof Error ? err.message : String(err)
     agentError(hooks.command, msg, {fix: 'Check device connection and try again'})
     process.exit(1)

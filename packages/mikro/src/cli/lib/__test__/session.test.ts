@@ -1,9 +1,11 @@
 import {createRequire} from 'node:module'
 
 import {encode as encodeCbor} from 'cbor2'
-import {lastValueFrom, Subject} from 'rxjs'
-import {afterEach, describe, expect, it} from 'vitest'
+import {firstValueFrom, lastValueFrom, Subject} from 'rxjs'
+import {inc} from 'semver'
+import {afterEach, describe, expect, it, vi} from 'vitest'
 
+import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {
   buildFrame,
   CMD_DEPLOY_ABORT,
@@ -22,7 +24,12 @@ import {
   MSG_OK,
   MSG_READY,
 } from '../protocol.js'
-import {connectRepl as connectReplImpl, type ReplEvent, type ReplSession} from '../session.js'
+import {
+  connectRepl as connectReplImpl,
+  type ConnectReplOptions,
+  type ReplEvent,
+  type ReplSession,
+} from '../session.js'
 import type {Transport} from '../transport.js'
 
 // Track every session opened by a test so we can close any that the test
@@ -32,8 +39,8 @@ import type {Transport} from '../transport.js'
 // DeviceTimeoutError that kills the run.
 const openSessions = new Set<ReplSession>()
 
-function connectRepl(transport: Transport): ReplSession {
-  const session = connectReplImpl(transport)
+function connectRepl(transport: Transport, options?: ConnectReplOptions): ReplSession {
+  const session = connectReplImpl(transport, options)
   openSessions.add(session)
   return session
 }
@@ -41,6 +48,7 @@ function connectRepl(transport: Transport): ReplSession {
 afterEach(() => {
   for (const session of openSessions) session.close()
   openSessions.clear()
+  vi.restoreAllMocks()
 })
 
 const require = createRequire(import.meta.url)
@@ -426,6 +434,57 @@ describe('session', () => {
       await session.config.delete('KEY')
 
       session.close()
+    })
+  })
+
+  describe('firmware compat policy', () => {
+    /** Outside any ^x.y range the CLI can ever be in. */
+    const INCOMPATIBLE_VERSION = '0.0.1'
+    /** In-range but not equal: next patch of the CLI's own version. */
+    const NEWER_IN_RANGE = inc(CLI_VERSION, 'patch')!
+
+    function awaitReadyWith(version: string, compat?: ConnectReplOptions['compat']) {
+      const {transport, sendFrame} = createMockTransport()
+      const session = connectRepl(transport, compat ? {compat} : undefined)
+      session.messages$.subscribe(() => {})
+      const ready = firstValueFrom(session.awaitReady$(1000))
+      sendFrame(MSG_READY, Buffer.from(encodeCbor({chip: 'test', id: '0', v: version})))
+      return ready
+    }
+
+    it("'enforce' (default) rejects awaitReady$ on incompatible firmware", async () => {
+      await expect(awaitReadyWith(INCOMPATIBLE_VERSION)).rejects.toBeInstanceOf(
+        FirmwareIncompatibleError,
+      )
+    })
+
+    it("'report' resolves silently and attaches the incompatible advisory", async () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      const ready = await awaitReadyWith(INCOMPATIBLE_VERSION, 'report')
+
+      expect(ready.advisory?.kind).to.equal('incompatible')
+      expect(ready.advisory?.message).to.contain('not compatible')
+      expect(stderr).not.toHaveBeenCalled()
+    })
+
+    it("'report' stays silent on the soft update_available advisory", async () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      const ready = await awaitReadyWith(NEWER_IN_RANGE, 'report')
+
+      expect(ready.advisory?.kind).to.equal('device_newer')
+      expect(stderr).not.toHaveBeenCalled()
+    })
+
+    it("'best-effort' warns on stderr once and proceeds on incompatible firmware", async () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+      const ready = await awaitReadyWith(INCOMPATIBLE_VERSION, 'best-effort')
+
+      expect(ready.advisory?.kind).to.equal('incompatible')
+      expect(stderr).toHaveBeenCalledTimes(1)
+      expect(String(stderr.mock.calls[0]![0])).to.contain('Attempting anyway')
     })
   })
 })

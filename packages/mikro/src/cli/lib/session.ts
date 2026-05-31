@@ -372,11 +372,15 @@ export interface ConnectReplOptions {
    *   - 'enforce' (default): an incompatible firmware version throws
    *     FirmwareIncompatibleError, blocking the command.
    *   - 'best-effort': an incompatible version is downgraded to a one-time
-   *     warning and the command proceeds anyway. For read-only diagnostic
-   *     commands (logs, env list) where reading a mismatched device's state
-   *     is worth attempting even if the wire protocol may have drifted.
+   *     stderr warning and the command proceeds anyway. For read-only
+   *     diagnostic commands (logs, env list) where reading a mismatched
+   *     device's state is worth attempting even if the wire protocol may
+   *     have drifted.
+   *   - 'report': never throws, never prints — just attaches the advisory
+   *     (including 'incompatible') to the ReadyEvent. For callers that probe
+   *     compatibility and render their own UI (FirmwareGate).
    */
-  compat?: 'enforce' | 'best-effort'
+  compat?: 'enforce' | 'best-effort' | 'report'
 }
 
 export function connectRepl(
@@ -530,17 +534,22 @@ export function connectRepl(
         if (compatPolicy === 'enforce') {
           throw new FirmwareIncompatibleError(formatIncompatibleError(compat, pm))
         }
-        // best-effort: warn once and proceed anyway.
-        const warning = formatBestEffortWarning(compat, pm)
-        if (!advisoryShown) {
+        // best-effort: warn once and proceed. report: stay silent (the
+        // caller renders its own UI from the attached advisory).
+        const message =
+          compatPolicy === 'best-effort'
+            ? formatBestEffortWarning(compat, pm)
+            : formatIncompatibleError(compat, pm)
+        if (compatPolicy === 'best-effort' && !advisoryShown) {
           advisoryShown = true
-          process.stderr.write(warning + '\n')
+          process.stderr.write(message + '\n')
         }
-        return {...event, advisory: {kind: 'incompatible', message: warning}}
+        return {...event, advisory: {kind: 'incompatible', message}}
       }
       // status === 'update_available'
       const message = formatAdvisory(compat, pm)
-      if (!advisoryShown) {
+      // report mode stays silent; the soft notice is for direct CLI runs.
+      if (compatPolicy !== 'report' && !advisoryShown) {
         advisoryShown = true
         process.stderr.write(message + '\n')
       }

@@ -12,6 +12,7 @@ import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifi
 import {port} from '../lib/portValueParser.js'
 import {resolveEntry} from '../lib/resolveEntry.js'
 import {createDevSession, type DevSessionHandle} from '../lib/serial/devSession.js'
+import {FirmwareGate} from '../lib/serial/FirmwareGate.js'
 import {
   type InkReplDriverContext,
   type InkReplDriverResult,
@@ -70,6 +71,11 @@ export const args = command(
       }),
     ),
     agent: optional(flag('--agent', {description: message`NDJSON agent protocol over stdio`})),
+    yes: optional(
+      flag('-y', '--yes', {
+        description: message`If the device firmware is incompatible, flash CLI-matched firmware without prompting`,
+      }),
+    ),
   }),
 )
 
@@ -83,7 +89,7 @@ export async function run(config: InferValue<typeof args>) {
   let stateSub: Subscription | null = null
 
   return runAgentRepl(
-    {port: config.port},
+    {port: config.port, yes: config.yes === true},
     {
       command: 'dev',
       onReady: async ({session}) => {
@@ -166,7 +172,7 @@ export async function run(config: InferValue<typeof args>) {
 }
 
 export default function Dev(props: Props) {
-  const {port, noMinify, noBytecode, forceDeploy, noWatch, noHooks} = props.args
+  const {port, noMinify, noBytecode, forceDeploy, noWatch, noHooks, yes} = props.args
   const minifier = parseMinifier(props.args.minifier)
   const minifyLevel = parseMinifyLevel(props.args.minifyLevel)
   const logLevel = parseLogLevel(props.args.logLevel)
@@ -211,13 +217,17 @@ export default function Dev(props: Props) {
   return (
     <DevicePicker port={port}>
       {(device) => (
-        <InkReplMode
-          devicePath={device.path}
-          serialNumber={device.serialNumber}
-          logLevel={logLevel}
-          driver={driver}
-          watch={watch}
-        />
+        <FirmwareGate devicePath={device.path} command="dev" yes={yes === true}>
+          {() => (
+            <InkReplMode
+              devicePath={device.path}
+              serialNumber={device.serialNumber}
+              logLevel={logLevel}
+              driver={driver}
+              watch={watch}
+            />
+          )}
+        </FirmwareGate>
       )}
     </DevicePicker>
   )
