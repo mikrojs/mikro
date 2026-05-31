@@ -272,6 +272,18 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  examples/captive-portal:
+    dependencies:
+      mikro:
+        specifier: workspace:*
+        version: link:../../packages/mikro
+
+  examples/http-server:
+    dependencies:
+      mikro:
+        specifier: workspace:*
+        version: link:../../packages/mikro
+
   examples/neopixel:
     dependencies:
       mikro:

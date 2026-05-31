@@ -1,0 +1,25 @@
+{
+  "name": "mikrojs-captive-portal",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mikro.js WiFi captive portal example (AP + DNS redirect + HTTP)",
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "dev": "mikro dev"
+  },
+  "dependencies": {
+    "mikro": "workspace:*"
+  },
+  "mikro": {
+    "predeploy": [
+      "tsc --noEmit --pretty"
+    ]
+  }
+}
