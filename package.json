@@ -71,7 +71,7 @@
     "knip": "^6.7.0",
     "lefthook": "^2.1.6",
     "mikro": "workspace:*",
-    "npm-run-all2": "^8.0.4",
+    "npm-run-all2": "^9.0.0",
     "oxfmt": "^0.52.0",
     "publint": "^0.3.18",
     "taze": "^19.11.0",
