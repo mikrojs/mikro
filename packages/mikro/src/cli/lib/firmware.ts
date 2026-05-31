@@ -1,15 +1,16 @@
 import {execFile} from 'node:child_process'
 import {createWriteStream} from 'node:fs'
 import * as fs from 'node:fs/promises'
-import * as os from 'node:os'
 import * as path from 'node:path'
 import {pipeline} from 'node:stream/promises'
 import {promisify} from 'node:util'
 
+import {paths} from './envPaths.js'
+
 const execFileAsync = promisify(execFile)
 
 const GITHUB_REPO = 'mikrojs/mikro'
-const CACHE_DIR = path.join(os.homedir(), '.cache', 'mikrojs', 'firmware')
+const CACHE_DIR = path.join(paths.cache, 'firmware')
 
 /** Chip identifier (e.g. "esp32c3", "esp32c6"). Not hardcoded — any chip with a matching firmware release asset will work. */
 export type Chip = string

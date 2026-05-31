@@ -229,6 +229,7 @@
     "@optique/run": "^1.0.2",
     "cbor2": "^2.3.0",
     "cli-spinners": "^3.4.0",
+    "env-paths": "catalog:",
     "figures": "^6.1.0",
     "ink": "^7.0.1",
     "ink-select-input": "^6.2.0",

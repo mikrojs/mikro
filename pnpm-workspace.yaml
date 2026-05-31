@@ -24,6 +24,7 @@ blockExoticSubdeps: true
 catalog:
   '@eslint/js': ^10.0.1
   '@vitest/coverage-v8': ^4.1.7
+  'env-paths': ^4.0.0
   eslint: ^10.2.1
   eslint-plugin-import: ^2.32.0
   eslint-plugin-package-json: ^1.0.0

@@ -41,6 +41,9 @@
     "typecheck": "tsc --noEmit",
     "watch": "tsc -p tsconfig.build.json --watch --preserveWatchOutput"
   },
+  "dependencies": {
+    "env-paths": "catalog:"
+  },
   "devDependencies": {
     "@types/node": "catalog:node24"
   },
