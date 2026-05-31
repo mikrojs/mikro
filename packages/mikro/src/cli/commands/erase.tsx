@@ -10,6 +10,7 @@ import {useEffect, useMemo, useState} from 'react'
 import type {Observable} from 'rxjs'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
+import {formatDeviceList} from '../lib/deviceLabel.js'
 import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
 import {port} from '../lib/portValueParser.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
@@ -107,10 +108,8 @@ function DeviceErase({port, baud, yes}: {port?: string; baud?: string; yes: bool
         {devices.length > 0 ? (
           <Box paddingTop={1} flexDirection="column">
             <Text>Connected devices:</Text>
-            {devices.map((d, i) => (
-              <Text key={d.path}>
-                {i + 1}. {d.path} ({d.manufacturer} {d.serialNumber})
-              </Text>
+            {formatDeviceList(devices).map((line, i) => (
+              <Text key={devices[i]!.path}>{line}</Text>
             ))}
           </Box>
         ) : (
@@ -135,10 +134,8 @@ function DeviceErase({port, baud, yes}: {port?: string; baud?: string; yes: bool
         <Text color="red">
           {figures.cross} Multiple devices found. Use --port to specify which one:
         </Text>
-        {devices.map((d, i) => (
-          <Text key={d.path}>
-            {i + 1}. {d.path} ({d.manufacturer} {d.serialNumber})
-          </Text>
+        {formatDeviceList(devices).map((line, i) => (
+          <Text key={devices[i]!.path}>{line}</Text>
         ))}
       </RenderAndExit>
     )

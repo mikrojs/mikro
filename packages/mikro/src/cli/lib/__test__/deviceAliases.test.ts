@@ -21,6 +21,7 @@ vi.mock('../envPaths.js', () => ({
 const {
   deviceAliasesFilePath,
   deviceDisplayName,
+  deviceGeneratedName,
   getDeviceAlias,
   matchPortToken,
   readDeviceAliases,
@@ -95,6 +96,21 @@ describe('device aliases', () => {
     expect(readDeviceAliases()).toEqual({S1: 'ok-name'})
   })
 
+  describe('deviceGeneratedName', () => {
+    it('is the intrinsic name and does NOT change when an alias is set', () => {
+      const before = deviceGeneratedName('543204227bd4')
+      expect(before).toMatch(/^[a-z]+-[a-z]+$/)
+      setDeviceAlias('543204227bd4', 'kitchen')
+      // alias shadows the display name, but the generated name is unchanged
+      expect(deviceGeneratedName('543204227bd4')).toBe(before)
+      expect(deviceDisplayName('543204227bd4')).toBe('kitchen')
+    })
+
+    it('is undefined when there is nothing to seed from', () => {
+      expect(deviceGeneratedName(undefined)).toBeUndefined()
+    })
+  })
+
   describe('deviceDisplayName', () => {
     it('returns the alias when one is set', () => {
       setDeviceAlias('S1', 'kitchen')
@@ -139,6 +155,20 @@ describe('device aliases', () => {
     it('matches by the derived device id when the serial is a MAC', () => {
       const macDevices = [{path: '/dev/c', serialNumber: '54:32:04:22:7B:D4'}]
       expect(matchPortToken(macDevices, '2m68224yym')?.path).toBe('/dev/c')
+    })
+
+    it('matches an unaliased device by its generated name', () => {
+      const macDevices = [{path: '/dev/c', serialNumber: '543204227bd4'}]
+      const generated = deviceGeneratedName('543204227bd4')!
+      expect(matchPortToken(macDevices, generated)?.path).toBe('/dev/c')
+    })
+
+    it('stops matching the generated name once an alias takes precedence', () => {
+      const macDevices = [{path: '/dev/c', serialNumber: '543204227bd4'}]
+      const generated = deviceGeneratedName('543204227bd4')!
+      setDeviceAlias('543204227bd4', 'kitchen')
+      expect(matchPortToken(macDevices, 'kitchen')?.path).toBe('/dev/c')
+      expect(matchPortToken(macDevices, generated)).toBeUndefined()
     })
 
     it('returns undefined when nothing matches', () => {

@@ -64,20 +64,37 @@ export function getDeviceAliasByDeviceId(deviceId: string | null | undefined): s
 }
 
 /**
- * The board's name: its alias if set, else a stable suggested name (so every
- * identifiable board always has one), else "(unknown)" when there's nothing to
- * seed from. Pass the firmware-reported deviceId (from a live connection) to
- * resolve bridge boards whose serial isn't the chip MAC.
+ * The intrinsic, generated name (no alias): a stable suggested name derived
+ * from the device id, so every identifiable board always has one. Undefined
+ * only when there's nothing to seed from. This never changes when an alias is
+ * set — the alias shadows it for display, but the name stays. Pass the
+ * firmware-reported deviceId to resolve bridge boards whose serial isn't the
+ * chip MAC.
+ */
+export function deviceGeneratedName(
+  serialNumber: string | undefined,
+  deviceId?: string | null,
+): string | undefined {
+  const seed =
+    deviceIdFromSerial(serialNumber) ?? getCachedDeviceId(serialNumber) ?? deviceId ?? serialNumber
+  return seed ? suggestDeviceName(seed) : undefined
+}
+
+/**
+ * What to show for a board: its alias if set, else the generated name, else
+ * "(unknown)". The alias takes precedence but doesn't replace the name (see
+ * deviceGeneratedName).
  */
 export function deviceDisplayName(
   serialNumber: string | undefined,
   deviceId?: string | null,
 ): string {
-  const alias = getDeviceAlias(serialNumber) ?? getDeviceAliasByDeviceId(deviceId)
-  if (alias) return alias
-  const seed =
-    deviceIdFromSerial(serialNumber) ?? getCachedDeviceId(serialNumber) ?? deviceId ?? serialNumber
-  return seed ? suggestDeviceName(seed) : '(unknown)'
+  return (
+    getDeviceAlias(serialNumber) ??
+    getDeviceAliasByDeviceId(deviceId) ??
+    deviceGeneratedName(serialNumber, deviceId) ??
+    '(unknown)'
+  )
 }
 
 /** Names must be unique so they can stand in for `--port`. */
@@ -127,7 +144,7 @@ export function removeDeviceAlias(token: string): AliasResult {
   return {ok: true}
 }
 
-/** Resolve a `--port` token, in order: exact path, alias name, raw serial,
+/** Resolve a `--port` token, in order: exact path, displayed name, raw serial,
  *  then derived/cached device id. Undefined if nothing matches. */
 export function matchPortToken<T extends {path: string; serialNumber?: string | undefined}>(
   devices: T[],
@@ -136,12 +153,12 @@ export function matchPortToken<T extends {path: string; serialNumber?: string | 
   const byPath = devices.find((d) => d.path === token)
   if (byPath) return byPath
 
-  const aliases = readDeviceAliases()
-  const serialForName = Object.keys(aliases).find((serial) => aliases[serial] === token)
-  if (serialForName) {
-    const byAlias = devices.find((d) => d.serialNumber === serialForName)
-    if (byAlias) return byAlias
-  }
+  // Match the displayed name: the alias if set, else the generated name. Since
+  // deviceDisplayName returns the alias when one is set, an aliased device's
+  // generated name does NOT resolve here — only its alias does, matching what
+  // the user sees.
+  const byName = devices.find((d) => deviceDisplayName(d.serialNumber) === token)
+  if (byName) return byName
 
   const bySerial = devices.find((d) => d.serialNumber === token)
   if (bySerial) return bySerial

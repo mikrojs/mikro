@@ -16,6 +16,7 @@ import {
 } from '../lib/deviceAliases.js'
 import {getCachedDeviceId} from '../lib/deviceCache.js'
 import {deviceIdFromSerial} from '../lib/deviceId.js'
+import {formatDeviceList} from '../lib/deviceLabel.js'
 import {port} from '../lib/portValueParser.js'
 import {suggestDeviceName} from '../lib/suggestName.js'
 
@@ -140,9 +141,7 @@ export async function run(config: InferValue<typeof args>) {
             agentError('alias set', msg, {fix: 'Pass --port to choose one (see mikro ls)'})
           } else {
             console.error(`Error: ${msg}. Pass --port to choose one:`)
-            for (const d of connected) {
-              console.error(`  ${d.path} (${d.manufacturer ?? ''} ${d.serialNumber ?? ''})`)
-            }
+            for (const line of formatDeviceList(connected)) console.error(`  ${line}`)
           }
           process.exit(1)
         }

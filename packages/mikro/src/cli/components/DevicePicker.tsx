@@ -5,13 +5,14 @@ import React, {type ReactNode, useCallback, useEffect, useState} from 'react'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {
-  deviceDisplayName,
   getDeviceAlias,
   matchPortToken,
+  removeDeviceAlias,
   setDeviceAlias,
 } from '../lib/deviceAliases.js'
-import {getCachedChip, getCachedDeviceId} from '../lib/deviceCache.js'
+import {getCachedDeviceId} from '../lib/deviceCache.js'
 import {deviceIdFromSerial} from '../lib/deviceId.js'
+import {formatDeviceList} from '../lib/deviceLabel.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
 import {suggestDeviceName} from '../lib/suggestName.js'
@@ -57,22 +58,13 @@ export function DevicePicker(props: Props) {
   }, [])
 
   const devices = deviceDiscovery.status === 'success' ? deviceDiscovery.value : EMPTY_ARRAY
-  // Aligned columns (name | path | detail). Name is the alias, else a suggested
-  // color-animal name (what `r` would assign), else "(unknown)".
-  const rows = devices.map((device) => {
-    const chip = getCachedChip(device.serialNumber)
-    return {
-      device,
-      name: deviceDisplayName(device.serialNumber),
-      detail: `(${[chip, device.serialNumber].filter(Boolean).join(' · ')})`,
-    }
-  })
-  const wName = Math.max(0, ...rows.map((r) => r.name.length))
-  const wPath = Math.max(0, ...rows.map((r) => r.device.path.length))
-  const items: Item<PortInfo>[] = rows.map((r) => {
-    const cols = [r.name.padEnd(wName), r.device.path.padEnd(wPath), r.detail]
-    return {key: r.device.path, label: cols.join('  '), value: r.device}
-  })
+  // Canonical "name  path  (chip=…, id=…)" lines, one item per device.
+  const labels = formatDeviceList(devices)
+  const items: Item<PortInfo>[] = devices.map((device, i) => ({
+    key: device.path,
+    label: labels[i]!,
+    value: device,
+  }))
 
   const device = port
     ? matchPortToken(devices, port)
@@ -100,9 +92,19 @@ export function DevicePicker(props: Props) {
         }
         if (key.return) {
           const name = input.value.trim()
-          if (!name) return
           const serial = mode.device.serialNumber
           if (!serial) {
+            setInput(EMPTY_INPUT)
+            setMode({type: 'list'})
+            return
+          }
+          // Empty input clears an existing alias (reverting to the generated
+          // name); with no alias to clear it's just a cancel.
+          if (!name) {
+            if (getDeviceAlias(serial)) {
+              removeDeviceAlias(serial)
+              setAliasTick((n) => n + 1)
+            }
             setInput(EMPTY_INPUT)
             setMode({type: 'list'})
             return
@@ -122,8 +124,8 @@ export function DevicePicker(props: Props) {
         return
       }
 
-      // List mode: `r` names the highlighted device. Prefill with the existing
-      // alias, else a suggested color-animal name seeded by the device id.
+      // List mode: `r` sets an alias for the highlighted device. Prefill with the
+      // existing alias, else the generated name seeded by the device id.
       if (ch === 'r') {
         const target = highlighted ?? devices[0]
         if (!target) return
@@ -159,10 +161,8 @@ export function DevicePicker(props: Props) {
         {devices.length > 0 ? (
           <Box paddingTop={1} flexDirection="column">
             <Text>Connected devices:</Text>
-            {devices.map((device, i) => (
-              <Text key={device.path}>
-                {i + 1}. {device.path} ({device.manufacturer} {device.serialNumber})
-              </Text>
+            {formatDeviceList(devices).map((line, i) => (
+              <Text key={devices[i]!.path}>{line}</Text>
             ))}
           </Box>
         ) : (
@@ -190,11 +190,8 @@ export function DevicePicker(props: Props) {
     return (
       <RenderAndExit exitCode={1}>
         <Text color="red">Error: Multiple devices found. Use --port to select one:</Text>
-        {devices.map((d) => (
-          <Text key={d.path}>
-            {'  '}
-            {d.path} ({d.manufacturer ?? ''} {d.serialNumber ?? ''})
-          </Text>
+        {formatDeviceList(devices).map((line, i) => (
+          <Text key={devices[i]!.path}>{line}</Text>
         ))}
       </RenderAndExit>
     )
@@ -224,14 +221,17 @@ export function DevicePicker(props: Props) {
       {mode.type === 'rename' ? (
         <Box flexDirection="column" marginTop={1}>
           <Box>
-            <Text>Name for {mode.device.path}: </Text>
+            <Text>Alias for {mode.device.path}: </Text>
             <TextInput value={input.value} cursor={input.cursor} placeholder="my-device" />
           </Box>
           {mode.error ? <Text color="red">{mode.error}</Text> : null}
-          <Text dimColor>Enter to save · Esc to cancel</Text>
+          <Text dimColor>
+            Enter to save · Esc to cancel
+            {getDeviceAlias(mode.device.serialNumber) ? ' · clear to remove the alias' : ''}
+          </Text>
         </Box>
       ) : (
-        <Text dimColor>Press r to rename the selected device</Text>
+        <Text dimColor>Press r to set an alias for the selected device</Text>
       )}
     </Box>
   )

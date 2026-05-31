@@ -4,6 +4,7 @@ import {access, readdir, readFile, stat} from 'fs/promises'
 import {SerialPort} from 'serialport'
 
 import {matchPortToken} from './deviceAliases.js'
+import {formatDeviceList} from './deviceLabel.js'
 import {parseDotenv} from './dotenv.js'
 import {TROUBLESHOOTING_URL} from './troubleshooting.js'
 
@@ -26,9 +27,7 @@ export async function resolvePort(explicit?: string): Promise<string> {
       const lines = [`Error: Device not found: ${explicit}`]
       if (devices.length > 0) {
         lines.push('\nConnected devices:')
-        for (const d of devices) {
-          lines.push(`  ${d.path} (${d.manufacturer ?? ''} ${d.serialNumber ?? ''}`)
-        }
+        lines.push(...formatDeviceList(devices).map((l) => `  ${l}`))
       } else {
         lines.push('No devices found')
       }
@@ -47,9 +46,7 @@ export async function resolvePort(explicit?: string): Promise<string> {
   }
 
   const lines = ['Multiple devices found. Use --port to select one:\n']
-  for (const d of devices) {
-    lines.push(`  ${d.path} (${d.manufacturer ?? ''} ${d.serialNumber ?? ''}`)
-  }
+  lines.push(...formatDeviceList(devices).map((l) => `  ${l}`))
   throw new Error(lines.join('\n'))
 }
 

@@ -676,7 +676,7 @@ function reduceSubmit(state: ReplMachineState): [ReplMachineState, ReplEffect[]]
     const inputEvent: ReplLogEvent = {type: 'input', code}
     const hostHelp: ReplLogEvent = {
       type: 'info',
-      text: 'Host commands: /alias set <name> (name this device) · /alias unset (remove its name)',
+      text: 'Host commands: /alias set <name> (set a local alias) · /alias unset (remove the alias)',
     }
     const next = {...resetState, events: [...resetState.events, inputEvent, hostHelp]}
     return [next, [...effects, {type: 'directive', code}]]
@@ -940,7 +940,7 @@ export function createRepl(options: {
     const result = setDeviceAlias(serial, name)
     emitAlias(
       result.ok ? 'info' : 'error',
-      result.ok ? `Named this device "${name}"` : result.error,
+      result.ok ? `Aliased this device as "${name}"` : result.error,
     )
   }
 
