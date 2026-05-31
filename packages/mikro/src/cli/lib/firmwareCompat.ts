@@ -2,7 +2,12 @@ import {createRequire} from 'node:module'
 
 import {lt, major, minor, patch, satisfies} from 'semver'
 
-import {installLatestCommand, mikroCommand, type PkgManager} from './pkgManager.js'
+import {
+  installLatestCommand,
+  installVersionCommand,
+  mikroCommand,
+  type PkgManager,
+} from './pkgManager.js'
 
 export type FirmwareCompatStatus = 'match' | 'update_available' | 'incompatible'
 export type FirmwareCompatDirection = 'device_older' | 'device_newer'
@@ -88,4 +93,27 @@ export class FirmwareIncompatibleError extends Error {
 export function formatIncompatibleError(result: FirmwareCompatResult, pm: PkgManager): string {
   const got = result.deviceVersion ?? 'unknown'
   return `Device is running mikrojs v${got}, which is not compatible with this CLI (v${result.cliVersion}). Run ${mikroCommand(pm, 'flash')} to update device.`
+}
+
+/**
+ * Format the warning shown when a read-only diagnostic command proceeds
+ * against incompatible firmware (best-effort mode). Unlike the hard error,
+ * this points the user at matching the CLI to the device — the device may be
+ * a deployed unit you can't reflash, and the goal is to read its state. When
+ * the device reported a concrete version we suggest installing that exact CLI;
+ * otherwise (no version reported) the firmware predates version reporting, so
+ * only reflashing can help.
+ */
+export function formatBestEffortWarning(result: FirmwareCompatResult, pm: PkgManager): string {
+  const {deviceVersion, cliVersion: cli} = result
+  if (!deviceVersion) {
+    return [
+      `Device firmware did not report a version and may be too old for this CLI (v${cli}).`,
+      `Attempting anyway. If it fails, run ${mikroCommand(pm, 'flash')} to update the device.`,
+    ].join('\n')
+  }
+  return [
+    `Device is running mikrojs v${deviceVersion}, which is not compatible with this CLI (v${cli}).`,
+    `Attempting anyway. If it fails, install a matching CLI (${installVersionCommand(pm, 'mikro', deviceVersion)}) or run ${mikroCommand(pm, 'flash')} to update the device.`,
+  ].join('\n')
 }

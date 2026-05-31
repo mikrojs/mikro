@@ -83,8 +83,9 @@ export const args = command(
 async function withSession<T>(
   portArg: string | undefined,
   fn: (session: ReplSession) => Promise<T>,
+  compat: 'enforce' | 'best-effort' = 'enforce',
 ): Promise<T> {
-  const handles = await openSession({port: portArg})
+  const handles = await openSession({port: portArg, compat})
   try {
     return await fn(handles.session)
   } finally {
@@ -101,45 +102,51 @@ export async function run(config: InferValue<typeof args>) {
 
   switch (sub.subcommand) {
     case 'list': {
-      await withSession(sub.port, async (session) => {
-        const entries = await session.config.list()
+      // Read-only diagnostic: list a mismatched device's env anyway (warn,
+      // don't hard-fail). set/delete below mutate state, so they stay strict.
+      await withSession(
+        sub.port,
+        async (session) => {
+          const entries = await session.config.list()
 
-        if (jsonOutput) {
-          agentResult(
-            'env list',
-            entries.map((e) => ({
-              key: e.key,
-              value: e.secret ? undefined : e.value,
-              secret: e.secret,
-            })),
-            [
-              {command: 'mikro env set <KEY> <VALUE>', description: 'Set an env variable'},
-              {command: 'mikro env delete <KEY>', description: 'Delete an env variable'},
-            ],
-          )
-          return
-        }
-
-        if (entries.length === 0) {
-          console.log('No env variables configured')
-          return
-        }
-
-        const envEntries = entries.filter((e) => !e.secret)
-        const secretEntries = entries.filter((e) => e.secret)
-
-        if (envEntries.length > 0) {
-          const maxKeyLen = Math.max(...envEntries.map((e) => e.key.length))
-          for (const e of envEntries) {
-            console.log(`${e.key.padEnd(maxKeyLen)}  ${e.value}`)
+          if (jsonOutput) {
+            agentResult(
+              'env list',
+              entries.map((e) => ({
+                key: e.key,
+                value: e.secret ? undefined : e.value,
+                secret: e.secret,
+              })),
+              [
+                {command: 'mikro env set <KEY> <VALUE>', description: 'Set an env variable'},
+                {command: 'mikro env delete <KEY>', description: 'Delete an env variable'},
+              ],
+            )
+            return
           }
-        }
-        if (secretEntries.length > 0) {
-          for (const e of secretEntries) {
-            console.log(`${e.key}  ********`)
+
+          if (entries.length === 0) {
+            console.log('No env variables configured')
+            return
           }
-        }
-      })
+
+          const envEntries = entries.filter((e) => !e.secret)
+          const secretEntries = entries.filter((e) => e.secret)
+
+          if (envEntries.length > 0) {
+            const maxKeyLen = Math.max(...envEntries.map((e) => e.key.length))
+            for (const e of envEntries) {
+              console.log(`${e.key.padEnd(maxKeyLen)}  ${e.value}`)
+            }
+          }
+          if (secretEntries.length > 0) {
+            for (const e of secretEntries) {
+              console.log(`${e.key}  ********`)
+            }
+          }
+        },
+        'best-effort',
+      )
       break
     }
 

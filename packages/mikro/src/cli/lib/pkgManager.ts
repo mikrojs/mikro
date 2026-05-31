@@ -29,3 +29,9 @@ export function installLatestCommand(pm: PkgManager, pkg: string): string {
   const verb = pm === 'npm' ? 'install' : 'add'
   return `${pm} ${verb} ${pkg}@latest`
 }
+
+/** Render an "install a specific version of <pkg>" command appropriate for the pm. */
+export function installVersionCommand(pm: PkgManager, pkg: string, version: string): string {
+  const verb = pm === 'npm' ? 'install' : 'add'
+  return `${pm} ${verb} ${pkg}@${version}`
+}

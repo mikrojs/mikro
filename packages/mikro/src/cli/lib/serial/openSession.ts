@@ -23,6 +23,12 @@ export interface OpenSessionOptions {
   recover?: boolean
   /** Called with the resolved device path before the serial is opened. */
   onConnecting?: (path: string) => void
+  /**
+   * Firmware-version policy. 'best-effort' lets read-only diagnostic
+   * commands proceed against incompatible firmware with a warning instead
+   * of a hard error. Defaults to 'enforce'. See ConnectReplOptions.compat.
+   */
+  compat?: 'enforce' | 'best-effort'
 }
 
 /**
@@ -41,7 +47,7 @@ export async function openSession(options: OpenSessionOptions): Promise<SessionH
   })
 
   const transport = createSerialTransport(serial)
-  const session = connectRepl(transport)
+  const session = connectRepl(transport, {compat: options.compat})
 
   if (options.recover === true) {
     await triggerSafeMode(serial)

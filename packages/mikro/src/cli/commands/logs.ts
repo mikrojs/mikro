@@ -79,7 +79,9 @@ async function runTail(sub: {
   logLevel: string | undefined
 }): Promise<void> {
   const logLevel = parseLogLevel(sub.logLevel) ?? 'debug'
-  const handles = await openSession({port: sub.port})
+  // Diagnostics: read the device's output even if its firmware version is
+  // out of range — pulling logs off a mismatched unit is the whole point.
+  const handles = await openSession({port: sub.port, compat: 'best-effort'})
 
   if (sub.restart) {
     handles.session.restart()
@@ -117,7 +119,9 @@ async function runPull(sub: {dest: string | undefined; port: string | undefined}
   const mainPath = `${logDir}/log.txt`
   const rotatedPath = `${mainPath}.1`
 
-  const handles = await openSession({port})
+  // Best-effort: a deployed unit on older firmware should still surrender
+  // its logs (see runTail).
+  const handles = await openSession({port, compat: 'best-effort'})
   try {
     if (dest === undefined) {
       /* Stream to stdout. Pull older rotated generation first so the dump
