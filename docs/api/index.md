@@ -35,6 +35,7 @@ import {request} from 'mikro/http/request'
 | [wifi](/api/wifi)                 | WiFi station and access point                    |
 | [ble](/api/ble)                   | BLE broadcaster and GATT peripheral              |
 | [http/request](/api/http-request) | HTTP client                                      |
+| [http/server](/api/http-server)   | HTTP server (handler + routing in userland)      |
 | [udp](/api/udp)                   | UDP datagram sockets (IPv4 and IPv6)             |
 | [sleep](/api/sleep)               | Delays, deep sleep, light sleep, wakeup sources  |
 | [sntp](/api/sntp)                 | Network time synchronization                     |
