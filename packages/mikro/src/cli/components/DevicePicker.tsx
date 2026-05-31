@@ -1,12 +1,22 @@
 import spinners from 'cli-spinners'
 import {Box, Text, useInput} from 'ink'
 import SelectInput from 'ink-select-input'
-import React, {type ReactNode, useCallback, useEffect, useMemo, useState} from 'react'
+import React, {type ReactNode, useCallback, useEffect, useState} from 'react'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
+import {
+  deviceDisplayName,
+  getDeviceAlias,
+  matchPortToken,
+  setDeviceAlias,
+} from '../lib/deviceAliases.js'
+import {getCachedChip, getCachedDeviceId} from '../lib/deviceCache.js'
+import {deviceIdFromSerial} from '../lib/deviceId.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
+import {suggestDeviceName} from '../lib/suggestName.js'
 import {TROUBLESHOOTING_HINT_DELAY_MS, TroubleshootingHint} from '../lib/troubleshooting.js'
+import {EMPTY_INPUT, type InputState, reduceInput, TextInput} from './TextInput.js'
 
 type Item<V> = {
   key?: string
@@ -27,6 +37,13 @@ export function DevicePicker(props: Props) {
   // Stop polling once a device is selected or auto-detected (avoid SerialPort.list() interfering with open port)
   const [pollingEnabled, setPollingEnabled] = useState(true)
   const [waitingTooLong, setWaitingTooLong] = useState(false)
+  const [highlighted, setHighlighted] = useState<PortInfo>()
+  const [mode, setMode] = useState<
+    {type: 'list'} | {type: 'rename'; device: PortInfo; error?: string}
+  >({type: 'list'})
+  const [input, setInput] = useState<InputState>(EMPTY_INPUT)
+  // Bumped after saving an alias to recompute the labels below.
+  const [, setAliasTick] = useState(0)
   const deviceDiscovery = useDevices(pollingEnabled)
 
   useEffect(() => {
@@ -40,24 +57,25 @@ export function DevicePicker(props: Props) {
   }, [])
 
   const devices = deviceDiscovery.status === 'success' ? deviceDiscovery.value : EMPTY_ARRAY
-  const items: Item<PortInfo>[] = useMemo(
-    () =>
-      devices.map((device) => ({
-        key: device.path,
-        label: `${device.path} (${[
-          device.serialNumber ? `serialNumber=${device.serialNumber}` : '',
-          device.manufacturer ? `manufacturer=${device.manufacturer}` : '',
-          device.vendorId ? `vendorId=${device.vendorId}` : '',
-        ]
-          .filter(Boolean)
-          .join(', ')})`,
-        value: device,
-      })),
-    [devices],
-  )
+  // Aligned columns (name | path | detail). Name is the alias, else a suggested
+  // color-animal name (what `r` would assign), else "(unknown)".
+  const rows = devices.map((device) => {
+    const chip = getCachedChip(device.serialNumber)
+    return {
+      device,
+      name: deviceDisplayName(device.serialNumber),
+      detail: `(${[chip, device.serialNumber].filter(Boolean).join(' · ')})`,
+    }
+  })
+  const wName = Math.max(0, ...rows.map((r) => r.name.length))
+  const wPath = Math.max(0, ...rows.map((r) => r.device.path.length))
+  const items: Item<PortInfo>[] = rows.map((r) => {
+    const cols = [r.name.padEnd(wName), r.device.path.padEnd(wPath), r.detail]
+    return {key: r.device.path, label: cols.join('  '), value: r.device}
+  })
 
   const device = port
-    ? devices.find((dev) => dev.path === port)
+    ? matchPortToken(devices, port)
     : devices.length === 1
       ? devices[0]
       : undefined
@@ -66,11 +84,56 @@ export function DevicePicker(props: Props) {
   const isInteractive = process.stdin.isTTY === true
   const current = device || selectedDevice
 
-  // Allow Ctrl+C / Ctrl+Q to exit before a device is selected
+  // Handle Ctrl+C/Ctrl+Q exit, the rename flow, and the `r` rename trigger
+  // while a device is still being picked.
   useInput(
-    (_ch, key) => {
-      if (key.ctrl && (_ch === 'c' || _ch === 'q')) {
+    (ch, key) => {
+      if (key.ctrl && (ch === 'c' || ch === 'q')) {
         process.exit(0)
+      }
+
+      if (mode.type === 'rename') {
+        if (key.escape) {
+          setInput(EMPTY_INPUT)
+          setMode({type: 'list'})
+          return
+        }
+        if (key.return) {
+          const name = input.value.trim()
+          if (!name) return
+          const serial = mode.device.serialNumber
+          if (!serial) {
+            setInput(EMPTY_INPUT)
+            setMode({type: 'list'})
+            return
+          }
+          const result = setDeviceAlias(serial, name)
+          if (!result.ok) {
+            setMode({type: 'rename', device: mode.device, error: result.error})
+            return
+          }
+          setInput(EMPTY_INPUT)
+          setMode({type: 'list'})
+          setAliasTick((n) => n + 1)
+          return
+        }
+        const next = reduceInput(input, ch, key)
+        if (next) setInput(next)
+        return
+      }
+
+      // List mode: `r` names the highlighted device. Prefill with the existing
+      // alias, else a suggested color-animal name seeded by the device id.
+      if (ch === 'r') {
+        const target = highlighted ?? devices[0]
+        if (!target) return
+        const seed =
+          deviceIdFromSerial(target.serialNumber) ??
+          getCachedDeviceId(target.serialNumber) ??
+          target.serialNumber
+        const prefill = getDeviceAlias(target.serialNumber) ?? (seed ? suggestDeviceName(seed) : '')
+        setInput(prefill ? {value: prefill, cursor: prefill.length} : EMPTY_INPUT)
+        setMode({type: 'rename', device: target})
       }
     },
     {isActive: !current},
@@ -150,9 +213,26 @@ export function DevicePicker(props: Props) {
   }
 
   return (
-    <>
+    <Box flexDirection="column">
       <Text>Select device</Text>
-      <SelectInput items={items} onSelect={handleSelect} />
-    </>
+      <SelectInput
+        items={items}
+        onSelect={handleSelect}
+        onHighlight={(item) => setHighlighted(item.value)}
+        isFocused={mode.type === 'list'}
+      />
+      {mode.type === 'rename' ? (
+        <Box flexDirection="column" marginTop={1}>
+          <Box>
+            <Text>Name for {mode.device.path}: </Text>
+            <TextInput value={input.value} cursor={input.cursor} placeholder="my-device" />
+          </Box>
+          {mode.error ? <Text color="red">{mode.error}</Text> : null}
+          <Text dimColor>Enter to save · Esc to cancel</Text>
+        </Box>
+      ) : (
+        <Text dimColor>Press r to rename the selected device</Text>
+      )}
+    </Box>
   )
 }

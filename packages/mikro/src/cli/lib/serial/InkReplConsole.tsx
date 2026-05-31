@@ -8,6 +8,8 @@ import {createRepl, type ReplHandle} from './replStateMachine.js'
 export interface InkReplConsoleProps {
   session: ReplSession
   devicePath: string
+  /** Connected device's USB serial, forwarded to `ReplConsole` for its alias. */
+  serialNumber?: string
   logLevel?: LogLevel
   /** When true, the deploy keybind fires a trigger into the repl's
    *  `deploys$`. Defaults to false so callers that render a plain REPL
@@ -29,7 +31,15 @@ export interface InkReplConsoleProps {
  * a connection — feed it a live session.
  */
 export function InkReplConsole(props: InkReplConsoleProps) {
-  const {session, devicePath, logLevel, deployEnabled = false, repl: providedRepl, watch} = props
+  const {
+    session,
+    devicePath,
+    serialNumber,
+    logLevel,
+    deployEnabled = false,
+    repl: providedRepl,
+    watch,
+  } = props
 
   const handleEnd = useCallback(() => {
     process.stdout.write('\x1b[<u')
@@ -41,5 +51,13 @@ export function InkReplConsole(props: InkReplConsoleProps) {
     return createRepl({session, port: devicePath, onEnd: handleEnd, deployEnabled})
   }, [providedRepl, session, devicePath, handleEnd, deployEnabled])
 
-  return <ReplConsole repl={repl} config={session.config} logLevel={logLevel} watch={watch} />
+  return (
+    <ReplConsole
+      repl={repl}
+      config={session.config}
+      logLevel={logLevel}
+      watch={watch}
+      serialNumber={serialNumber}
+    />
+  )
 }

@@ -12,6 +12,7 @@ import pkg from '../../package.json' with {type: 'json'}
 import {isAgentMode} from './lib/agent.js'
 import {dispatchReplCommand} from './lib/serial/dispatchReplCommand.js'
 import {
+  aliasCommand,
   buildCommand,
   buildRuntimeCommand,
   cleanCommand,
@@ -152,6 +153,10 @@ switch (config.command.action) {
   }
   case 'home': {
     void homeCommand.run()
+    break
+  }
+  case 'alias': {
+    void aliasCommand.run(config.command)
     break
   }
   case 'logs': {

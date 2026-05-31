@@ -3,6 +3,7 @@ import * as pathlib from 'node:path'
 import {access, readdir, readFile, stat} from 'fs/promises'
 import {SerialPort} from 'serialport'
 
+import {matchPortToken} from './deviceAliases.js'
 import {parseDotenv} from './dotenv.js'
 import {TROUBLESHOOTING_URL} from './troubleshooting.js'
 
@@ -19,7 +20,8 @@ export async function resolvePort(explicit?: string): Promise<string> {
   const devices: PortInfo[] = (await SerialPort.list()).filter((p) => p.serialNumber)
 
   if (explicit) {
-    const match = devices.find((d) => d.path === explicit)
+    // `explicit` may be a device path, an alias name, or a raw serial number.
+    const match = matchPortToken(devices, explicit)
     if (!match) {
       const lines = [`Error: Device not found: ${explicit}`]
       if (devices.length > 0) {

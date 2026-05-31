@@ -13,8 +13,12 @@ import {
   startWith,
   switchMap,
   takeUntil,
+  tap,
 } from 'rxjs/operators'
+import {SerialPort} from 'serialport'
 
+import {getDeviceAlias, removeDeviceAlias, setDeviceAlias} from '../deviceAliases.js'
+import {rememberDeviceForPort} from '../deviceCache.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {getMikroDir} from '../projectRoot.js'
 import {isIncomplete} from '../protocol.js'
@@ -97,6 +101,8 @@ export type ReplAction =
 export type ReplEffect =
   | {type: 'eval'; code: string}
   | {type: 'directive'; code: string}
+  | {type: 'setAlias'; name: string}
+  | {type: 'unsetAlias'}
   | {type: 'exit'}
   | {type: 'restart'}
   | {type: 'end'}
@@ -110,6 +116,7 @@ export type ReplEffect =
 /** All available slash commands */
 const SLASH_COMMANDS = [
   '/help',
+  '/alias',
   '/env',
   '/mem',
   '/info',
@@ -664,6 +671,30 @@ function reduceSubmit(state: ReplMachineState): [ReplMachineState, ReplEffect[]]
     return [resetState, [...effects, {type: 'exit'}, {type: 'end'}]]
   }
 
+  // `/help` is device-answered; add host-only commands so `/alias` shows up.
+  if (code === '/help') {
+    const inputEvent: ReplLogEvent = {type: 'input', code}
+    const hostHelp: ReplLogEvent = {
+      type: 'info',
+      text: 'Host commands: /alias set <name> (name this device) · /alias unset (remove its name)',
+    }
+    const next = {...resetState, events: [...resetState.events, inputEvent, hostHelp]}
+    return [next, [...effects, {type: 'directive', code}]]
+  }
+
+  // `/alias` is host-side (writes the local alias file), not forwarded.
+  if (code === '/alias' || code.startsWith('/alias ')) {
+    const rest = code.slice('/alias'.length).trim()
+    const inputEvent: ReplLogEvent = {type: 'input', code}
+    const next = {...resetState, events: [...resetState.events, inputEvent]}
+    if (rest === 'unset') {
+      return [next, [...effects, {type: 'unsetAlias'}]]
+    }
+    // Anything but "set <name>" yields an empty name → usage message.
+    const name = /^set\s+(.+)$/.exec(rest)?.[1]?.trim() ?? ''
+    return [next, [...effects, {type: 'setAlias', name}]]
+  }
+
   if (!code.includes('\n') && /^\/[a-z]+(\s|$)/i.test(code)) {
     const inputEvent: ReplLogEvent = {type: 'input', code}
     const next = {...resetState, events: [...resetState.events, inputEvent]}
@@ -749,6 +780,16 @@ export function createRepl(options: {
   const initial = createInitialState(port, loadHistoryFn())
 
   const sessionActions$: Observable<ReplAction> = session.messages$.pipe(
+    // Cache chip/deviceId on connect so the picker and `ls` can show them while
+    // disconnected (the only id source for USB-UART bridge boards).
+    tap((event: ReplEvent) => {
+      if (event.type === 'ready') {
+        void rememberDeviceForPort(port, {
+          chip: event.chip ?? undefined,
+          deviceId: event.id ?? undefined,
+        })
+      }
+    }),
     map((event: ReplEvent): ReplAction => ({type: 'deviceEvent', event})),
   )
 
@@ -826,6 +867,12 @@ export function createRepl(options: {
       case 'directive':
         session.directive(effect.code)
         break
+      case 'setAlias':
+        void applyAlias(effect.name)
+        break
+      case 'unsetAlias':
+        void applyUnalias()
+        break
       case 'exit':
         session.exit()
         break
@@ -852,6 +899,60 @@ export function createRepl(options: {
         queueMicrotask(() => actions$.next({type: 'returnResolve'}))
         break
     }
+  }
+
+  // /alias feedback shows up inline as a normal log line. Deferred to a
+  // microtask so synchronous callers (the empty-name usage message) don't
+  // re-enter the scan reducer mid-action, which would drop the event.
+  function emitAlias(type: 'info' | 'error', text: string) {
+    queueMicrotask(() => actions$.next({type: 'deviceEvent', event: {type, text}}))
+  }
+
+  // Serial number for the connected port; emits a log line and returns undefined
+  // when it can't be determined. Async, so callers run from an effect.
+  async function aliasSerial(): Promise<string | undefined> {
+    if (!port || port === 'simulator') {
+      emitAlias('error', 'Cannot manage an alias for this session')
+      return undefined
+    }
+    let serial: string | undefined
+    try {
+      const devices = await SerialPort.list()
+      serial = devices.find((d) => d.path === port)?.serialNumber
+    } catch (err) {
+      emitAlias('error', `Could not read serial ports: ${err instanceof Error ? err.message : err}`)
+      return undefined
+    }
+    if (!serial) {
+      emitAlias('error', `No serial number found for ${port}; cannot manage its alias`)
+    }
+    return serial
+  }
+
+  async function applyAlias(rawName: string) {
+    const name = rawName.trim()
+    if (!name) {
+      emitAlias('error', 'Usage: /alias set <name> | /alias unset')
+      return
+    }
+    const serial = await aliasSerial()
+    if (!serial) return
+    const result = setDeviceAlias(serial, name)
+    emitAlias(
+      result.ok ? 'info' : 'error',
+      result.ok ? `Named this device "${name}"` : result.error,
+    )
+  }
+
+  async function applyUnalias() {
+    const serial = await aliasSerial()
+    if (!serial) return
+    if (!getDeviceAlias(serial)) {
+      emitAlias('info', 'This device has no alias')
+      return
+    }
+    const result = removeDeviceAlias(serial)
+    emitAlias(result.ok ? 'info' : 'error', result.ok ? 'Removed alias' : result.error)
   }
 
   return {

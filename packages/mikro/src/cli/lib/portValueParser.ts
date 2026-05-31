@@ -2,6 +2,8 @@ import {message} from '@optique/core'
 import type {ValueParser} from '@optique/core/valueparser'
 import {SerialPort} from 'serialport'
 
+import {getDeviceAlias} from './deviceAliases.js'
+
 /* A ValueParser for the `--port` option that suggests connected serial
  * devices on Tab. Only ports with a serialNumber are surfaced; the rest
  * are virtual/internal ports (Bluetooth, debug UARTs) the user almost
@@ -29,10 +31,19 @@ export function port(): ValueParser<'async', string> {
       }
       for (const p of ports) {
         if (!p.serialNumber) continue
+        const alias = getDeviceAlias(p.serialNumber)
+        // Offer the alias as its own completion so `--port <alias>` is discoverable.
+        if (alias) {
+          yield {kind: 'literal' as const, text: alias, description: message`${p.path}`}
+        }
         yield {
           kind: 'literal' as const,
           text: p.path,
-          description: p.manufacturer ? message`${p.manufacturer}` : undefined,
+          description: alias
+            ? message`${alias}`
+            : p.manufacturer
+              ? message`${p.manufacturer}`
+              : undefined,
         }
       }
     },

@@ -3,6 +3,7 @@ import {object} from '@optique/core/constructs'
 import {defineProgram} from '@optique/core/program'
 
 import pkg from '../../package.json' with {type: 'json'}
+import * as aliasCommand from './commands/alias.js'
 import * as buildCommand from './commands/build.js'
 import * as buildRuntimeCommand from './commands/build-runtime.js'
 import * as cleanCommand from './commands/clean.js'
@@ -20,6 +21,7 @@ import * as simCommand from './commands/sim.js'
 import * as testCommand from './commands/test.js'
 
 export {
+  aliasCommand,
   buildCommand,
   buildRuntimeCommand,
   cleanCommand,
@@ -38,6 +40,7 @@ export {
 }
 
 export const commands = {
+  alias: aliasCommand,
   flash: flashCommand,
   build: buildCommand,
   'build-runtime': buildRuntimeCommand,
@@ -63,6 +66,7 @@ export const argsParser = or(
     object({command: commands.build.args}),
     object({command: commands.flash.args}),
     object({command: commands.console.args}),
+    object({command: commands.alias.args}),
   ),
   or(
     object({command: commands.list.args}),

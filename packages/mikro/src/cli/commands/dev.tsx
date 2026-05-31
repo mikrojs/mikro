@@ -211,7 +211,13 @@ export default function Dev(props: Props) {
   return (
     <DevicePicker port={port}>
       {(device) => (
-        <InkReplMode devicePath={device.path} logLevel={logLevel} driver={driver} watch={watch} />
+        <InkReplMode
+          devicePath={device.path}
+          serialNumber={device.serialNumber}
+          logLevel={logLevel}
+          driver={driver}
+          watch={watch}
+        />
       )}
     </DevicePicker>
   )
