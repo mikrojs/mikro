@@ -33,26 +33,18 @@ For network-heavy or memory-intensive apps, the [Seeed Studio XIAO ESP32C5](http
 
 ```sh [pnpm]
 pnpm create mikro
-cd my-app
-pnpm install
 ```
 
 ```sh [npm]
 npm create mikro
-cd my-app
-npm install
 ```
 
 ```sh [yarn]
 yarn create mikro
-cd my-app
-yarn install
 ```
 
 ```sh [bun]
 bun create mikro
-cd my-app
-bun install
 ```
 
 :::

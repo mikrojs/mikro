@@ -34,10 +34,6 @@
 
 ```sh
 npm create mikro
-cd my-app
-npm install
-npx mikro flash   # once per board
-npx mikro dev     # build, deploy, live-reload
 ```
 
 ## Example

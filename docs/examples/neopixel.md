@@ -93,10 +93,6 @@ bun create mikro --template neopixel
 
 ## Run it
 
-```sh
-cd my-neopixel
-```
-
 ::: code-group
 
 ```sh [pnpm]

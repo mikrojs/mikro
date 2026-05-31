@@ -102,10 +102,6 @@ bun create mikro --template ble-beacon
 
 ## Run it
 
-```sh
-cd my-ble-beacon
-```
-
 ::: code-group
 
 ```sh [pnpm]

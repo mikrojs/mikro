@@ -126,10 +126,6 @@ bun create mikro --template ble-gatt
 
 ## Run it
 
-```sh
-cd my-ble-gatt
-```
-
 ::: code-group
 
 ```sh [pnpm]

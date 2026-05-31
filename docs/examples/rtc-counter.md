@@ -71,10 +71,6 @@ bun create mikro --template rtc-counter
 
 ## Run it
 
-```sh
-cd my-rtc-counter
-```
-
 ::: code-group
 
 ```sh [pnpm]

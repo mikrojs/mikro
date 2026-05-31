@@ -86,10 +86,6 @@ bun create mikro --template uart
 
 ## Run it
 
-```sh
-cd my-uart
-```
-
 ::: code-group
 
 ```sh [pnpm]

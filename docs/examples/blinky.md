@@ -90,10 +90,6 @@ bun create mikro --template blinky
 
 ## Run it
 
-```sh
-cd my-blinky
-```
-
 ::: code-group
 
 ```sh [pnpm]
