@@ -71,10 +71,6 @@ bun create mikro --template pwm-led
 
 ## Run it
 
-```sh
-cd my-pwm-led
-```
-
 ::: code-group
 
 ```sh [pnpm]

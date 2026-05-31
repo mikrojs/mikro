@@ -109,10 +109,6 @@ bun create mikro --template sntp
 
 ## Run it
 
-```sh
-cd my-sntp
-```
-
 ::: code-group
 
 ```sh [pnpm]

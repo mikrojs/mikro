@@ -91,10 +91,6 @@ bun create mikro --template wifi-access-point
 
 ## Run it
 
-```sh
-cd my-wifi-ap
-```
-
 ::: code-group
 
 ```sh [pnpm]

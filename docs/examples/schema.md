@@ -68,10 +68,6 @@ bun create mikro --template schema
 
 ## Run it
 
-```sh
-cd my-schema
-```
-
 ::: code-group
 
 ```sh [pnpm]

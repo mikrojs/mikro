@@ -68,30 +68,18 @@ Get it running:
 
 ```sh [npm]
 npm create mikro -- --template blinky
-cd my-blinky
-npm install
-npx mikro dev
 ```
 
 ```sh [pnpm]
 pnpm create mikro --template blinky
-cd my-blinky
-pnpm install
-pnpm mikro dev
 ```
 
 ```sh [yarn]
 yarn create mikro --template blinky
-cd my-blinky
-yarn install
-yarn mikro dev
 ```
 
 ```sh [bun]
 bun create mikro --template blinky
-cd my-blinky
-bun install
-bunx mikro dev
 ```
 
 :::

@@ -120,10 +120,6 @@ bun create mikro --template wifi-fetch
 
 ## Run it
 
-```sh
-cd my-wifi-fetch
-```
-
 ::: code-group
 
 ```sh [pnpm]
