@@ -30,6 +30,17 @@ interface Suite {
 const suites: Suite[] = []
 let currentSuite: Suite | null = null
 let heapBaseline = 0
+/** Free system heap (bytes) at the baseline point, or 0 on the host (no
+ *  system heap). Reference point for the "peak" figure: baseline free minus
+ *  the run's low-water is the most the suite needed at once. Recaptured after
+ *  each suite's beforeAll, in step with heapBaseline, so warmup is excluded
+ *  from the figure. */
+let sysFreeStart = 0
+/** Lowest free system heap (bytes) sampled (post-gc) this run, or 0 on the
+ *  host. The suite's closest sampled approach to OOM. The module re-inits
+ *  for each test file (fresh runtime per file), so this is a true per-file
+ *  figure, not a process-lifetime watermark shared across files. */
+let sysFreeFloor = 0
 
 /**
  * Recapture the heap baseline. Called by the harness after each suite's
@@ -43,7 +54,15 @@ let heapBaseline = 0
 async function captureHeapBaseline(): Promise<void> {
   await Promise.resolve()
   gc()
-  heapBaseline = memoryUsage().heapUsed
+  const {heapUsed, systemFree} = memoryUsage()
+  heapBaseline = heapUsed
+  // Recapture the system-heap baseline and reset the per-file low-water in
+  // step with heapBaseline, so warmup (module loads, TLS, wifi) is excluded
+  // from sysUsed the same way it is from heapDelta.
+  if (systemFree > 0) {
+    sysFreeStart = systemFree
+    sysFreeFloor = systemFree
+  }
 }
 
 function newSuite(name: string, flags: {skip?: boolean; only?: boolean; todo?: boolean}): Suite {
@@ -363,6 +382,8 @@ type TestEvent =
       d: number
       hb?: number
       ha?: number
+      su?: number
+      sf?: number
       tb?: number
       ta?: number
       pb?: number
@@ -401,7 +422,10 @@ function emitHeap(): void {
   gc()
   const mem = memoryUsage()
   const evt: TestEvent = {e: 8, u: mem.heapUsed, t: mem.heapTotal}
-  if (mem.systemFree > 0) evt.f = mem.systemFree
+  if (mem.systemFree > 0) {
+    evt.f = mem.systemFree
+    if (sysFreeFloor === 0 || mem.systemFree < sysFreeFloor) sysFreeFloor = mem.systemFree
+  }
   if (mem.systemMinFree > 0) evt.mf = mem.systemMinFree
   emit(evt)
 }
@@ -420,7 +444,14 @@ async function run(): Promise<void> {
   // warmup costs (module loads, TLS lazy-init, wifi connection) get
   // folded into the baseline automatically.
   gc()
-  heapBaseline = memoryUsage().heapUsed
+  // Destructure to primitives so the live memoryUsage() object isn't held
+  // while heapBaseline is captured (it would otherwise be counted in it).
+  const {heapUsed: startHeap, systemFree: startFree} = memoryUsage()
+  heapBaseline = startHeap
+  if (startFree > 0) {
+    sysFreeStart = startFree
+    sysFreeFloor = startFree
+  }
   const timersBefore = activeTimers()
   const pendingBefore = pendingHttpCount()
 
@@ -569,11 +600,23 @@ async function run(): Promise<void> {
   }
 
   gc()
-  const heapAfter = memoryUsage().heapUsed
+  // Destructure to primitives (see baseline capture above) so the live
+  // memoryUsage() object isn't held while we build the run_done event.
+  const {heapUsed: heapAfter, systemFree: endFree} = memoryUsage()
+  if (endFree > 0 && (sysFreeFloor === 0 || endFree < sysFreeFloor)) {
+    sysFreeFloor = endFree
+  }
   const timersAfter = activeTimers()
   const pendingAfter = pendingHttpCount()
 
-  emit({
+  // Per-file system-heap figures. sysFreeFloor is the lowest free heap we
+  // sampled (post-gc) this run; sysUsed is how far free heap fell from the
+  // baseline to that low. They sum back to the baseline free, so "peak" and
+  // "min free" read as one story. Samples are taken between tests, so a
+  // transient peak inside a single test can dip below what sysFreeFloor saw.
+  const sysUsed = sysFreeStart > sysFreeFloor ? sysFreeStart - sysFreeFloor : 0
+
+  const doneEvt: TestEvent = {
     e: 6,
     p: passed,
     f: failed,
@@ -586,7 +629,12 @@ async function run(): Promise<void> {
     ta: timersAfter,
     pb: pendingBefore,
     pa: pendingAfter,
-  })
+  }
+  if (sysFreeStart > 0) {
+    doneEvt.su = sysUsed
+    doneEvt.sf = sysFreeFloor
+  }
+  emit(doneEvt)
 
   // Signal the supervisor (if any) that this file is complete so it can
   // swap in the next runtime. No-op in non-test-harness contexts.
