@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.12.0 (2026-06-01)
+
+### Breaking changes
+
+- **firmware:** read the device id from the base MAC ([#191](https://github.com/mikrojs/mikro/pull/191))
+
+### Features
+
+- **test:** report per-suite memory used and OOM margin ([#197](https://github.com/mikrojs/mikro/pull/197))
+- **cli:** read devices on mismatched firmware for post-mortem ([#194](https://github.com/mikrojs/mikro/pull/194))
+- **firmware:** show the device id in the boot banner ([#190](https://github.com/mikrojs/mikro/pull/190))
+- add support for http/server ([#187](https://github.com/mikrojs/mikro/pull/187))
+- **cli:** support device aliases ([#188](https://github.com/mikrojs/mikro/pull/188))
+
+### Bug fixes
+
+- **repl:** don't reboot the device on a REPL eval error ([#189](https://github.com/mikrojs/mikro/pull/189))
+
+### Other
+
+- **deps:** update dependency knip to v6.15.0 ([#196](https://github.com/mikrojs/mikro/pull/196))
+- **docs:** deploy docs from CI, gate production on stable releases ([#193](https://github.com/mikrojs/mikro/pull/193))
+- **cli:** document device aliases and naming ([#192](https://github.com/mikrojs/mikro/pull/192))
+- **paths:** resolve per-user cache/config dirs via env-paths ([5276449](https://github.com/mikrojs/mikro/commit/5276449e76ea4330044a22e686d8f0ccd81ddb00))
+
 ## 0.11.0 (2026-05-31)
 
 ### Features
