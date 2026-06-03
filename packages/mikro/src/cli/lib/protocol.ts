@@ -71,6 +71,11 @@ export const CMD_RUNTIME_RESUME = 0x2a
  *  Device streams MSG_FS_CHUNK frames followed by a terminating MSG_OK,
  *  or MSG_ERR on failure. */
 export const CMD_FS_GET = 0x2b
+/** Clear the on-device log files (log.txt + log.txt.1). No payload.
+ *  Device suspends the logger, deletes both files, reopens a fresh
+ *  log.txt, and replies MSG_OK. No-op (still OK) when file logging is
+ *  disabled. */
+export const CMD_LOG_RESET = 0x2c
 
 export const CMD_CONFIG_LIST = 0x40
 export const CMD_CONFIG_SET = 0x41
@@ -163,6 +168,11 @@ export function buildFsGetCommand(path: string): Buffer {
   payload.writeUInt16LE(pathBytes.length, 0)
   pathBytes.copy(payload, 2)
   return buildFrame(CMD_FS_GET, payload)
+}
+
+/** Build CMD_LOG_RESET (no payload). */
+export function buildLogResetCommand(): Buffer {
+  return buildFrame(CMD_LOG_RESET)
 }
 
 // ── Deploy command builders ────────────────────────────────────────

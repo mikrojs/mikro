@@ -169,6 +169,14 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
         return mik__handle_fs_get(transport, payload_len);
     }
 
+    /* Log reset (0x2C): clear the on-device log files */
+    if (cmd_type == MIK_CMD_LOG_RESET) {
+        mik__proto_drain(transport, payload_len);
+        mik_logfile_reset();
+        mik__proto_send_ok(transport);
+        return true;
+    }
+
     /* Config commands (0x40-0x42) */
     if (cmd_type >= MIK_CMD_CONFIG_LIST && cmd_type <= MIK_CMD_CONFIG_DELETE) {
         return mik__handle_config_command(transport, cmd_type, payload_len);

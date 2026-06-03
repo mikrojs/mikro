@@ -60,6 +60,10 @@ void mik_logfile_flush(void);
  * when file logging is disabled. */
 void mik_logfile_suspend(void);
 void mik_logfile_resume(void);
+/* Clear the log files: close + unlink log.txt and log.txt.1, then reopen
+ * a fresh empty log.txt. Logging continues uninterrupted (no restart).
+ * No-op when file logging is disabled. */
+void mik_logfile_reset(void);
 
 /* Serial binary I/O (mik_serial_io.cpp) */
 void mik__serial_binary_begin_no_echo(void);

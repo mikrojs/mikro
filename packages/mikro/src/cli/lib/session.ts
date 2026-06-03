@@ -64,6 +64,7 @@ import {
   buildExitCommand,
   buildFsGetCommand,
   buildHelloCommand,
+  buildLogResetCommand,
   buildRestartCommand,
   buildRuntimePauseCommand,
   buildRuntimeResumeCommand,
@@ -288,6 +289,10 @@ export interface ReplSession {
    * with the concatenated body. Rejects with the device error message
    * (e.g. "open failed: ENOENT") when the path can't be read. */
   fsGet(path: string): Promise<Buffer>
+
+  /** Clear the on-device log files. The device deletes log.txt + log.txt.1
+   * and reopens a fresh log without restarting. Resolves once acknowledged. */
+  logsReset(): Promise<void>
 
   /** Send restart command */
   restart(): void
@@ -863,6 +868,15 @@ export function connectRepl(
     return Buffer.concat(result.chunks)
   }
 
+  // ── Log reset ──────────────────────────────────────────────────
+
+  /** Clear the on-device log files. The device suspends its logger,
+   * deletes log.txt + log.txt.1, and reopens a fresh log — no restart. */
+  async function logsReset(): Promise<void> {
+    await awaitReady()
+    await sendExpectOk(buildLogResetCommand(), 'log reset')
+  }
+
   // ── Public API ─────────────────────────────────────────────────
 
   return {
@@ -890,6 +904,7 @@ export function connectRepl(
     eraseApp,
     config,
     fsGet,
+    logsReset,
 
     restart(): void {
       // Mark the current ready cache as stale so the next awaitReady$

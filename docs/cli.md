@@ -151,10 +151,11 @@ mikro console
 
 ## mikro logs
 
-Read or follow device logs. Two subcommands:
+Read or follow device logs. Three subcommands:
 
 - `mikro logs tail` — live stream from the wire (no `logFile` required).
 - `mikro logs pull` — read the on-device file written by the file logger (requires [`logFile`](/config#logfile) in `mikro.config.ts`).
+- `mikro logs reset` — clear the on-device log files (requires [`logFile`](/config#logfile) in `mikro.config.ts`).
 
 ### mikro logs tail
 
@@ -191,6 +192,18 @@ mikro logs pull ./forensics
 | `-p, --port PORT` | Serial port (auto-detected if omitted) |
 
 The file logger flushes and releases its handle while the file is streamed off, so the pull sees a consistent snapshot. Any log lines emitted during the transfer are dropped; in practice this is a sub-second window.
+
+### mikro logs reset
+
+Clear the on-device log files. The device deletes both `log.txt` and `log.txt.1` and reopens a fresh, empty log. The running app is not interrupted and the device is not restarted.
+
+```sh
+mikro logs reset
+```
+
+| Option            | Description                            |
+| ----------------- | -------------------------------------- |
+| `-p, --port PORT` | Serial port (auto-detected if omitted) |
 
 ## mikro test
 

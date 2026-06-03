@@ -313,6 +313,11 @@ void mik__repl_set_paused(bool paused);
  * Device replies with zero-or-more MIK_MSG_FS_CHUNK frames followed by
  * MIK_MSG_OK on EOF, or MIK_MSG_ERR if the path can't be opened. */
 #define MIK_CMD_FS_GET 0x2B
+/* Clear the on-device log files (log.txt + log.txt.1). No payload.
+ * Device suspends the logger, deletes both files, reopens a fresh
+ * log.txt, and replies MIK_MSG_OK. No-op (still OK) when file logging
+ * is disabled. */
+#define MIK_CMD_LOG_RESET 0x2C
 
 #define MIK_CMD_CONFIG_LIST 0x40
 #define MIK_CMD_CONFIG_SET 0x41
