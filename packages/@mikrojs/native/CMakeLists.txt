@@ -163,6 +163,7 @@ if(BUILD_TESTING)
         test/runtime_recycle_test.cpp
         test/udp_test.cpp
         test/observable_test.cpp
+        test/unhandled_rejection_test.cpp
     )
 
     target_link_libraries(mikrojs_tests PRIVATE mikrojs)

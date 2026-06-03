@@ -48,6 +48,15 @@ struct MIKLoopConsumerEntry {
     MIKLoopDestroyFn destroy_fn;
 };
 
+/* A promise that rejected without a handler, awaiting the end-of-turn
+ * unhandled-rejection check. Mirrors quickjs-libc's JSRejectedPromiseEntry:
+ * we hold a reference to both the promise (matched by identity on `handle`)
+ * and its reason (reported at flush time). */
+struct MIKRejectedPromise {
+    JSValue promise;
+    JSValue reason;
+};
+
 struct MIKRuntime {
     MIKRunOptions options;
     MIKConfig config;
@@ -83,10 +92,16 @@ struct MIKRuntime {
     MIKTimerRegistry* timers;
     std::vector<MIKNativeModuleEntry> native_modules;
     std::vector<MIKLoopConsumerEntry> loop_consumers;
-    struct {
-        JSValue promise_event_ctor;
-        JSValue dispatch_event_func;
-    } builtins;
+    /* Promises that rejected without a handler, awaiting the end-of-turn
+     * unhandled-rejection check. The host rejection tracker adds a promise
+     * here on `reject` and removes it on `handle`; whatever remains after a
+     * microtask drain (mik__execute_jobs) is a genuine unhandled rejection
+     * and gets reported. This deferral mirrors the HTML/WinterCG algorithm
+     * and is what prevents a transiently-unhandled promise (e.g. a module's
+     * evaluation promise, rejected before the import loader attaches its
+     * .then) from being reported. Entries hold dup'd references owned by this
+     * vector and freed when removed or flushed. */
+    std::vector<MIKRejectedPromise> pending_rejections;
     /* Shared prototype for Result objects ({ok, value} / {ok, error}) created
      * by mik__result_ok/mik__result_err and the native:result ok()/err()
      * functions.  Holds .map/.mapErr/.andThen/.match/.orDefault/.orPanic +
@@ -167,6 +182,10 @@ JSValue mik_new_error(JSContext* ctx, int err);
 JSValue mik_throw_errno(JSContext* ctx, int err);
 
 void mik__execute_jobs(JSContext* ctx);
+/* End-of-turn unhandled-rejection check; called after each microtask drain. */
+void mik__flush_unhandled_rejections(JSContext* ctx);
+/* Drop a promise from the pending-rejection queue without reporting it. */
+void mik__forget_rejection(JSContext* ctx, JSValue promise);
 JSModuleDef* mik__load_builtin(JSContext* ctx, const char* name);
 int mik__load_file(JSContext* ctx, DynBuf* dbuf, const char* filename);
 void mik__resolve_fs_path(JSContext* ctx, const char* module_name, char* out, size_t out_size);
@@ -221,7 +240,10 @@ void mik__stdin_consume(JSContext* ctx);
 
 /* Console global (mik_console.cpp) */
 void mik__console_init(JSContext* ctx, JSValue global_obj);
-void mik__report_uncaught(JSContext* ctx, JSValue exc, bool in_promise = false);
+/* Reports an uncaught error/rejection. Dedups by error-object identity:
+ * returns true if it reported, false if this same object was already
+ * reported. */
+bool mik__report_uncaught(JSContext* ctx, JSValue exc, bool in_promise = false);
 
 /* Inspect (mik_inspect.cpp) */
 std::string mik_inspect(JSContext* ctx, JSValue value, int depth = 2, bool colors = false,

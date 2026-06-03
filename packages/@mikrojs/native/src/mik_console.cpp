@@ -236,31 +236,32 @@ static JSValue mik__console_error_warn(JSContext* ctx, JSValue this_val, int arg
 
 /* ── Uncaught error reporting ─────────────────────────────────────── */
 
-/* Dedup: the rejection tracker can fire multiple times for the same
- * error (e.g. inner Promise.reject + async wrapper rejection). Skip
- * if the same object pointer was just reported. */
-static void* last_reported_ptr = nullptr;
-static int64_t last_reported_time = 0;
-
-void mik__report_uncaught_reset(void) {
-    last_reported_ptr = nullptr;
-}
-
-void mik__report_uncaught(JSContext* ctx, JSValue exc, bool in_promise) {
+/* Dedup across report paths: one error can reach this function more than
+ * once for a single failure. A failed dynamic import leaves two never-handled
+ * promises with the SAME reason (QuickJS runs a module body as an async
+ * function and reads its rejected result by value, plus the rejection
+ * propagated up the await chain), and at the REPL the throw path reports an
+ * error the deferred flush then sees again. Mark the error object the first
+ * time it is reported and skip it afterwards. Keying on object identity is
+ * exact and time-independent; a recycled address belongs to a fresh object
+ * with no marker, so distinct errors are never suppressed. Primitive
+ * rejections (e.g. a null OOM rejection) can't hold a marker and are always
+ * reported. Returns true if it reported, false if it was a duplicate. */
+bool mik__report_uncaught(JSContext* ctx, JSValue exc, bool in_promise) {
     if (JS_IsObject(exc)) {
-        void* ptr = JS_VALUE_GET_PTR(exc);
-        int64_t now = MIK_GetPlatform()->get_boot_us();
-        /* Deduplicate only within 1ms — the rejection tracker can fire
-         * twice for the same error (inner + async wrapper) essentially
-         * instantly, but a new error 1s later at a recycled address
-         * must not be suppressed. */
-        if (ptr == last_reported_ptr && (now - last_reported_time) < 1000) {
-            return;
+        JSAtom marker = JS_NewAtom(ctx, "\xff" "mik_reported");
+        if (marker != JS_ATOM_NULL) {
+            if (JS_HasProperty(ctx, exc, marker) > 0) {
+                JS_FreeAtom(ctx, marker);
+                return false;
+            }
+            /* Non-enumerable, non-writable, non-configurable so it stays
+             * invisible to user code. Best-effort: JS_* calls return error
+             * codes (no C++ throw), so under OOM we just report without
+             * dedup rather than abort. */
+            JS_DefinePropertyValue(ctx, exc, marker, JS_TRUE, 0);
+            JS_FreeAtom(ctx, marker);
         }
-        last_reported_ptr = ptr;
-        last_reported_time = now;
-    } else {
-        last_reported_ptr = nullptr;
     }
 
     /* Fixed-size stack buffer so this function never allocates from the
@@ -360,11 +361,12 @@ void mik__report_uncaught(JSContext* ctx, JSValue exc, bool in_promise) {
 
     if (mik__repl_is_protocol_mode()) {
         mik__repl_proto_send_output(MIK_MSG_ERROR, buf, pos);
-        return;
+        return true;
     }
 
     append_cstr("\r\n");
     MIK_GetPlatform()->stderr_write(buf, pos);
+    return true;
 }
 
 /* ── Test emit ────────────────────────────────────────────────────── */
