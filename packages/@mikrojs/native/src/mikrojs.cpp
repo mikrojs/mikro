@@ -111,21 +111,19 @@ static int mik__stdio_module_init(JSContext* ctx, JSModuleDef* m) {
     return 0;
 }
 
-static JSValue mik__dispatch_event(JSContext* ctx, JSValue* event) {
-    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    CHECK_NOT_NULL(mik_rt);
-
-    if (mik_rt->freeing) {
-        return JS_UNDEFINED;
-    }
-
-    JSValue global_obj = JS_GetGlobalObject(ctx);
-    JSValue ret = JS_Call(ctx, mik_rt->builtins.dispatch_event_func, global_obj, 1, event);
-    JS_FreeValue(ctx, global_obj);
-
-    return ret;
-}
-
+/* Host promise-rejection tracker. Rather than report eagerly the instant a
+ * promise rejects, defer the decision to the end-of-turn flush
+ * (mik__flush_unhandled_rejections): a promise that rejects without a
+ * handler is queued, and a promise that later gets a handler is removed
+ * from the queue. This mirrors the HTML/WinterCG unhandledrejection
+ * algorithm. It matters because some promises are born rejected before a
+ * handler can be attached. The clearest example is a module's evaluation
+ * promise, which the dynamic-import loader rejects (when the module body
+ * throws) and only then attaches its .then to. Reporting eagerly surfaced
+ * that transient rejection as a spurious second "Uncaught (in promise)".
+ *
+ * This is the same add-on-reject / remove-on-handle / report-after-drain
+ * pattern quickjs-libc's js_std_promise_rejection_tracker uses. */
 static void mik__promise_rejection_tracker(JSContext* ctx, JSValue promise, JSValue reason,
                                            bool is_handled, void* opaque) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
@@ -135,68 +133,88 @@ static void mik__promise_rejection_tracker(JSContext* ctx, JSValue promise, JSVa
         return;
     }
 
-    if (!is_handled) {
-        /* If the runtime hasn't loaded the event infrastructure yet,
-         * report and bail. */
-        if (JS_IsUndefined(mik_rt->builtins.promise_event_ctor) ||
-            JS_IsUndefined(mik_rt->builtins.dispatch_event_func)) {
-            /* During REPL eval, sync errors are wrapped by the async eval
-             * wrapper and appear as promise rejections — don't label them
-             * "(in promise)".  Outside eval (e.g. timer callbacks), they
-             * are genuine unhandled promise rejections. */
-            bool in_promise = !mik__repl_is_evaluating();
-            mik__report_uncaught(ctx, reason, in_promise);
-            /* Notify the error handler (e.g. host bridge) directly.
-             * Don't JS_Throw here — we're inside a QuickJS callback
-             * during promise resolution; throwing would corrupt engine
-             * state and cause mik__execute_jobs to dump the error a
-             * second time. MIK_Stop gates on whether we're inside an
-             * interactive REPL eval (skipping both the stop request and
-             * the restart) so a typo at the prompt doesn't reboot the
-             * device. */
+    auto& pending = mik_rt->pending_rejections;
+    void* key = JS_VALUE_GET_PTR(promise);
+
+    if (is_handled) {
+        /* A handler was attached to a previously-rejected promise: cancel its
+         * pending report. */
+        for (size_t i = 0; i < pending.size(); i++) {
+            if (JS_VALUE_GET_PTR(pending[i].promise) == key) {
+                JS_FreeValue(ctx, pending[i].promise);
+                JS_FreeValue(ctx, pending[i].reason);
+                pending.erase(pending.begin() + i);
+                return;
+            }
+        }
+        return;
+    }
+
+    /* Rejected with no handler (yet): queue it. Hold references to both the
+     * promise and the reason so they stay alive until the end-of-turn check. */
+    pending.push_back({JS_DupValue(ctx, promise), JS_DupValue(ctx, reason)});
+}
+
+/* Drop a promise from the pending-rejection queue without reporting it. The
+ * REPL eval pump calls this for the result promise it polls and reports via
+ * the throw path, so the end-of-turn flush doesn't report it a second time. */
+void mik__forget_rejection(JSContext* ctx, JSValue promise) {
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+    if (!mik_rt) {
+        return;
+    }
+    auto& pending = mik_rt->pending_rejections;
+    void* key = JS_VALUE_GET_PTR(promise);
+    for (size_t i = 0; i < pending.size(); i++) {
+        if (JS_VALUE_GET_PTR(pending[i].promise) == key) {
+            JS_FreeValue(ctx, pending[i].promise);
+            JS_FreeValue(ctx, pending[i].reason);
+            pending.erase(pending.begin() + i);
+            return;
+        }
+    }
+}
+
+/* End-of-turn unhandled-rejection check. Any promise still queued after a
+ * microtask drain rejected and never got a handler: report it, notify the
+ * host error handler, and halt. */
+void mik__flush_unhandled_rejections(JSContext* ctx) {
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+    if (!mik_rt || mik_rt->freeing || mik_rt->pending_rejections.empty()) {
+        return;
+    }
+    /* During interactive REPL eval, the eval pump polls its result promise
+     * and reports rejections via the throw path; leave the queue alone until
+     * the eval finishes so we don't fight that model. */
+    if (mik__repl_is_evaluating()) {
+        return;
+    }
+
+    /* Move the queue aside before reporting. Reporting doesn't enqueue JS
+     * jobs, but this keeps the runtime's vector in a clean state regardless. */
+    std::vector<MIKRejectedPromise> rejected;
+    rejected.swap(mik_rt->pending_rejections);
+
+    /* One failed dynamic import leaves two never-handled promises with the
+     * SAME reason: the module's internal sync-evaluation promise (QuickJS runs
+     * a module body as an async function and reads its rejected result by
+     * value, never attaching a handler) and the promise the error propagates
+     * to up the await chain. mik__report_uncaught dedups by reason-object
+     * identity, so the second is a no-op; only act on a fresh report so the
+     * host bridge and the halt don't fire twice. (quickjs-libc reports every
+     * entry; we collapse same-error duplicates.) */
+    for (const MIKRejectedPromise& rp : rejected) {
+        if (mik__report_uncaught(ctx, rp.reason, true)) {
+            /* Notify the error handler (e.g. host bridge) directly. Don't
+             * JS_Throw here: we're between jobs, and throwing would be picked
+             * up as a spurious pending exception. */
             if (mik_rt->error_handler_fn) {
-                mik_rt->error_handler_fn(ctx, reason, mik_rt->error_handler_opaque);
+                mik_rt->error_handler_fn(ctx, rp.reason, mik_rt->error_handler_opaque);
             }
             MIK_Stop(mik_rt);
-            return;
         }
-
-        JSValue event_name = JS_NewString(ctx, "unhandledrejection");
-        JSValue args[3];
-        args[0] = event_name;
-        args[1] = promise;
-        args[2] = reason;
-
-        JSValue event =
-            JS_CallConstructor(ctx, mik_rt->builtins.promise_event_ctor, countof(args), args);
-        if (JS_IsException(event)) {
-            JS_FreeValue(ctx, event_name);
-            mik_dump_error(ctx);
-            return;
-        }
-        JSValue ret = mik__dispatch_event(ctx, &event);
-
-        JS_FreeValue(ctx, event);
-        JS_FreeValue(ctx, event_name);
-
-        if (JS_IsException(ret)) {
-            mik_dump_error(ctx);
-            goto fail;
-        } else {
-            if (JS_ToBool(ctx, ret)) {
-            // The event wasn't cancelled, maybe abort.
-            fail:;
-                MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-                CHECK_NOT_NULL(mik_rt);
-                mik__report_uncaught(ctx, reason, true);
-                if (mik_rt->error_handler_fn) {
-                    mik_rt->error_handler_fn(ctx, reason, mik_rt->error_handler_opaque);
-                }
-                MIK_Stop(mik_rt);
-            }
-        }
-
-        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, rp.promise);
+        JS_FreeValue(ctx, rp.reason);
     }
 }
 
@@ -289,6 +307,15 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
      * exhaust the heap. Overridden via MIK_SetFSReadMax. */
     mik_rt->fs_read_max = 65536;
 
+    /* Reserve the unhandled-rejection queue up-front so the rejection tracker
+     * never has to grow a std::vector on the rejection path. That path fires
+     * for a QuickJS null-OOM rejection, and a reallocation there could throw
+     * std::bad_alloc — which, with CONFIG_COMPILER_CXX_EXCEPTIONS=n on ESP32,
+     * aborts and masks the very OOM we're trying to report. Four slots covers
+     * any realistic per-turn rejection count; the runtime halts on the first
+     * one anyway. */
+    mik_rt->pending_rejections.reserve(4);
+
     /* Check for duplicate native module registrations (global registry) */
     mik__check_module_collisions();
 
@@ -337,11 +364,6 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
     mik__text_encoding_init(ctx, global_obj);
     mik__abort_init(ctx, global_obj);
 
-    /* Load some builtin references for easy access */
-    mik_rt->builtins.dispatch_event_func = JS_GetPropertyStr(ctx, global_obj, "dispatchEvent");
-    mik_rt->builtins.promise_event_ctor =
-        JS_GetPropertyStr(mik_rt->ctx, global_obj, "PromiseRejectionEvent");
-
     /* Timers */
     mik_rt->timers = MIK_NewTimerRegistry();
     mik__timers_init(ctx, global_obj);
@@ -369,6 +391,13 @@ void MIK_FreeRuntime(MIKRuntime* mik_rt) {
         mik_rt->stdin_state.on_data = JS_UNDEFINED;
     }
 
+    /* Release any still-pending unhandled-rejection entries. */
+    for (const MIKRejectedPromise& rp : mik_rt->pending_rejections) {
+        JS_FreeValue(mik_rt->ctx, rp.promise);
+        JS_FreeValue(mik_rt->ctx, rp.reason);
+    }
+    mik_rt->pending_rejections.clear();
+
     /* Destroy registered loop consumers */
     for (const auto& consumer : mik_rt->loop_consumers) {
         if (consumer.destroy_fn) {
@@ -384,10 +413,6 @@ void MIK_FreeRuntime(MIKRuntime* mik_rt) {
     /* Destroy the JS engine. */
     JS_FreeValue(mik_rt->ctx, mik_rt->env_obj);
     mik_rt->env_obj = JS_UNDEFINED;
-    JS_FreeValue(mik_rt->ctx, mik_rt->builtins.dispatch_event_func);
-    mik_rt->builtins.dispatch_event_func = JS_UNDEFINED;
-    JS_FreeValue(mik_rt->ctx, mik_rt->builtins.promise_event_ctor);
-    mik_rt->builtins.promise_event_ctor = JS_UNDEFINED;
     JS_FreeValue(mik_rt->ctx, mik_rt->result_ok_void_singleton);
     mik_rt->result_ok_void_singleton = JS_UNDEFINED;
     JS_FreeValue(mik_rt->ctx, mik_rt->result_proto);
@@ -530,6 +555,10 @@ void mik__execute_jobs(JSContext* ctx) {
             break;
         }
     }
+
+    /* Microtask checkpoint: every reject/handle transition for this turn has
+     * now run, so whatever is still queued is a genuine unhandled rejection. */
+    mik__flush_unhandled_rejections(ctx);
 }
 
 /* main loop which calls the user JS callbacks */
@@ -576,7 +605,10 @@ int MIK_Loop(MIKRuntime* mik_rt) {
     }
 
     mik__execute_jobs(mik_rt->ctx);
-    return 0;
+    /* The end-of-turn unhandled-rejection flush inside mik__execute_jobs may
+     * have requested a stop; surface it this iteration rather than making the
+     * caller loop once more to notice. */
+    return mik_rt->stop_requested ? 1 : 0;
 }
 
 void MIK_SetConfig(MIKRuntime* mik_rt, const MIKConfig* config) {
