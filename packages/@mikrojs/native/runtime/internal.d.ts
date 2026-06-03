@@ -34,7 +34,7 @@ declare module 'native:observable' {
 }
 
 declare module 'native:sys' {
-  import type {JsMemoryUsage} from './sys/types.js'
+  import type {JsMemoryUsage, ResetReason} from './sys/types.js'
   export function evalScript(code: string): Promise<{value: unknown}>
   export function memoryUsage(): {
     heapUsed: number
@@ -67,6 +67,7 @@ declare module 'native:sys' {
   }
   export const firmware: {hash: string; date: string; idfVersion: string | undefined}
   export const deviceId: string
+  export const resetReason: ResetReason
 }
 
 declare module 'native:fs' {

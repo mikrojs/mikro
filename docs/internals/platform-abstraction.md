@@ -20,6 +20,7 @@ typedef struct MIKPlatform {
 
     // System control
     void (*restart)(void);                 // Reboot
+    const char* (*get_reset_reason)(void); // Why the chip last reset
     void (*yield)(void);                   // Cooperative yield
 
     // Memory info
@@ -64,6 +65,7 @@ MIKRuntime* rt = MIK_NewRuntime();
 | `random`              | `arc4random()`                                   |
 | `yield`               | `usleep(1000)` (1ms)                             |
 | `restart`             | `exit(1)`                                        |
+| `get_reset_reason`    | Returns `"unknown"` (no chip reset concept)      |
 | `get_free_system_mem` | Returns 0 (not applicable)                       |
 | `stdout_write`        | `write(fileno(stdout), ...)`                     |
 | `stdin_read`          | Non-blocking `read(fileno(stdin), ...)`          |
@@ -82,6 +84,7 @@ The POSIX platform is used by both the standalone library tests and the Node.js 
 | `random`              | `esp_random()` (hardware RNG)                 |
 | `yield`               | `vTaskDelay(1)` (yields FreeRTOS task)        |
 | `restart`             | `esp_restart()`                               |
+| `get_reset_reason`    | `esp_reset_reason()` mapped to a string       |
 | `get_free_system_mem` | `esp_get_free_heap_size()`                    |
 | `get_fs_info`         | `esp_littlefs_info()`                         |
 | `stdout_write`        | UART/USB-serial output                        |
@@ -116,6 +119,10 @@ These functions feed `sys.info()` in JavaScript, which reports free heap, total 
 `get_device_id()` returns a unique, stable identifier for the device, or NULL if unavailable. The returned string is exposed as `sys.deviceId` in JavaScript and included in the REPL protocol's `MSG_READY` handshake.
 
 On ESP32, the 6-byte base MAC address is encoded as [Crockford's Base32](https://www.crockford.com/base32.html) (10 lowercase characters, no special symbols). The encoding is lossless: decoding the 10 characters recovers the original MAC bytes. On POSIX/Node, an FNV-1a hash of the hostname produces a stable ID that persists across restarts.
+
+### Reset reason
+
+`get_reset_reason()` returns a stable lowercase string describing why the chip last reset, exposed as `sys.resetReason` in JavaScript. On ESP32 it maps `esp_reset_reason()` (`"power-on"`, `"panic"`, `"brownout"`, `"deep-sleep"`, and so on); a clean `restart()` reports `"software"`. POSIX/Node has no chip-reset concept and returns `"unknown"`.
 
 The returned pointer must remain valid for the lifetime of the platform (a `static` buffer is fine).
 

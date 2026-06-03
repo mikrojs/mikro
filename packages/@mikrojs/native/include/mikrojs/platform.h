@@ -64,6 +64,15 @@ typedef struct MIKPlatform {
      *  original 6 MAC bytes. The returned pointer must remain valid for the
      *  lifetime of the platform. */
     const char* (*get_device_id)(void);
+    /** Reason the chip last reset, as a stable lowercase string. On ESP32
+     *  this maps esp_reset_reason(): "power-on", "software", "panic",
+     *  "watchdog", "interrupt-watchdog", "task-watchdog", "brownout",
+     *  "deep-sleep", "external", "sdio", "usb", "jtag", "efuse",
+     *  "power-glitch", "cpu-lockup", or "unknown". A clean restart()
+     *  reports "software". Host platforms have no reset concept and return
+     *  "unknown". The returned pointer must remain valid for the lifetime
+     *  of the platform. */
+    const char* (*get_reset_reason)(void);
 } MIKPlatform;
 
 /* Log levels (matching ESP-IDF ESP_LOG_xxx values) */

@@ -167,6 +167,43 @@ static const char* esp32_get_device_id(void) {
     return id;
 }
 
+static const char* esp32_get_reset_reason(void) {
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:
+            return "power-on";
+        case ESP_RST_EXT:
+            return "external";
+        case ESP_RST_SW:
+            return "software";
+        case ESP_RST_PANIC:
+            return "panic";
+        case ESP_RST_INT_WDT:
+            return "interrupt-watchdog";
+        case ESP_RST_TASK_WDT:
+            return "task-watchdog";
+        case ESP_RST_WDT:
+            return "watchdog";
+        case ESP_RST_DEEPSLEEP:
+            return "deep-sleep";
+        case ESP_RST_BROWNOUT:
+            return "brownout";
+        case ESP_RST_SDIO:
+            return "sdio";
+        case ESP_RST_USB:
+            return "usb";
+        case ESP_RST_JTAG:
+            return "jtag";
+        case ESP_RST_EFUSE:
+            return "efuse";
+        case ESP_RST_PWR_GLITCH:
+            return "power-glitch";
+        case ESP_RST_CPU_LOCKUP:
+            return "cpu-lockup";
+        default:
+            return "unknown";
+    }
+}
+
 static void esp32_log(int level, const char* tag, const char* fmt, ...) {
     /* Map MIK_LOG_xxx to ESP_LOG_xxx for the runtime filter check. */
     esp_log_level_t esp_level;
@@ -238,6 +275,7 @@ static const MIKPlatform esp32_platform = {
     .stderr_write = esp32_stderr_write,
     .stdin_read = esp32_stdin_read,
     .get_device_id = esp32_get_device_id,
+    .get_reset_reason = esp32_get_reset_reason,
 };
 
 /*

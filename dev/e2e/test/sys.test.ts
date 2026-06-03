@@ -1,4 +1,13 @@
-import {board, firmware, gc, memoryUsage, MonotonicTimestamp, uptime, version} from 'mikro/sys'
+import {
+  board,
+  firmware,
+  gc,
+  memoryUsage,
+  MonotonicTimestamp,
+  resetReason,
+  uptime,
+  version,
+} from 'mikro/sys'
 import {assert, describe, test} from 'mikro/test'
 
 describe('sys', () => {
@@ -18,6 +27,11 @@ describe('sys', () => {
   test('firmware has expected properties', () => {
     assert.type(firmware, 'object')
     assert.type(firmware.idfVersion, 'string')
+  })
+
+  test('resetReason is a non-empty string', () => {
+    assert.type(resetReason, 'string')
+    assert.truthy(resetReason.length > 0, 'resetReason should not be empty')
   })
 
   test('uptime returns valid values', () => {

@@ -37,6 +37,8 @@ export const firmware = native.firmware
 
 export const deviceId: string = native.deviceId
 
+export const resetReason = native.resetReason
+
 export function restart(): never {
   return native.restart() as never
 }
