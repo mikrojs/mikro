@@ -263,4 +263,7 @@ void mik__sys_api_init(JSContext* ctx, JSValue ns) {
     const char* device_id = MIK_GetPlatform()->get_device_id();
     JS_SetPropertyStr(ctx, ns, "deviceId",
                       device_id ? JS_NewString(ctx, device_id) : JS_UNDEFINED);
+
+    JS_SetPropertyStr(ctx, ns, "resetReason",
+                      JS_NewString(ctx, MIK_GetPlatform()->get_reset_reason()));
 }

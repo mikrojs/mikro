@@ -16,6 +16,7 @@ import {
   board,
   firmware,
   deviceId,
+  resetReason,
   version,
 } from 'mikro/sys'
 ```
@@ -93,6 +94,26 @@ console.log('Woke up because: %s', cause)
 ```
 
 Possible values: `'timer'`, `'ext0'`, `'ext1'`, `'gpio'`, or `'undefined'` (cold boot or unknown).
+
+### resetReason
+
+```ts
+const resetReason: ResetReason
+```
+
+Why the device last reset, determined once at boot. Pairs with [`getWakeupCause()`](#getwakeupcause), which reports why the device woke from deep sleep.
+
+```ts twoslash
+import {resetReason} from 'mikro/sys'
+// ---cut---
+if (resetReason === 'panic') {
+  console.log('Recovering from a crash')
+}
+```
+
+On ESP32 this maps the ESP-IDF reset reason: a clean [`restart()`](#restart) reports `'software'`, while an unhandled crash reports `'panic'`. On host/Node builds there is no chip-reset concept, so it is always `'unknown'`.
+
+Possible values: `'power-on'`, `'software'`, `'panic'`, `'watchdog'`, `'interrupt-watchdog'`, `'task-watchdog'`, `'brownout'`, `'deep-sleep'`, `'external'`, `'sdio'`, `'usb'`, `'jtag'`, `'efuse'`, `'power-glitch'`, `'cpu-lockup'`, or `'unknown'`.
 
 ### exit(exitCode?)
 
@@ -229,6 +250,28 @@ interface BoardInfo {
   flash: number
   psram: number
 }
+```
+
+### ResetReason
+
+```ts
+type ResetReason =
+  | 'power-on'
+  | 'software'
+  | 'panic'
+  | 'watchdog'
+  | 'interrupt-watchdog'
+  | 'task-watchdog'
+  | 'brownout'
+  | 'deep-sleep'
+  | 'external'
+  | 'sdio'
+  | 'usb'
+  | 'jtag'
+  | 'efuse'
+  | 'power-glitch'
+  | 'cpu-lockup'
+  | 'unknown'
 ```
 
 ### MonotonicTimestamp

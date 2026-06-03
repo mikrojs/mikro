@@ -122,6 +122,29 @@ export declare const firmware: {
   readonly idfVersion: string | undefined
 }
 
+/** Why the device last reset. A clean `restart()` reports `'software'`;
+ *  a crash reports `'panic'`. Host/Node builds always report `'unknown'`. */
+export type ResetReason =
+  | 'power-on'
+  | 'software'
+  | 'panic'
+  | 'watchdog'
+  | 'interrupt-watchdog'
+  | 'task-watchdog'
+  | 'brownout'
+  | 'deep-sleep'
+  | 'external'
+  | 'sdio'
+  | 'usb'
+  | 'jtag'
+  | 'efuse'
+  | 'power-glitch'
+  | 'cpu-lockup'
+  | 'unknown'
+
+/** Reason the device last reset, determined once at boot. */
+export declare const resetReason: ResetReason
+
 export declare function restart(): never
 
 /** Reason the device woke up this boot. Set after deep sleep (or first

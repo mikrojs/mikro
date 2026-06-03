@@ -116,6 +116,10 @@ static const char* posix_get_device_id(void) {
     return id;
 }
 
+static const char* posix_get_reset_reason(void) {
+    return "unknown";  /* Desktop processes have no chip reset concept */
+}
+
 static void posix_log(int level, const char* tag, const char* fmt, ...) {
     if (level < MIK_LOG_ERROR || level > MIK_LOG_VERBOSE) return;
     fprintf(stderr, "[%s] %s: ", mik_log_level_name(level), tag);
@@ -147,6 +151,7 @@ static const MIKPlatform posix_platform = {
     .stderr_write = posix_stderr_write,
     .stdin_read = posix_stdin_read,
     .get_device_id = posix_get_device_id,
+    .get_reset_reason = posix_get_reset_reason,
 };
 
 static const MIKPlatform* current_platform = &posix_platform;
