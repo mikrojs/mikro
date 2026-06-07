@@ -232,6 +232,28 @@ void mik_logfile_resume(void) {
     xSemaphoreGive(s_mtx);
 }
 
+void mik_logfile_reset(void) {
+    if (!s_mtx) return;
+    if (xSemaphoreTake(s_mtx, pdMS_TO_TICKS(100)) != pdTRUE) return;
+    if (s_file) {
+        fclose(s_file);
+        s_file = nullptr;
+    }
+    unlink(s_path_main);
+    unlink(s_path_rot);
+    /* Reopen the same path: unlinked, so this starts a fresh empty file. */
+    s_file = fopen(s_path_main, "a");
+    if (s_file) {
+        setvbuf(s_file, s_stdio_buf, _IOFBF, sizeof(s_stdio_buf));
+        s_file_size = 0;
+    }
+    /* Drop any half-assembled line so a stale prefix doesn't bleed into
+     * the fresh file. */
+    s_line_pos = 0;
+    s_line_has_ts = false;
+    xSemaphoreGive(s_mtx);
+}
+
 void mik_logfile_flush(void) {
     if (!s_mtx || !s_file) return;
     if (xSemaphoreTake(s_mtx, pdMS_TO_TICKS(50)) != pdTRUE) return;

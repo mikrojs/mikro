@@ -50,6 +50,7 @@ import {
   CMD_EXIT,
   CMD_FS_GET,
   CMD_HELLO,
+  CMD_LOG_RESET,
   CMD_RESTART,
   CMD_RUNTIME_PAUSE,
   CMD_RUNTIME_RESUME,
@@ -1037,6 +1038,11 @@ async function handleFrame(frame: Frame): Promise<void> {
       // File logging itself isn't wired into the simulator yet, so there's
       // nothing to pull. Surface a clear error instead of timing out.
       sendErr('fs get: not supported in simulator')
+      break
+    case CMD_LOG_RESET:
+      // File logging isn't wired into the simulator yet, so there's nothing
+      // to clear. Surface a clear error instead of timing out.
+      sendErr('log reset: not supported in simulator')
       break
   }
 }

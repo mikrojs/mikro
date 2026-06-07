@@ -45,11 +45,19 @@ const tailArgs = command(
   }),
 )
 
+const resetArgs = command(
+  'reset',
+  objectConstruct({
+    subcommand: constant('reset' as const),
+    port: portOption,
+  }),
+)
+
 export const args = command(
   'logs',
   objectConstruct({
     action: constant('logs'),
-    sub: orConstruct(pullArgs, tailArgs),
+    sub: orConstruct(pullArgs, tailArgs, resetArgs),
   }),
 )
 
@@ -160,10 +168,34 @@ async function runPull(sub: {dest: string | undefined; port: string | undefined}
   }
 }
 
+async function runReset(sub: {port: string | undefined}): Promise<void> {
+  // A deployed unit was built in production mode; resolve the same env
+  // override so we gate on the same logFile config the device was flashed with.
+  const mikroConfig = await loadMikroConfig(process.cwd(), 'production')
+  if (!mikroConfig?.logFile) {
+    console.error(
+      `No file logging configured. Add \`logFile: true\` (or \`logFile: {…}\`) to mikro.config.ts.`,
+    )
+    process.exit(1)
+  }
+
+  // Best-effort: a deployed unit on older firmware should still accept the
+  // reset (see runTail/runPull).
+  const handles = await openSession({port: sub.port, compat: 'best-effort'})
+  try {
+    await handles.session.logsReset()
+    console.log('Logs cleared')
+  } finally {
+    handles.close()
+  }
+}
+
 export async function run(config: InferValue<typeof args>): Promise<void> {
   if (config.sub.subcommand === 'tail') {
     await runTail(config.sub)
   } else if (config.sub.subcommand === 'pull') {
     await runPull(config.sub)
+  } else if (config.sub.subcommand === 'reset') {
+    await runReset(config.sub)
   }
 }

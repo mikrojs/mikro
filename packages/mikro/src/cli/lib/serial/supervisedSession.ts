@@ -245,6 +245,9 @@ export function createSupervisedSession(
     fsGet(path) {
       return current().fsGet(path)
     },
+    logsReset() {
+      return current().logsReset()
+    },
     restart() {
       current().restart()
     },
