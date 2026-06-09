@@ -68,7 +68,11 @@ export function InkReplMode(props: InkReplModeProps) {
         // subscription inside connectRepl is listening when the
         // post-reset MSG_READY arrives.
         switchMap((serial) => {
-          const session = createSupervisedSession(serial, {devicePath, baudRate: BAUD_RATE})
+          const session = createSupervisedSession(serial, {
+            devicePath,
+            serialNumber,
+            baudRate: BAUD_RATE,
+          })
           return recover ? from(triggerSafeMode(serial)).pipe(map(() => session)) : of(session)
         }),
         map((session) => {
@@ -88,7 +92,7 @@ export function InkReplMode(props: InkReplModeProps) {
         // and reopen the port.
         shareReplay({bufferSize: 1, refCount: false}),
       ),
-    [devicePath, recover, handleEnd, deployEnabled],
+    [devicePath, serialNumber, recover, handleEnd, deployEnabled],
   )
 
   const connection = useObservable(connection$, null)
