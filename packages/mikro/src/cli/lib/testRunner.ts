@@ -4,14 +4,16 @@ import * as pathlib from 'node:path'
 
 import {
   catchError,
+  finalize,
   firstValueFrom,
   last,
   lastValueFrom,
+  merge,
   of,
   scan,
+  Subject,
   takeWhile,
   tap,
-  timeout,
 } from 'rxjs'
 
 import type {Minifier, MinifyLevel} from '../../_exports/index.js'
@@ -59,6 +61,11 @@ export interface TestFileResult {
   duration: number
   events: TestEvent[]
   error?: string
+  /** True once the file's run_done (e:6) arrived. A result without this
+   *  and without an error means the file was never accounted — the
+   *  finalization pass turns that into an error so totals can't report
+   *  PASS over files that silently never ran. */
+  completed?: boolean
   /** heapUsed delta (bytes) between run start and end, after gc on both
    *  sides. Relative to the (post-beforeAll) baseline; drives heap-baseline
    *  regression tracking. Surfaced as the "retained" figure (the only memory
@@ -345,6 +352,12 @@ export async function collectManifestEvents(
      * Used to decide whether to fire onFileStart on a supervisor-announce
      * transition — the initial file_start is emitted upfront. */
     seenAnyTestForIndex: boolean
+    /** True after one full silent window (no events for timeoutMs). The
+     * first window only warns: a slow TLS handshake can stall 60s+
+     * without emitting while the file is healthy (seen on esp32c6, where
+     * this used to abort the whole run). Any real event clears it; a
+     * second consecutive silent window is treated as a dead device. */
+    graceUsed: boolean
     results: TestFileResult[]
     done: boolean
     doneReason: 'manifest_done' | 'crash' | 'timeout' | 'disconnect' | null
@@ -390,6 +403,7 @@ export async function collectManifestEvents(
   const initialState: ManifestState = {
     index: 0,
     seenAnyTestForIndex: false,
+    graceUsed: false,
     results: testFiles.map(emptyResult),
     done: false,
     doneReason: null,
@@ -412,6 +426,20 @@ export async function collectManifestEvents(
     if (!currentFile) return {...prev, done: true, doneReason: 'manifest_done', emits: []}
 
     if ((event as {type: string}).type === '__timeout') {
+      if (!prev.graceUsed) {
+        return {
+          ...prev,
+          graceUsed: true,
+          emits: [
+            {
+              kind: 'log',
+              level: 'warn',
+              text: `no events for ${timeoutMs}ms — waiting one more window before giving up`,
+              file: currentFile,
+            },
+          ],
+        }
+      }
       const results = prev.results.slice()
       if (prev.index < testFiles.length && !results[prev.index]?.error) {
         results[prev.index] = {
@@ -421,6 +449,8 @@ export async function collectManifestEvents(
       }
       return {...prev, results, done: true, doneReason: 'timeout', emits: []}
     }
+    // Any real event proves the device is alive — re-arm the grace window.
+    if (prev.graceUsed) prev = {...prev, graceUsed: false}
 
     switch (event.type) {
       case 'ready':
@@ -468,20 +498,34 @@ export async function collectManifestEvents(
             }
             if (targetIndex !== prev.index) {
               /* Forward jump: the supervisor skipped over some files (or
-               * we missed their e:6 events). Start the new file. */
+               * we missed their e:6 events — e.g. a file that died at
+               * load without reporting). Close every skipped index as
+               * errored so it can't sit in the totals as a silent zero,
+               * then start the new file. */
+              const results = prev.results.slice()
+              const emits: Emit[] = []
+              for (let i = prev.index; i < targetIndex; i++) {
+                const r = results[i]!
+                if (!r.completed && !r.error) {
+                  results[i] = {...r, error: 'No results received from device'}
+                  emits.push({kind: 'file_done', result: results[i]!, index: i, file: r.file})
+                }
+              }
+              emits.push(
+                {
+                  kind: 'log',
+                  level: 'debug',
+                  text: event.text,
+                  file: testFiles[targetIndex]!,
+                },
+                {kind: 'file_start', file: testFiles[targetIndex]!, index: targetIndex},
+              )
               return {
                 ...prev,
+                results,
                 index: targetIndex,
                 seenAnyTestForIndex: false,
-                emits: [
-                  {
-                    kind: 'log',
-                    level: 'debug',
-                    text: event.text,
-                    file: testFiles[targetIndex]!,
-                  },
-                  {kind: 'file_start', file: testFiles[targetIndex]!, index: targetIndex},
-                ],
+                emits,
               }
             }
             /* Same index. If we haven't seen any test events for it yet,
@@ -559,6 +603,7 @@ export async function collectManifestEvents(
     const emits: Emit[] = [{kind: 'event', event, file: currentFile}]
 
     if (e === 6) {
+      result.completed = true
       result.passed = (d.p as number) ?? result.passed
       result.failed = (d.f as number) ?? result.failed
       result.skipped = (d.k as number) ?? result.skipped
@@ -602,17 +647,46 @@ export async function collectManifestEvents(
     return {...prev, results, seenAnyTestForIndex: true, emits}
   }
 
+  /* Indices that already produced an onFileDone callback, so the
+   * finalization pass below doesn't double-report them. */
+  const reportedDone = new Set<number>()
+
   function applyEmits(state: ManifestState): void {
     for (const e of state.emits) {
       if (e.kind === 'file_start') cb.onFileStart?.(e.file, e.index, testFiles.length)
-      else if (e.kind === 'file_done') cb.onFileDone?.(e.result, e.index, testFiles.length)
-      else if (e.kind === 'event') cb.onEvent?.(e.event, e.file)
+      else if (e.kind === 'file_done') {
+        reportedDone.add(e.index)
+        cb.onFileDone?.(e.result, e.index, testFiles.length)
+      } else if (e.kind === 'event') cb.onEvent?.(e.event, e.file)
       else if (e.kind === 'log') cb.onLog?.(e.level, e.text, e.file)
     }
   }
 
+  // Inactivity timer: if no event arrives for `timeoutMs`, inject a
+  // synthetic timeout event so the reducer can apply its grace logic.
+  // Deliberately NOT rxjs `timeout({each, with})` — that operator switches
+  // away from (unsubscribes) the source when it fires, so the run could
+  // never resume after a grace warning. A merged self-re-arming timer
+  // keeps the device stream alive across silent windows; consecutive
+  // fires with no real event in between let the reducer detect a dead
+  // device. Good-enough proxy for per-file: test.ts emits heap events
+  // around each test, so an actively-running file keeps re-arming this.
+  const sentinel$ = new Subject<ReplEvent>()
+  let inactivityTimer: ReturnType<typeof setTimeout> | undefined
+  const arm = () => {
+    if (inactivityTimer !== undefined) clearTimeout(inactivityTimer)
+    inactivityTimer = setTimeout(() => {
+      sentinel$.next(TIMEOUT_EVENT)
+      arm()
+    }, timeoutMs)
+  }
+  arm()
+
   const final = await lastValueFrom(
-    session.messages$.pipe(
+    merge(session.messages$.pipe(tap(() => arm())), sentinel$).pipe(
+      finalize(() => {
+        if (inactivityTimer !== undefined) clearTimeout(inactivityTimer)
+      }),
       // Raw-event diagnostic: logs every event before any filtering, so
       // we can tell whether session.messages$ is emitting at all or the
       // issue is further up the pipeline. No-op unless MIKRO_DEBUG_EVENTS=1.
@@ -622,13 +696,6 @@ export async function collectManifestEvents(
           console.error(`[raw-ev] ${event.type}`)
         }
       }),
-      // Per-emission timeout: if no event arrives for `timeoutMs`, inject
-      // a synthetic timeout event so the reducer can close out the current
-      // index with a real error message. Good-enough proxy for per-file:
-      // test.ts emits heap events around each test, so an actively-running
-      // file keeps ticking this timer; a hung/crashed device stops
-      // emitting and trips it.
-      timeout({each: timeoutMs, with: () => of(TIMEOUT_EVENT)}),
       scan<ReplEvent, ManifestState>(reduce, initialState),
       tap((state) => {
         if (debug) {
@@ -651,6 +718,7 @@ export async function collectManifestEvents(
         return of({
           index: 0,
           seenAnyTestForIndex: false,
+          graceUsed: false,
           results,
           done: true,
           doneReason: null as ManifestState['doneReason'],
@@ -660,5 +728,19 @@ export async function collectManifestEvents(
     ),
   )
 
-  return final.results
+  /* Integrity pass: a result with neither a run_done nor an error means
+   * the file was never accounted — the run ended (crash, timeout,
+   * disconnect, or early manifest_done) before it ran. Mark it errored so
+   * the summary can't report PASS over it, and report any errored file
+   * that never reached onFileDone so it appears in per-file output too. */
+  const results = final.results.map((r) =>
+    r.completed || r.error ? r : {...r, error: 'No results received from device'},
+  )
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i]!
+    if (r.error && !reportedDone.has(i)) {
+      cb.onFileDone?.(r, i, testFiles.length)
+    }
+  }
+  return results
 }

@@ -75,7 +75,11 @@ static void mik__apply_nvs_log_level(void) {
 #define MIK_SUP_PATH_MAX 384
 static char s_sup_dbg[MIK_SUP_PATH_MAX + 64];
 static char s_sup_esc[MIK_SUP_PATH_MAX * 2 + 8];
-static char s_sup_buf[MIK_SUP_PATH_MAX * 2 + 128];
+static char s_sup_buf[MIK_SUP_PATH_MAX * 2 + 512];
+/* Exception text captured by MIK_RunEntryErr when a test file fails to
+ * evaluate, and its JSON-escaped form for the synthesized test event. */
+static char s_sup_err[192];
+static char s_sup_err_esc[sizeof(s_sup_err) * 2 + 8];
 
 /* Minimal JSON string-escape into a bounded buffer. Handles `"`, `\`, and
  * control characters; everything else copies verbatim. Returns bytes
@@ -484,7 +488,7 @@ void MIK_Main(void) {
             MIKRuntime* rt = create_runtime();
             MIK_EnableTestHelpers(rt);
             MIK_ProtocolAttach(rt);
-            int rc = MIK_RunEntry(rt, test_paths[i]);
+            int rc = MIK_RunEntryErr(rt, test_paths[i], s_sup_err, sizeof(s_sup_err));
             const char* fail_reason = nullptr;
             if (rc == -ENOENT) {
                 fail_reason = "Test file not found";
@@ -516,10 +520,26 @@ void MIK_Main(void) {
                         s_sup_esc[1] = '\0';
                     }
                 }
-                int n = snprintf(s_sup_buf, sizeof(s_sup_buf),
+                /* Append the captured exception text (escaped) so the CLI
+                 * shows the actual error, not just "Evaluation threw". */
+                s_sup_err_esc[0] = '\0';
+                if (rc == -EFAULT && s_sup_err[0] != '\0') {
+                    if (mik__json_escape(s_sup_err_esc, sizeof(s_sup_err_esc), s_sup_err) < 0) {
+                        s_sup_err_esc[0] = '\0';
+                    }
+                }
+                int n;
+                if (s_sup_err_esc[0] != '\0') {
+                    n = snprintf(s_sup_buf, sizeof(s_sup_buf),
+                                 "{\"e\":3,\"s\":\"<load>\",\"t\":\"%s\",\"d\":0,"
+                                 "\"m\":\"%s: %s\"}",
+                                 s_sup_esc, fail_reason, s_sup_err_esc);
+                } else {
+                    n = snprintf(s_sup_buf, sizeof(s_sup_buf),
                                  "{\"e\":3,\"s\":\"<load>\",\"t\":\"%s\",\"d\":0,"
                                  "\"m\":\"%s\"}",
                                  s_sup_esc, fail_reason);
+                }
                 if (n > 0 && n < (int)sizeof(s_sup_buf)) {
                     mik__proto_send(&transport, MIK_MSG_TEST, s_sup_buf, n);
                 }
