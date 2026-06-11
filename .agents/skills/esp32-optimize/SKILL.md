@@ -45,8 +45,8 @@ uint64_t t0 = esp_timer_get_time();  // microseconds
 uint64_t elapsed_us = esp_timer_get_time() - t0;
 
 // Cycle-accurate (from pinned task only)
-#include "hal/cpu_hal.h"
-uint32_t cycles = cpu_hal_get_cycle_count();
+#include "esp_cpu.h"
+uint32_t cycles = esp_cpu_get_cycle_count();  // cpu_hal_get_cycle_count() is removed in IDF 6
 
 // Per-task CPU time
 // Enable CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS, then call vTaskGetRunTimeStats()
@@ -71,7 +71,7 @@ uint32_t cycles = cpu_hal_get_cycle_count();
 | `CONFIG_LIBC_LOCKS_PLACE_IN_IRAM=n`            | libc locks to flash     | Safe if no ISRs use libc locks while cache disabled |
 | Disable `CONFIG_ESP_WIFI_IRAM_OPT`             | Frees WiFi IRAM         | Costs WiFi throughput                               |
 | Disable `CONFIG_ESP_WIFI_RX_IRAM_OPT`          | Frees WiFi RX IRAM      | Costs WiFi RX throughput                            |
-| `CONFIG_ESP32_REV_MIN=3` (ECO3 only)           | Drops PSRAM workarounds | Saves 10+ KB IRAM                                   |
+| `CONFIG_ESP32_REV_MIN_3=y` (ECO3 only)         | Drops PSRAM workarounds | Saves 10+ KB IRAM                                   |
 | Disable `CONFIG_ESP_EVENT_POST_FROM_IRAM_ISR`  | esp_event IRAM          | Can't post events from IRAM ISR                     |
 | Disable `CONFIG_SPI_MASTER_ISR_IN_IRAM`        | SPI master ISR          | ISR paused during flash writes                      |
 | `CONFIG_HAL_DEFAULT_ASSERTION_LEVEL=0`         | Remove HAL asserts      | Less debug info                                     |
@@ -81,7 +81,7 @@ IRAM overflow linker errors look like: `section '.iram0.text' will not fit in re
 ### Stack optimization
 
 - Profile with `uxTaskGetStackHighWaterMark()` — tune to actual peak + ~20% margin
-- `printf`/`snprintf` are heavy stack users. Use `CONFIG_NEWLIB_NANO_FORMAT=y` or Picolibc to reduce
+- `printf`/`snprintf` are heavy stack users. In ESP-IDF 6.x Picolibc is the default libc (`CONFIG_LIBC_PICOLIBC=y`); `CONFIG_NEWLIB_NANO_FORMAT` no longer exists (it was IDF 5.x, only relevant with `CONFIG_LIBC_NEWLIB=y`)
 - Avoid large structs as local variables (e.g. `wifi_config_t` is 468 bytes). Use static or heap allocation
 - Minimize recursion
 - Consolidate tasks where possible — no task = no stack allocation
@@ -198,8 +198,7 @@ Tasks MUST yield (vTaskDelay, semaphores, queues) to avoid starving lower-priori
 
 ### C library
 
-- Picolibc (`CONFIG_LIBC_PICOLIBC`, requires `CONFIG_IDF_EXPERIMENTAL_FEATURES`) — up to 30 KB savings
-- `CONFIG_NEWLIB_NANO_FORMAT=y` — 25-50 KB savings (no 64-bit int or C99 format support)
+- Picolibc (`CONFIG_LIBC_PICOLIBC=y`) — up to 30 KB savings vs newlib; **default in ESP-IDF 6.x** (no longer experimental). `CONFIG_NEWLIB_NANO_FORMAT` is gone in IDF 6
 
 ### System
 
@@ -227,9 +226,6 @@ CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH=y
 CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=y
 CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
 
-# Reduce printf overhead
-CONFIG_NEWLIB_NANO_FORMAT=y
-
 # Reduce logging
 CONFIG_LOG_DEFAULT_LEVEL=1
 CONFIG_BOOTLOADER_LOG_LEVEL=1
@@ -249,3 +245,25 @@ CONFIG_COMPILER_CXX_RTTI=n
 3. Tests pass
 4. Heap headroom is sufficient at runtime
 5. Task stacks have adequate high water marks
+
+---
+
+## mikrojs Project Status (verified June 2026 audit)
+
+Don't re-recommend these — they are already in place:
+
+- `packages/@mikrojs/firmware/sdkconfig.defaults` (+ per-chip variants) already sets: `-Os`, exceptions/RTTI off, FreeRTOS/heap/ringbuf functions in flash, `ESP_WIFI_IRAM_OPT=n`, `ESP_WIFI_RX_IRAM_OPT=n`, log level NONE, `VFS_SUPPORT_SELECT=n`, `HAL_DEFAULT_ASSERTION_LEVEL=0`, TLS 1.3 off, `MBEDTLS_DYNAMIC_BUFFER=y`, `MBEDTLS_SSL_KEEP_PEER_CERTIFICATE=n`, CMN cert bundle, trimmed ECC curves/PKCS7/PEM/CRL/error strings, NimBLE peripheral+broadcaster only, WiFi static RX buffers reduced to 10.
+- PSRAM: `CONFIG_SPIRAM=y` + `CONFIG_SPIRAM_USE_MALLOC=y` + `IGNORE_NOTFOUND` on esp32/s3/c5 variants. QuickJS heap goes to PSRAM via `CONFIG_MIKROJS_QUICKJS_HEAP_PSRAM` (Kconfig, default y if SPIRAM) → custom `JSMallocFunctions` in `packages/@mikrojs/native/src/mem.cpp` route to `heap_caps_malloc(MALLOC_CAP_SPIRAM)` with libc fallback.
+- Runtime: `JS_NewRuntime2` with custom allocator; `JS_SetMemoryLimit(free_heap − app_config.mem_reserved)` and stack size = 2/3 of main task stack, both set in `mik_main.cpp` (~line 310). Context uses selective intrinsics (DOMException dropped, ~4.3 KB/runtime). Builtin bytecode lives in .rodata and deserializes lazily on first import. AbortController/Signal are lazy getters.
+- WiFi and BLE both init lazily (on first JS use) and have full teardown paths; teardown currently only runs at runtime shutdown.
+
+Known open gaps (from the audit; verify still true before acting):
+
+1. ~~`JS_SetGCThreshold` is never called~~ **Fixed (June 2026)**: `mik__clamp_gc_threshold` in `mikrojs.cpp` caps the cycle-GC threshold at `mem_limit − mem_limit/8` at runtime creation, and `MIK_Loop` re-applies the cap each turn (QuickJS raises the threshold to 1.5× live size after every GC pass, which could push it back above the limit). Only affects cyclic garbage; refcounting frees acyclic garbage regardless. Regression tests in `test/oom_test.cpp`.
+2. No build-time low-memory/no-BLE profile; `CONFIG_BT_ENABLED=y` in base defaults costs ~40-60 KB SRAM for apps that never use BLE (test build disables it as precedent).
+3. No JS API to deinit WiFi (`esp_wifi_deinit`, ~50-65 KB) or BLE (`nimble_port_deinit`, ~30-50 KB) mid-session; teardown code exists but is only wired to shutdown.
+4. HTTP task: 12 KB stack × up to 4 concurrent requests; header array realloc is unbounded (no max-header cap).
+5. Untouched knobs worth measuring: `MBEDTLS_SSL_IN_CONTENT_LEN` (16384 → 8192 halves per-connection peak with DYNAMIC_BUFFER), `CONFIG_LIBC_LOCKS_PLACE_IN_IRAM=y` (default, could flip to n), `-flto` for QuickJS objects, `QJS_DISABLE_PARSER` for bytecode-only deployments (~50-100 KB flash).
+6. `JS_READ_OBJ_ROM_DATA` is a no-op in QuickJS-NG (broken by inline caches) — flash-resident bytecode without heap copy needs an invasive patch; not worth it.
+
+Measure with `packages/@mikrojs/native/test/memory_bench.cpp` (host) and `sys.memoryUsage()` / `mikro logs` on device.
