@@ -10,25 +10,25 @@ const passphrase = env.require('WIFI_PASSPHRASE')
 console.log(`Connecting to ${ssid}...`)
 const connectResult = await wifi.connect(ssid, passphrase)
 if (!connectResult.ok) {
-  console.error('WiFi connect failed: %s', connectResult.error.name)
+  console.error('WiFi connect failed:', connectResult.error)
 } else {
   console.log('Connected! IP: %s', connectResult.value.ip)
 
   // Request JSON from an API
-  const result = await request('https://jsonplaceholder.typicode.com/posts/1')
+  const result = await request('https://httpbingo.org/json')
   if (result.ok) {
     if (!result.value.ok) {
       console.error(`HTTP error: ${result.value.status}`)
     } else {
       const data = await result.value.json()
       if (!data.ok) {
-        console.error(`Body decode failed: ${data.error.name}`)
+        console.error(`Body decode failed:`, data.error)
       } else {
-        console.log('Fetched post: %o', data.value)
+        console.log('Fetched: %o', data.value)
       }
     }
   } else {
-    console.error('Request failed: %s', result.error.name)
+    console.error('Request failed:', result.error)
   }
 }
 

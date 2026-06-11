@@ -61,7 +61,7 @@ if (!connectResult.ok) {
   console.log('Connected! IP: %s', connectResult.value.ip)
 
   // Request JSON from an API
-  const result = await request('https://jsonplaceholder.typicode.com/posts/1')
+  const result = await request('https://httpbingo.org/json')
   if (result.ok) {
     if (!result.value.ok) {
       console.error(`HTTP error: ${result.value.status}`)
@@ -70,7 +70,7 @@ if (!connectResult.ok) {
       if (!data.ok) {
         console.error(`Body decode failed: ${data.error.name}`)
       } else {
-        console.log('Fetched post: %o', data.value)
+        console.log('Fetched: %o', data.value)
       }
     }
   } else {
