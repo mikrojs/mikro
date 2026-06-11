@@ -260,10 +260,17 @@ void mik__sys_api_init(JSContext* ctx, JSValue ns) {
     JS_SetPropertyStr(ctx, ns, "board", mik__sys_board(ctx));
     JS_SetPropertyStr(ctx, ns, "firmware", mik__sys_firmware(ctx));
 
-    const char* device_id = MIK_GetPlatform()->get_device_id();
+    /* Guard the platform function POINTERS, not just their results: a
+     * platform that omits an optional hook leaves a NULL pointer, and
+     * calling it is a segfault with no diagnostics (the sim was down for
+     * weeks because platform_node lacked get_reset_reason). */
+    const MIKPlatform* platform = MIK_GetPlatform();
+    const char* device_id = platform->get_device_id ? platform->get_device_id() : NULL;
     JS_SetPropertyStr(ctx, ns, "deviceId",
                       device_id ? JS_NewString(ctx, device_id) : JS_UNDEFINED);
 
+    const char* reset_reason =
+        platform->get_reset_reason ? platform->get_reset_reason() : NULL;
     JS_SetPropertyStr(ctx, ns, "resetReason",
-                      JS_NewString(ctx, MIK_GetPlatform()->get_reset_reason()));
+                      JS_NewString(ctx, reset_reason ? reset_reason : "unknown"));
 }

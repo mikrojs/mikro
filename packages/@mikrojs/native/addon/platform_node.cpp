@@ -105,6 +105,10 @@ static int node_log_min_level(void) {
     return cached;
 }
 
+static const char* node_get_reset_reason(void) {
+    return "unknown"; /* Host processes have no chip reset concept */
+}
+
 /* Derive a stable device ID from the hostname. FNV-1a hash truncated to
  * 6 bytes, then Crockford's Base32 encoded (10 lowercase chars).
  * Deterministic across restarts on the same machine. */
@@ -178,6 +182,7 @@ static const MIKPlatform node_platform = {
     .stderr_write = node_stderr_write,
     .stdin_read = node_stdin_read,
     .get_device_id = node_get_device_id,
+    .get_reset_reason = node_get_reset_reason,
 };
 
 extern "C" const MIKPlatform* MIK_NodePlatform(void) {

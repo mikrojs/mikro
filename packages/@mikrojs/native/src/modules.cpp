@@ -245,11 +245,11 @@ static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_n
         /* mik__load_builtin returns NULL either because the module isn't in
          * the table, or because deserialization failed (e.g. stack overflow
          * from deeply nested .bjs loading). If deserialization failed, the
-         * real exception is already on ctx — don't replace it. */
-        JSValue pending = JS_GetException(ctx);
-        if (!JS_IsNull(pending)) {
-            JS_Throw(ctx, pending);
-        } else {
+         * real exception is already on ctx — don't replace it. Probe with
+         * JS_HasException, NOT JS_GetException + JS_IsNull: quickjs-ng
+         * returns JS_UNINITIALIZED from an empty exception slot, and
+         * re-throwing that surfaced as a bare "[uninitialized]" error. */
+        if (!JS_HasException(ctx)) {
             JS_ThrowReferenceError(ctx, "Builtin module '%s' is not available in this build",
                                    module_name);
         }
@@ -285,13 +285,8 @@ JSModuleDef* mik_module_loader(JSContext* ctx, const char* module_name, void* op
         JSModuleDef* result = mik_module_loader_inner(ctx, module_name, opaque);
         if (debug) {
             if (result == nullptr) {
-                JSValue exc = JS_GetException(ctx);
-                bool has_exc = !JS_IsNull(exc) && !JS_IsUndefined(exc);
                 fprintf(stderr, "[mik-modules] FAIL: %s (exception=%s)\n", module_name,
-                        has_exc ? "set" : "NULL");
-                /* Re-throw so the caller still sees the exception. */
-                if (has_exc) JS_Throw(ctx, exc);
-                else JS_FreeValue(ctx, exc);
+                        JS_HasException(ctx) ? "set" : "NULL");
             } else {
                 fprintf(stderr, "[mik-modules] ok:   %s\n", module_name);
             }
@@ -319,12 +314,8 @@ JSModuleDef* mik_module_loader(JSContext* ctx, const char* module_name, void* op
     JSModuleDef* m = mik_module_loader_inner(ctx, module_name, opaque);
     if (debug) {
         if (m == nullptr) {
-            JSValue exc = JS_GetException(ctx);
-            bool has_exc = !JS_IsNull(exc) && !JS_IsUndefined(exc);
             fprintf(stderr, "[mik-modules] FAIL: %s (exception=%s)\n", module_name,
-                    has_exc ? "set" : "NULL");
-            if (has_exc) JS_Throw(ctx, exc);
-            else JS_FreeValue(ctx, exc);
+                    JS_HasException(ctx) ? "set" : "NULL");
         } else {
             fprintf(stderr, "[mik-modules] ok:   %s\n", module_name);
         }

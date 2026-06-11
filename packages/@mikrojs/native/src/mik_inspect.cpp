@@ -805,7 +805,7 @@ std::string mik_inspect(JSContext* ctx, JSValue value, int depth, bool colors, b
     return inspect_value(ctx, value, opts, depth);
 }
 
-/* ── JS-callable inspect function (for mikrojs/inspect module) ───── */
+/* ── JS-callable inspect function (for mikro/inspect module) ───── */
 
 static JSValue mik__inspect_js(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     if (argc < 1) return JS_NewString(ctx, "undefined");
@@ -836,14 +836,14 @@ static JSValue mik__inspect_js(JSContext* ctx, JSValue this_val, int argc, JSVal
     return JS_NewString(ctx, result.c_str());
 }
 
-/* Module init for 'mikrojs/inspect' native C module */
+/* Module init for 'mikro/inspect' native C module */
 int mik__inspect_module_init(JSContext* ctx, JSModuleDef* m) {
     return JS_SetModuleExport(ctx, m, "inspect",
                               JS_NewCFunction(ctx, mik__inspect_js, "inspect", 1));
 }
 
 void mik__inspect_register(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "mikrojs/inspect", mik__inspect_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "mikro/inspect", mik__inspect_module_init);
     if (m) {
         JS_AddModuleExport(ctx, m, "inspect");
     }
