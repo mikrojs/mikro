@@ -73,7 +73,10 @@ export interface JsMemoryUsage {
   arrayCount: number
   /** Total element slots across all fast arrays */
   fastArrayElements: number
-  /** Bytes of backing storage for ArrayBuffer / TypedArray data */
+  /** Cumulative bytes deserialized via JS_ReadObject over this
+   *  runtime's lifetime (bytecode of imported modules, builtins, and
+   *  bjson). A monotonic counter, NOT live memory — it never goes
+   *  down, so don't read it as retained ArrayBuffer storage. */
   binaryObjectSize: number
 }
 
