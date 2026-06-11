@@ -1,7 +1,7 @@
 declare type FormatString = string & {}
 
 declare module '*.txt' {
-  declare const mod: string
+  const mod: string
   export default mod
 }
 
