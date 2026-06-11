@@ -993,6 +993,13 @@ JSValue MIK_EvalModule(JSContext* ctx, const char* filename, bool is_main) {
 }
 
 int MIK_RunEntry(MIKRuntime* mik_rt, const char* entry) {
+    return MIK_RunEntryErr(mik_rt, entry, NULL, 0);
+}
+
+int MIK_RunEntryErr(MIKRuntime* mik_rt, const char* entry, char* err_buf, size_t err_buf_size) {
+    if (err_buf && err_buf_size > 0) {
+        err_buf[0] = '\0';
+    }
     if (!mik_rt || !entry || entry[0] == '\0') {
         return -EINVAL;
     }
@@ -1019,6 +1026,7 @@ int MIK_RunEntry(MIKRuntime* mik_rt, const char* entry) {
 
     JSValue result = MIK_EvalModule(ctx, entry, true);
     bool failed = JS_IsException(result);
+    bool rejected = false;
     /* Modules with top-level await return a Promise. A module body that
      * throws synchronously rejects that promise before JS_EvalFunction
      * returns, but the value itself is still an Object (rejected Promise),
@@ -1030,7 +1038,25 @@ int MIK_RunEntry(MIKRuntime* mik_rt, const char* entry) {
         JSPromiseStateEnum state = JS_PromiseState(ctx, result);
         if (state == JS_PROMISE_REJECTED) {
             failed = true;
+            rejected = true;
         }
+    }
+    if (failed && err_buf && err_buf_size > 0) {
+        /* Capture the failure's string form for the caller. Without an
+         * err_buf the pending exception is intentionally left on ctx,
+         * matching MIK_RunEntry's historical behavior. */
+        JSValue exc = rejected ? JS_PromiseResult(ctx, result) : JS_GetException(ctx);
+        const char* msg = JS_ToCString(ctx, exc);
+        if (msg) {
+            snprintf(err_buf, err_buf_size, "%s", msg);
+            JS_FreeCString(ctx, msg);
+        } else {
+            /* Stringifying the exception itself threw (e.g. OOM) — drop
+             * the secondary exception so it can't leak into later evals. */
+            JSValue stray = JS_GetException(ctx);
+            JS_FreeValue(ctx, stray);
+        }
+        JS_FreeValue(ctx, exc);
     }
     JS_FreeValue(ctx, result);
     return failed ? -EFAULT : 0;

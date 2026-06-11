@@ -176,18 +176,21 @@ describe('collectManifestEvents', () => {
     expect(results[0]!.error).toBeUndefined()
     // File 1 was in flight when the crash happened — annotated with error.
     expect(results[1]!.error).toMatch(/restarted unexpectedly/i)
-    // File 2 never started.
+    // File 2 never started — the finalization pass marks it errored so
+    // the summary can't report PASS over a file that never ran.
     expect(results[2]!.passed).toBe(0)
-    expect(results[2]!.error).toBeUndefined()
+    expect(results[2]!.error).toMatch(/no results/i)
     // Only two onFileStart calls (files 0 and 1). No start for the re-run.
     expect(rec.starts.map((s) => s.index)).toEqual([0, 1])
   })
 
-  it('forward jump fires onFileStart for the target index', async () => {
-    // If an e:6 is missed (dropped frame, crash before emit), the next
-    // supervisor announcement may skip over an index. The reducer should
-    // fire onFileStart for the announced target, not silently continue
-    // attributing events to the earlier index.
+  it('forward jump fires onFileStart for the target and closes skipped files as errored', async () => {
+    // If an e:6 is missed (dropped frame, crash before emit, or a file
+    // that died at load without reporting), the next supervisor
+    // announcement may skip over an index. The reducer must fire
+    // onFileStart for the announced target AND close out the skipped
+    // index as errored — a file that produced no results must never
+    // count as a silent zero in the totals (the fs.test load-crash bug).
     const {session, emit} = mockSession()
     const {cb, rec} = recorder()
 
@@ -203,10 +206,14 @@ describe('collectManifestEvents', () => {
     emit(runDone())
     emit(manifestDone())
 
-    await promise
+    const results = await promise
 
     expect(rec.starts.map((s) => s.index)).toEqual([0, 2])
-    expect(rec.dones.map((d) => d.index)).toEqual([0, 2])
+    expect(rec.dones.map((d) => d.index)).toEqual([0, 1, 2])
+    expect(rec.dones.find((d) => d.index === 1)?.error).toMatch(/no results/i)
+    expect(results[1]!.error).toMatch(/no results/i)
+    expect(results[0]!.error).toBeUndefined()
+    expect(results[2]!.error).toBeUndefined()
   })
 
   it('per-file timeout resets on run_done so each file gets its full budget', async () => {
@@ -248,7 +255,12 @@ describe('collectManifestEvents', () => {
     }
   })
 
-  it('inactivity beyond per-file timeout produces a timeout error on the in-flight file', async () => {
+  it('two silent windows produce a timeout on the in-flight file and account the rest', async () => {
+    // One silent window is only a warning (a slow TLS handshake can stall
+    // 60s+ without emitting while the file is healthy — seen on esp32c6).
+    // A second consecutive silent window means the device is gone: the
+    // in-flight file fails with Timeout and every remaining file is
+    // closed as errored so the summary cannot report PASS over them.
     vi.useFakeTimers()
     try {
       const {session, emit} = mockSession()
@@ -263,12 +275,48 @@ describe('collectManifestEvents', () => {
       emit(runDone())
       emit(announce(2, 3, devicePaths[1]!))
       emit(testPass('suite', 'started'))
-      // Device goes silent for longer than the per-file timeout.
-      await vi.advanceTimersByTimeAsync(1500)
+      // Device goes silent through the grace window and beyond.
+      await vi.advanceTimersByTimeAsync(2500)
 
       const results = await promise
       expect(results[0]!.error).toBeUndefined()
       expect(results[1]!.error).toMatch(/Timeout/i)
+      expect(results[2]!.error).toMatch(/no results/i)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a single silent window warns but the run continues when events resume', async () => {
+    vi.useFakeTimers()
+    try {
+      const {session, emit} = mockSession()
+      const logs: string[] = []
+      const {cb} = recorder()
+      cb.onLog = (level, text) => logs.push(`${level}:${text}`)
+      const PER_FILE_TIMEOUT = 1000
+
+      const promise = collectManifestEvents(session, testFiles, PER_FILE_TIMEOUT, cb)
+      await Promise.resolve()
+
+      emit(announce(1, 3, devicePaths[0]!))
+      emit(testPass('suite', 'slow start'))
+      // Silent past one window — grace warning, not a failure.
+      await vi.advanceTimersByTimeAsync(1500)
+      // Device comes back and finishes everything.
+      emit(testPass('suite', 'recovered'))
+      emit(runDone(2))
+      emit(announce(2, 3, devicePaths[1]!))
+      emit(testPass('suite', 'ok'))
+      emit(runDone())
+      emit(announce(3, 3, devicePaths[2]!))
+      emit(testPass('suite', 'ok'))
+      emit(runDone())
+      emit(manifestDone())
+
+      const results = await promise
+      expect(results.every((r) => r.error === undefined)).toBe(true)
+      expect(logs.some((l) => /no events for/i.test(l))).toBe(true)
     } finally {
       vi.useRealTimers()
     }

@@ -86,6 +86,13 @@ void MIK_FreeRuntime(MIKRuntime* mik_rt);
  * Emits no diagnostic output — callers decide whether and how to log. */
 int MIK_RunEntry(MIKRuntime* mik_rt, const char* entry);
 
+/* MIK_RunEntry variant that, on -EFAULT, copies the thrown exception's
+ * string form (or the sync-rejected promise's rejection value) into
+ * err_buf so callers can surface the real failure instead of a generic
+ * "evaluation threw". err_buf may be NULL; when given it is always
+ * NUL-terminated (empty when no message could be captured). */
+int MIK_RunEntryErr(MIKRuntime* mik_rt, const char* entry, char* err_buf, size_t err_buf_size);
+
 JSContext* MIK_GetJSContext(MIKRuntime* mik_rt);
 MIKRuntime* MIK_GetRuntime(JSContext* ctx);
 void MIK_SetFSBasePath(MIKRuntime* mik_rt, const char* base_path);

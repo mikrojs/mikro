@@ -217,8 +217,12 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
           renderLeakReport(result)
         }
       },
-      onEvent: (event) => {
-        if (!jsonOutput) renderTestEvent(event, config.diagnostics === true)
+      onEvent: (event, file) => {
+        if (jsonOutput) {
+          emitAgentTestEvent(event, pathlib.relative(cwd, file), config.diagnostics === true)
+          return
+        }
+        renderTestEvent(event, config.diagnostics === true)
       },
       onDeployEvent: (event) => {
         if (jsonOutput) {
@@ -265,11 +269,17 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
     }),
     {passed: 0, failed: 0, skipped: 0, todo: 0},
   )
+  // Files that ended with an error (timeout, crash, no results) instead
+  // of a run_done. They carry no per-test counts, so they must fail the
+  // run on their own — otherwise a file that dies at load (or a run that
+  // aborts mid-way) reports PASS over tests that never executed.
+  const erroredFiles = results.filter((r) => r.error)
 
   if (jsonOutput) {
     agentResult('test', {
       ...totals,
       total: totals.passed + totals.failed + totals.skipped + totals.todo,
+      erroredFiles: erroredFiles.length,
       files: results.map((r) => ({
         file: pathlib.relative(cwd, r.file),
         passed: r.passed,
@@ -290,13 +300,52 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
     })
   } else {
     renderAlertSummary(results, cwd)
-    renderAggregate(totals, results.length, Date.now() - startTime)
+    renderAggregate(totals, erroredFiles.length, results.length, Date.now() - startTime)
   }
 
-  process.exit(totals.failed > 0 ? 1 : 0)
+  process.exit(totals.failed > 0 || erroredFiles.length > 0 ? 1 : 0)
 }
 
 // ── Rendering ───────────────────────────────────────────────────────
+
+/** Agent-mode (NDJSON) counterpart of renderTestEvent: per-test results
+ *  with names and failure messages, so a failing run is debuggable from
+ *  the stream without re-running under the human reporter. run_done
+ *  (e:6) is omitted — file_done already carries the file summary — and
+ *  heap samples (e:8) only emit under --diagnostics, mirroring the
+ *  human reporter's noise threshold. */
+function emitAgentTestEvent(event: TestEvent, file: string, diagnostics: boolean): void {
+  const d = event.data
+  const base = {type: 'test_event', file}
+  switch (d.e) {
+    case 1: // suite_start
+      agentEmit({...base, event: 'suite', suite: d.s})
+      break
+    case 2: // test_pass
+      agentEmit({...base, event: 'pass', name: d.t, duration: d.d})
+      break
+    case 3: // test_fail
+      agentEmit({...base, event: 'fail', name: d.t, duration: d.d, message: d.m})
+      break
+    case 4: // test_skip
+      agentEmit({...base, event: 'skip', name: d.t})
+      break
+    case 9: // test_todo
+      agentEmit({...base, event: 'todo', name: d.t})
+      break
+    case 8: // heap sample
+      if (!diagnostics) break
+      agentEmit({
+        ...base,
+        event: 'heap',
+        heapUsed: d.u,
+        heapTotal: d.t,
+        ...(typeof d.f === 'number' ? {systemFree: d.f} : {}),
+        ...(typeof d.mf === 'number' ? {systemMinFree: d.mf} : {}),
+      })
+      break
+  }
+}
 
 function renderTestEvent(event: TestEvent, diagnostics: boolean): void {
   const d = event.data
@@ -411,11 +460,13 @@ function formatDuration(ms: number): string {
 }
 
 function renderAlertSummary(results: TestFileResult[], cwd: string): void {
+  const errored = results.filter((r) => r.error)
   const exceeded = results.filter((r) => r.heapBaselineAction === 'exceeded')
   const stale = results.filter((r) => r.heapBaselineAction === 'stale')
   const timerLeaks = results.filter((r) => (r.timerDelta ?? 0) > 0)
   const httpLeaks = results.filter((r) => (r.pendingDelta ?? 0) > 0)
   if (
+    errored.length === 0 &&
     exceeded.length === 0 &&
     stale.length === 0 &&
     timerLeaks.length === 0 &&
@@ -426,6 +477,10 @@ function renderAlertSummary(results: TestFileResult[], cwd: string): void {
   const rel = (f: string) => pathlib.relative(cwd, f)
   // eslint-disable-next-line no-console
   console.error(`\n${bold('Alerts:')}`)
+  for (const r of errored) {
+    // eslint-disable-next-line no-console
+    console.error(`  ${red(`✗ ${rel(r.file)}: ${r.error}`)}`)
+  }
   if (exceeded.length > 0) {
     const items = exceeded
       .map(
@@ -460,14 +515,19 @@ function renderAlertSummary(results: TestFileResult[], cwd: string): void {
 
 function renderAggregate(
   totals: {passed: number; failed: number; skipped: number; todo: number},
+  erroredFileCount: number,
   fileCount: number,
   totalMs: number,
 ): void {
   const total = totals.passed + totals.failed + totals.skipped + totals.todo
-  const status = totals.failed === 0 ? green(bold('PASS')) : red(bold('FAIL'))
+  const ok = totals.failed === 0 && erroredFileCount === 0
+  const status = ok ? green(bold('PASS')) : red(bold('FAIL'))
   const parts: string[] = []
   if (totals.passed > 0) parts.push(green(`${totals.passed} passed`))
   if (totals.failed > 0) parts.push(red(`${totals.failed} failed`))
+  if (erroredFileCount > 0) {
+    parts.push(red(`${erroredFileCount} file${erroredFileCount === 1 ? '' : 's'} errored`))
+  }
   if (totals.skipped > 0) parts.push(yellow(`${totals.skipped} skipped`))
   if (totals.todo > 0) parts.push(blue(`${totals.todo} todo`))
 
