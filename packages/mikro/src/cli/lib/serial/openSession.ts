@@ -26,9 +26,11 @@ export interface OpenSessionOptions {
   /**
    * Firmware-version policy. 'best-effort' lets read-only diagnostic
    * commands proceed against incompatible firmware with a warning instead
-   * of a hard error. Defaults to 'enforce'. See ConnectReplOptions.compat.
+   * of a hard error; 'report' proceeds silently and only attaches the
+   * advisory (used by FirmwareGate's probe). Defaults to 'enforce'.
+   * See ConnectReplOptions.compat.
    */
-  compat?: 'enforce' | 'best-effort'
+  compat?: 'enforce' | 'best-effort' | 'report'
 }
 
 /**

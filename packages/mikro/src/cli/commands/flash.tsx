@@ -1,5 +1,3 @@
-import {getEsptoolPath} from '@mikrojs/esptool'
-import {hasPrebuiltFirmware, prebuiltFirmwareDir} from '@mikrojs/firmware'
 import {command, constant, message, object, optional} from '@optique/core'
 import type {InferValue} from '@optique/core/parser'
 import {flag, option} from '@optique/core/primitives'
@@ -11,10 +9,9 @@ import React, {useEffect, useMemo, useState} from 'react'
 import type {Observable} from 'rxjs'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
-import {type BoardInfo, discoverBoards} from '../lib/boards.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
-import {type FlasherArgs, getWriteFlashMultiArgs, readFlasherArgs} from '../lib/esptool.js'
-import {type Chip, resolveFrom} from '../lib/firmware.js'
+import {type FlasherArgs, getWriteFlashMultiArgs} from '../lib/esptool.js'
+import {resolveFlashPlan} from '../lib/flashFirmware.js'
 import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
 import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
 import {port} from '../lib/portValueParser.js'
@@ -84,50 +81,6 @@ type InitState =
   | {status: 'ready'; flasherArgs: FlasherArgs; esptoolPath: string}
   | {status: 'error'; error: Error}
 
-async function resolveEsptool(): Promise<string> {
-  return await getEsptoolPath()
-}
-
-async function detectChip(esptoolPath: string, port: string): Promise<Chip> {
-  const {execFile} = await import('node:child_process')
-  const {promisify} = await import('node:util')
-  const execFileAsync = promisify(execFile)
-
-  try {
-    const {stdout} = await execFileAsync(esptoolPath, ['--port', port, 'chip-id'])
-
-    // esptool chip_id output contains "Detecting chip type... ESP32-C6" or similar
-    const match = stdout.match(/Detecting chip type\.\.\.\s*(\S+)/i)
-    if (match) {
-      return match[1]!.toLowerCase().replace(/-/g, '')
-    }
-  } catch {
-    // Detection failed, fall through
-  }
-
-  throw new Error(
-    `Could not detect chip type. Use --target to specify the chip (e.g. --target esp32c6).`,
-  )
-}
-
-async function discoverBoard(boardFlag: string | undefined): Promise<BoardInfo | undefined> {
-  const boards = await discoverBoards(process.cwd())
-  if (boardFlag) {
-    const board = boards.find((b) => b.name === boardFlag)
-    if (!board) {
-      throw new Error(
-        `Board '${boardFlag}' not found in project dependencies.\n` +
-          (boards.length > 0
-            ? `Available boards: ${boards.map((b) => b.name).join(', ')}`
-            : `No board packages found. Add a board package to your dependencies.`),
-      )
-    }
-    return board
-  }
-  // Auto-discover if exactly one board
-  return boards.length === 1 ? boards[0] : undefined
-}
-
 export default function FlashCmd(props: Props) {
   const {
     args: {
@@ -170,63 +123,15 @@ export default function FlashCmd(props: Props) {
     if (!devicePath) return
 
     async function init() {
-      if (buildDir) {
-        // Local build mode
-        const [flasherArgs, esptoolPath] = await Promise.all([
-          readFlasherArgs(buildDir),
-          resolveEsptool(),
-        ])
-        setInitState({status: 'ready', flasherArgs, esptoolPath})
-      } else if (from) {
-        // --from: unified firmware source resolution
-        setInitState({status: 'loading', message: 'Resolving esptool…'})
-        const esptoolPath = await resolveEsptool()
-
-        // Discover board for artifact selection
-        const board = await discoverBoard(boardFlag)
-        let resolvedChip: Chip | undefined = target ?? board?.chip
-        if (!resolvedChip) {
-          setInitState({status: 'loading', message: 'Detecting chip…'})
-          resolvedChip = await detectChip(esptoolPath, devicePath!)
-        }
-
-        const firmwareDir = await resolveFrom({
-          from,
-          chip: resolvedChip,
-          board: board?.name,
-          onProgress: (message) => setInitState({status: 'loading', message}),
-        })
-        const flasherArgs = await readFlasherArgs(firmwareDir)
-        setInitState({status: 'ready', flasherArgs, esptoolPath})
-      } else {
-        // Default: bundled prebuilt firmware shipped inside @mikrojs/firmware,
-        // matched to this CLI's version via the lockstep release group.
-        setInitState({status: 'loading', message: 'Resolving esptool…'})
-        const esptoolPath = await resolveEsptool()
-
-        const board = await discoverBoard(boardFlag)
-
-        let resolvedChip: Chip
-        if (target) {
-          resolvedChip = target
-        } else if (board) {
-          resolvedChip = board.chip
-        } else {
-          setInitState({status: 'loading', message: 'Detecting chip…'})
-          resolvedChip = await detectChip(esptoolPath, devicePath!)
-        }
-
-        if (!hasPrebuiltFirmware(resolvedChip)) {
-          throw new Error(
-            `No bundled firmware for ${resolvedChip}. ` +
-              `Build a custom firmware locally and flash with --build-dir, ` +
-              `or fetch a CI artifact with --from=mikrojs/mikro@<sha>.`,
-          )
-        }
-
-        const flasherArgs = await readFlasherArgs(prebuiltFirmwareDir(resolvedChip))
-        setInitState({status: 'ready', flasherArgs, esptoolPath})
-      }
+      const plan = await resolveFlashPlan({
+        port: devicePath!,
+        buildDir,
+        from,
+        board: boardFlag,
+        target,
+        onProgress: (message) => setInitState({status: 'loading', message}),
+      })
+      setInitState({status: 'ready', ...plan})
     }
 
     init().catch((err: unknown) => {

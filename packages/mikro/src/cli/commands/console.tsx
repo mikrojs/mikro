@@ -5,6 +5,7 @@ import {flag, option} from '@optique/core/primitives'
 
 import {DevicePicker} from '../components/DevicePicker.js'
 import {port} from '../lib/portValueParser.js'
+import {FirmwareGate} from '../lib/serial/FirmwareGate.js'
 import {InkReplMode} from '../lib/serial/InkReplMode.js'
 import {runAgentRepl} from '../lib/serial/runAgentRepl.js'
 
@@ -23,6 +24,11 @@ export const args = command(
         description: message`Reset the device and force safe mode (skips autorun). Use when the deployed app is crash-looping.`,
       }),
     ),
+    yes: optional(
+      flag('-y', '--yes', {
+        description: message`If the device firmware is incompatible, flash CLI-matched firmware without prompting`,
+      }),
+    ),
   }),
 )
 
@@ -32,7 +38,7 @@ type Props = {
 
 export async function run(config: InferValue<typeof args>) {
   return runAgentRepl(
-    {port: config.port, recover: config.recover === true},
+    {port: config.port, recover: config.recover === true, yes: config.yes === true},
     {
       command: 'console',
       nextActions: [
@@ -44,15 +50,19 @@ export async function run(config: InferValue<typeof args>) {
 }
 
 export default function ConsoleCmd(props: Props) {
-  const {port, recover} = props.args
+  const {port, recover, yes} = props.args
   return (
     <DevicePicker port={port}>
       {(device) => (
-        <InkReplMode
-          devicePath={device.path}
-          serialNumber={device.serialNumber}
-          recover={recover === true}
-        />
+        <FirmwareGate devicePath={device.path} command="console" yes={yes === true}>
+          {() => (
+            <InkReplMode
+              devicePath={device.path}
+              serialNumber={device.serialNumber}
+              recover={recover === true}
+            />
+          )}
+        </FirmwareGate>
       )}
     </DevicePicker>
   )

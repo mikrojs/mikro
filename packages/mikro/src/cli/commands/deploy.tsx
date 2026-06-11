@@ -16,11 +16,15 @@ import {agentEmit, agentResult, isAgentMode} from '../lib/agent.js'
 import {build} from '../lib/build.js'
 import {collectFiles, loadEnvFiles, validateNvsKeys} from '../lib/deploy.js'
 import {formatDeployEvent} from '../lib/deployProgress.js'
+import {FirmwareIncompatibleError} from '../lib/firmwareCompat.js'
+import {flashFirmware} from '../lib/flashFirmware.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
+import {detectPreferredPm, mikroCommand} from '../lib/pkgManager.js'
 import {port} from '../lib/portValueParser.js'
 import {getMikroDir, resolveProjectRoot} from '../lib/projectRoot.js'
 import {resolveEntry} from '../lib/resolveEntry.js'
 import {getPredeployCommands, runHooks} from '../lib/runHooks.js'
+import {FirmwareGate} from '../lib/serial/FirmwareGate.js'
 import {InkReplConsole} from '../lib/serial/InkReplConsole.js'
 import {openSession} from '../lib/serial/openSession.js'
 import type {ReplSession} from '../lib/session.js'
@@ -90,6 +94,11 @@ export const args = command(
     logLevel: optional(
       option('--loglevel', string({metavar: 'LEVEL'}), {
         description: message`Log level: none, error, warn, info, debug. Console calls below this level are eliminated at build time.`,
+      }),
+    ),
+    yes: optional(
+      flag('-y', '--yes', {
+        description: message`If the device firmware is incompatible, flash CLI-matched firmware without prompting`,
       }),
     ),
     json: optional(flag('--json', {description: message`Output as JSON`})),
@@ -221,6 +230,20 @@ export async function run(
         ),
     )
     if (last.type !== 'complete') throw new Error('Deploy did not complete')
+  } catch (err) {
+    // Non-interactive reflash: the Ink path is gated by FirmwareGate, so a
+    // FirmwareIncompatibleError only reaches here in headless modes
+    // (--json / --agent / no TTY). Flash CLI-matched firmware when --yes was
+    // passed; otherwise rethrow and let the caller surface the error.
+    if (err instanceof FirmwareIncompatibleError && config.yes === true) {
+      handles.close()
+      log('Device firmware is incompatible with this CLI. Flashing CLI-matched firmware…')
+      await flashFirmware({port: devicePath, onProgress: (m) => log(m)})
+      const pm = await detectPreferredPm()
+      log(`Firmware updated. Re-run ${mikroCommand(pm, 'deploy')}.`)
+      process.exit(0)
+    }
+    throw err
   } finally {
     if (!config.console) handles.close()
   }
@@ -258,7 +281,11 @@ export default function Deploy(props: Props) {
 
   return (
     <DevicePicker port={config.port}>
-      {(device) => <DeployInner config={config} device={device} />}
+      {(device) => (
+        <FirmwareGate devicePath={device.path} command="deploy" yes={config.yes === true}>
+          {() => <DeployInner config={config} device={device} />}
+        </FirmwareGate>
+      )}
     </DevicePicker>
   )
 }
