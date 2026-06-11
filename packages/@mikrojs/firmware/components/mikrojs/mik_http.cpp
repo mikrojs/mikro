@@ -581,6 +581,14 @@ static JSValue mik__http_request(JSContext* ctx, JSValue this_val, int argc, JSV
     MIKHttpPending pending = {};
     pending.id = mik__http_st(mik_rt)->next_id++;
     JSValue headers_promise = MIK_InitPromise(ctx, &pending.headers_promise);
+    if (JS_IsException(headers_promise)) {
+        /* OOM building the promise. Nothing is registered yet, so just free the
+         * request and propagate. Do NOT register this pending entry: its
+         * headers_promise.rfuncs are unwritten on failure, and a later
+         * consume/destroy would free dangling values (gc_decref underflow). */
+        mik__http_free_request(&req);
+        return JS_EXCEPTION;
+    }
 
     auto* cancelled = new std::atomic<bool>(false);
     pending.cancelled = cancelled;
@@ -672,6 +680,12 @@ static JSValue mik__http_next_message(JSContext* ctx, JSValue this_val, int argc
 
     /* Slow path: wait. Create a new promise stored on the pending entry. */
     JSValue promise = MIK_InitPromise(ctx, &p->next_promise);
+    if (JS_IsException(promise)) {
+        /* OOM building the promise. Do NOT mark next_promise_active: rfuncs are
+         * unwritten on failure, so a later resolve/destroy would free dangling
+         * values (gc_decref underflow). */
+        return JS_EXCEPTION;
+    }
     p->next_promise_active = true;
     return promise;
 }
