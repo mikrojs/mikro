@@ -1,110 +1,32 @@
 #include <quickjs.h>
 
+#include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
-/* Minimal AbortController / AbortSignal implementation.
+/* AbortController / AbortSignal globals.
  *
- * This is a lightweight subset of the WHATWG DOM spec — just enough
- * for fetch timeouts and cooperative cancellation.  No EventTarget
- * dependency: listeners are stored in a simple array.
+ * The implementation lives in runtime/abort/abort.ts and ships as
+ * precompiled bytecode in the builtins table ("mikro/abort").
+ * Evaluating that module installs AbortController, AbortSignal,
+ * AbortError, and TimeoutError on globalThis.
  *
- * Implements:
- *   AbortSignal: aborted, reason, throwIfAborted(), onabort,
- *                addEventListener("abort", fn), removeEventListener("abort", fn)
- *   AbortSignal.abort(reason)   — pre-aborted signal
- *   AbortSignal.timeout(ms)     — auto-aborts after delay
- *   AbortSignal.any(signals)    — aborts when any input signal aborts
- *   AbortController: signal, abort(reason)
- *
- * Lazy-initialized: the JS class hierarchy is compiled and installed
- * on first access to any of the four globals (AbortController,
- * AbortSignal, AbortError, TimeoutError).
+ * Lazy-initialized: this file installs lazy getters for the four
+ * globals; the first access evaluates the bytecode module. Bytecode
+ * (rather than JS source evaluated at runtime) keeps the QuickJS
+ * parser out of the install path — the parse peak pushed low-memory
+ * chips into OOM when the heap was already near full.
  */
 
-static const char abort_js[] = R"JS(
-(function(g) {
-  "use strict";
-
-  class AbortError extends Error {
-    constructor(message) { super(message || "The operation was aborted"); }
-    get name() { return "AbortError"; }
-  }
-  class TimeoutError extends Error {
-    constructor(message) { super(message || "The operation timed out"); }
-    get name() { return "TimeoutError"; }
-  }
-
-  const _a = Symbol(), _r = Symbol(), _l = Symbol(), _s = Symbol();
-  const ABORT_REASON = () => new AbortError();
-
-  function doAbort(signal, reason) {
-    if (signal[_a]) return;
-    signal[_a] = true;
-    signal[_r] = reason;
-    if (typeof signal.onabort === "function") signal.onabort();
-    for (const fn of signal[_l]) fn();
-  }
-
-  class AbortSignal {
-    constructor() {
-      this[_a] = false;
-      this[_r] = undefined;
-      this[_l] = [];
-      this.onabort = null;
-    }
-    get aborted() { return this[_a]; }
-    get reason() { return this[_r]; }
-    throwIfAborted() { if (this[_a]) throw this[_r]; }
-    addEventListener(type, fn) {
-      if (type === "abort" && typeof fn === "function") this[_l].push(fn);
-    }
-    removeEventListener(type, fn) {
-      if (type === "abort") this[_l] = this[_l].filter(f => f !== fn);
-    }
-    static abort(reason) {
-      const s = new AbortSignal();
-      doAbort(s, reason !== undefined ? reason : ABORT_REASON());
-      return s;
-    }
-    static timeout(ms) {
-      const s = new AbortSignal();
-      setTimeout(() => doAbort(s, new TimeoutError()), ms);
-      return s;
-    }
-    static any(signals) {
-      const s = new AbortSignal();
-      for (const i of signals) {
-        if (i.aborted) { doAbort(s, i.reason); return s; }
-      }
-      for (const i of signals) {
-        i.addEventListener("abort", () => doAbort(s, i.reason));
-      }
-      return s;
-    }
-  }
-
-  class AbortController {
-    constructor() { this[_s] = new AbortSignal(); }
-    get signal() { return this[_s]; }
-    abort(reason) { doAbort(this[_s], reason !== undefined ? reason : ABORT_REASON()); }
-  }
-
-  g.AbortError = AbortError;
-  g.TimeoutError = TimeoutError;
-  g.AbortSignal = AbortSignal;
-  g.AbortController = AbortController;
-})
-)JS";
-
-/* Names of the globals this module installs */
+/* Names of the globals the abort module installs */
 static const char* const abort_global_names[] = {"AbortController", "AbortSignal", "AbortError",
                                                   "TimeoutError"};
 static constexpr int ABORT_GLOBAL_COUNT = 4;
 
 /**
  * Lazy getter: on first access to any of the four globals, delete all
- * lazy getters, evaluate the JS to install real values, then return
- * the requested one.  The magic parameter identifies which global.
+ * lazy getters, evaluate the bytecode module to install real values,
+ * then return the requested one. The magic parameter identifies which
+ * global.
  *
  * Signature must match JS_CFUNC_getter_magic: (ctx, this_val, magic).
  */
@@ -112,29 +34,40 @@ static JSValue mik__abort_lazy_get(JSContext* ctx, JSValue this_val, int magic) 
 
     JSValue global_obj = JS_GetGlobalObject(ctx);
 
-    /* Remove all four lazy getters so the JS assignment (g.X = Y) works */
+    /* Remove all four lazy getters so the module's globalThis
+     * assignments define plain properties */
     for (int i = 0; i < ABORT_GLOBAL_COUNT; i++) {
         JSAtom prop = JS_NewAtom(ctx, abort_global_names[i]);
         JS_DeleteProperty(ctx, global_obj, prop, 0);
         JS_FreeAtom(ctx, prop);
     }
 
-    /* Evaluate and install the real globals */
-    JSValue wrapper =
-        JS_Eval(ctx, abort_js, sizeof(abort_js) - 1, "<abort>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsException(wrapper)) {
-        JSValue exc = JS_GetException(ctx);
-        JS_FreeValue(ctx, exc);
+    /* Evaluate the precompiled module; its side effect installs the
+     * globals. The module is synchronous, so the returned promise is
+     * already settled. */
+    JSModuleDef* m = mik__load_builtin(ctx, "mikro/abort");
+    if (m == NULL) {
+        /* A table miss returns NULL with no pending exception (only
+         * deserialize failures throw); without this guard the getter
+         * would surface a bare 'null'. Mirrors the module loader's
+         * missing-builtin fallback. */
+        if (!JS_HasException(ctx)) {
+            JS_ThrowReferenceError(ctx,
+                                   "Builtin module 'mikro/abort' is not available in this build");
+        }
         JS_FreeValue(ctx, global_obj);
-        return JS_UNDEFINED;
+        return JS_EXCEPTION;
     }
-    JSValue ret = JS_Call(ctx, wrapper, JS_UNDEFINED, 1, &global_obj);
-    JS_FreeValue(ctx, wrapper);
+    JSValue ret = JS_EvalFunction(ctx, JS_DupValue(ctx, JS_MKPTR(JS_TAG_MODULE, m)));
     if (JS_IsException(ret)) {
-        JSValue exc = JS_GetException(ctx);
-        JS_FreeValue(ctx, exc);
         JS_FreeValue(ctx, global_obj);
-        return JS_UNDEFINED;
+        return JS_EXCEPTION;
+    }
+    if (JS_PromiseState(ctx, ret) == JS_PROMISE_REJECTED) {
+        JSValue err = JS_PromiseResult(ctx, ret);
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, global_obj);
+        return JS_Throw(ctx, err);
     }
     JS_FreeValue(ctx, ret);
 
@@ -145,7 +78,7 @@ static JSValue mik__abort_lazy_get(JSContext* ctx, JSValue this_val, int magic) 
 }
 
 void mik__abort_init(JSContext* ctx, JSValue global_obj) {
-    /* Install lazy getters instead of eagerly evaluating the JS.
+    /* Install lazy getters instead of eagerly evaluating the module.
      * Each getter shares the same C function, distinguished by magic. */
     for (int i = 0; i < ABORT_GLOBAL_COUNT; i++) {
         JSAtom prop = JS_NewAtom(ctx, abort_global_names[i]);

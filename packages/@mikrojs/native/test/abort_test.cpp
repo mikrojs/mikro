@@ -221,3 +221,30 @@ TEST_CASE("removeEventListener removes listener" * doctest::test_suite("runtime"
 
     MIK_FreeRuntime(rt);
 }
+
+TEST_CASE("direct import of mikro/abort installs the globals" * doctest::test_suite("runtime")) {
+    /* The polyfill lives in the builtins table, so `import 'mikro/abort'`
+     * resolves through the module loader and bypasses the lazy getters.
+     * That path must install the globals too (the module uses
+     * Object.defineProperties because Object.assign would throw against
+     * the setter-less lazy accessors still present on globalThis). */
+    auto rt = MIK_NewRuntime();
+    auto ctx = MIK_GetJSContext(rt);
+
+    const char* src = "import 'mikro/abort'\n"
+                      "globalThis.__ok = typeof AbortController === 'function' &&\n"
+                      "  typeof AbortSignal === 'function'\n";
+    JSValue result = MIK_EvalModuleContent(ctx, "/test/import-abort.js", src, strlen(src));
+    CHECK_MESSAGE(!JS_IsException(result), "Expected direct import of mikro/abort to evaluate");
+    CHECK_MESSAGE(JS_PromiseState(ctx, result) != JS_PROMISE_REJECTED,
+                  "Expected module evaluation not to reject");
+    JS_FreeValue(ctx, result);
+    MIK_Loop(rt);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue ok = JS_GetPropertyStr(ctx, global, "__ok");
+    CHECK(JS_ToBool(ctx, ok) == 1);
+    JS_FreeValue(ctx, ok);
+    JS_FreeValue(ctx, global);
+    MIK_FreeRuntime(rt);
+}
