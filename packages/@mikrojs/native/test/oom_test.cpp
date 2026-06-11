@@ -121,6 +121,162 @@ TEST_CASE("No OOM event when memory limit is generous" * doctest::test_suite("oo
     MIK_FreeRuntime(rt);
 }
 
+TEST_CASE("Cycle GC fires before a mem_limit below the QuickJS default threshold" *
+          doctest::test_suite("oom")) {
+    /* QuickJS's automatic cycle collector only runs once the heap crosses
+     * the GC threshold (256 KB default), and allocations fail hard against
+     * the memory limit without a GC retry. With a mem_limit below 256 KB
+     * (the norm on no-PSRAM chips), cyclic garbage would accumulate
+     * straight into OOM unless runtime creation caps the threshold below
+     * the limit. This builds ~480 KB of cyclic garbage under a ~192 KB
+     * limit; it only survives if the collector fires along the way. */
+    MIKRunOptions options;
+    MIK_DefaultOptions(&options);
+    options.mem_limit = 192 * 1024;
+    MIKRuntime* rt = MIK_NewRuntimeOptions(&options);
+    REQUIRE(rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    /* The threshold cap is the fix's contract: below the limit, with margin
+     * for garbage created between trigger checks. */
+    CHECK_MESSAGE(JS_GetGCThreshold(JS_GetRuntime(ctx)) < (size_t)options.mem_limit,
+                  "Expected GC threshold to be capped below mem_limit at creation");
+
+    OOMRecorder recorder;
+    MIK_SetOOMHandler(rt, record_oom, &recorder);
+
+    /* Each iteration leaks one a<->b reference cycle pinning a 1 KB buffer.
+     * Refcounting alone never frees these; only the cycle collector can. */
+    const char* src =
+        "for (let i = 0; i < 400; i++) {\n"
+        "  const a = { buf: new ArrayBuffer(1024) };\n"
+        "  const b = { a };\n"
+        "  a.b = b;\n"
+        "}\n"
+        "export const ok = true;\n";
+    JSValue result = MIK_EvalModuleContent(ctx, "<cycles>", src, strlen(src));
+    /* Module evaluation returns a promise; an OOM during top-level
+     * execution rejects it rather than raising a synchronous exception. */
+    CHECK_MESSAGE(!JS_IsException(result), "Expected module compilation to succeed");
+    CHECK_MESSAGE(JS_PromiseState(ctx, result) == JS_PROMISE_FULFILLED,
+                  "Expected cyclic garbage to be collected before the memory limit");
+    JS_FreeValue(ctx, result);
+    if (JS_HasException(ctx)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    }
+
+    CHECK_MESSAGE(recorder.events.empty(), "Expected no OOM events");
+    CHECK_MESSAGE(!MIK_ConsumeOOMFlag(rt), "Expected OOM flag to be clear");
+
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("Cycle GC keeps firing within a single long job storm" * doctest::test_suite("oom")) {
+    /* QuickJS raises the GC threshold to 1.5x live size after every GC
+     * pass. With live data >= ~2/3 of mem_limit (the norm on esp32c3),
+     * one mid-turn GC pushes the threshold past the limit, and without a
+     * re-clamp between jobs the rest of that same turn allocates cyclic
+     * garbage straight into the hard limit. The per-job re-clamp in
+     * mik__execute_jobs is what this pins: the setup retains ~130 KB
+     * (90 ArrayBuffer ballast plus the 60-promise chain) above the
+     * measured base runtime size, leaving ~70 KB that a 60-job storm
+     * leaking ~4 KB of cycles each overruns unless GC keeps firing.
+     * The limit is derived from a probe runtime because an absolute
+     * limit is not portable: glibc and macOS account different usable
+     * sizes for the same workload. */
+    size_t base_size = 0;
+    {
+        MIKRunOptions probe_options;
+        MIK_DefaultOptions(&probe_options);
+        MIKRuntime* probe = MIK_NewRuntimeOptions(&probe_options);
+        REQUIRE(probe != nullptr);
+        JSMemoryUsage usage;
+        JS_ComputeMemoryUsage(JS_GetRuntime(MIK_GetJSContext(probe)), &usage);
+        base_size = (size_t)usage.malloc_size;
+        MIK_FreeRuntime(probe);
+    }
+
+    MIKRunOptions options;
+    MIK_DefaultOptions(&options);
+    options.mem_limit = (int)(base_size + 200 * 1024);
+    MIKRuntime* rt = MIK_NewRuntimeOptions(&options);
+    REQUIRE(rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    OOMRecorder recorder;
+    MIK_SetOOMHandler(rt, record_oom, &recorder);
+
+    const char* src =
+        "globalThis.live = Array.from({length: 90}, () => new ArrayBuffer(1024));\n"
+        "let p = Promise.resolve();\n"
+        "for (let i = 0; i < 60; i++) {\n"
+        "  p = p.then(() => {\n"
+        "    for (let j = 0; j < 4; j++) {\n"
+        "      const a = { buf: new ArrayBuffer(1024) };\n"
+        "      const b = { a };\n"
+        "      a.b = b;\n"
+        "    }\n"
+        "  });\n"
+        "}\n"
+        "p.then(() => { globalThis.stormDone = true; });\n";
+    JSValue result = JS_Eval(ctx, src, strlen(src), "main.js", JS_EVAL_TYPE_GLOBAL);
+    CHECK_MESSAGE(!JS_IsException(result), "Expected storm setup to evaluate");
+    JS_FreeValue(ctx, result);
+
+    /* One MIK_Loop turn drains the whole chain. */
+    MIK_Loop(rt);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue done = JS_GetPropertyStr(ctx, global, "stormDone");
+    CHECK_MESSAGE(JS_ToBool(ctx, done) == 1,
+                  "Expected the storm to finish without an OOM rejection");
+    JS_FreeValue(ctx, done);
+    JS_FreeValue(ctx, global);
+    CHECK_MESSAGE(recorder.events.empty(), "Expected no OOM events during the storm");
+    CHECK_MESSAGE(!MIK_ConsumeOOMFlag(rt), "Expected OOM flag to be clear");
+
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("MIK_Loop re-clamps the GC threshold after adaptive growth" *
+          doctest::test_suite("oom")) {
+    /* After every GC pass QuickJS raises the threshold to 1.5x the live
+     * size, which can push it back above mem_limit and silently re-disable
+     * automatic collection. MIK_Loop must pull it back under the limit. */
+    MIKRunOptions options;
+    MIK_DefaultOptions(&options);
+    options.mem_limit = 192 * 1024;
+    MIKRuntime* rt = MIK_NewRuntimeOptions(&options);
+    REQUIRE(rt != nullptr);
+    JSRuntime* js_rt = JS_GetRuntime(MIK_GetJSContext(rt));
+
+    /* Simulate the post-GC adaptive update overshooting the limit. */
+    JS_SetGCThreshold(js_rt, 10 * 1024 * 1024);
+    MIK_Loop(rt);
+    CHECK_MESSAGE(JS_GetGCThreshold(js_rt) < (size_t)options.mem_limit,
+                  "Expected MIK_Loop to re-clamp the GC threshold below mem_limit");
+
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("GC threshold untouched when mem_limit is 0 (unlimited)" *
+          doctest::test_suite("oom")) {
+    /* Hosts (Node addon, tests) run unlimited; the QuickJS default
+     * threshold must stay in effect there. */
+    MIKRuntime* rt = MIK_NewRuntime();
+    REQUIRE(rt != nullptr);
+    JSRuntime* js_rt = JS_GetRuntime(MIK_GetJSContext(rt));
+    /* Compare against a vanilla runtime's default rather than pinning the
+     * upstream constant, so a quickjs-ng bump that retunes the default
+     * doesn't fail this test while mikrojs behavior is still correct. */
+    JSRuntime* vanilla = JS_NewRuntime();
+    size_t vanilla_threshold = JS_GetGCThreshold(vanilla);
+    JS_FreeRuntime(vanilla);
+    CHECK_MESSAGE(JS_GetGCThreshold(js_rt) == vanilla_threshold,
+                  "Expected the QuickJS default GC threshold with no mem_limit");
+    MIK_FreeRuntime(rt);
+}
+
 TEST_CASE("No OOM event when mem_limit is 0 (unlimited)" * doctest::test_suite("oom")) {
     /* mem_limit == 0 means no soft cap. The pre-eval check should
      * short-circuit and never fire. */
