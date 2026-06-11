@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 import {env} from 'mikro/env'
+import {memoryUsage} from 'mikro/sys'
 import {assert, describe, test} from 'mikro/test'
 
 // These tests only run when WIFI_SSID and WIFI_PASSPHRASE env vars are set.
@@ -10,6 +11,13 @@ const WIFI_PASSPHRASE = env.get('WIFI_PASSPHRASE')
 
 const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
 
+// The fetch and sntp tests load their module graphs on top of an
+// already-connected wifi stack (~20KB retained); together that needs
+// ~48KB of free JS heap (estimate). Chips with less skip those two
+// tests but still cover connect/disconnect (e.g. esp32c3).
+const m = memoryUsage()
+const fitsFetch = m.heapTotal - m.heapUsed > 48 * 1024
+
 describe.runIf(hasWifi)('wifi e2e', () => {
   test('connect to wifi', async () => {
     const {wifi} = await import('mikro/wifi')
@@ -19,7 +27,7 @@ describe.runIf(hasWifi)('wifi e2e', () => {
     if (result.ok) console.log(`connected: ${result.value.ip}`)
   })
 
-  test('http request', async () => {
+  test.runIf(fitsFetch)('http request', async () => {
     const {request} = await import('mikro/http/request')
     const result = await request('http://httpbingo.org/get')
     assert.ok(result)
@@ -27,7 +35,7 @@ describe.runIf(hasWifi)('wifi e2e', () => {
     if (result.ok) await result.value.close()
   })
 
-  test('sntp sync', async () => {
+  test.runIf(fitsFetch)('sntp sync', async () => {
     const {sntp} = await import('mikro/sntp')
     const result = await sntp.sync({servers: ['pool.ntp.org']})
     assert.ok(result)

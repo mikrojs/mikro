@@ -1,11 +1,14 @@
 {
+  "esp32c3": {
+    "heapDelta": 518
+  },
   "esp32c5": {
-    "heapDelta": 3101
+    "heapDelta": 5097
   },
   "esp32c6": {
-    "heapDelta": 3101
+    "heapDelta": 5097
   },
   "simulator": {
-    "heapDelta": 530
+    "heapDelta": 634
   }
 }

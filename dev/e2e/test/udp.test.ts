@@ -1,12 +1,20 @@
 /* eslint-disable no-console */
 import {env} from 'mikro/env'
+import {memoryUsage} from 'mikro/sys'
 import {assert, beforeAll, describe, test} from 'mikro/test'
 import {bind} from 'mikro/udp'
-import {wifi} from 'mikro/wifi'
 
 const WIFI_SSID = env.get('WIFI_SSID')
 const WIFI_PASSPHRASE = env.get('WIFI_PASSPHRASE')
 const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
+
+// The wifi module retains ~20KB once loaded (imported lazily in
+// beforeAll so the lifecycle tests still run where it doesn't fit);
+// the gate doubles that for import-time evaluation peaks and native
+// wifi startup allocations. Chips whose per-file runtime has less
+// free heap skip the roundtrip section (e.g. esp32c3).
+const m = memoryUsage()
+const fitsWifi = m.heapTotal - m.heapUsed > 40 * 1024
 
 /* ── Lifecycle tests — work on bare device, no network needed ───── */
 
@@ -54,10 +62,11 @@ describe('udp lifecycle', () => {
 
 /* ── Roundtrip — needs an interface up; gated on WiFi env vars ──── */
 
-describe.runIf(hasWifi)('udp over wifi', () => {
+describe.runIf(hasWifi && fitsWifi)('udp over wifi', () => {
   let localIp: string
 
   beforeAll(async () => {
+    const {wifi} = await import('mikro/wifi')
     const connected = await wifi.connect(WIFI_SSID!, WIFI_PASSPHRASE!)
     assert.equal(connected.ok, true, 'wifi connect')
     if (connected.ok) {
