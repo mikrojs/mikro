@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
@@ -332,12 +333,30 @@ fail_after_init:
     return err;
 }
 
+/* Minimum free internal (DMA-capable) RAM required before bringing up the
+ * radio. esp_wifi_start() enables the PHY, which calloc()s its RF
+ * calibration data from internal RAM and calls abort() on failure
+ * (esp_phy/src/phy_init.c: "failed to allocate memory for RF calibration
+ * data"). That hard-abort reboots the device instead of surfacing a
+ * catchable error, so we pre-flight the heap here and refuse gracefully
+ * when it's too low. The figure covers the PHY cal buffers plus the WiFi
+ * driver's start-time internal allocations with margin; it is a heuristic,
+ * not an exact bound. Tune if a healthy device ever trips it. */
+static constexpr size_t MIK_WIFI_MIN_INTERNAL_HEAP = 40 * 1024;
+
 /* Start the WiFi radio.  Deferred from init so the radio is not active
  * until connect() or scan() is actually called. */
 static esp_err_t mik__wifi_ensure_started(JSContext* ctx) {
     esp_err_t err = mik__wifi_ensure_initialized(ctx);
     if (err != ESP_OK) return err;
     if (s_wifi_started) return ESP_OK;
+
+    /* Refuse to start under low internal RAM rather than let the PHY init
+     * abort() the whole device. The caller turns ESP_ERR_NO_MEM into a
+     * catchable StartFailed result. */
+    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL) < MIK_WIFI_MIN_INTERNAL_HEAP) {
+        return ESP_ERR_NO_MEM;
+    }
 
     err = esp_wifi_start();
     if (err != ESP_OK) return err;
