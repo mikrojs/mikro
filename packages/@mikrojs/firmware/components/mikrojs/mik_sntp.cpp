@@ -144,6 +144,15 @@ static JSValue mik__sntp_sync(JSContext* ctx, JSValue this_val, int argc, JSValu
 
     /* Create and return promise wrapped in result */
     JSValue promise = MIK_InitPromise(ctx, &state->sync_promise);
+    if (JS_IsException(promise)) {
+        /* OOM building the promise. Tear down so we don't leave a half-started
+         * sync, and crucially do NOT set sync_pending: MIK_InitPromise leaves
+         * sync_promise.rfuncs unwritten on failure, so a later consume/destroy
+         * would free dangling values (gc_decref refcount underflow). */
+        esp_netif_sntp_deinit();
+        state->running = false;
+        return JS_EXCEPTION;
+    }
     state->sync_pending = true;
 
     return mik__result_ok(ctx, promise);
