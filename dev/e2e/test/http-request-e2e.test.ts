@@ -1,8 +1,7 @@
 /* eslint-disable no-console */
 import {env} from 'mikro/env'
-import {request} from 'mikro/http/request'
+import {memoryUsage} from 'mikro/sys'
 import {assert, beforeAll, describe, test} from 'mikro/test'
-import {wifi} from 'mikro/wifi'
 
 // These tests require WIFI_SSID and WIFI_PASSPHRASE env vars to run on
 // the device. They exercise the full JS → native:http → esp_http_client
@@ -22,8 +21,18 @@ const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
 // produce realistic responses for them, so skip in simulator mode.
 const isSim = env.get('MIKRO_ENV') === 'simulator'
 
-describe.runIf(hasWifi && !isSim)('http request e2e', () => {
+// The request/wifi module graph plus TLS working room needs ~48KB of
+// free JS heap (estimate; the graph alone retains ~30KB). Chips whose
+// per-file runtime has less than that skip this file (e.g. esp32c3).
+const m = memoryUsage()
+const fitsHttp = m.heapTotal - m.heapUsed > 48 * 1024
+
+let request: typeof import('mikro/http/request').request
+
+describe.runIf(hasWifi && !isSim && fitsHttp)('http request e2e', () => {
   beforeAll(async () => {
+    ;({request} = await import('mikro/http/request'))
+    const {wifi} = await import('mikro/wifi')
     const connected = await wifi.connect(WIFI_SSID!, WIFI_PASSPHRASE!)
     assert.equal(connected.ok, true, 'wifi connect')
     if (connected.ok) console.log(`connected: ${connected.value.ip}`)

@@ -4,13 +4,20 @@ import {assert, describe, test} from 'mikro/test'
 
 type Evals = Record<string, number>
 
+// Loading the phase fixture tree while sampling heap marks needs real
+// working room: with ~35KB free at module eval the load still OOMs on
+// esp32c3, so require a comfortable margin before running the reclaim
+// test.
+const m = memoryUsage()
+const fitsPhaseTree = m.heapTotal - m.heapUsed > 48 * 1024
+
 describe('withUnload', () => {
   test('rejects a builtin (anchored) module', async () => {
     // Builtins (mikrojs/*, native:*) are anchored and cannot be unloaded.
     await assert.rejects(() => withUnload(import('mikro/result'), (m) => m))
   })
 
-  test('unloads a nested module tree and reclaims its heap', async () => {
+  test.runIf(fitsPhaseTree)('unloads a nested module tree and reclaims its heap', async () => {
     const g = globalThis as unknown as {__phaseEvals?: Evals}
 
     const before = memoryUsage().heapUsed

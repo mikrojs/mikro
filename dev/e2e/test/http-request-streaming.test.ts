@@ -1,9 +1,7 @@
 /* eslint-disable no-console */
 import {env} from 'mikro/env'
-import {request} from 'mikro/http/request'
-import {decodeUtf8, splitLines} from 'mikro/stream'
+import {memoryUsage} from 'mikro/sys'
 import {assert, beforeAll, describe, test} from 'mikro/test'
-import {wifi} from 'mikro/wifi'
 
 // Streaming tests live in their own file because each one does a full TLS
 // handshake + body drain that peaks heap usage heavily. Running them
@@ -20,8 +18,21 @@ const WIFI_PASSPHRASE = env.get('WIFI_PASSPHRASE')
 const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
 const isSim = env.get('MIKRO_ENV') === 'simulator'
 
-describe.runIf(hasWifi && !isSim)('http request streaming', () => {
+// The request/wifi module graph plus TLS working room needs ~48KB of
+// free JS heap (estimate; the graph alone retains ~30KB). Chips whose
+// per-file runtime has less than that skip this file (e.g. esp32c3).
+const m = memoryUsage()
+const fitsHttp = m.heapTotal - m.heapUsed > 48 * 1024
+
+let request: typeof import('mikro/http/request').request
+let decodeUtf8: typeof import('mikro/stream').decodeUtf8
+let splitLines: typeof import('mikro/stream').splitLines
+
+describe.runIf(hasWifi && !isSim && fitsHttp)('http request streaming', () => {
   beforeAll(async () => {
+    ;({request} = await import('mikro/http/request'))
+    ;({decodeUtf8, splitLines} = await import('mikro/stream'))
+    const {wifi} = await import('mikro/wifi')
     const connected = await wifi.connect(WIFI_SSID!, WIFI_PASSPHRASE!)
     assert.equal(connected.ok, true, 'wifi connect')
     if (connected.ok) console.log(`connected: ${connected.value.ip}`)
