@@ -1,6 +1,6 @@
 {
   "name": "@mikrojs/firmware",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Mikro.js ESP32 firmware: ESP-IDF component, build tools, and project template",
   "keywords": [
     "esp-idf",

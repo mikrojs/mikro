@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.13.0 (2026-06-11)
+
+### Features
+
+- **examples:** enable log file in every example ([#219](https://github.com/mikrojs/mikro/pull/219))
+- **logs:** add `mikro logs reset` to clear on-device log files ([#209](https://github.com/mikrojs/mikro/pull/209))
+- **native:** expose last reset reason via sys.resetReason ([5df308f](https://github.com/mikrojs/mikro/commit/5df308f209d6361084b14de1ccf1dbd925d0ee14))
+
+### Bug fixes
+
+- **http:** name out-of-memory when an alloc-class TLS error surfaces ([#220](https://github.com/mikrojs/mikro/pull/220))
+- **native:** keep cycle GC and the idle task alive through long job storms ([#216](https://github.com/mikrojs/mikro/pull/216))
+- **native:** ship abort polyfill as precompiled bytecode ([#217](https://github.com/mikrojs/mikro/pull/217))
+- **cli:** make `mikro test` survive slow devices and missing results ([#215](https://github.com/mikrojs/mikro/pull/215))
+- **native:** unbreak the simulator after the quickjs-ng v0.15 upgrade ([#214](https://github.com/mikrojs/mikro/pull/214))
+- **repl:** follow device by USB serial across port changes on reconnect ([#212](https://github.com/mikrojs/mikro/pull/212))
+- **native:** defer unhandled-rejection reporting to end of turn ([05e10f8](https://github.com/mikrojs/mikro/commit/05e10f8c5fe3df793db89e317e2c0677e1437ef4))
+
+### Other
+
+- **deps:** update dependency oxfmt to ^0.53.0 ([#201](https://github.com/mikrojs/mikro/pull/201))
+- refresh esp32-optimize and correct binaryObjectSize ([#221](https://github.com/mikrojs/mikro/pull/221))
+- **e2e:** fit the suite on esp32c3's ~172KB JS heap ([#218](https://github.com/mikrojs/mikro/pull/218))
+- **deps:** update pnpm to v11.5.3 ([#207](https://github.com/mikrojs/mikro/pull/207))
+- **deps:** update dependency wrangler to v4.96.0 ([#202](https://github.com/mikrojs/mikro/pull/202))
+
 ## 0.12.0 (2026-06-01)
 
 ### Breaking changes
