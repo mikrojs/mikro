@@ -2,6 +2,7 @@
 
 #include <quickjs.h>
 
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <fcntl.h>
@@ -218,6 +219,27 @@ void mik__flush_unhandled_rejections(JSContext* ctx) {
     }
 }
 
+/* QuickJS only runs the cycle collector automatically once malloc_size
+ * crosses the runtime's GC threshold (256 KB by default), and js_malloc_rt
+ * fails against the memory limit without attempting a GC first. On devices
+ * where mem_limit is below the default threshold the collector would never
+ * fire before allocations start failing, so cyclic garbage (promise chains,
+ * closures) accumulates straight into OOM with collectable memory still
+ * alive. Cap the threshold below the limit so collection happens first.
+ * QuickJS raises the threshold to 1.5x the live size after every GC pass,
+ * which can push it back above the limit, so MIK_Loop re-applies the cap
+ * each turn. */
+static void mik__clamp_gc_threshold(MIKRuntime* mik_rt) {
+    if (mik_rt->options.mem_limit <= 0) {
+        return;
+    }
+    size_t limit = (size_t)mik_rt->options.mem_limit;
+    size_t cap = limit - limit / 8;
+    if (JS_GetGCThreshold(mik_rt->rt) > cap) {
+        JS_SetGCThreshold(mik_rt->rt, cap);
+    }
+}
+
 void MIK_DefaultOptions(MIKRunOptions* options) {
     static MIKRunOptions default_options = {
         .mem_limit = 0,
@@ -321,6 +343,10 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
 
     /* Set memory limit */
     JS_SetMemoryLimit(rt, options->mem_limit);
+
+    /* Make sure the cycle collector fires before the memory limit does
+     * (see mik__clamp_gc_threshold). */
+    mik__clamp_gc_threshold(mik_rt);
 
     /* Set stack size */
     JS_SetMaxStackSize(rt, options->stack_size);
@@ -535,9 +561,43 @@ static void mik__check_module_collisions(void) {
     }
 }
 
+/* A chain of already-settled promises drains as one uninterrupted storm of
+ * jobs, and the test supervisor strings whole files of such chains together
+ * with runtime recycles in between. On ESP32 the main task runs above the
+ * idle task, so a multi-second stretch like that starves idle: the task
+ * watchdog (5 s, watching IDLE0) prints a register dump, and FreeRTOS
+ * housekeeping (freeing TCBs of exited tasks, e.g. per-request HTTP tasks)
+ * stalls. Force one platform yield per second of continuous job execution
+ * so idle always gets a slice. The timestamp is global on purpose: the
+ * starvation accumulates across MIK_Loop calls and across runtime recycles.
+ * Costs at most one tick (~10 ms) per second of busy work. */
+#define MIK__YIELD_INTERVAL_US (1000 * 1000)
+
+/* Atomic because the Node addon can pump two runtimes' loops from
+ * different worker threads; relaxed ordering is enough — a missed or
+ * extra yield is harmless, a torn 64-bit write is not. */
+static std::atomic<int64_t> mik__last_yield_us{0};
+
+static void mik__maybe_yield(void) {
+    const MIKPlatform* platform = MIK_GetPlatform();
+    int64_t now = platform->get_boot_us();
+    int64_t last = mik__last_yield_us.load(std::memory_order_relaxed);
+    /* now < last happens when the boot clock resets (deep sleep) or a test
+     * swaps in a platform with a different clock; restart the interval. */
+    if (last == 0 || now < last) {
+        mik__last_yield_us.store(now, std::memory_order_relaxed);
+        return;
+    }
+    if (now - last >= MIK__YIELD_INTERVAL_US) {
+        platform->yield();
+        mik__last_yield_us.store(platform->get_boot_us(), std::memory_order_relaxed);
+    }
+}
+
 void mik__execute_jobs(JSContext* ctx) {
     JSContext* ctx1;
     int err;
+    bool ran_any = false;
 
     /* execute the pending jobs */
     for (;;) {
@@ -554,6 +614,26 @@ void mik__execute_jobs(JSContext* ctx) {
             }
             break;
         }
+        ran_any = true;
+        /* A GC pass inside this job raises the threshold to 1.5x live size,
+         * which lands above mem_limit whenever live >= ~2/3 of the limit —
+         * silently disabling cycle GC for the rest of the storm. Re-clamp
+         * between jobs so collection keeps firing; the check is a field
+         * read + compare when no GC ran. */
+        MIKRuntime* job_rt = MIK_GetRuntime(ctx1);
+        if (job_rt) {
+            mik__clamp_gc_threshold(job_rt);
+        }
+        mik__maybe_yield();
+    }
+
+    /* The yield interval measures continuous BUSY work. An empty drain
+     * means the loop is idling (the idle task is getting time between
+     * turns), so re-arm the interval — otherwise the first job after a
+     * quiet period pays a spurious ~10 ms yield for wall-clock time spent
+     * doing nothing. */
+    if (!ran_any) {
+        mik__last_yield_us.store(MIK_GetPlatform()->get_boot_us(), std::memory_order_relaxed);
     }
 
     /* Microtask checkpoint: every reject/handle transition for this turn has
@@ -605,6 +685,14 @@ int MIK_Loop(MIKRuntime* mik_rt) {
     }
 
     mik__execute_jobs(mik_rt->ctx);
+
+    /* Backstop for GC passes outside the job drain (timer callbacks, loop
+     * consumers, top-level eval): a pass there may have raised the
+     * threshold above the memory limit; pull it back so the next turn's
+     * collection still fires before allocations fail. Within the job
+     * drain, mik__execute_jobs re-clamps after every job. */
+    mik__clamp_gc_threshold(mik_rt);
+
     /* The end-of-turn unhandled-rejection flush inside mik__execute_jobs may
      * have requested a stop; surface it this iteration rather than making the
      * caller loop once more to notice. */
