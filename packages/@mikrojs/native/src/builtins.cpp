@@ -32,11 +32,16 @@ static JSModuleDef* mik__deserialize_builtin(JSContext* ctx, const char* name,
     JSValue obj = JS_ReadObject(ctx, data, data_size, JS_READ_OBJ_BYTECODE);
 
     if (JS_IsException(obj)) {
-        platform->log(MIK_LOG_ERROR, "mikrojs", "Failed to deserialize bytecode for builtin '%s' (%u bytes)", name,
-                 data_size);
-        /* Leave the JS exception on ctx so the caller can propagate the
-         * real error (e.g. "Maximum call stack size exceeded") instead of
-         * replacing it with a generic "not available" message. */
+        /* Peek the exception for the log, then re-throw it so the caller
+         * can still propagate the real error (e.g. "Maximum call stack
+         * size exceeded") instead of a generic "not available" message. */
+        JSValue exc = JS_GetException(ctx);
+        const char* msg = JS_ToCString(ctx, exc);
+        platform->log(MIK_LOG_ERROR, "mikrojs",
+                 "Failed to deserialize bytecode for builtin '%s' (%u bytes): %s", name,
+                 data_size, msg ? msg : "unknown error");
+        if (msg) JS_FreeCString(ctx, msg);
+        JS_Throw(ctx, exc);
         return NULL;
     }
 
