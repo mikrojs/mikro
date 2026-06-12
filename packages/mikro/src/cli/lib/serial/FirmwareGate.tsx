@@ -195,12 +195,11 @@ function ReflashPrompt(props: {
       <Text>
         Flash CLI-matched firmware now? <Text bold>(y/N)</Text>
       </Text>
-      <Text color="gray">
-        {figures.pointerSmall} Choosing no continues anyway; commands may fail against mismatched
-        firmware.
+      <Text dimColor>
+        Choosing no continues anyway; commands may fail against mismatched firmware.
       </Text>
-      <Text color="gray">
-        {figures.pointerSmall} Or keep the device as-is and install a matching CLI:{' '}
+      <Text dimColor>
+        Or install a matching CLI instead:{' '}
         {deviceVersion
           ? installVersionCommand(pm, 'mikro', deviceVersion)
           : mikroCommand(pm, 'flash')}
