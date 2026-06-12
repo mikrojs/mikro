@@ -34,7 +34,13 @@ import {
 } from 'rxjs'
 import {SerialPort} from 'serialport'
 
-import {connectRepl, type ReadyEvent, type ReplEvent, type ReplSession} from '../session.js'
+import {
+  connectRepl,
+  type ConnectReplOptions,
+  type ReadyEvent,
+  type ReplEvent,
+  type ReplSession,
+} from '../session.js'
 import {createSerialTransport} from '../transport.js'
 
 /** How long to keep trying to reopen the port before giving up. Defaults
@@ -66,6 +72,9 @@ export interface SupervisedSessionOptions {
    *  event reaches the state machine. Useful for aborting in-flight
    *  deploys. */
   onReconnectStart?: () => void
+  /** Firmware-version policy forwarded to every inner `connectRepl`
+   *  (initial connect and reconnects). See {@link ConnectReplOptions.compat}. */
+  compat?: ConnectReplOptions['compat']
 }
 
 interface Inner {
@@ -73,8 +82,8 @@ interface Inner {
   session: ReplSession
 }
 
-function buildInner(serial: SerialPort): Inner {
-  return {serial, session: connectRepl(createSerialTransport(serial))}
+function buildInner(serial: SerialPort, compat: ConnectReplOptions['compat']): Inner {
+  return {serial, session: connectRepl(createSerialTransport(serial), {compat})}
 }
 
 function closeInner(inner: Inner): void {
@@ -160,7 +169,7 @@ export function createSupervisedSession(
   let reconnectAbort: AbortController | null = null
   let innerDisconnectSub: Subscription | null = null
 
-  const inner$ = new BehaviorSubject<Inner>(buildInner(initialSerial))
+  const inner$ = new BehaviorSubject<Inner>(buildInner(initialSerial, opts.compat))
   // Synthetic supervisor-level events injected into the outer stream
   // (`reconnecting`, `reconnected`, and the final terminal disconnect on
   // reconnect timeout).
@@ -210,7 +219,7 @@ export function createSupervisedSession(
       // our board is followed onto whatever path it re-enumerated to.
       const serial = await waitForDevice(opts, reconnectTimeoutMs, ac.signal)
 
-      const next = buildInner(serial)
+      const next = buildInner(serial, opts.compat)
       watchInnerForDisconnect(next)
       inner$.next(next)
       supervisorEvents$.next({type: 'reconnected'})

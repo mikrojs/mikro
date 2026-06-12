@@ -27,7 +27,7 @@ import {getPredeployCommands, runHooks} from '../lib/runHooks.js'
 import {FirmwareGate} from '../lib/serial/FirmwareGate.js'
 import {InkReplConsole} from '../lib/serial/InkReplConsole.js'
 import {openSession} from '../lib/serial/openSession.js'
-import type {ReplSession} from '../lib/session.js'
+import type {ConnectReplOptions, ReplSession} from '../lib/session.js'
 
 export const args = command(
   'deploy',
@@ -118,6 +118,7 @@ type Props = {
  */
 export async function run(
   config: InferValue<typeof args>,
+  options: {compat?: ConnectReplOptions['compat']} = {},
 ): Promise<{session: ReplSession; devicePath: string} | null> {
   const entry = resolveEntry(config.entry)
   const buildDir = pathlib.join(getMikroDir(), 'build')
@@ -194,6 +195,7 @@ export async function run(
   const handles = await openSession({
     port: config.port,
     recover: config.recover === true,
+    compat: options.compat,
     onConnecting: (path) => {
       log(`Connecting to ${path}…`)
       if (config.recover) log('Triggering safe mode…')
@@ -283,19 +285,27 @@ export default function Deploy(props: Props) {
     <DevicePicker port={config.port}>
       {(device) => (
         <FirmwareGate devicePath={device.path} command="deploy" yes={config.yes === true}>
-          {() => <DeployInner config={config} device={device} />}
+          {(compat) => <DeployInner config={config} device={device} compat={compat} />}
         </FirmwareGate>
       )}
     </DevicePicker>
   )
 }
 
-function DeployInner({config, device}: {config: InferValue<typeof args>; device: PortInfo}) {
+function DeployInner({
+  config,
+  device,
+  compat,
+}: {
+  config: InferValue<typeof args>
+  device: PortInfo
+  compat: ConnectReplOptions['compat']
+}) {
   const [session, setSession] = useState<ReplSession | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    run({...config, port: device.path}).then(
+    run({...config, port: device.path}, {compat}).then(
       (result) => {
         if (result) setSession(result.session)
         else process.exit(0)
@@ -304,7 +314,7 @@ function DeployInner({config, device}: {config: InferValue<typeof args>; device:
         setError(err instanceof Error ? err.message : String(err))
       },
     )
-  }, [config, device.path])
+  }, [config, device.path, compat])
 
   // Ctrl+C / Ctrl+Q while the deploy is still running (no REPL yet).
   useInput(

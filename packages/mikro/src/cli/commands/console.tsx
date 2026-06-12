@@ -55,11 +55,12 @@ export default function ConsoleCmd(props: Props) {
     <DevicePicker port={port}>
       {(device) => (
         <FirmwareGate devicePath={device.path} command="console" yes={yes === true}>
-          {() => (
+          {(compat) => (
             <InkReplMode
               devicePath={device.path}
               serialNumber={device.serialNumber}
               recover={recover === true}
+              compat={compat}
             />
           )}
         </FirmwareGate>

@@ -6,7 +6,7 @@ import {catchError, from, map, type Observable, of, shareReplay, switchMap} from
 import type {LogLevel} from '../../../_exports/index.js'
 import {BAUD_RATE} from '../deploy.js'
 import {triggerSafeMode} from '../recover.js'
-import type {ReplSession} from '../session.js'
+import type {ConnectReplOptions, ReplSession} from '../session.js'
 import {Spinner} from '../Spinner.js'
 import {openSerial} from '../transport.js'
 import {useObservable} from '../useObservable.js'
@@ -43,6 +43,9 @@ export interface InkReplModeProps {
   /** Forwarded to the rendered `ReplConsole` header badge. Typically set
    *  by `dev` to reflect `--no-watch`. */
   watch?: boolean
+  /** Firmware-version policy for the session connect. FirmwareGate passes
+   *  'best-effort' when the user declined a reflash and chose to continue. */
+  compat?: ConnectReplOptions['compat']
 }
 
 /**
@@ -52,7 +55,7 @@ export interface InkReplModeProps {
  * for the session's lifetime, and renders `InkReplConsole`.
  */
 export function InkReplMode(props: InkReplModeProps) {
-  const {devicePath, serialNumber, recover = false, logLevel, driver, watch} = props
+  const {devicePath, serialNumber, recover = false, logLevel, driver, watch, compat} = props
 
   const handleEnd = useCallback(() => {
     process.stdout.write('\x1b[<u')
@@ -72,6 +75,7 @@ export function InkReplMode(props: InkReplModeProps) {
             devicePath,
             serialNumber,
             baudRate: BAUD_RATE,
+            compat,
           })
           return recover ? from(triggerSafeMode(serial)).pipe(map(() => session)) : of(session)
         }),
@@ -92,7 +96,7 @@ export function InkReplMode(props: InkReplModeProps) {
         // and reopen the port.
         shareReplay({bufferSize: 1, refCount: false}),
       ),
-    [devicePath, serialNumber, recover, handleEnd, deployEnabled],
+    [devicePath, serialNumber, recover, handleEnd, deployEnabled, compat],
   )
 
   const connection = useObservable(connection$, null)
