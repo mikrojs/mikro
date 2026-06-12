@@ -157,6 +157,7 @@ if(BUILD_TESTING)
         test/runtime_test.cpp
         test/modules_test.cpp
         test/virtual_modules_test.cpp
+        test/ext_builtin_test.cpp
         test/text_encoding_test.cpp
         test/cbor_test.cpp
         test/abort_test.cpp

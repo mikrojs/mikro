@@ -29,6 +29,11 @@ function findPackageDir(name, startDir) {
  * @returns {{components: string, sdkconfigs: string}} Semicolon-separated paths
  */
 export function discover(projectDir) {
+  /* Firmware projects without a package.json (e.g. bare test apps) have no
+   * dependencies to scan. */
+  if (!existsSync(join(projectDir, 'package.json'))) {
+    return {components: '', sdkconfigs: ''}
+  }
   const require = createRequire(join(projectDir, 'package.json'))
   const pkg = JSON.parse(readFileSync(join(projectDir, 'package.json'), 'utf8'))
   const dependencies = pkg.dependencies ?? {}

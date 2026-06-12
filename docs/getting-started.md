@@ -63,6 +63,10 @@ my-app/
 The package and CLI were renamed from `mikrojs` to `mikro` with no compatibility shim. Use the `mikro` dependency, the `mikro` command, and `mikro/`-prefixed imports (e.g. `import {pinMode} from 'mikro/pin'`). The `@mikrojs/*` package scope is unchanged.
 :::
 
+::: details pnpm reports "Ignored build scripts: @mikrojs/quickjs"
+`@mikrojs/quickjs` builds a small bytecode compiler (`qjsc`) in its postinstall script, and pnpm skips dependency build scripts unless they are approved. For the regular app workflow this is safe to ignore. You only need `qjsc` when building firmware from source (see [Custom Firmware](/develop/custom-firmware)); in that case run `pnpm approve-builds`, select `@mikrojs/quickjs`, and install again. Otherwise the firmware build fails with "qjsc not found".
+:::
+
 ## Plug in your board
 
 Connect your ESP32 board to your computer with a USB cable.

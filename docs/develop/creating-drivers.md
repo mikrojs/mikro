@@ -21,7 +21,7 @@ packages/@mikrojs/driver-bme280/
   cmake.js
   driver_bme280/                 # ESP-IDF component
     CMakeLists.txt
-    idf_component.yml
+    idf_component.yml            # only if using managed components (see below)
     src/
       mik_bme280.cpp             # Native module implementation
   runtime/
@@ -113,6 +113,7 @@ static JSValue js_bme280_read(JSContext* ctx, JSValueConst this_val,
 Key points:
 
 - `MIK_REGISTER_MODULE` uses a constructor attribute to add the module to a linked list at startup. No manual registration step needed.
+- The two trailing `nullptr` arguments are optional event-loop hooks. The first is a _consume_ callback that the runtime calls on every event loop iteration once the module has been imported; use it to drain completion queues from interrupt handlers or background tasks into JS callbacks (see `mik_http.cpp` for an example). The second is a _destroy_ callback called on runtime shutdown to release anything the module allocated. Pass `nullptr` for hooks you don't need.
 - The module name must start with `native:` (underscore marks it as internal). The public API goes through the TypeScript wrapper.
 
 ## Step 4: Bytecode builtin registration
@@ -130,6 +131,10 @@ MIK_REGISTER_BUILTIN(bme280, "@mikrojs/driver-bme280/bme280",
 ```
 
 When user code does `import {readSensor} from '@mikrojs/driver-bme280/bme280'`, the loader finds this builtin by name.
+
+::: warning Import specifiers are exact
+A builtin is resolved only by the exact registered name. There is no package-root or index resolution for builtins: `import ... from '@mikrojs/driver-bme280'` fails with a resolution error. The import must be the full registered name, here `@mikrojs/driver-bme280/bme280`.
+:::
 
 ## Step 5: CMakeLists.txt
 
@@ -163,6 +168,10 @@ target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}
 ```
 
 `mikrojs_generate_bytecode` runs the full pipeline: esbuild bundles each TypeScript module, then `qjsc` compiles it to a C header containing the bytecode array.
+
+::: warning idf_component.yml is optional
+Only add an `idf_component.yml` if the component depends on packages from the IDF Component Registry. If it has no managed dependencies, ship no manifest at all. In particular, a `dependencies:` key with no entries under it (for example, only comments) parses as null and fails the build with "Invalid field 'dependencies': Input should be a valid dictionary".
+:::
 
 ## Step 6: TypeScript wrapper
 
@@ -261,5 +270,13 @@ declare module 'native:bme280' {
 ## Important notes
 
 - **`@mikrojs/*` imports are external**: esbuild marks all `mikro/*` and `@mikrojs/*` imports as external during bundling. They resolve at runtime in the firmware.
+- **Declare `mikro` as an optional peer**: if a published driver declares a `mikro` peerDependency (useful for types during development), mark it optional; drivers don't import `mikro` at runtime. A required peer also breaks preview installs: semver ranges never match prerelease versions, so with `autoInstallPeers` enabled a stable copy of `mikro` and its `@mikrojs/*` dependencies gets installed alongside the preview.
+
+  ```json
+  "peerDependenciesMeta": {
+    "mikro": {"optional": true}
+  }
+  ```
+
 - **C vs C++ source files**: Vendor C libraries (like sensor SDKs) should be compiled as `.c` files. Mixing them into `.cpp` files can cause issues with `-Werror` due to C++ strictness.
 - **DMA buffers**: If your peripheral uses DMA (SPI displays, etc.), allocate buffers with `heap_caps_malloc(size, MALLOC_CAP_DMA)`. DMA requires internal SRAM; PSRAM will not work.

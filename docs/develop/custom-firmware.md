@@ -106,6 +106,12 @@ npx idf.py build flash monitor
 
 The `idf.py` command is provided by `@mikrojs/firmware` and runs through [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html), so no manual ESP-IDF activation is needed.
 
+Run `idf.py` from the firmware project directory (the one containing `CMakeLists.txt`). Running it from a parent directory, such as a workspace root, fails with "CMakeLists.txt not found in project directory".
+
+::: warning Approve the qjsc build script (pnpm)
+The firmware build needs `qjsc`, the QuickJS bytecode compiler, which is built by the postinstall script of `@mikrojs/quickjs`. pnpm does not run dependency build scripts unless they are approved, and the skipped script surfaces later as "qjsc not found" during `idf.py build`. Run `pnpm approve-builds`, select `@mikrojs/quickjs`, and install again. Note that `pnpm rebuild @mikrojs/quickjs` does not fix this when the package is only a transitive dependency.
+:::
+
 ## How it works
 
 When you run `idf.py build`, the `project.cmake` included in your `CMakeLists.txt`:

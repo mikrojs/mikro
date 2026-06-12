@@ -1,0 +1,139 @@
+#include <cstring>
+#include <string>
+#include <vector>
+
+#include <mikrojs/mikrojs.h>
+#include <mikrojs/private.h>
+#include <quickjs.h>
+
+#include <doctest.h>
+
+/* External builtins (MIK_REGISTER_BUILTIN) are how board/driver packages embed
+ * their JS wrappers as firmware bytecode, resolved by npm package name. These
+ * tests pin the loader paths for packages under a third-party scope (outside
+ * the @mikrojs scope): the native: import gate must trust registered builtins, and a
+ * builtin that fails to load must propagate its real error instead of falling
+ * through to filesystem resolution. */
+
+namespace {
+
+/* Registers a bytecode builtin under `name` for the duration of a test,
+ * mirroring what MIK_REGISTER_BUILTIN() does in a driver package. The entry
+ * is linked into the registry before compilation so the native: import gate
+ * sees the name as a firmware builtin (on device, registration happens at
+ * static-constructor time, long before any bytecode loads). */
+struct ExtBuiltin {
+    mik_ext_builtin_t entry;
+    std::vector<uint8_t> bytecode;
+
+    explicit ExtBuiltin(const char* name) : entry{name, nullptr, 0, mik__ext_builtin_head} {
+        mik__ext_builtin_head = &entry;
+    }
+    ~ExtBuiltin() { mik__ext_builtin_head = entry.next; }
+
+    /* Compile `source` to bytecode as a module named `entry.name`, in a
+     * scratch runtime so the module doesn't pre-exist in the runtime under
+     * test. JS_Eval resolves imports even with COMPILE_ONLY, so native:
+     * modules unavailable on host can be satisfied with a virtual stub. */
+    void compile(const char* source, const char* stub_name = nullptr,
+                 const char* stub_source = nullptr) {
+        MIKRuntime* scratch = MIK_NewRuntime();
+        JSContext* ctx = MIK_GetJSContext(scratch);
+        if (stub_name != nullptr) {
+            MIK_RegisterVirtualModule(scratch, stub_name, stub_source, strlen(stub_source));
+        }
+        JSValue mod = JS_Eval(ctx, source, strlen(source), entry.name,
+                              JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+        REQUIRE(!JS_IsException(mod));
+        size_t size = 0;
+        uint8_t* buf = JS_WriteObject(ctx, &size, mod, JS_WRITE_OBJ_BYTECODE);
+        JS_FreeValue(ctx, mod);
+        REQUIRE(buf != nullptr);
+        bytecode.assign(buf, buf + size);
+        js_free(ctx, buf);
+        MIK_FreeRuntime(scratch);
+        entry.data = bytecode.data();
+        entry.data_size = (uint32_t)bytecode.size();
+    }
+};
+
+std::string pending_exception_message(JSContext* ctx) {
+    JSValue exc = JS_GetException(ctx);
+    const char* s = JS_ToCString(ctx, exc);
+    std::string msg = s != nullptr ? s : "";
+    if (s != nullptr) {
+        JS_FreeCString(ctx, s);
+    }
+    JS_FreeValue(ctx, exc);
+    return msg;
+}
+
+}  // namespace
+
+TEST_CASE("ext builtin under a third-party scope can import native: modules" *
+          doctest::test_suite("modules")) {
+    ExtBuiltin driver("@acme/driver-x/x");
+    driver.compile("import {memoryUsage} from 'native:sys'\n"
+                   "export function ping() { return typeof memoryUsage === 'function' ? 42 : -1 }\n");
+
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    const char* code = "import {ping} from '@acme/driver-x/x'\n"
+                       "globalThis.__ping = ping()\n";
+    JSValue ret = MIK_EvalModuleContent(ctx, "/app/main.js", code, strlen(code));
+    if (JS_IsException(ret)) {
+        FAIL_CHECK("eval threw: " << pending_exception_message(ctx));
+    }
+    JS_FreeValue(ctx, ret);
+    MIK_Loop(rt);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue ping = JS_GetPropertyStr(ctx, global, "__ping");
+    int32_t value = 0;
+    JS_ToInt32(ctx, &value, ping);
+    CHECK_EQ(42, value);
+    JS_FreeValue(ctx, ping);
+    JS_FreeValue(ctx, global);
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("app code still cannot import native: modules directly" *
+          doctest::test_suite("modules")) {
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    const char* code = "import * as sys from 'native:sys'\n";
+    JSValue ret = MIK_EvalModuleContent(ctx, "/app/main.js", code, strlen(code));
+    CHECK(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    std::string msg = pending_exception_message(ctx);
+    CHECK_MESSAGE(msg.find("can only be imported by firmware builtins") != std::string::npos,
+                  "unexpected error: " << msg);
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("ext builtin load failure propagates instead of falling through to fs" *
+          doctest::test_suite("modules")) {
+    /* The builtin compiles against a virtual native:wifi stub, but the
+     * runtime under test has no native:wifi (host build, no stub). Loading
+     * must surface the real "Native module 'native:wifi' is not available"
+     * error, not a generic resolution failure for the package name. */
+    ExtBuiltin driver("@acme/bad-driver/bad");
+    driver.compile("import {Wifi} from 'native:wifi'\n"
+                   "export function f() { return new Wifi() }\n",
+                   "native:wifi", "export class Wifi {}\n");
+
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    const char* code = "import {f} from '@acme/bad-driver/bad'\n";
+    JSValue ret = MIK_EvalModuleContent(ctx, "/app/main.js", code, strlen(code));
+    CHECK(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    std::string msg = pending_exception_message(ctx);
+    CHECK_MESSAGE(msg.find("native:wifi") != std::string::npos, "unexpected error: " << msg);
+    CHECK_MESSAGE(msg.find("@acme/bad-driver/bad") == std::string::npos,
+                  "real error was masked: " << msg);
+    MIK_FreeRuntime(rt);
+}
