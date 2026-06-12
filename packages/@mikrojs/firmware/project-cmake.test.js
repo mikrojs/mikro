@@ -5,6 +5,8 @@ import {join} from 'node:path'
 
 import {afterAll, expect, test} from 'vitest'
 
+import {discover} from './discover.js'
+
 /* Configure a minimal consumer project against project.cmake with plain CMake
  * (no ESP-IDF) and assert that a driver dependency from the CONSUMER's
  * package.json ends up in EXTRA_COMPONENT_DIRS. Regression test for discovery
@@ -26,6 +28,14 @@ const fixtureDir = mkdtempSync(join(tmpdir(), 'mik-fw-discover-'))
 
 afterAll(() => {
   rmSync(fixtureDir, {recursive: true, force: true})
+})
+
+test('discovery is empty for projects without a package.json', () => {
+  // On-device test apps (esp32/test, the firmware package's test/) configure
+  // through project.cmake but have no package.json to scan
+  const emptyDir = join(fixtureDir, 'no-package-json')
+  mkdirSync(emptyDir)
+  expect(discover(emptyDir)).toEqual({components: '', sdkconfigs: ''})
 })
 
 test.skipIf(!hasCmake())(
