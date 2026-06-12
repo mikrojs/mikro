@@ -1,6 +1,7 @@
 import spinners from 'cli-spinners'
 import figures from 'figures'
 import {Box, Text, useInput} from 'ink'
+import pkg from 'mikro/package.json' with {type: 'json'}
 import {type ReactNode, useEffect, useState} from 'react'
 import {firstValueFrom} from 'rxjs'
 
@@ -15,13 +16,14 @@ import {openSession} from './openSession.js'
  *  silent device. Kept well under the command's own 10s ready timeout. */
 const PROBE_TIMEOUT_MS = 4000
 
+const cliVersion = pkg.version
+
 type GateState =
   | {status: 'probing'}
-  | {status: 'ok'}
+  | {status: 'ok'; compat: 'enforce' | 'best-effort'}
   | {status: 'prompt'; deviceVersion: string | null}
   | {status: 'flashing'; message: string}
   | {status: 'flashed'}
-  | {status: 'declined'}
   | {status: 'flash_error'; message: string}
 
 export interface FirmwareGateProps {
@@ -29,8 +31,11 @@ export interface FirmwareGateProps {
   command: 'dev' | 'deploy' | 'console'
   /** Skip the y/N prompt and flash immediately on incompatibility. */
   yes?: boolean
-  /** Rendered once the firmware is confirmed compatible (or undetermined). */
-  children: () => ReactNode
+  /** Rendered once the firmware is confirmed compatible (or undetermined).
+   *  `compat` is 'best-effort' when the user declined the reflash prompt and
+   *  chose to continue against mismatched firmware; pass it to the command's
+   *  own session connect so it warns instead of throwing. */
+  children: (compat: 'enforce' | 'best-effort') => ReactNode
 }
 
 /**
@@ -43,6 +48,8 @@ export interface FirmwareGateProps {
  *     away with `yes`), then exit with a "re-run" hint. We deliberately do
  *     not reconnect after flashing — the device resets and its USB-CDC port
  *     re-enumerates, so a clean re-run is more robust than resuming.
+ *     Declining the prompt continues anyway: children render with
+ *     compat 'best-effort' so their own connect warns instead of throwing.
  *
  * The probe session is always closed before rendering children or flashing
  * so the port is free for whoever runs next.
@@ -68,7 +75,7 @@ export function FirmwareGate(props: FirmwareGateProps) {
                 : {status: 'prompt', deviceVersion: ready.version},
             )
           } else {
-            setState({status: 'ok'})
+            setState({status: 'ok', compat: 'enforce'})
           }
         } finally {
           h.close()
@@ -77,7 +84,7 @@ export function FirmwareGate(props: FirmwareGateProps) {
       .catch(() => {
         // Timeout / disconnect / unresolved port: don't block. Proceed and
         // let the command's own connect surface the real failure as today.
-        if (!cancelled) setState({status: 'ok'})
+        if (!cancelled) setState({status: 'ok', compat: 'enforce'})
       })
 
     return () => {
@@ -114,10 +121,10 @@ export function FirmwareGate(props: FirmwareGateProps) {
   // Terminal states exit the process as a side effect (not during render).
   useEffect(() => {
     if (state.status === 'flashed') process.exit(0)
-    if (state.status === 'declined' || state.status === 'flash_error') process.exit(1)
+    if (state.status === 'flash_error') process.exit(1)
   }, [state.status])
 
-  if (state.status === 'ok') return <>{children()}</>
+  if (state.status === 'ok') return <>{children(state.compat)}</>
 
   if (state.status === 'probing') {
     return (
@@ -151,7 +158,6 @@ export function FirmwareGate(props: FirmwareGateProps) {
     )
   }
 
-  // 'declined' — the incompatibility message is printed by the prompt itself.
   return null
 }
 
@@ -166,22 +172,32 @@ function ReflashPrompt(props: {
     detectPreferredPm().then(setPm, () => {})
   }, [])
 
-  useInput((input) => {
-    if (input.toLowerCase() === 'y') {
-      onConfirm({status: 'flashing', message: 'Preparing firmware…'})
-    } else {
-      onConfirm({status: 'declined'})
+  useInput((input, key) => {
+    if (key.ctrl && (input === 'c' || input === 'q')) {
+      process.exit(0)
     }
+    const ch = input.toLowerCase()
+    if (ch === 'y') {
+      onConfirm({status: 'flashing', message: 'Preparing firmware…'})
+    } else if (ch === 'n' || key.return) {
+      onConfirm({status: 'ok', compat: 'best-effort'})
+    }
+    // Any other key is ignored.
   })
 
   const got = deviceVersion ?? 'an unknown version'
   return (
     <Box flexDirection="column">
       <Text color="yellow">
-        {figures.warning} Device is running mikrojs v{got}, which is not compatible with this CLI.
+        {figures.warning} Device is running mikrojs v{got}, which is not compatible with this CLI (v
+        {cliVersion}).
       </Text>
       <Text>
         Flash CLI-matched firmware now? <Text bold>(y/N)</Text>
+      </Text>
+      <Text color="gray">
+        {figures.pointerSmall} Choosing no continues anyway; commands may fail against mismatched
+        firmware.
       </Text>
       <Text color="gray">
         {figures.pointerSmall} Or keep the device as-is and install a matching CLI:{' '}

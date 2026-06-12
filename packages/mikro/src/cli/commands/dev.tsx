@@ -218,13 +218,14 @@ export default function Dev(props: Props) {
     <DevicePicker port={port}>
       {(device) => (
         <FirmwareGate devicePath={device.path} command="dev" yes={yes === true}>
-          {() => (
+          {(compat) => (
             <InkReplMode
               devicePath={device.path}
               serialNumber={device.serialNumber}
               logLevel={logLevel}
               driver={driver}
               watch={watch}
+              compat={compat}
             />
           )}
         </FirmwareGate>

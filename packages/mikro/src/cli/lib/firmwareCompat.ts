@@ -20,7 +20,7 @@ export interface FirmwareCompatResult {
   requiredRange: string
 }
 
-const cliVersion = pkg.version
+const defaultCliVersion = pkg.version
 
 /**
  * Floor of the breakage range, per semver `^` conventions:
@@ -36,24 +36,30 @@ function breakageFloor(version: string): string {
   return `0.0.${patch(version)}`
 }
 
-const requiredRange = `^${breakageFloor(cliVersion)}`
-
 /**
  * Check whether the firmware version reported by the device is semver-
  * compatible with this CLI's version. mikrojs and @mikrojs/firmware are
  * versioned in lockstep, so the CLI's own version is the source of truth.
+ * `cliVersion` is injectable for tests; production callers omit it.
  *
  * Returns one of:
  *   - 'match'              — device version equals CLI version
  *   - 'update_available'   — device satisfies the breakage range but is older or newer
  *   - 'incompatible'       — device is outside the range, or didn't report a version
  */
-export function checkFirmwareCompat(deviceVersion: string | null): FirmwareCompatResult {
-  if (!deviceVersion || !satisfies(deviceVersion, requiredRange, {includePrerelease: true})) {
-    return {status: 'incompatible', direction: null, deviceVersion, cliVersion, requiredRange}
-  }
+export function checkFirmwareCompat(
+  deviceVersion: string | null,
+  cliVersion: string = defaultCliVersion,
+): FirmwareCompatResult {
+  const requiredRange = `^${breakageFloor(cliVersion)}`
+  // Exact equality first: a prerelease build (e.g. 0.14.0-pr-229.g0d8db1b)
+  // sorts below its own breakage floor in semver, so the range check would
+  // wrongly flag a device running the very same build as incompatible.
   if (deviceVersion === cliVersion) {
     return {status: 'match', direction: null, deviceVersion, cliVersion, requiredRange}
+  }
+  if (!deviceVersion || !satisfies(deviceVersion, requiredRange, {includePrerelease: true})) {
+    return {status: 'incompatible', direction: null, deviceVersion, cliVersion, requiredRange}
   }
   const direction: FirmwareCompatDirection = lt(deviceVersion, cliVersion)
     ? 'device_older'

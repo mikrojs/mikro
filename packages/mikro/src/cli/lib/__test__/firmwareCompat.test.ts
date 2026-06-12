@@ -19,6 +19,15 @@ describe('checkFirmwareCompat', () => {
     expect(result.cliVersion).to.equal(cliVersion)
   })
 
+  it('returns "match" when CLI and device are the same prerelease build', () => {
+    // Regression: a prerelease sorts below its own breakage floor
+    // (0.14.0-pr-229.x < 0.14.0), so the range check alone would flag a
+    // device running the exact CLI version as incompatible.
+    const prerelease = '0.14.0-pr-229.g0d8db1b'
+    const result = checkFirmwareCompat(prerelease, prerelease)
+    expect(result.status).to.equal('match')
+  })
+
   it('returns "incompatible" when device reports no version', () => {
     const result = checkFirmwareCompat(null)
     expect(result.status).to.equal('incompatible')
