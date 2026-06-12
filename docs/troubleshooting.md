@@ -102,3 +102,15 @@ The file logger uses `flush: 'error'` by default, so warn/error lines hit flash 
 ::: tip Always-on for prod
 Enable [`logFile: true`](/config#logfile) in your production `mikro.config.ts`. It costs ~2 KB of RAM and rotates within a `2 × maxSize` flash budget, but it's the difference between "device crashed, no idea why" and "device crashed, here's what it logged."
 :::
+
+## PSRAM board reports `board.psram` as 0
+
+The ESP32-S3 firmware defaults enable quad-mode PSRAM with `CONFIG_SPIRAM_IGNORE_NOTFOUND=y`. A board with an octal PSRAM module (N8R8, N16R8, and similar variants) boots without any error but runs with no PSRAM: `board.psram` from `mikro/sys` is `0`, and allocations fall back to internal SRAM.
+
+For custom firmware builds, add this to your project's `sdkconfig.defaults`:
+
+```
+CONFIG_SPIRAM_MODE_OCT=y
+```
+
+Then delete the generated `sdkconfig` and re-run `idf.py set-target esp32s3`. `sdkconfig.defaults` is only read when `sdkconfig` does not exist, so editing the defaults alone has no effect on an already configured build.

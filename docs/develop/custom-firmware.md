@@ -106,6 +106,12 @@ npx idf.py build flash monitor
 
 The `idf.py` command is provided by `@mikrojs/firmware` and runs through [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html), so no manual ESP-IDF activation is needed.
 
+Run `idf.py` from the firmware project directory (the one containing `CMakeLists.txt`). Running it from a parent directory, such as a workspace root, fails with "CMakeLists.txt not found in project directory".
+
+::: warning Approve the qjsc build script (pnpm)
+The firmware build needs `qjsc`, the QuickJS bytecode compiler, which is built by the postinstall script of `@mikrojs/quickjs`. pnpm does not run dependency build scripts unless they are approved, and the skipped script surfaces later as "qjsc not found" during `idf.py build`. Run `pnpm approve-builds`, select `@mikrojs/quickjs`, and install again. Note that `pnpm rebuild @mikrojs/quickjs` does not fix this when the package is only a transitive dependency.
+:::
+
 ## How it works
 
 When you run `idf.py build`, the `project.cmake` included in your `CMakeLists.txt`:
@@ -140,3 +146,11 @@ The firmware archive should be a `.tar.gz` containing `flasher_args.json` and th
 - **sdkconfig**: Add a local `sdkconfig.defaults` file. It takes priority over the firmware package defaults.
 - **Partition table**: Add a local `partitions.csv` file.
 - **main.cpp**: Provide your own `main/` directory with custom initialization.
+
+## Testing preview releases
+
+Pull requests in the mikro repository publish preview versions to npm under a `pr-<number>` dist-tag (for example `0.14.0-pr-229.g46bcbe2`). When testing a preview from a firmware project:
+
+- Install the same `pr-<number>` tag for every Mikro.js package you depend on: `mikro`, `@mikrojs/firmware`, and any `@mikrojs/*` board or driver packages. Mixing a preview of one package with stable releases of the others can pair bytecode compiled by one QuickJS build with a runtime from another, which fails at load time.
+- If pnpm is configured with `minimumReleaseAge`, freshly published previews are held back by the cooldown and the install silently resolves to an older version. Add the affected packages to `minimumReleaseAgeExclude` while testing.
+- Driver packages that declare a required `mikro` peerDependency interact badly with previews: semver ranges never match prerelease versions, so with `autoInstallPeers` enabled pnpm installs a duplicate stable `mikro` and `@mikrojs/*` subtree alongside the preview. Driver authors should declare the peer as optional (see [Creating Drivers](/develop/creating-drivers)); as a consumer you can set `autoInstallPeers: false` in your workspace.
