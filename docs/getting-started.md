@@ -167,3 +167,5 @@ This writes your program to the device's flash storage. It will keep running aft
 - [Error Handling](/error-handling): learn how Mikro.js uses typed Results instead of exceptions
 - [WiFi + Fetch example](/examples/wifi-fetch): connect to the internet and make HTTP requests
 - [API Reference](/api/): explore the full API surface
+
+Using an AI coding assistant? Point it at [llms.txt](https://mikrojs.dev/llms.txt) for an index of these docs, or [llms-full.txt](https://mikrojs.dev/llms-full.txt) for everything in a single file.
