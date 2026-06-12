@@ -48,8 +48,11 @@ execute_process(
 )
 
 # ── Board and driver package discovery ───────────────────────────────
+# Scan the consuming project's package.json (CMAKE_SOURCE_DIR), not this
+# file's directory — while include()d, CMAKE_CURRENT_LIST_DIR is the
+# @mikrojs/firmware package inside node_modules.
 execute_process(
-    COMMAND node ${_MIK_RESOLVE} discover ${CMAKE_CURRENT_LIST_DIR}
+    COMMAND node ${_MIK_RESOLVE} discover ${CMAKE_SOURCE_DIR}
     OUTPUT_VARIABLE _BOARD_JSON
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
