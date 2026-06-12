@@ -116,6 +116,11 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_VERSION=\"${_MIK_VERSION}\"")
+# The version is read at configure time, so configure must re-run when the
+# firmware package version changes — otherwise an incremental idf.py build
+# flashes a binary that still reports the stale MIK_FW_VERSION.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_LIST_DIR}/../../package.json")
 
 # UTC build timestamp. `string(TIMESTAMP ... UTC)` honors SOURCE_DATE_EPOCH
 # when set. Refreshes on re-configure only (idf.py triggers this on each
