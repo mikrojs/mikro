@@ -1,6 +1,7 @@
 import {transformerTwoslash} from '@shikijs/vitepress-twoslash'
 import {defineConfig} from 'vitepress'
 import {groupIconMdPlugin, groupIconVitePlugin} from 'vitepress-plugin-group-icons'
+import llmstxt from 'vitepress-plugin-llms'
 
 import {abbrPlugin} from './markdown-abbr.js'
 
@@ -13,6 +14,7 @@ export default defineConfig({
     plugins: [
       //@ts-expect-error
       groupIconVitePlugin(),
+      llmstxt({domain: 'https://mikrojs.dev'}),
     ],
     esbuild: {
       target: 'es2023',
@@ -159,6 +161,13 @@ export default defineConfig({
             ],
           },
           {text: 'Contributing', link: '/contributing'},
+        ],
+      },
+      {
+        text: 'AI assistants',
+        items: [
+          {text: 'llms.txt', link: '/llms.txt'},
+          {text: 'llms-full.txt', link: '/llms-full.txt'},
         ],
       },
     ],
