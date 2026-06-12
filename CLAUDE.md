@@ -203,7 +203,7 @@ Wraps the QuickJS-NG engine source as a workspace package. Provides:
 
 A thin adapter that:
 
-- Resolves `@mikrojs/quickjs` and `@mikrojs/native` paths via `node -e "require(...)"` in CMake
+- Resolves `@mikrojs/quickjs` and `@mikrojs/native` paths in CMake via `node resolve.js <query>` (see `packages/@mikrojs/firmware/resolve.js`)
 - Compiles QuickJS and mikrojs sources directly (ESP-IDF requires `idf_component_register(SRCS ...)`)
 - Runs its own bytecode generation (esbuild bundle + qjsc compile) during the build
 - Provides `platform_esp32.cpp` (ESP-IDF platform implementation)

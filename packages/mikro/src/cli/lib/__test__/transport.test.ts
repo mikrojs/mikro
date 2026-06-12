@@ -3,8 +3,8 @@ import {describe, expect, it, type MockInstance, vi} from 'vitest'
 
 import {openSerial} from '../transport.js'
 
-const {MockSerialPort} = vi.hoisted(() => {
-  const {EventEmitter} = require('node:events') as typeof import('node:events')
+const {MockSerialPort} = await vi.hoisted(async () => {
+  const {EventEmitter} = await import('node:events')
 
   class MockSerialPort extends EventEmitter {
     isOpen = false

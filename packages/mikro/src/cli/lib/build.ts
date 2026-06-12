@@ -1,6 +1,7 @@
 import {existsSync} from 'node:fs'
-import {createRequire, stripTypeScriptTypes} from 'node:module'
+import {stripTypeScriptTypes} from 'node:module'
 import * as pathlib from 'node:path'
+import {fileURLToPath} from 'node:url'
 
 import {nodeFileTrace, resolve as traceResolve} from '@mikrojs/analyze-imports'
 import {mkdir, readdir, readFile, rm, stat, unlink, writeFile} from 'fs/promises'
@@ -28,8 +29,6 @@ import {isBuiltinModule} from '../../constants.js'
 import {loadMikroConfig} from './loadMikroConfig.js'
 import {minifyJs} from './minify.js'
 import {parseSize} from './parseSize.js'
-
-const require = createRequire(import.meta.url)
 
 /** Console methods to mark as pure (side-effect-free) for each log level.
  * The minifier drops pure calls whose return value is unused, eliminating
@@ -97,9 +96,12 @@ function isFirmwareBuiltin(id: string): boolean {
     parts.length >= 2 && parts[0]!.startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0]!
   if (firmwareBuiltinCache.has(pkgName)) return firmwareBuiltinCache.get(pkgName)!
   try {
-    require.resolve(`${pkgName}/cmake`)
-    firmwareBuiltinCache.set(pkgName, true)
-    return true
+    // For packages without an exports map, import.meta.resolve returns a URL
+    // without checking that the file exists, so verify on disk.
+    const resolved = import.meta.resolve(`${pkgName}/cmake`)
+    const isBuiltin = existsSync(fileURLToPath(resolved))
+    firmwareBuiltinCache.set(pkgName, isBuiltin)
+    return isBuiltin
   } catch {
     firmwareBuiltinCache.set(pkgName, false)
     return false

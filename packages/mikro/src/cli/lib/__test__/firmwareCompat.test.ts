@@ -1,5 +1,4 @@
-import {createRequire} from 'node:module'
-
+import pkg from 'mikro/package.json' with {type: 'json'}
 import {describe, expect, it} from 'vitest'
 
 import {
@@ -9,8 +8,7 @@ import {
   formatIncompatibleError,
 } from '../firmwareCompat.js'
 
-const require = createRequire(import.meta.url)
-const cliVersion = (require('../../../../package.json') as {version: string}).version
+const cliVersion = pkg.version
 
 describe('checkFirmwareCompat', () => {
   it('returns "match" when device matches the CLI version exactly', () => {

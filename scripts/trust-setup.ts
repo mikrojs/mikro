@@ -8,10 +8,11 @@
 //
 // Flags: --dry-run (plan only).
 import {execFileSync, spawnSync} from 'node:child_process'
-import {createRequire} from 'node:module'
+import {readFileSync} from 'node:fs'
 import {dirname, join} from 'node:path'
 import {createInterface} from 'node:readline/promises'
 import {Writable} from 'node:stream'
+import {fileURLToPath} from 'node:url'
 
 const WORKFLOW = 'release.yml'
 // GitHub repo that runs the release workflow. Hardcoded (not derived from the
@@ -20,9 +21,9 @@ const WORKFLOW = 'release.yml'
 const REPO = 'mikrojs/mikro'
 
 // Run the npm pinned in scripts/package.json, resolve its CLI from npm's own manifest bin field.
-const npmRequire = createRequire(import.meta.url)
-const npmManifest = npmRequire('npm/package.json') as {bin: {npm: string}}
-const NPM_CLI = join(dirname(npmRequire.resolve('npm/package.json')), npmManifest.bin.npm)
+const npmManifestPath = fileURLToPath(import.meta.resolve('npm/package.json'))
+const npmManifest = JSON.parse(readFileSync(npmManifestPath, 'utf8')) as {bin: {npm: string}}
+const NPM_CLI = join(dirname(npmManifestPath), npmManifest.bin.npm)
 
 interface WorkspacePackage {
   name: string
