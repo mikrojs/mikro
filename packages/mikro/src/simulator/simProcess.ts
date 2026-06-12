@@ -24,12 +24,12 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import {createRequire} from 'node:module'
 import * as pathlib from 'node:path'
 import {parseArgs} from 'node:util'
 
 import type {HostMessage} from '@mikrojs/native'
 import {encode as encodeCbor} from 'cbor2'
+import pkg from 'mikro/package.json' with {type: 'json'}
 import {type Observable, scan, takeWhile, tap} from 'rxjs'
 
 import {
@@ -1070,8 +1070,7 @@ async function bootOrRunManifest(): Promise<void> {
 
 // ── Ready message ───────────────────────────────────────────────────
 
-const cliVersion = (createRequire(import.meta.url)('../../package.json') as {version: string})
-  .version
+const cliVersion = pkg.version
 
 function sendReady(): void {
   const cbor = Buffer.from(encodeCbor({chip: 'simulator', id: null, v: cliVersion}))

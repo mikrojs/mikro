@@ -1,6 +1,5 @@
-import {createRequire} from 'node:module'
-
 import {encode as encodeCbor} from 'cbor2'
+import pkg from 'mikro/package.json' with {type: 'json'}
 import {firstValueFrom, lastValueFrom, Subject} from 'rxjs'
 import {inc} from 'semver'
 import {afterEach, describe, expect, it, vi} from 'vitest'
@@ -51,8 +50,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const require = createRequire(import.meta.url)
-const CLI_VERSION = (require('../../../../package.json') as {version: string}).version
+const CLI_VERSION = pkg.version
 
 /** Create a mock transport for testing */
 function createMockTransport() {

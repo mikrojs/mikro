@@ -1,5 +1,4 @@
-import {createRequire} from 'node:module'
-
+import pkg from 'mikro/package.json' with {type: 'json'}
 import {lt, major, minor, patch, satisfies} from 'semver'
 
 import {
@@ -21,8 +20,7 @@ export interface FirmwareCompatResult {
   requiredRange: string
 }
 
-const require = createRequire(import.meta.url)
-const cliVersion = (require('../../../package.json') as {version: string}).version
+const cliVersion = pkg.version
 
 /**
  * Floor of the breakage range, per semver `^` conventions:
