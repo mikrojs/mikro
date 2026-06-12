@@ -9,6 +9,7 @@ import {string} from '@optique/core/valueparser'
 
 import {isPublished} from '../util/registry.js'
 import {MONOREPO_ROOT} from '../util/repo.js'
+import {stripBuildMetadata} from '../util/version.js'
 import {getPublishablePackages, type PnpmPackage} from '../util/workspace.js'
 
 export const args = command(
@@ -63,15 +64,19 @@ export async function run(opts: PublishArgs): Promise<void> {
   }
 
   // --skip-existing: drop packages already on the registry at their current
-  // version so a preview re-run (e.g. the label re-added with no new commits,
-  // producing an identical version string) succeeds as a no-op instead of
-  // failing the workflow on a duplicate-publish error. Resolve the registry
+  // version so re-running a partially failed publish (which reuses the plan
+  // job's version) finishes the missing packages instead of failing the
+  // workflow on a duplicate-publish error. Local versions carry `+sha` build
+  // metadata that pnpm strips at publish, so the lookup must use the stripped
+  // version — that's the string the registry knows. Resolve the registry
   // lookups up front so selectPackagesToPublish stays pure and sync.
   const onRegistry = new Set<string>()
   if (opts.skipExisting) {
     await Promise.all(
       candidates.map(async (pkg) => {
-        if (await isPublished(pkg.name, pkg.version)) onRegistry.add(`${pkg.name}@${pkg.version}`)
+        if (await isPublished(pkg.name, stripBuildMetadata(pkg.version))) {
+          onRegistry.add(`${pkg.name}@${pkg.version}`)
+        }
       }),
     )
   }

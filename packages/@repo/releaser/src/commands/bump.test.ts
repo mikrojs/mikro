@@ -1,3 +1,4 @@
+import semver from 'semver'
 import {describe, expect, test} from 'vitest'
 
 import {type BumpInputs, computeBumpPure} from './bump.js'
@@ -6,7 +7,8 @@ const baseInputs: BumpInputs = {
   mode: 'release',
   currentVersion: '0.2.0',
   semverIncrement: 'minor',
-  git: {commitHash: 'abc1234', commitCount: '7'},
+  git: {commitHash: 'abc1234'},
+  now: new Date('2026-06-13T09:42:17Z'),
 }
 
 describe('computeBumpPure', () => {
@@ -84,17 +86,9 @@ describe('computeBumpPure', () => {
   })
 
   test('--use-current rejects non-release modes', () => {
-    expect(() => computeBumpPure({...baseInputs, mode: 'next', useCurrent: true})).toThrow(
+    expect(() => computeBumpPure({...baseInputs, mode: 'canary', useCurrent: true})).toThrow(
       /--use-current is only valid with --mode=release/,
     )
-  })
-
-  test('next mode appends commits-ahead suffix and .gsha', () => {
-    expect(computeBumpPure({...baseInputs, mode: 'next'})).toEqual({
-      version: '0.3.0-next.7.gabc1234',
-      npmTag: 'next',
-      mode: 'next',
-    })
   })
 
   test('release-preview mode: prerelease of the already-bumped version, next tag', () => {
@@ -107,23 +101,50 @@ describe('computeBumpPure', () => {
         currentVersion: '0.10.0',
         semverIncrement: 'minor',
       }),
-    ).toEqual({version: '0.10.0-next.7.gabc1234', mode: 'release-preview', npmTag: 'next'})
+    ).toEqual({
+      version: '0.10.0-next.20260613094217+abc1234',
+      mode: 'release-preview',
+      npmTag: 'next',
+    })
   })
 
-  test('canary mode appends commits-ahead suffix and .gsha', () => {
+  test('canary mode appends timestamp and +sha build metadata', () => {
     expect(computeBumpPure({...baseInputs, mode: 'canary'})).toEqual({
-      version: '0.3.0-canary.7.gabc1234',
+      version: '0.3.0-canary.20260613094217+abc1234',
       npmTag: 'canary',
       mode: 'canary',
     })
   })
 
-  test('pr-preview mode embeds PR number and sha', () => {
+  test('pr-preview mode embeds PR number, timestamp, and +sha build metadata', () => {
     expect(computeBumpPure({...baseInputs, mode: 'pr-preview', pr: 121})).toEqual({
-      version: '0.3.0-pr-121.gabc1234',
+      version: '0.3.0-pr-121.20260613094217+abc1234',
       npmTag: 'pr-121',
       mode: 'pr-preview',
     })
+  })
+
+  test('successive prerelease builds sort monotonically under semver.compare', () => {
+    // The numeric timestamp segment orders publishes by publish time; the
+    // +sha build metadata is ignored by semver precedence (the shas here are
+    // deliberately in reverse lexical order).
+    const older = computeBumpPure({
+      ...baseInputs,
+      mode: 'pr-preview',
+      pr: 121,
+      git: {commitHash: 'fffffff'},
+      now: new Date('2026-06-13T09:42:17Z'),
+    })
+    const newer = computeBumpPure({
+      ...baseInputs,
+      mode: 'pr-preview',
+      pr: 121,
+      git: {commitHash: 'aaaaaaa'},
+      now: new Date('2026-06-13T09:42:18Z'),
+    })
+    expect(semver.compare(older.version, newer.version)).toBe(-1)
+    // And every pr-preview sorts below the release it previews.
+    expect(semver.compare(newer.version, '0.3.0')).toBe(-1)
   })
 
   test('pr-preview without --pr throws', () => {

@@ -23,6 +23,17 @@ export interface FirmwareCompatResult {
 const defaultCliVersion = pkg.version
 
 /**
+ * npm strips `+sha` build metadata from versions at publish, but firmware
+ * builds bake the unstripped package.json version into `sys.version`. The
+ * same release can therefore reach us under both spellings; build metadata
+ * never indicates a different release, so comparisons must ignore it.
+ */
+function stripBuildMetadata(version: string): string {
+  const plus = version.indexOf('+')
+  return plus === -1 ? version : version.slice(0, plus)
+}
+
+/**
  * Floor of the breakage range, per semver `^` conventions:
  *   1.2.3 → 1.0.0    (same major)
  *   0.7.3 → 0.7.0    (same minor in 0.x)
@@ -52,10 +63,10 @@ export function checkFirmwareCompat(
   cliVersion: string = defaultCliVersion,
 ): FirmwareCompatResult {
   const requiredRange = `^${breakageFloor(cliVersion)}`
-  // Exact equality first: a prerelease build (e.g. 0.14.0-pr-229.g0d8db1b)
-  // sorts below its own breakage floor in semver, so the range check would
-  // wrongly flag a device running the very same build as incompatible.
-  if (deviceVersion === cliVersion) {
+  // Exact equality first (modulo build metadata): a prerelease build sorts
+  // below its own breakage floor in semver, so the range check would wrongly
+  // flag a device running the very same build as incompatible.
+  if (deviceVersion && stripBuildMetadata(deviceVersion) === stripBuildMetadata(cliVersion)) {
     return {status: 'match', direction: null, deviceVersion, cliVersion, requiredRange}
   }
   if (!deviceVersion || !satisfies(deviceVersion, requiredRange, {includePrerelease: true})) {

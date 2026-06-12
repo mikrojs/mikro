@@ -28,6 +28,16 @@ describe('checkFirmwareCompat', () => {
     expect(result.status).to.equal('match')
   })
 
+  it('returns "match" when the versions differ only in +sha build metadata', () => {
+    // Firmware bakes the unstripped package.json version into sys.version,
+    // while npm strips build metadata at publish — the same release reaches
+    // us under both spellings.
+    const device = '0.15.0-pr-300.20260613094217+abc1234'
+    const cli = '0.15.0-pr-300.20260613094217'
+    expect(checkFirmwareCompat(device, cli).status).to.equal('match')
+    expect(checkFirmwareCompat(cli, device).status).to.equal('match')
+  })
+
   it('returns "incompatible" when device reports no version', () => {
     const result = checkFirmwareCompat(null)
     expect(result.status).to.equal('incompatible')
