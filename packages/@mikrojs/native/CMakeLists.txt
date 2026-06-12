@@ -120,6 +120,10 @@ if(NOT _MIK_VERSION_RESULT EQUAL 0 OR _MIK_VERSION STREQUAL "")
     message(FATAL_ERROR "Failed to resolve package version for MIK_FW_VERSION. Check that package.json exists at the workspace root.")
 endif()
 target_compile_definitions(mikrojs PRIVATE "MIK_FW_VERSION=\"${_MIK_VERSION}\"")
+# The version is read at configure time, so configure must re-run when it
+# changes — otherwise incremental builds keep the stale MIK_FW_VERSION.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../package.json")
 
 # UTC build timestamp. `string(TIMESTAMP ... UTC)` honors SOURCE_DATE_EPOCH
 # when set (for reproducible builds). Refreshes on re-configure only, not
