@@ -52,6 +52,11 @@ const config = {
       // shebang; knip can't see the entry through the package.json reference.
       entry: ['trust-setup.ts'],
     },
+    esp32: {
+      // @mikrojs/firmware is consumed by CMakeLists.txt (project.cmake,
+      // component discovery), which knip can't see — no JS imports.
+      ignoreDependencies: ['@mikrojs/firmware'],
+    },
     'packages/@mikrojs/native': {
       // bundle-runtime.js + generate-symbol-map.js are invoked by CMake during
       // the firmware build (see @mikrojs/firmware/components/mikrojs/CMakeLists.txt

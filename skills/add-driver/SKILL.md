@@ -98,7 +98,7 @@ dependencies:
 ```cmake
 set(_DRIVER_PKG_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
 execute_process(
-    COMMAND node -e "import('@mikrojs/native/cmake').then(n=>import('@mikrojs/quickjs').then(q=>process.stdout.write(JSON.stringify({bytecodeCmake:n.bytecodeCmakePath,quickjsCmake:q.cmakePath,runtime:'${CMAKE_CURRENT_LIST_DIR}/../src'}))))"
+    COMMAND node -e "import {bytecodeCmakePath} from '@mikrojs/native/cmake'; import {cmakePath} from '@mikrojs/quickjs'; process.stdout.write(JSON.stringify({bytecodeCmake: bytecodeCmakePath, quickjsCmake: cmakePath, runtime: '${CMAKE_CURRENT_LIST_DIR}/../src'}))"
     WORKING_DIRECTORY ${_DRIVER_PKG_DIR}
     OUTPUT_VARIABLE _DRIVER_JSON
     OUTPUT_STRIP_TRAILING_WHITESPACE

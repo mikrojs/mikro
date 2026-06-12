@@ -18,9 +18,6 @@
     "type": "git",
     "url": "git+https://github.com/mikrojs/mikro.git"
   },
-  "bin": {
-    "idf.py": "./bin/idf.py"
-  },
   "files": [
     "components",
     "default-app",
@@ -28,7 +25,6 @@
     "sdkconfig.defaults",
     "sdkconfig.defaults.*",
     "partitions.csv",
-    "bin",
     "chips.json",
     "cmake.js",
     "discover.js",

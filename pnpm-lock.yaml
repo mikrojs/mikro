@@ -238,6 +238,9 @@ importers:
       '@mikrojs/firmware':
         specifier: workspace:*
         version: link:../packages/@mikrojs/firmware
+      '@repo/idf.py':
+        specifier: workspace:*
+        version: link:../packages/@repo/idf.py
 
   examples/blank:
     dependencies:
@@ -454,6 +457,8 @@ importers:
         version: 5.48.0
 
   packages/@mikrojs/quickjs: {}
+
+  packages/@repo/idf.py: {}
 
   packages/@repo/releaser:
     dependencies:

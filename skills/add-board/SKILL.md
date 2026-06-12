@@ -116,7 +116,7 @@ This dynamically discovers board component paths from the `mikrojs.boards` manif
 ```cmake
 set(_BOARD_PKG_DIR "${CMAKE_CURRENT_LIST_DIR}/../..")
 execute_process(
-    COMMAND node -e "import('@mikrojs/native/cmake').then(n=>import('@mikrojs/quickjs').then(q=>process.stdout.write(JSON.stringify({bytecodeCmake:n.bytecodeCmakePath,quickjsCmake:q.cmakePath,runtime:'${CMAKE_CURRENT_LIST_DIR}'}))))"
+    COMMAND node -e "import {bytecodeCmakePath} from '@mikrojs/native/cmake'; import {cmakePath} from '@mikrojs/quickjs'; process.stdout.write(JSON.stringify({bytecodeCmake: bytecodeCmakePath, quickjsCmake: cmakePath, runtime: '${CMAKE_CURRENT_LIST_DIR}'}))"
     WORKING_DIRECTORY ${_BOARD_PKG_DIR}
     OUTPUT_VARIABLE _BOARD_JSON
     OUTPUT_STRIP_TRAILING_WHITESPACE
