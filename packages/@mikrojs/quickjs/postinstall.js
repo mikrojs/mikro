@@ -8,14 +8,15 @@
  * Skips gracefully if cc or the submodule is not available.
  */
 import {execFileSync} from 'node:child_process'
-import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from 'node:fs'
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs'
 import {dirname, join} from 'node:path'
 import {fileURLToPath} from 'node:url'
+
+import {applyPatches} from './apply-patches.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const binDir = join(__dirname, 'bin')
 const qjsDir = join(__dirname, 'deps', 'quickjs')
-const patchesDir = join(__dirname, 'patches')
 const repoRoot = join(__dirname, '..', '..', '..')
 
 // Always sync submodule to the pinned commit
@@ -39,33 +40,6 @@ try {
 // Applied idempotently: if `git apply --reverse --check` succeeds, the
 // patch is already present, skip it.
 applyPatches()
-
-function applyPatches() {
-  if (!existsSync(patchesDir)) return
-  const files = readdirSync(patchesDir)
-    .filter((f) => f.endsWith('.patch'))
-    .sort()
-  for (const f of files) {
-    const patch = join(patchesDir, f)
-    // Probe: is the patch already applied?
-    try {
-      execFileSync('git', ['apply', '--reverse', '--check', patch], {
-        cwd: qjsDir,
-        stdio: 'pipe',
-      })
-      continue // already applied
-    } catch {
-      // not applied — fall through
-    }
-    try {
-      execFileSync('git', ['apply', patch], {cwd: qjsDir, stdio: 'inherit'})
-      console.log(`@mikrojs/quickjs: applied patch ${f}`)
-    } catch (err) {
-      console.error(`@mikrojs/quickjs: failed to apply ${f}`, err.message)
-      process.exit(1)
-    }
-  }
-}
 
 // Determine the current submodule commit to detect changes
 let currentCommit = ''
