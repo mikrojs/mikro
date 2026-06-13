@@ -1,7 +1,7 @@
 import {describe, expect, test} from 'vitest'
 
 import type {EventPayload} from '../util/githubEvent.js'
-import {decideReleasePure, isPreviewAlreadyPublished} from './plan.js'
+import {decideReleasePure} from './plan.js'
 
 const REPO = 'mikrojs/mikro'
 
@@ -23,12 +23,11 @@ function payload(overrides: Partial<EventPayload> = {}): EventPayload {
 }
 
 describe('decideReleasePure: workflow_dispatch', () => {
-  test('mode=next', () => {
+  test('mode=next is no longer dispatchable (next ships via the release-PR label)', () => {
     const p = payload({inputs: {mode: 'next'}})
     expect(decideReleasePure('workflow_dispatch', p)).toMatchObject({
-      mode: 'next',
-      shouldRun: true,
-      npmTag: 'next',
+      mode: 'skip',
+      shouldRun: false,
     })
   })
 
@@ -142,33 +141,5 @@ describe('decideReleasePure: misc', () => {
   test('unsupported event type is skipped', () => {
     expect(decideReleasePure('issue_comment', payload()).mode).toBe('skip')
     expect(decideReleasePure(undefined, payload()).mode).toBe('skip')
-  })
-})
-
-describe('isPreviewAlreadyPublished', () => {
-  const NAMES = ['mikro', '@mikrojs/native']
-  const V = '0.10.0-next.7.gabc1234'
-
-  test('preview re-run with every package already on the registry → true (skip)', () => {
-    expect(isPreviewAlreadyPublished('release-preview', V, NAMES, () => true)).toBe(true)
-    expect(isPreviewAlreadyPublished('pr-preview', V, NAMES, () => true)).toBe(true)
-  })
-
-  test('partial publish (one package missing) → false (must run to finish the rest)', () => {
-    const published = new Set([`mikro@${V}`])
-    expect(
-      isPreviewAlreadyPublished('release-preview', V, NAMES, (n, v) => published.has(`${n}@${v}`)),
-    ).toBe(false)
-  })
-
-  test('non-preview modes never short-circuit, even if all published', () => {
-    for (const mode of ['release', 'next', 'canary', 'create-release-pr', 'skip'] as const) {
-      expect(isPreviewAlreadyPublished(mode, V, NAMES, () => true)).toBe(false)
-    }
-  })
-
-  test('null version or no packages → false (nothing to compare)', () => {
-    expect(isPreviewAlreadyPublished('pr-preview', null, NAMES, () => true)).toBe(false)
-    expect(isPreviewAlreadyPublished('pr-preview', V, [], () => true)).toBe(false)
   })
 })

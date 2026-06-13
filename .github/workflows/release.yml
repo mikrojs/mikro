@@ -11,12 +11,14 @@ on:
   # is removed after publish so subsequent pushes don't re-publish.
   pull_request:
     types: [labeled]
+  # `next` publishes are not dispatchable: they happen via the release:preview
+  # label on the rolling release PR (release-preview mode).
   workflow_dispatch:
     inputs:
       mode:
         type: choice
-        options: [next, release, canary]
-        default: next
+        options: [canary, release]
+        default: canary
       dry_run:
         type: boolean
         default: true
@@ -259,11 +261,10 @@ jobs:
       # case. Don't "simplify" — the explicit truthy check is correct.
       #
       # --skip-existing on preview modes: safety net for partial-publish
-      # recovery and the plan→publish race. The common "label re-added, nothing
-      # changed" case is already short-circuited in the plan job (should_run
-      # =false, so this job never runs); this mainly catches a package that
-      # landed on the registry between plan and here. Without it a duplicate
-      # publish would fail the workflow.
+      # recovery — re-running failed jobs reuses the plan job's version, so
+      # already-published packages must be skipped instead of failing the
+      # workflow on a duplicate publish. (Fresh runs never collide: preview
+      # versions are timestamped per run.)
       - name: Publish
         run: |
           pnpm --silent releaser publish \

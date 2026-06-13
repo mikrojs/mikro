@@ -8,10 +8,15 @@ import semver from 'semver'
 
 import {readGitInfo} from '../util/git.js'
 import {MONOREPO_ROOT} from '../util/repo.js'
-import {computeVersion, getRecommendedBump, type ReleaseType} from '../util/version.js'
+import {
+  computeVersion,
+  formatTimestamp,
+  getRecommendedBump,
+  type ReleaseType,
+} from '../util/version.js'
 import {getPublishablePackages, readCanonicalVersion, writeVersion} from '../util/workspace.js'
 
-export type Mode = 'release' | 'release-preview' | 'next' | 'canary' | 'pr-preview'
+export type Mode = 'release' | 'release-preview' | 'canary' | 'pr-preview'
 
 export const args = command(
   'bump',
@@ -19,7 +24,7 @@ export const args = command(
     action: constant('bump' as const),
     mode: option(
       '--mode',
-      choice(['release', 'next', 'canary', 'pr-preview'] as const, {metavar: 'MODE'}),
+      choice(['release', 'canary', 'pr-preview'] as const, {metavar: 'MODE'}),
       {description: message`Release mode`},
     ),
     pr: optional(
@@ -67,13 +72,15 @@ export interface BumpInputs {
   breakingIsMinorOn0x?: boolean
   currentVersion: string
   semverIncrement: ReleaseType
-  git: {commitHash: string; commitCount: string}
+  git: {commitHash: string}
+  now: Date
 }
 
 // Pure: derives the version + npm tag from explicit inputs. No I/O.
 // Exported for tests.
 export function computeBumpPure(inputs: BumpInputs): BumpResult {
-  const {mode, pr, useCurrent, breakingIsMinorOn0x, currentVersion, semverIncrement, git} = inputs
+  const {mode, pr, useCurrent, breakingIsMinorOn0x, currentVersion, semverIncrement, git, now} =
+    inputs
 
   if (useCurrent) {
     if (mode !== 'release') {
@@ -93,18 +100,30 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
     return {version, npmTag: 'latest', mode}
   }
 
+  // All prerelease modes share one shape: a wall-clock timestamp as the
+  // prerelease counter (publishes sort by publish time under semver.compare,
+  // with no registry or git state to consult) and the commit sha as `+sha`
+  // build metadata. The `+sha` is written to package.json and baked into
+  // firmware (`sys.version`) for traceability, but pnpm strips it at publish
+  // (pnpm#11518) — the registry only ever sees the bare timestamped version.
+  // A timestamp rather than a commit count because preview modes run on PR
+  // merge refs, where `git describe --first-parent` counts base-branch
+  // commits and never advances when the PR itself does. The tradeoff: a
+  // version is never reproducible, so re-triggering with no changes publishes
+  // again instead of no-op'ing.
+
   if (mode === 'release-preview') {
     // Triggered by `release:preview` on the rolling release PR, whose
     // package.json is already bumped to the version about to ship. Publish
     // THAT version as a `next` prerelease (no further increment) under the
     // `next` dist-tag: a dry run of the pending release.
-    const suffix = `${git.commitCount}.g${git.commitHash}`
     return {
       version: computeVersion({
         currentVersion,
         semverIncrement,
         preid: 'next',
-        suffix,
+        suffix: formatTimestamp(now),
+        build: git.commitHash,
         noIncrement: true,
       }),
       npmTag: 'next',
@@ -112,35 +131,14 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
     }
   }
 
-  if (mode === 'next') {
-    // Use `.gSHA` (git-describe convention) instead of `+SHA` build
-    // metadata. npm's sigstore provenance validation rejects subjects
-    // that include semver build metadata; keeping the SHA inside the
-    // prerelease identifier sidesteps that. The `g` prefix guarantees
-    // the segment isn't all-digits-with-leading-zero, which would be
-    // an invalid numeric prerelease identifier.
-    const suffix = `${git.commitCount}.g${git.commitHash}`
-    return {
-      version: computeVersion({
-        currentVersion,
-        semverIncrement,
-        preid: 'next',
-        suffix,
-        breakingIsMinorOn0x,
-      }),
-      npmTag: 'next',
-      mode,
-    }
-  }
-
   if (mode === 'canary') {
-    const suffix = `${git.commitCount}.g${git.commitHash}`
     return {
       version: computeVersion({
         currentVersion,
         semverIncrement,
         preid: 'canary',
-        suffix,
+        suffix: formatTimestamp(now),
+        build: git.commitHash,
         breakingIsMinorOn0x,
       }),
       npmTag: 'canary',
@@ -152,10 +150,16 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
   if (typeof pr !== 'number') {
     throw new Error('--mode=pr-preview requires --pr <N>')
   }
-  const suffix = `g${git.commitHash}`
   const preid = `pr-${pr}`
   return {
-    version: computeVersion({currentVersion, semverIncrement, preid, suffix, breakingIsMinorOn0x}),
+    version: computeVersion({
+      currentVersion,
+      semverIncrement,
+      preid,
+      suffix: formatTimestamp(now),
+      build: git.commitHash,
+      breakingIsMinorOn0x,
+    }),
     npmTag: preid,
     mode,
   }
@@ -173,7 +177,8 @@ async function gather(opts: BumpArgs): Promise<BumpInputs> {
     breakingIsMinorOn0x: opts.breakingIsMinorOn0x === true,
     currentVersion: readCanonicalVersion(),
     semverIncrement: useCurrent ? 'patch' : await getRecommendedBump(),
-    git: useCurrent ? {commitHash: '', commitCount: '0'} : readGitInfo(),
+    git: useCurrent ? {commitHash: ''} : readGitInfo(),
+    now: new Date(),
   }
 }
 

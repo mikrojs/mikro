@@ -16,11 +16,38 @@ export async function getRecommendedBump(): Promise<ReleaseType> {
   return 'patch'
 }
 
+function zeroPad(value: number | string, length: number): string {
+  return String(value).padStart(length, '0')
+}
+
+// Compact UTC wall-clock stamp (yyyymmddHHMMSS), e.g. 20260613094217. Used as
+// the prerelease counter in every prerelease mode: monotonically increasing
+// across publishes with no registry or git state to consult.
+export function formatTimestamp(now: Date): string {
+  return [
+    zeroPad(now.getUTCFullYear(), 4),
+    zeroPad(now.getUTCMonth() + 1, 2),
+    zeroPad(now.getUTCDate(), 2),
+    zeroPad(now.getUTCHours(), 2),
+    zeroPad(now.getUTCMinutes(), 2),
+    zeroPad(now.getUTCSeconds(), 2),
+  ].join('')
+}
+
+// The version as it appears on the registry: pnpm strips build metadata at
+// publish (pnpm#11518), so local versions (which carry `+sha`) must be
+// stripped before any registry lookup or comparison against published ones.
+export function stripBuildMetadata(version: string): string {
+  const plus = version.indexOf('+')
+  return plus === -1 ? version : version.slice(0, plus)
+}
+
 export function computeVersion({
   currentVersion,
   semverIncrement,
   preid,
   suffix,
+  build,
   breakingIsMinorOn0x,
   noIncrement,
 }: {
@@ -28,6 +55,11 @@ export function computeVersion({
   semverIncrement: ReleaseType
   preid: string | undefined
   suffix: string | undefined
+  // Build metadata (`+<build>`), used to carry the commit sha. It is written
+  // to package.json (and from there baked into firmware), but pnpm strips it
+  // at publish (pnpm#11518), so the registry only ever sees the bare
+  // prerelease version. Ignored by semver precedence.
+  build?: string
   breakingIsMinorOn0x?: boolean
   // Base the version on `currentVersion` as-is, skipping the semver
   // increment. Used by release-preview: the rolling release PR has already
@@ -55,8 +87,9 @@ export function computeVersion({
     }
     base = bumped
   }
-  // Single source for the provenance-safe prerelease format. Keep `next`,
-  // `canary`, `pr-N`, and `release-preview` all routed through here so the
-  // shape can't drift between modes.
-  return preid ? `${base}-${preid}.${suffix}` : base
+  // Single source for the prerelease format. Keep `canary`, `pr-N`, and
+  // `release-preview` all routed through here so the shape can't drift
+  // between modes.
+  if (!preid) return base
+  return `${base}-${preid}.${suffix}${build ? `+${build}` : ''}`
 }
