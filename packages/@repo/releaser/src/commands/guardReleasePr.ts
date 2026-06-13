@@ -8,14 +8,10 @@ import {choice} from '@optique/core/valueparser'
 import {RELEASE_BRANCH} from '../util/constants.js'
 import {octokit, repoSlug} from '../util/octokit.js'
 
-// Guards the rolling release PR against being merged mid-regeneration:
-// create-release-pr.yml force-pushes a new bump commit and rewrites the PR
-// body on every push to main, and a merge during that window would ship a
-// stale version/changelog. `--phase start` converts the PR to a draft (drafts
-// cannot be merged) and prepends a caution notice to the body; `--phase
-// finish` removes the notice. The PR deliberately STAYS a draft: marking it
-// ready for review is the human act of deciding to release, and the next
-// push to main drafts it again.
+// Keeps the rolling release PR from being merged mid-regeneration: `start`
+// converts it to a draft (unmergeable) and prepends a caution notice,
+// `finish` removes the notice. The PR stays a draft — marking it ready for
+// review is the human act of deciding to release.
 
 const CAUTION_BLOCK = [
   '> [!CAUTION]',
