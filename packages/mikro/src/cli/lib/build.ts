@@ -76,7 +76,11 @@ function mikrojsExternalsPlugin(): import('esbuild').Plugin {
         path: args.path,
         external: true,
       }))
-      build.onResolve({filter: /^@mikrojs\//}, (args) => {
+      // Any bare package specifier (scoped `@scope/...` or unscoped `name/...`)
+      // that resolves to a firmware builtin package is externalized so it binds
+      // to the firmware builtin instead of being bundled. Not limited to
+      // @mikrojs/* — third-party driver/board packages work the same way.
+      build.onResolve({filter: /^@?[^./]/}, (args) => {
         if (isFirmwareBuiltin(args.path)) {
           return {path: args.path, external: true}
         }
@@ -86,8 +90,9 @@ function mikrojsExternalsPlugin(): import('esbuild').Plugin {
   }
 }
 
-/** Check if an @mikrojs/* package is a firmware builtin (has native code).
- * Firmware builtins export ./cmake which provides ESP-IDF component paths. */
+/** Check if a package is a firmware builtin (has native code), regardless of npm
+ * scope. Firmware builtin packages export ./cmake which provides ESP-IDF
+ * component paths. */
 const firmwareBuiltinCache = new Map<string, boolean>()
 function isFirmwareBuiltin(id: string): boolean {
   // Extract package name from import specifier (e.g. "@mikrojs/some-board/some-variant" -> "@mikrojs/some-board")
@@ -142,9 +147,10 @@ export async function trace(entries: string[]) {
       if (isBuiltinModule(id)) {
         return SKIP
       }
-      // Skip @mikrojs/* packages that are firmware builtins (have native code).
-      // These have a ./cmake export. Pure JS @mikrojs/* packages are bundled normally.
-      if (id.startsWith('@mikrojs/') && isFirmwareBuiltin(id)) {
+      // Skip firmware builtin packages (any scope) — they have native code and
+      // a ./cmake export, and resolve to the firmware builtin. Pure JS packages
+      // are traced and bundled normally.
+      if (isFirmwareBuiltin(id)) {
         return SKIP
       }
       return traceResolve(id, parent, job)
