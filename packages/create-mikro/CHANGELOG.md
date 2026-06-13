@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.15.0 (2026-06-13)
+
+### Breaking changes
+
+- **native:** scope `native:` module names to their owning package ([#243](https://github.com/mikrojs/mikro/pull/243))
+
+### Bug fixes
+
+- **release:** apply quickjs patches before packing tarball ([#242](https://github.com/mikrojs/mikro/pull/242))
+- **repl:** echo input immediately instead of waiting on device timing ([#240](https://github.com/mikrojs/mikro/pull/240))
+
 ## 0.14.0 (2026-06-13)
 
 ### Features
