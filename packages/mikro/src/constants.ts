@@ -22,7 +22,12 @@ export const BUILTIN_EXTERNALS = ['mikro', 'mikro/*', '@mikrojs/*']
 
 /** Check if a module specifier matches a firmware builtin pattern.
  * Note: @mikrojs/* packages are only builtins if they have native code.
- * The trace resolver handles this dynamically by checking for ./cmake exports. */
+ * The trace resolver handles this dynamically by checking for ./cmake exports.
+ * `native:` is a firmware-only scheme: it never resolves to a file on disk, so
+ * it is always a builtin (the on-device loader binds it to the registered native
+ * modules). This lets app-local native code be imported without packaging it. */
 export function isBuiltinModule(id: string): boolean {
-  return BUILTINS.includes(id) || id === 'mikro' || id.startsWith('mikro/')
+  return (
+    id.startsWith('native:') || BUILTINS.includes(id) || id === 'mikro' || id.startsWith('mikro/')
+  )
 }
