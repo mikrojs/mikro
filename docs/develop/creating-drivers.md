@@ -11,56 +11,55 @@ Drivers come in two flavors:
 
 2. **Pure JS drivers** are regular npm packages that use existing APIs like `mikro/spi` or `mikro/i2c`. No native code, no `cmake.js`, no ESP-IDF component. They're bundled and deployed with the user's app. Use this when existing APIs are sufficient.
 
-This walkthrough covers a **native driver**. For pure JS drivers, create a regular npm package that imports from `mikro/spi`, `mikro/i2c`, etc., and export a factory function.
+This walkthrough covers a **native driver**, published as a single package `@my-scope/bme280` (substitute your own npm scope and chip). For pure JS drivers, create a regular npm package that imports from `mikro/spi`, `mikro/i2c`, etc., and export a factory function.
 
 ## Package structure
 
 ```
-packages/@mikrojs/driver-bme280/
+@my-scope/bme280/
   package.json
   cmake.js
-  driver_bme280/                 # ESP-IDF component
+  bme280/                        # ESP-IDF component
     CMakeLists.txt
     idf_component.yml            # only if using managed components (see below)
     src/
       mik_bme280.cpp             # Native module implementation
   runtime/
-    bme280/
-      bme280.ts                  # JS wrapper (public API)
+    sensor/
+      sensor.ts                  # JS wrapper (public API)
       types.ts                   # TypeScript types
-    internal.d.ts                # Type declarations for native:@mikrojs/driver-bme280/bme280
+    internal.d.ts                # Type declarations for native:@my-scope/bme280/sensor
   tsconfig.json
 ```
 
 ::: warning Component directory naming
-The component directory name (`driver_bme280`) becomes the ESP-IDF component name. Other components reference it with `REQUIRES driver_bme280`. Choose a name and stick with it.
+The component directory name (`bme280`) becomes the ESP-IDF component name. Other components reference it with `REQUIRES bme280`. Choose a name and stick with it.
 :::
 
 ## Step 1: package.json
 
 ```json
 {
-  "name": "@mikrojs/driver-bme280",
+  "name": "@my-scope/bme280",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "exports": {
-    "./bme280": "./runtime/bme280/bme280.ts",
+    "./sensor": "./runtime/sensor/sensor.ts",
     "./cmake": "./cmake.js"
   },
   "dependencies": {
-    "@mikrojs/native": "workspace:*",
-    "@mikrojs/quickjs": "workspace:*"
+    "@mikrojs/native": "^0.14.0",
+    "@mikrojs/quickjs": "^0.14.0"
   }
 }
 ```
 
-The `./cmake` export is how the build system discovers your component. The `./bme280` export is what app code imports; its specifier matches the builtin name registered in Step 4.
+The `./cmake` export is how the build system discovers your component. The `./sensor` export is what app code imports; its specifier matches the builtin name registered in Step 4.
 
 ::: warning Dependencies are required
 `@mikrojs/native` and `@mikrojs/quickjs` must be declared as dependencies of the driver package: the component's `CMakeLists.txt` resolves them with Node from the package directory (Step 5), so they have to be reachable from there.
 
-`workspace:*` only resolves inside the mikro monorepo. If your driver lives in its own repo, use a published version range instead (for example `"^0.13.0"`).
+Use a published version range as shown. `workspace:*` only resolves inside the mikro monorepo.
 :::
 
 ## Step 2: cmake.js
@@ -71,7 +70,7 @@ import {fileURLToPath} from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-export const componentPath = join(__dirname, 'driver_bme280')
+export const componentPath = join(__dirname, 'bme280')
 ```
 
 **How discovery works:** the firmware's `project.cmake` runs `discover.js`, which walks the firmware project's `package.json` dependencies, loads each dependency's `./cmake` export, and adds every `componentPath` to `EXTRA_COMPONENT_DIRS`. Adding a driver to a firmware build means adding it to the firmware project's `package.json` dependencies. Nothing else.
@@ -100,14 +99,14 @@ static int mik__bme280_module_init(JSContext* ctx, JSModuleDef* m) {
 
 // Module constructor: lazily called on first import; declares exports
 static JSModuleDef* mik__bme280_init(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "native:@mikrojs/driver-bme280/bme280", mik__bme280_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:@my-scope/bme280/sensor", mik__bme280_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "default");
     return m;
 }
 
 // Self-register: the runtime discovers this at link time
-MIK_REGISTER_MODULE(bme280, "native:@mikrojs/driver-bme280/bme280", mik__bme280_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(bme280, "native:@my-scope/bme280/sensor", mik__bme280_init, nullptr, nullptr)
 
 static JSValue js_bme280_read(JSContext* ctx, JSValueConst this_val,
                                int argc, JSValueConst* argv) {
@@ -124,7 +123,7 @@ Key points:
 
 - `MIK_REGISTER_MODULE` uses a constructor attribute to add the module to a linked list at startup. No manual registration step needed.
 - The two trailing `nullptr` arguments are optional event-loop hooks. The first is a _consume_ callback that the runtime calls on every event loop iteration once the module has been imported; use it to drain completion queues from interrupt handlers or background tasks into JS callbacks (see `mik_http.cpp` for an example). The second is a _destroy_ callback called on runtime shutdown to release anything the module allocated. Pass `nullptr` for hooks you don't need.
-- The native module name must be package-qualified: `native:<your-package-name>/<module>` (here `native:@mikrojs/driver-bme280/bme280`). It is literally `native:` plus the builtin specifier registered in Step 4. The bare `native:mikro/*` namespace is reserved for the core runtime, so a driver reaching a core peripheral imports e.g. `native:mikro/i2c`. This rule is enforced at build time; an unqualified name fails to compile. The public API goes through the TypeScript wrapper.
+- The native module name must be package-qualified: `native:<your-package-name>/<module>` (here `native:@my-scope/bme280/sensor`). It is literally `native:` plus the builtin specifier registered in Step 4. The bare `native:mikro/*` namespace is reserved for the core runtime, so a driver reaching a core peripheral imports e.g. `native:mikro/i2c`. This rule is enforced at build time; an unqualified name fails to compile. The public API goes through the TypeScript wrapper.
 
 ## Step 4: Bytecode builtin registration
 
@@ -136,16 +135,16 @@ The TypeScript wrapper is compiled to bytecode and registered as a builtin. Add 
 // Generated by mikrojs_generate_bytecode() during build. Names follow
 // <SYMBOL_PREFIX>_<module>: header gen/<prefix>_<module>.h, symbols
 // <prefix>_<module>_bytecode and <prefix>_<module>_bytecode_size.
-#include "gen/driver_bme280_bme280.h"
+#include "gen/bme280_sensor.h"
 
-MIK_REGISTER_BUILTIN(bme280, "@mikrojs/driver-bme280/bme280",
-                     driver_bme280_bme280_bytecode, driver_bme280_bme280_bytecode_size)
+MIK_REGISTER_BUILTIN(bme280, "@my-scope/bme280/sensor",
+                     bme280_sensor_bytecode, bme280_sensor_bytecode_size)
 ```
 
-When user code does `import {readSensor} from '@mikrojs/driver-bme280/bme280'`, the loader finds this builtin by name.
+When user code does `import {readSensor} from '@my-scope/bme280/sensor'`, the loader finds this builtin by name.
 
 ::: warning Import specifiers are exact
-A builtin is resolved only by the exact registered name. There is no package-root or index resolution for builtins: `import ... from '@mikrojs/driver-bme280'` fails with a resolution error. The import must be the full registered name, here `@mikrojs/driver-bme280/bme280`.
+A builtin is resolved only by the exact registered name. There is no package-root or index resolution for builtins: `import ... from '@my-scope/bme280'` fails with a resolution error. The import must be the full registered name, here `@my-scope/bme280/sensor`.
 :::
 
 ## Step 5: CMakeLists.txt
@@ -178,23 +177,23 @@ idf_component_register(
 
 # Declare this component's package namespace. MIK_REGISTER_MODULE /
 # MIK_REGISTER_BUILTIN enforce at build time that names are qualified with it
-# (native:@mikrojs/driver-bme280/<module> and @mikrojs/driver-bme280/<module>),
+# (native:@my-scope/bme280/<module> and @my-scope/bme280/<module>),
 # so a package can't claim or shadow another's native: name.
-target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"@mikrojs/driver-bme280\"")
+target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"@my-scope/bme280\"")
 
 include("${_BYTECODE_CMAKE}")
 
 # Generate bytecode from TypeScript runtime modules
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${_PKG_DIR}/runtime"
-    MODULES bme280
-    MODULE_PREFIX "@mikrojs/driver-bme280"
-    SYMBOL_PREFIX "driver_bme280"
-    TARGET gen_bme280_bytecode
+    MODULES sensor
+    MODULE_PREFIX "@my-scope/bme280"
+    SYMBOL_PREFIX "bme280"
+    TARGET gen_sensor_bytecode
     WORKING_DIRECTORY "${_PKG_DIR}"
 )
-add_dependencies(${COMPONENT_LIB} gen_bme280_bytecode)
-target_include_directories(${COMPONENT_LIB} PRIVATE "${gen_bme280_bytecode_INCLUDE_DIR}")
+add_dependencies(${COMPONENT_LIB} gen_sensor_bytecode)
+target_include_directories(${COMPONENT_LIB} PRIVATE "${gen_sensor_bytecode_INCLUDE_DIR}")
 
 # Force the linker to keep the self-registered module and builtin. The
 # arguments are the registration ids: the first argument passed to
@@ -211,7 +210,7 @@ Only add an `idf_component.yml` if the component depends on packages from the ID
 
 ## Step 6: TypeScript wrapper
 
-`runtime/bme280/bme280.ts`:
+`runtime/sensor/sensor.ts`:
 
 ```ts
 import type {Result} from 'mikro/result'
@@ -219,7 +218,7 @@ import {ok, err} from 'mikro/result'
 import type {Reading} from './types.js'
 
 // Import the native module (compiled into firmware)
-import native from 'native:@mikrojs/driver-bme280/bme280'
+import native from 'native:@my-scope/bme280/sensor'
 
 export function readSensor(bus: number, address?: number): Result<Reading, Error> {
   try {
@@ -231,7 +230,7 @@ export function readSensor(bus: number, address?: number): Result<Reading, Error
 }
 ```
 
-`runtime/bme280/types.ts`:
+`runtime/sensor/types.ts`:
 
 ```ts
 export interface Reading {
@@ -246,7 +245,7 @@ export interface Reading {
 Type declarations for the native module so TypeScript can check imports:
 
 ```ts
-declare module 'native:@mikrojs/driver-bme280/bme280' {
+declare module 'native:@my-scope/bme280/sensor' {
   interface Native {
     read(
       bus: number,
@@ -277,12 +276,12 @@ declare module 'native:@mikrojs/driver-bme280/bme280' {
 
 ## Testing
 
-1. Add the driver to `esp32/package.json`:
+1. Add the driver to your firmware project's `package.json` (during development a `file:` path or `workspace:*` also works):
 
    ```json
    {
      "dependencies": {
-       "@mikrojs/driver-bme280": "workspace:*"
+       "@my-scope/bme280": "^0.0.1"
      }
    }
    ```
@@ -298,14 +297,14 @@ declare module 'native:@mikrojs/driver-bme280/bme280' {
 3. Test from the REPL:
 
    ```js
-   import {readSensor} from '@mikrojs/driver-bme280/bme280'
+   import {readSensor} from '@my-scope/bme280/sensor'
    const result = readSensor(0)
    console.log(result)
    ```
 
 ## Important notes
 
-- **`@mikrojs/*` imports are external**: esbuild marks all `mikro/*` and `@mikrojs/*` imports as external during bundling. They resolve at runtime in the firmware.
+- **Firmware builtin imports are external**: esbuild marks `mikro/*`, and any package that exports `./cmake` (your driver included), as external during bundling. They resolve at runtime in the firmware rather than being bundled into the app.
 - **Declare `mikro` as an optional peer**: if a published driver declares a `mikro` peerDependency (useful for types during development), mark it optional; drivers don't import `mikro` at runtime. A required peer also breaks preview installs: semver ranges never match prerelease versions, so with `autoInstallPeers` enabled a stable copy of `mikro` and its `@mikrojs/*` dependencies gets installed alongside the preview.
 
   ```json
@@ -316,3 +315,7 @@ declare module 'native:@mikrojs/driver-bme280/bme280' {
 
 - **C vs C++ source files**: Vendor C libraries (like sensor SDKs) should be compiled as `.c` files. Mixing them into `.cpp` files can cause issues with `-Werror` due to C++ strictness.
 - **DMA buffers**: If your peripheral uses DMA (SPI displays, etc.), allocate buffers with `heap_caps_malloc(size, MALLOC_CAP_DMA)`. DMA requires internal SRAM; PSRAM will not work.
+
+```
+
+```
