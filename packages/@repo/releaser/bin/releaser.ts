@@ -10,6 +10,7 @@ import * as bumpCommand from '../src/commands/bump.js'
 import * as changelogCommand from '../src/commands/changelog.js'
 import * as commentPrCommand from '../src/commands/commentPr.js'
 import * as githubReleaseCommand from '../src/commands/githubRelease.js'
+import * as guardReleasePrCommand from '../src/commands/guardReleasePr.js'
 import * as planCommand from '../src/commands/plan.js'
 import * as publishCommand from '../src/commands/publish.js'
 import * as releasePrBodyCommand from '../src/commands/releasePrBody.js'
@@ -26,6 +27,7 @@ const argsParser = or(
   object({command: tagCommand.args}),
   object({command: unlabelPreviewCommand.args}),
   object({command: githubReleaseCommand.args}),
+  object({command: guardReleasePrCommand.args}),
 )
 
 const prog = defineProgram({
@@ -67,6 +69,9 @@ try {
       break
     case 'github-release':
       await githubReleaseCommand.run(parsed.command)
+      break
+    case 'guard-release-pr':
+      await guardReleasePrCommand.run(parsed.command)
       break
   }
 } catch (err) {

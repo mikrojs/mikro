@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      pull-requests: read # for `releaser plan` to look up the merged PR's head ref
+      pull-requests: write # `releaser plan` PR lookups + `guard-release-pr` draft/body edits
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
         with:
@@ -34,6 +34,20 @@ jobs:
           fetch-tags: true
 
       - uses: ./.github/actions/setup-pnpm
+
+      # Mark the rolling release PR as regenerating before anything else:
+      # convert it to a draft (drafts cannot be merged) and prepend a caution
+      # notice to the body, so a stale release PR isn't merged
+      # mid-regeneration. The PR stays a draft afterwards — marking it ready
+      # for review is the human act of deciding to release. The final step
+      # only removes the notice; a failed run leaves it in place on purpose.
+      # No-ops when there is no open release PR (e.g. when this push IS the
+      # release-PR merge).
+      - name: Guard release PR (regenerating)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: pnpm --silent releaser guard-release-pr --phase start
 
       # peter-evans/create-pull-request will `git commit` the version
       # bumps, which fires our pre-commit hook. The hook runs eslint,
@@ -126,5 +140,19 @@ jobs:
           commit-message: 'chore(release): publish v${{ steps.next.outputs.version }}'
           branch: ci/release-main
           base: main
-          draft: false
+          # Born as a draft: the release PR is only marked ready for review by
+          # a human deciding to release (guard-release-pr re-drafts it on
+          # every regeneration). The action can't change draft state on
+          # updates, so this only applies at creation.
+          draft: true
           sign-commits: true
+
+      # Remove the caution notice from the regenerated PR (the body rewrite
+      # above already drops it; this also covers the case where the body was
+      # left untouched). The PR intentionally stays a draft.
+      - name: Guard release PR (regenerated)
+        if: steps.plan.outputs.should_run == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: pnpm --silent releaser guard-release-pr --phase finish
