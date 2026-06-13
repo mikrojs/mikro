@@ -12,6 +12,7 @@
     "test:protocol": "npx tsx test-protocol.ts"
   },
   "dependencies": {
-    "@mikrojs/firmware": "workspace:*"
+    "@mikrojs/firmware": "workspace:*",
+    "@repo/idf.py": "workspace:*"
   }
 }

@@ -193,7 +193,10 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Init submodules
-        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
+        # nanocbor must be checked out so the `deps/nanocbor` entries in
+        # @mikrojs/native's `files` match at pack time — the published
+        # ESP-IDF component compiles nanocbor straight from the package.
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
 
       - uses: ./.github/actions/setup-pnpm
         with:

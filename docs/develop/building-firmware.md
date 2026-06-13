@@ -11,20 +11,20 @@ For building custom firmware from npm packages without cloning the monorepo, see
 
 ## One-time ESP-IDF setup
 
-Install ESP-IDF >= 6.0.1 using [EIM (ESP-IDF Installation Manager)](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html):
+Install ESP-IDF >= 6.0.1 using [EIM (ESP-IDF Installation Manager)](https://docs.espressif.com/projects/idf-im-ui/en/latest/):
 
 ```sh
 eim install -i v6.0.1 -t all -n true
 ```
 
-Then allow direnv in the `esp32/` directory (adds the `idf.py` wrapper from `@mikrojs/firmware` to your PATH):
+Then allow direnv in the `esp32/` directory (adds the monorepo's `idf.py` wrapper to your PATH):
 
 ```sh
 cd esp32
 direnv allow
 ```
 
-The `idf.py` command is provided by the `@mikrojs/firmware` package and runs through `eim run`, so no manual ESP-IDF activation is needed.
+The `idf.py` command is provided by the monorepo-internal `@repo/idf.py` package and runs through `eim run`, so no manual ESP-IDF activation is needed.
 
 ## Building generic firmware
 

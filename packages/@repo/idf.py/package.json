@@ -1,0 +1,11 @@
+{
+  "name": "@repo/idf.py",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Monorepo-internal idf.py wrapper that runs through `eim run`, so the esp32/ dev loop needs no manual ESP-IDF activation",
+  "license": "MIT",
+  "bin": {
+    "idf.py": "./idf.py"
+  },
+  "type": "module"
+}

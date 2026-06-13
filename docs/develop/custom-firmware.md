@@ -11,7 +11,7 @@ You can build custom firmware projects by depending on `@mikrojs/firmware` from 
 
 - [Node.js](https://nodejs.org/) >= 24
 - [pnpm](https://pnpm.io/) or npm
-- [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html) with ESP-IDF >= 6.0.1
+- [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/) with ESP-IDF >= 6.0.1
 
 ```sh
 eim install -i v6.0.1 -t all -n true
@@ -23,7 +23,7 @@ eim install -i v6.0.1 -t all -n true
 my-firmware/
 ├── package.json
 ├── CMakeLists.txt
-└── main/
+└── main/              # optional, see Step 3
     ├── CMakeLists.txt
     └── main.cpp
 ```
@@ -72,7 +72,9 @@ project(my-firmware)
 
 The `project.cmake` from `@mikrojs/firmware` handles everything: ESP-IDF version validation, component discovery, sdkconfig defaults, and partition table setup.
 
-## Step 3: main.cpp
+## Step 3: main.cpp (optional)
+
+This step is optional. If your project has no `main/` directory, `project.cmake` adds the firmware package's default one, which calls `MIK_Main()`. A firmware that just composes existing board and driver packages needs no `main/` at all. Write your own to customize initialization.
 
 For standard firmware (REPL, deploy, config protocols):
 
@@ -98,13 +100,22 @@ idf_component_register(SRCS "main.cpp"
 
 ## Step 4: Install and build
 
+First activate ESP-IDF in your shell. With [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/), run `eim select` and source the activation script it prints:
+
 ```sh
-pnpm install
-npx idf.py set-target esp32c6
-npx idf.py build flash monitor
+eim select
+# To activate this environment, run the following command in your terminal:
+# source ~/.espressif/tools/activate_idf_v6.0.1.sh
+source ~/.espressif/tools/activate_idf_v6.0.1.sh
 ```
 
-The `idf.py` command is provided by `@mikrojs/firmware` and runs through [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html), so no manual ESP-IDF activation is needed.
+Then install and build:
+
+```sh
+pnpm install
+idf.py set-target esp32c6
+idf.py build flash monitor
+```
 
 Run `idf.py` from the firmware project directory (the one containing `CMakeLists.txt`). Running it from a parent directory, such as a workspace root, fails with "CMakeLists.txt not found in project directory".
 

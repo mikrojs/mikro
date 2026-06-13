@@ -21,11 +21,11 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 # Use -Os to reduce code size (less IRAM pressure, smaller function frames)
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 
-# Move system functions from IRAM to flash (IRAM and DRAM share the same
-# SRAM on single-core chips like C3/C6, so freeing IRAM also frees DRAM)
+# Move heap functions from IRAM to flash (IRAM and DRAM share the same
+# SRAM on single-core chips like C3/C6, so freeing IRAM also frees DRAM).
+# FreeRTOS and esp_ringbuf functions are placed in flash by default since
+# ESP-IDF 6.0; their *_PLACE_FUNCTIONS_INTO_FLASH options were removed.
 CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
-CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH=y
-CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=y
 
 # Trade WiFi throughput for ~15-20KB IRAM savings. Fine for mikrojs
 # workloads (HTTP requests, small payloads — not high-throughput streaming).
