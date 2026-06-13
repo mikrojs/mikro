@@ -1,6 +1,6 @@
 import {lazyEvent} from 'mikro/observable/lazy'
 import {err, ok} from 'mikro/result'
-import {Wifi as NativeWifi} from 'native:wifi'
+import {Wifi as NativeWifi} from 'native:mikro/wifi'
 
 import type {Result} from '../result/types.js'
 import type {

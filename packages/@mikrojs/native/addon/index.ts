@@ -83,14 +83,14 @@ export class MikroRuntime {
     this.native.registerModuleSource(name, source)
   }
 
-  /** Drain all outbound messages sent from QuickJS via native:host.send().
+  /** Drain all outbound messages sent from QuickJS via native:mikro/host.send().
    * Returns and clears the queue. Call after each loopOnce(). */
   drainMessages(): HostMessage[] {
     return this.native.drainMessages()
   }
 
   /** Post a message from Node.js into the QuickJS runtime.
-   * Delivered to the native:host.onMessage() callback on the next loop tick. */
+   * Delivered to the native:mikro/host.onMessage() callback on the next loop tick. */
   postMessage(type: string, data: string): void {
     this.native.postMessage(type, data)
   }
@@ -102,7 +102,7 @@ export class MikroRuntime {
     this.native.setPreprocessor(fn)
   }
 
-  /** Set a synchronous RPC handler called from QuickJS via native:host.call().
+  /** Set a synchronous RPC handler called from QuickJS via native:mikro/host.call().
    * The handler receives a method name (e.g. 'pin.pinMode') and JSON-encoded args,
    * and must return a JSON-encoded result string (or a Promise of one for async). */
   setRpcHandler(handler: (method: string, argsJson: string) => string | Promise<string>): void {

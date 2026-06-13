@@ -1,4 +1,4 @@
-import * as native from 'native:http_server'
+import * as native from 'native:mikro/http_server'
 
 import {createServerFromNative} from './server-impl.js'
 

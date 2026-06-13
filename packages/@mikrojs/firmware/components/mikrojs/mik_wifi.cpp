@@ -22,7 +22,7 @@ static inline MIKWifiState*& mik__wifi_st(MIKRuntime* rt) {
     return reinterpret_cast<MIKWifiState*&>(rt->module_data[mik__wifi_slot]);
 }
 
-#define MIK_WIFI_TAG "native:wifi"
+#define MIK_WIFI_TAG "native:mikro/wifi"
 #define MIK_WIFI_MAX_SCAN_RESULTS 20
 #define MIK_WIFI_MAX_AP_STATIONS 4
 
@@ -1164,7 +1164,7 @@ static JSModuleDef* mik__wifi_init(JSContext* ctx) {
     s_event_queue = state->event_queue;
     mik__wifi_st(mik_rt) = state;
 
-    JSModuleDef* m = JS_NewCModule(ctx, "native:wifi", mik__wifi_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/wifi", mik__wifi_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "Wifi");
     return m;
@@ -1441,4 +1441,4 @@ void mik__wifi_destroy(JSContext* ctx) {
     }
 }
 
-MIK_REGISTER_MODULE(wifi, "native:wifi", mik__wifi_init, mik__wifi_consume, mik__wifi_destroy)
+MIK_REGISTER_MODULE(wifi, "native:mikro/wifi", mik__wifi_init, mik__wifi_consume, mik__wifi_destroy)

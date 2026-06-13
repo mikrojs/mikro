@@ -103,7 +103,7 @@ struct MIKRuntime {
      * vector and freed when removed or flushed. */
     std::vector<MIKRejectedPromise> pending_rejections;
     /* Shared prototype for Result objects ({ok, value} / {ok, error}) created
-     * by mik__result_ok/mik__result_err and the native:result ok()/err()
+     * by mik__result_ok/mik__result_err and the native:mikro/result ok()/err()
      * functions.  Holds .map/.mapErr/.andThen/.match/.orDefault/.orPanic +
      * Symbol.for('mikrojs.inspect').  Initialized eagerly by mik__result_init
      * and freed in MIK_FreeRuntime. */

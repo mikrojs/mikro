@@ -1,4 +1,4 @@
-import {NeoPixel as NativeNeoPixel} from 'native:neopixel'
+import {NeoPixel as NativeNeoPixel} from 'native:mikro/neopixel'
 
 import type {Result} from '../result/types.js'
 import type {NeoPixelError, NeoPixelOptions} from './types.js'

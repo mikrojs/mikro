@@ -1,4 +1,4 @@
-import * as native from 'native:stdio'
+import * as native from 'native:mikro/stdio'
 
 import type {StdIn, StdOut} from './types.js'
 

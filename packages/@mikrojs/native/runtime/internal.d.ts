@@ -15,25 +15,25 @@ declare module 'mikro/observable/lazy' {
   export {lazyEvent} from './observable/lazy.js'
 }
 
-declare module 'native:cbor' {
+declare module 'native:mikro/cbor' {
   import type {CborError} from '@mikrojs/native/runtime/cbor/types'
   import type {Result} from 'mikro/result'
   export function encode(value: unknown): Result<Uint8Array, CborError>
   export function decode(data: Uint8Array): Result<unknown, CborError>
 }
 
-declare module 'native:result' {
+declare module 'native:mikro/result' {
   import type {ErrResult, OkResult} from './result/types.js'
   export function ok(): OkResult<void>
   export function ok<T>(value: T): OkResult<T>
   export function err<E>(error: E): ErrResult<E>
 }
 
-declare module 'native:observable' {
+declare module 'native:mikro/observable' {
   export {Observable} from '@mikrojs/native/runtime/observable/types'
 }
 
-declare module 'native:sys' {
+declare module 'native:mikro/sys' {
   import type {JsMemoryUsage, ResetReason} from './sys/types.js'
   export function evalScript(code: string): Promise<{value: unknown}>
   export function memoryUsage(): {
@@ -70,7 +70,7 @@ declare module 'native:sys' {
   export const resetReason: ResetReason
 }
 
-declare module 'native:fs' {
+declare module 'native:mikro/fs' {
   import type {DirEntry, FSError, MkdirOptions, StatResult, WriteFileOptions} from './fs/types.js'
   import type {Result} from './result/types.js'
 
@@ -108,7 +108,7 @@ declare module 'native:fs' {
   export function exists(path: string): boolean
 }
 
-declare module 'native:stdio' {
+declare module 'native:mikro/stdio' {
   export const stdout: {
     write(output: Uint8Array | string): boolean
     flush(): void
@@ -121,7 +121,7 @@ declare module 'native:stdio' {
   }
 }
 
-declare module 'native:pin' {
+declare module 'native:mikro/pin' {
   import type {PinError} from '@mikrojs/native/runtime/pin/types'
   import type {Result} from 'mikro/result'
   export type PinMode = 0x01 | 0x03 | 0x05
@@ -133,7 +133,7 @@ declare module 'native:pin' {
   export function analogReadMillivolts(pin: number, attenuation: number): Result<number, PinError>
 }
 
-declare module 'native:sleep' {
+declare module 'native:mikro/sleep' {
   import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'
 
   export function deepSleep(sources: DeepWakeupSources): never
@@ -143,7 +143,7 @@ declare module 'native:sleep' {
   export function canWakeFromExt1(): boolean
 }
 
-declare module 'native:http' {
+declare module 'native:mikro/http' {
   import type {RequestError} from 'mikro/http/helpers'
   import type {Result} from 'mikro/result'
 
@@ -165,7 +165,7 @@ declare module 'native:http' {
   export function pendingCount(): number
 }
 
-declare module 'native:http_server' {
+declare module 'native:mikro/http_server' {
   import type {Result} from 'mikro/result'
 
   import type {ServerError} from './http/server-impl.js'
@@ -196,7 +196,7 @@ declare module 'native:http_server' {
   export function respondEnd(id: number): void
   export function getHeader(id: number, name: string): string | undefined
 }
-declare module 'native:i2c' {
+declare module 'native:mikro/i2c' {
   import type {I2cError} from '@mikrojs/native/runtime/i2c/types'
   import type {Result} from 'mikro/result'
 
@@ -228,7 +228,7 @@ declare module 'native:i2c' {
     scan(): Result<Uint8Array, I2cError>
   }
 }
-declare module 'native:spi' {
+declare module 'native:mikro/spi' {
   import type {SpiError} from '@mikrojs/native/runtime/spi/types'
   import type {Result} from 'mikro/result'
 
@@ -257,7 +257,7 @@ declare module 'native:spi' {
   }
 }
 
-declare module 'native:sntp' {
+declare module 'native:mikro/sntp' {
   import type {SntpError} from '@mikrojs/native/runtime/sntp/types'
   import type {Result} from 'mikro/result'
   /**
@@ -275,7 +275,7 @@ declare module 'native:sntp' {
   export function setTimezone(tz: string): void
 }
 
-declare module 'native:rtc' {
+declare module 'native:mikro/rtc' {
   type NRV = {ok: true} | {ok: false; error: {code: number; message: string}}
   export function set(key: string, value: unknown): NRV
   export function get(key: string): unknown
@@ -284,7 +284,7 @@ declare module 'native:rtc' {
   export function info(): {used: number; total: number; entries: number}
 }
 
-declare module 'native:nvs_kv' {
+declare module 'native:mikro/nvs_kv' {
   type NRV = {ok: true} | {ok: false; error: {code: number; message: string}}
   export function set(key: string, value: unknown): NRV
   export function get(key: string): unknown
@@ -293,7 +293,7 @@ declare module 'native:nvs_kv' {
   export function info(): {entries: number; used: number; total: number; free: number}
 }
 
-declare module 'native:pwm' {
+declare module 'native:mikro/pwm' {
   import type {PwmError} from '@mikrojs/native/runtime/pwm/types'
   import type {Result} from 'mikro/result'
 
@@ -310,7 +310,7 @@ declare module 'native:pwm' {
   }
 }
 
-declare module 'native:neopixel' {
+declare module 'native:mikro/neopixel' {
   import type {NeoPixelError} from '@mikrojs/native/runtime/neopixel/types'
   import type {Result} from 'mikro/result'
 
@@ -328,7 +328,7 @@ declare module 'native:neopixel' {
   }
 }
 
-declare module 'native:uart' {
+declare module 'native:mikro/uart' {
   import type {UartError} from '@mikrojs/native/runtime/uart/types'
   import type {Result} from 'mikro/result'
 
@@ -360,7 +360,7 @@ declare module 'native:uart' {
   }
 }
 
-declare module 'native:ble' {
+declare module 'native:mikro/ble' {
   import type {BleError} from '@mikrojs/native/runtime/ble/types'
   import type {Result} from 'mikro/result'
 
@@ -414,7 +414,7 @@ declare module 'native:ble' {
   }
 }
 
-declare module 'native:wifi' {
+declare module 'native:mikro/wifi' {
   import type {WifiError} from '@mikrojs/native/runtime/wifi/types'
   import type {Result} from 'mikro/result'
 
@@ -495,7 +495,7 @@ declare module 'native:wifi' {
   }
 }
 
-declare module 'native:udp' {
+declare module 'native:mikro/udp' {
   import type {
     BindOptions,
     PeerAddress,

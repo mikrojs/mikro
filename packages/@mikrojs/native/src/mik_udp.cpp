@@ -777,7 +777,7 @@ JSModuleDef* mik__udp_init(JSContext* ctx) {
     JS_NewClassID(rt, &udp_socket_class_id);
     JS_NewClass(rt, udp_socket_class_id, &mik__udp_socket_class);
 
-    JSModuleDef* m = JS_NewCModule(ctx, "native:udp", mik__udp_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/udp", mik__udp_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "bind");
     return m;

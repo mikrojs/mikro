@@ -9,7 +9,7 @@
 #include "private.h"
 #include "utils.h"
 
-/* native:http_server — an HTTP server backed by ESP-IDF's esp_http_server.
+/* native:mikro/http_server — an HTTP server backed by ESP-IDF's esp_http_server.
  *
  * esp_http_server runs request handlers on its own (single) task; QuickJS is
  * single-threaded, so the JS handler must run on the event-loop task. This is
@@ -32,7 +32,7 @@
  * lookups via getHeader(), reading the parked request directly. The httpd task
  * is blocked waiting for the response, so there is no concurrent writer. */
 
-#define MIK_HS_TAG "native:http_server"
+#define MIK_HS_TAG "native:mikro/http_server"
 #define MIK_HS_DEFAULT_MAX_BODY 16384
 /* How often the parked handler wakes to check for server shutdown. */
 #define MIK_HS_ABORT_POLL_MS 250
@@ -674,7 +674,7 @@ static JSModuleDef* mik__http_server_init(JSContext* ctx) {
     MIKRuntime* rt = MIK_GetRuntime(ctx);
     mik__http_server_slot = MIK_AllocModuleSlot(rt);
 
-    JSModuleDef* m = JS_NewCModule(ctx, "native:http_server", mik__hs_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/http_server", mik__hs_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "start");
     JS_AddModuleExport(ctx, m, "stop");
@@ -786,5 +786,5 @@ void mik__http_server_destroy(JSContext* ctx) {
     mik__hs_st(rt) = nullptr;
 }
 
-MIK_REGISTER_MODULE(http_server, "native:http_server", mik__http_server_init,
+MIK_REGISTER_MODULE(http_server, "native:mikro/http_server", mik__http_server_init,
                     mik__http_server_consume, mik__http_server_destroy)

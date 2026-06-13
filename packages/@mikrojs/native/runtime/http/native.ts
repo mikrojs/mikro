@@ -1,4 +1,4 @@
-// Internal: native:http-backed request implementation. Bundled into
+// Internal: native:mikro/http-backed request implementation. Bundled into
 // http/request.js; not exposed as its own subpath. Exists as a seam so host
 // tests can inject a fake native module.
 
@@ -38,7 +38,7 @@ export interface NativeHttpModule {
 }
 
 /**
- * Build a `Request` function driven by a `native:http`-shaped module. Owns
+ * Build a `Request` function driven by a `native:mikro/http`-shaped module. Owns
  * AbortSignal listener lifecycle and total-wallclock timeout enforcement.
  *
  * Callers are responsible for releasing the native pending slot by either

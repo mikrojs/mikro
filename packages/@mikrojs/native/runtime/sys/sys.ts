@@ -1,6 +1,6 @@
 import {err, ok, PanicError, type Result} from 'mikro/result'
-import {getWakeupCause as nativeGetWakeupCause} from 'native:sleep'
-import * as native from 'native:sys'
+import {getWakeupCause as nativeGetWakeupCause} from 'native:mikro/sleep'
+import * as native from 'native:mikro/sys'
 
 export function uptime(): {boot: number; rtc: number} {
   return native.uptime()

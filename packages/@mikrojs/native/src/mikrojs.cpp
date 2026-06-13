@@ -357,7 +357,7 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
     JS_SetHostPromiseRejectionTracker(rt, mik__promise_rejection_tracker, NULL);
 
     /* Register internal C modules */
-    JSModuleDef* sys_mod = JS_NewCModule(ctx, "native:sys", mik__sys_module_init);
+    JSModuleDef* sys_mod = JS_NewCModule(ctx, "native:mikro/sys", mik__sys_module_init);
     CHECK_NOT_NULL(sys_mod);
     mik__add_exports(ctx, sys_mod, sys_exports, countof(sys_exports));
 
@@ -381,7 +381,7 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
         mod.init_fn(ctx);
     }
 
-    JSModuleDef* stdio_mod = JS_NewCModule(ctx, "native:stdio", mik__stdio_module_init);
+    JSModuleDef* stdio_mod = JS_NewCModule(ctx, "native:mikro/stdio", mik__stdio_module_init);
     CHECK_NOT_NULL(stdio_mod);
     mik__add_exports(ctx, stdio_mod, stdio_exports, countof(stdio_exports));
 
@@ -544,6 +544,14 @@ int MIK_AllocModuleSlot(MIKRuntime* mik_rt) {
 
 static void mik__check_module_collisions(void) {
     for (mik_module_desc_t* a = mik__module_registry_head; a != nullptr; a = a->next) {
+        /* Every native: name must be package-qualified ("native:<package>/…").
+         * The compile-time macro enforces this when MIK_PACKAGE_NAME is set;
+         * this catches a registration that bypassed it (e.g. a hand-rolled
+         * driver), so an unqualified name can't squat the bare namespace. */
+        if (strncmp(a->name, "native:", 7) == 0 && strchr(a->name + 7, '/') == nullptr) {
+            fprintf(stderr, "FATAL: native module name not package-qualified: \"%s\"\n", a->name);
+            abort();
+        }
         for (mik_module_desc_t* b = a->next; b != nullptr; b = b->next) {
             if (strcmp(a->name, b->name) == 0) {
                 fprintf(stderr, "FATAL: native module name collision: \"%s\"\n", a->name);

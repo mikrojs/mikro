@@ -245,7 +245,7 @@ int MIK_AllocModuleSlot(MIKRuntime* mik_rt);
 typedef JSModuleDef* (*MIKModuleInitFn)(JSContext* ctx);
 
 typedef struct mik_module_desc_t {
-    const char* name;         /* module name, e.g. "native:pin" */
+    const char* name;         /* module name, e.g. "native:mikro/pin" */
     MIKModuleInitFn init;     /* called on first import; returns the JSModuleDef */
     MIKLoopConsumeFn consume; /* event loop consumer (nullable) */
     MIKLoopDestroyFn destroy; /* cleanup on shutdown (nullable) */
@@ -255,9 +255,29 @@ typedef struct mik_module_desc_t {
 extern mik_module_desc_t* mik__module_registry_head;
 
 /* NOLINTBEGIN(bugprone-macro-parentheses,cppcoreguidelines-avoid-non-const-global-variables) */
+/* Namespace governance. The build defines MIK_PACKAGE_NAME for every component:
+ * "mikro" for the core runtime, and the owning npm package name for a discovered
+ * driver/board package (assigned authoritatively from the dependency graph, not
+ * self-declared). A native module must then be named "native:<MIK_PACKAGE_NAME>/…"
+ * and a registered builtin "<MIK_PACKAGE_NAME>/…". This reserves the native:
+ * namespace to mikro and stops a package from claiming or shadowing another's
+ * name. Enforced at compile time; the static_assert needs string-literal args
+ * (always the case here). */
+#ifdef MIK_PACKAGE_NAME
+#define MIK__REQUIRE_PREFIX(name_, prefix_)                                        \
+    static_assert(__builtin_strncmp((name_), (prefix_), sizeof(prefix_) - 1) == 0, \
+                  "mikrojs: name must start with \"" prefix_ "\"")
+#define MIK__REQUIRE_NATIVE_NS(name_) MIK__REQUIRE_PREFIX(name_, "native:" MIK_PACKAGE_NAME "/")
+#define MIK__REQUIRE_BUILTIN_NS(name_) MIK__REQUIRE_PREFIX(name_, MIK_PACKAGE_NAME "/")
+#else
+#define MIK__REQUIRE_NATIVE_NS(name_) static_assert(true, "")
+#define MIK__REQUIRE_BUILTIN_NS(name_) static_assert(true, "")
+#endif
+
 /* The descriptor has external linkage so the linker can be told to keep it
  * via -u flags (static symbols in static libraries get stripped). */
 #define MIK_REGISTER_MODULE(id, name_, init_, consume_, destroy_)              \
+    MIK__REQUIRE_NATIVE_NS(name_);                                             \
     mik_module_desc_t mik__mod_desc_##id = {                                   \
         name_, init_, consume_, destroy_, NULL};                               \
     static void __attribute__((constructor)) mik__register_mod_##id(void) {    \
@@ -278,6 +298,7 @@ extern mik_ext_builtin_t* mik__ext_builtin_head;
 
 /* The descriptor has external linkage so the linker can keep it via -u flags. */
 #define MIK_REGISTER_BUILTIN(id, name_, data_, size_)                              \
+    MIK__REQUIRE_BUILTIN_NS(name_);                                                \
     mik_ext_builtin_t mik__builtin_##id = {                                        \
         name_, data_, size_, NULL};                                                \
     static void __attribute__((constructor)) mik__register_builtin_##id(void) {    \

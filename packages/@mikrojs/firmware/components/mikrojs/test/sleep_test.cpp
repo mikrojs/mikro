@@ -27,11 +27,11 @@ static JSValue eval_module(const char* code) {
 
 /* ── Module exports ──────────────────────────────────────────────── */
 
-TEST_CASE("native:sleep exports expected functions", "[modules]") {
+TEST_CASE("native:mikro/sleep exports expected functions", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { deepSleep, lightSleep, getWakeupCause } from "native:sleep";
+        import { deepSleep, lightSleep, getWakeupCause } from "native:mikro/sleep";
         globalThis.__deepSleep = typeof deepSleep === "function";
         globalThis.__lightSleep = typeof lightSleep === "function";
         globalThis.__getWakeupCause = typeof getWakeupCause === "function";
@@ -53,11 +53,11 @@ TEST_CASE("native:sleep exports expected functions", "[modules]") {
 
 /* ── getWakeupCause returns a string ─────────────────────────────── */
 
-TEST_CASE("native:sleep getWakeupCause returns a string", "[modules]") {
+TEST_CASE("native:mikro/sleep getWakeupCause returns a string", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { getWakeupCause } from "native:sleep";
+        import { getWakeupCause } from "native:mikro/sleep";
         const cause = getWakeupCause();
         globalThis.__isString = typeof cause === "string";
         globalThis.__cause = cause;
@@ -85,11 +85,11 @@ TEST_CASE("native:sleep getWakeupCause returns a string", "[modules]") {
 
 /* ── invalid gpio.level throws RangeError ────────────────────────── */
 
-TEST_CASE("native:sleep lightSleep throws RangeError on invalid level", "[modules]") {
+TEST_CASE("native:mikro/sleep lightSleep throws RangeError on invalid level", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { lightSleep } from "native:sleep";
+        import { lightSleep } from "native:mikro/sleep";
         try {
             lightSleep({gpio: {pin: 0, level: "bogus"}});
             globalThis.__threw = false;
@@ -118,14 +118,14 @@ TEST_CASE("native:sleep lightSleep throws RangeError on invalid level", "[module
 /* Light sleep disconnects UART console on targets without USB Serial/JTAG,
    causing the test monitor to stall. Only run on chips that have USB
    Serial/JTAG which keeps the connection alive through light sleep. */
-TEST_CASE("native:sleep lightSleep with 1us timer returns or rejects gracefully", "[modules]") {
+TEST_CASE("native:mikro/sleep lightSleep with 1us timer returns or rejects gracefully", "[modules]") {
 #if !SOC_USB_SERIAL_JTAG_SUPPORTED
     TEST_IGNORE_MESSAGE("light sleep disconnects UART console, skipped on non-USB targets");
 #endif
     setup();
 
     JSValue ret = eval_module(R"(
-        import { lightSleep } from "native:sleep";
+        import { lightSleep } from "native:mikro/sleep";
         try {
             lightSleep({timer: 1});
             globalThis.__result = "ok";

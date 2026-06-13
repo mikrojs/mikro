@@ -8,8 +8,8 @@
 
 #include <doctest.h>
 
-/* ── Helper: encode a JS value through native:cbor.encode ─────────── */
-/* Since native:cbor is a module requiring import(), we test the nanocbor
+/* ── Helper: encode a JS value through native:mikro/cbor.encode ─────────── */
+/* Since native:mikro/cbor is a module requiring import(), we test the nanocbor
  * C API directly for encode/decode round-trips, and use the mock REPL
  * protocol to verify the protocol-level CBOR payloads. */
 

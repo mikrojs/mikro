@@ -1,5 +1,5 @@
 import {err, ok} from 'mikro/result'
-import * as native from 'native:fs'
+import * as native from 'native:mikro/fs'
 
 import type {Result} from '../result/types.js'
 import type {
@@ -11,7 +11,7 @@ import type {
   WriteFileOptions,
 } from './types.js'
 
-// native:fs emits typed FSError variants directly (see mik__fs_err_result in
+// native:mikro/fs emits typed FSError variants directly (see mik__fs_err_result in
 // src/fs.cpp), including the `path` field for path-level operations. These
 // wrappers are thin pass-throughs that only exist to expose a typed public
 // API surface for mikrojs/fs.

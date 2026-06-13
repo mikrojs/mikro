@@ -29,7 +29,7 @@ packages/@mikrojs/driver-{name}/
     src/
       mik_{name}.cpp              # Native module + MIK_REGISTER_MODULE + MIK_REGISTER_BUILTIN
   src/
-    internal.d.ts                 # Type declarations for native:{name}
+    internal.d.ts                 # Type declarations for native:@mikrojs/driver-{name}/{name}
     {name}/
       {name}.ts                   # JS wrapper (compiled to bytecode)
       types.ts                    # Public TypeScript types (exported to consumers)
@@ -115,6 +115,12 @@ idf_component_register(
     REQUIRES mikrojs
 )
 
+# Package namespace. MIK_REGISTER_MODULE / MIK_REGISTER_BUILTIN enforce at build
+# time that names are qualified with it (native:@mikrojs/driver-{name}/<module>
+# and @mikrojs/driver-{name}/<module>), so the package can't claim or shadow
+# another's native: name. native:mikro/* is reserved for the core runtime.
+target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"@mikrojs/driver-{name}\"")
+
 include("${_BYTECODE_CMAKE}")
 mikrojs_force_include_modules({name})
 mikrojs_force_include_builtins({name})
@@ -145,15 +151,15 @@ target_include_directories(${COMPONENT_LIB} PRIVATE "${gen_driver_{name}_bytecod
 
 // Module init (called lazily on first import)
 JSModuleDef* mik__{name}_mod_init(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "native:{name}", mik__{name}_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:@mikrojs/driver-{name}/{name}", mik__{name}_module_init);
     if (!m) return nullptr;
     // JS_AddModuleExport for each export
     return m;
 }
 
-MIK_REGISTER_MODULE({name}, "native:{name}", mik__{name}_mod_init, nullptr, nullptr)
+MIK_REGISTER_MODULE({name}, "native:@mikrojs/driver-{name}/{name}", mik__{name}_mod_init, nullptr, nullptr)
 
-MIK_REGISTER_BUILTIN({name}, "@mikrojs/driver-{name}",
+MIK_REGISTER_BUILTIN({name}, "@mikrojs/driver-{name}/{name}",
                       mik_driver_{name}_{name}_bytecode,
                       mik_driver_{name}_{name}_bytecode_size)
 ```
@@ -165,7 +171,7 @@ Export all public interfaces and function signatures. This file MUST NOT import 
 ### 8. JS wrapper ({name}.ts)
 
 ```typescript
-import * as native from 'native:{name}'
+import * as native from 'native:@mikrojs/driver-{name}/{name}'
 import {type Result, err, ok} from 'mikro/result'
 import type {SomeType} from './types.js'
 
@@ -176,7 +182,7 @@ export type {SomeType} from './types.js'
 
 ### 9. internal.d.ts
 
-Ambient type declarations for the `native:{name}` native module. Only used by the driver's own typechecking, NOT exported to consumers.
+Ambient type declarations for the `native:@mikrojs/driver-{name}/{name}` native module. Only used by the driver's own typechecking, NOT exported to consumers.
 
 ## Important notes
 

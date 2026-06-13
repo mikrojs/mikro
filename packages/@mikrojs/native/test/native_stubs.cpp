@@ -61,18 +61,18 @@ JSValue stub_ctor(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     }                                                                                              \
     MIK_REGISTER_MODULE(stub_##id, mod_name, id##_init, nullptr, nullptr)
 
-STUB_FUNCS(pin, "native:pin", "pinMode", "digitalWrite", "digitalRead", "analogRead",
+STUB_FUNCS(pin, "native:mikro/pin", "pinMode", "digitalWrite", "digitalRead", "analogRead",
            "analogReadMillivolts")
-STUB_FUNCS(sntp, "native:sntp", "sync", "stop", "setTimezone")
-STUB_FUNCS(sleep, "native:sleep", "deepSleep", "lightSleep", "getWakeupCause",
+STUB_FUNCS(sntp, "native:mikro/sntp", "sync", "stop", "setTimezone")
+STUB_FUNCS(sleep, "native:mikro/sleep", "deepSleep", "lightSleep", "getWakeupCause",
            "canWakeFromExt0", "canWakeFromExt1")
-STUB_FUNCS(http, "native:http", "request", "nextMessage", "cancel", "pendingCount")
-STUB_FUNCS(nvs_kv, "native:nvs_kv", "set", "get", "remove", "clear", "info")
-STUB_FUNCS(rtc, "native:rtc", "set", "get", "remove", "clear", "info")
+STUB_FUNCS(http, "native:mikro/http", "request", "nextMessage", "cancel", "pendingCount")
+STUB_FUNCS(nvs_kv, "native:mikro/nvs_kv", "set", "get", "remove", "clear", "info")
+STUB_FUNCS(rtc, "native:mikro/rtc", "set", "get", "remove", "clear", "info")
 
-STUB_CLASS(wifi, "native:wifi", "Wifi")
-STUB_CLASS(pwm, "native:pwm", "Pwm")
-STUB_CLASS(spi, "native:spi", "Spi")
-STUB_CLASS(i2c, "native:i2c", "I2c")
-STUB_CLASS(uart, "native:uart", "Uart")
-STUB_CLASS(neopixel, "native:neopixel", "NeoPixel")
+STUB_CLASS(wifi, "native:mikro/wifi", "Wifi")
+STUB_CLASS(pwm, "native:mikro/pwm", "Pwm")
+STUB_CLASS(spi, "native:mikro/spi", "Spi")
+STUB_CLASS(i2c, "native:mikro/i2c", "I2c")
+STUB_CLASS(uart, "native:mikro/uart", "Uart")
+STUB_CLASS(neopixel, "native:mikro/neopixel", "NeoPixel")

@@ -8,7 +8,7 @@
 #include "unity.h"
 
 /* The M1a BLE test suite exercises the broadcaster lifecycle through the
- * `native:ble` module. Tests do not require an external central — they only
+ * `native:mikro/ble` module. Tests do not require an external central — they only
  * verify that advertise/stop/teardown return cleanly and the module exports
  * match the expected shape. Real GATT and connection behavior belongs to M2.
  */
@@ -29,7 +29,7 @@ static void teardown() {
      * from a clean state. stop() is idempotent. */
     JSValue ret = MIK_EvalModuleContent(
         ctx, "mikrojs/ble-test-teardown",
-        "import {Ble} from \"native:ble\"; new Ble().stop();", 48);
+        "import {Ble} from \"native:mikro/ble\"; new Ble().stop();", 48);
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
         mik__execute_jobs(ctx);
@@ -53,11 +53,11 @@ static JSValue eval_module(const char* code) {
 
 /* ── Module shape ─────────────────────────────────────────────────── */
 
-TEST_CASE("native:ble exports Ble with expected methods", "[ble]") {
+TEST_CASE("native:mikro/ble exports Ble with expected methods", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         globalThis.__isFunc = typeof Ble === "function";
         const ble = new Ble();
         globalThis.__isObj = typeof ble === "object" && ble !== null;
@@ -92,7 +92,7 @@ TEST_CASE("Ble.getName returns a mikrojs- prefixed name by default", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         globalThis.__name = ble.getName();
     )");
@@ -116,7 +116,7 @@ TEST_CASE("Ble.setName updates the cached name", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         const setResult = ble.setName("mikrojs-test");
         globalThis.__setOk = setResult.ok;
@@ -146,7 +146,7 @@ TEST_CASE("Ble.advertise then stopAdvertising returns ok", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         const startResult = ble.advertise({
             name: "mikrojs-test",
@@ -186,7 +186,7 @@ TEST_CASE("Ble.advertise twice returns AlreadyAdvertising", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         ble.advertise({name: "t", connectable: false});
         const second = ble.advertise({name: "t", connectable: false});
@@ -218,7 +218,7 @@ TEST_CASE("Ble.getAddress returns a colon-separated MAC", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         const result = ble.getAddress();
         globalThis.__ok = result.ok;
@@ -249,7 +249,7 @@ TEST_CASE("Ble.stop is idempotent", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         const first = ble.stop();
         const second = ble.stop();
@@ -279,7 +279,7 @@ TEST_CASE("Ble.advertise with services registers a GATT table", "[ble]") {
 
     /* Properties bitmask: read (0x01) | notify (0x08) = 0x09 */
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         const result = ble.advertise({
             connectable: true,
@@ -316,7 +316,7 @@ TEST_CASE("Ble.advertise with matching services on re-advertise succeeds", "[ble
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         const services = [{
             uuid: "180f",
@@ -360,7 +360,7 @@ TEST_CASE("Ble.advertise with different services on re-advertise errors", "[ble]
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         const first = ble.advertise({
             connectable: true,
@@ -408,7 +408,7 @@ TEST_CASE("Ble.advertise with invalid UUID errors", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         const result = ble.advertise({
             services: [{
@@ -441,7 +441,7 @@ TEST_CASE("Ble.advertise with 128-bit UUIDs registers", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         const result = ble.advertise({
             connectable: true,
@@ -480,7 +480,7 @@ TEST_CASE("Ble.setValue on a registered characteristic succeeds", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         const advResult = ble.advertise({
             connectable: true,
@@ -525,7 +525,7 @@ TEST_CASE("Ble.setValue on an unknown service errors", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         ble.advertise({
             connectable: true,
@@ -563,7 +563,7 @@ TEST_CASE("Ble.notify with no subscribers is a silent no-op", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         ble.advertise({
             connectable: true,
@@ -601,7 +601,7 @@ TEST_CASE("Ble.notify on an unknown characteristic errors", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         ble.advertise({
             connectable: true,
@@ -641,7 +641,7 @@ TEST_CASE("Ble.notify on a characteristic without notify property errors", "[ble
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         ble.advertise({
             connectable: true,
@@ -681,7 +681,7 @@ TEST_CASE("Ble.setValue on an unknown characteristic errors", "[ble]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {Ble} from "native:ble";
+        import {Ble} from "native:mikro/ble";
         const ble = new Ble();
         ble.advertise({
             connectable: true,

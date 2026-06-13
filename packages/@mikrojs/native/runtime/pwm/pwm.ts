@@ -1,5 +1,5 @@
 import {ok} from 'mikro/result'
-import {Pwm as NativePwm} from 'native:pwm'
+import {Pwm as NativePwm} from 'native:mikro/pwm'
 
 import type {Result} from '../result/types.js'
 import type {PwmError, PwmOptions} from './types.js'

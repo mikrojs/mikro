@@ -9,7 +9,7 @@
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
-#define MIK_NEOPIXEL_TAG "native:neopixel"
+#define MIK_NEOPIXEL_TAG "native:mikro/neopixel"
 #define MIK_NEOPIXEL_RMT_RESOLUTION_HZ 10000000  // 10 MHz → 0.1 µs per tick
 #define MIK_NEOPIXEL_MAX_LEDS 1024
 
@@ -428,10 +428,10 @@ static JSModuleDef* mik__neopixel_init(JSContext* ctx) {
     JS_SetClassProto(ctx, mik_neopixel_class_id, proto);  /* consumed */
 
     /* Register module */
-    JSModuleDef* m = JS_NewCModule(ctx, "native:neopixel", mik__neopixel_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/neopixel", mik__neopixel_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "NeoPixel");
     return m;
 }
 
-MIK_REGISTER_MODULE(neopixel, "native:neopixel", mik__neopixel_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(neopixel, "native:mikro/neopixel", mik__neopixel_init, nullptr, nullptr)

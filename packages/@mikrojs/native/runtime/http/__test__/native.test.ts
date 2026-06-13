@@ -4,7 +4,7 @@ import {describe, expect, it} from 'vitest'
 import {RequestError} from '../helpers.js'
 import {createRequestFromNative, type NativeHttpModule} from '../native.js'
 
-/* ── Fake native:http builder ──────────────────────────────────────── */
+/* ── Fake native:mikro/http builder ──────────────────────────────────────── */
 
 type Msg =
   | {kind: 'chunk'; data: Uint8Array}

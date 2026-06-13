@@ -30,11 +30,11 @@ static JSValue eval_module(const char* code) {
 
 /* ── Module structure tests ───────────────────────────────────────── */
 
-TEST_CASE("native:sntp exports sync, stop, and setTimezone", "[modules]") {
+TEST_CASE("native:mikro/sntp exports sync, stop, and setTimezone", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { sync, stop, setTimezone } from "native:sntp";
+        import { sync, stop, setTimezone } from "native:mikro/sntp";
         globalThis.__syncIsFunc = typeof sync === "function";
         globalThis.__stopIsFunc = typeof stop === "function";
         globalThis.__setTzIsFunc = typeof setTimezone === "function";
@@ -62,11 +62,11 @@ TEST_CASE("native:sntp exports sync, stop, and setTimezone", "[modules]") {
 
 /* ── sync returns a promise ───────────────────────────────────────── */
 
-TEST_CASE("native:sntp sync returns a result-wrapped promise", "[modules]") {
+TEST_CASE("native:mikro/sntp sync returns a result-wrapped promise", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { sync, stop } from "native:sntp";
+        import { sync, stop } from "native:mikro/sntp";
         const result = sync(["pool.ntp.org"], "UTC0", false);
         globalThis.__isOk = result.ok === true;
         globalThis.__isPromise = result.value instanceof Promise;
@@ -87,11 +87,11 @@ TEST_CASE("native:sntp sync returns a result-wrapped promise", "[modules]") {
 
 /* ── sync promise resolves with time on injected sync event ───────── */
 
-TEST_CASE("native:sntp sync resolves with time when sync completes", "[modules]") {
+TEST_CASE("native:mikro/sntp sync resolves with time when sync completes", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { sync, stop } from "native:sntp";
+        import { sync, stop } from "native:mikro/sntp";
         const startResult = sync(["pool.ntp.org"], "UTC0", false);
         startResult.value.then(result => {
             globalThis.__resolved = true;
@@ -129,11 +129,11 @@ TEST_CASE("native:sntp sync resolves with time when sync completes", "[modules]"
 
 /* ── one-shot sync stops SNTP after resolving ─────────────────────── */
 
-TEST_CASE("native:sntp one-shot sync stops after first sync", "[modules]") {
+TEST_CASE("native:mikro/sntp one-shot sync stops after first sync", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { sync, stop } from "native:sntp";
+        import { sync, stop } from "native:mikro/sntp";
         globalThis.__resolved = false;
         const startResult = sync(["pool.ntp.org"], "UTC0", false);
         startResult.value.then(() => {
@@ -162,11 +162,11 @@ TEST_CASE("native:sntp one-shot sync stops after first sync", "[modules]") {
 
 /* ── stop does not crash when not running ─────────────────────────── */
 
-TEST_CASE("native:sntp stop does not crash when not running", "[modules]") {
+TEST_CASE("native:mikro/sntp stop does not crash when not running", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stop } from "native:sntp";
+        import { stop } from "native:mikro/sntp";
         stop();
         globalThis.__stopDone = true;
     )");
@@ -182,11 +182,11 @@ TEST_CASE("native:sntp stop does not crash when not running", "[modules]") {
 
 /* ── setTimezone does not crash ───────────────────────────────────── */
 
-TEST_CASE("native:sntp setTimezone sets TZ without error", "[modules]") {
+TEST_CASE("native:mikro/sntp setTimezone sets TZ without error", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { setTimezone } from "native:sntp";
+        import { setTimezone } from "native:mikro/sntp";
         setTimezone("CET-1CEST,M3.5.0,M10.5.0/3");
         globalThis.__tzDone = true;
     )");
@@ -202,11 +202,11 @@ TEST_CASE("native:sntp setTimezone sets TZ without error", "[modules]") {
 
 /* ── sync rejects invalid server array ────────────────────────────── */
 
-TEST_CASE("native:sntp sync throws on invalid servers argument", "[modules]") {
+TEST_CASE("native:mikro/sntp sync throws on invalid servers argument", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { sync } from "native:sntp";
+        import { sync } from "native:mikro/sntp";
         try {
             sync("not-an-array", "UTC0", false);
             globalThis.__threw = false;
@@ -226,11 +226,11 @@ TEST_CASE("native:sntp sync throws on invalid servers argument", "[modules]") {
 
 /* ── sync throws on empty server array ────────────────────────────── */
 
-TEST_CASE("native:sntp sync throws on empty servers array", "[modules]") {
+TEST_CASE("native:mikro/sntp sync throws on empty servers array", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { sync } from "native:sntp";
+        import { sync } from "native:mikro/sntp";
         try {
             sync([], "UTC0", false);
             globalThis.__threw = false;

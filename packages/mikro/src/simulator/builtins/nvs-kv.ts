@@ -8,8 +8,8 @@ import type {BuiltinDefinition} from './types.js'
 // data round-trips losslessly.
 export const nvsKvBuiltin: BuiltinDefinition = {
   source: `
-import {encode, decode} from 'native:cbor'
-import {call} from 'native:host'
+import {encode, decode} from 'native:mikro/cbor'
+import {call} from 'native:mikro/host'
 import {ok} from 'mikro/result'
 
 function bytesToBase64(bytes) {

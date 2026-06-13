@@ -1,1 +1,1 @@
-export {Observable} from 'native:observable'
+export {Observable} from 'native:mikro/observable'

@@ -7,7 +7,7 @@ import type {BuiltinDefinition} from './types.js'
  */
 export const consoleBuiltin: BuiltinDefinition = {
   source: `
-import { send } from 'native:host'
+import { send } from 'native:mikro/host'
 import { inspect } from 'mikro/inspect'
 
 function format(args) {

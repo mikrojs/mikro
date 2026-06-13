@@ -1,4 +1,4 @@
-import * as native from 'native:i2c'
+import * as native from 'native:mikro/i2c'
 
 import type {Result} from '../result/types.js'
 import type {I2c as PlatformI2c, I2cError, I2cOptions} from './types.js'

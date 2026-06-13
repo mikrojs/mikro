@@ -10,7 +10,7 @@
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
-#define MIK_SNTP_TAG "native:sntp"
+#define MIK_SNTP_TAG "native:mikro/sntp"
 #define MIK_SNTP_MAX_SERVERS 3
 
 /* ── SNTP state (attached to MIKRuntime) ───────────────────────────── */
@@ -208,7 +208,7 @@ static JSModuleDef* mik__sntp_init(JSContext* ctx) {
     s_event_queue = state->event_queue;
     mik__sntp_st(mik_rt) = state;
 
-    JSModuleDef* m = JS_NewCModule(ctx, "native:sntp", mik__sntp_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/sntp", mik__sntp_module_init);
     if (!m) {
         /* The loop consumer (mik__sntp_destroy) is only registered when init
          * returns a non-null module (see modules.cpp). Clean up manually. */
@@ -281,4 +281,4 @@ void mik__sntp_destroy(JSContext* ctx) {
     mik__sntp_st(mik_rt) = nullptr;
 }
 
-MIK_REGISTER_MODULE(sntp, "native:sntp", mik__sntp_init, mik__sntp_consume, mik__sntp_destroy)
+MIK_REGISTER_MODULE(sntp, "native:mikro/sntp", mik__sntp_init, mik__sntp_consume, mik__sntp_destroy)

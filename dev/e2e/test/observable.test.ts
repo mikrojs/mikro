@@ -3,7 +3,7 @@ import {filter, finalize, map, take, takeUntil} from 'mikro/observable/operators
 import {assert, describe, test} from 'mikro/test'
 
 /* On-device sanity for the Observable runtime: verifies the C++ class
- * registers under `native:observable`, the operator bytecode bundle loads
+ * registers under `native:mikro/observable`, the operator bytecode bundle loads
  * and runs, and the runtime's microtask + Promise integration behaves the
  * same as the host doctests. The exhaustive behavioral coverage lives in
  * packages/@mikrojs/native/test/observable_test.cpp; this file only checks

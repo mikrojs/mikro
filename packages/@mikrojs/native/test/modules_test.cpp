@@ -299,7 +299,7 @@ TEST_CASE("unload: rejects builtin prefixes" * doctest::test_suite("modules")) {
     CHECK(JS_IsError(exc));
     JS_FreeValue(ctx, exc);
 
-    CHECK_EQ(-1, mik__unload_module(ctx, "native:sys"));
+    CHECK_EQ(-1, mik__unload_module(ctx, "native:mikro/sys"));
     exc = JS_GetException(ctx);
     CHECK(JS_IsError(exc));
     JS_FreeValue(ctx, exc);
@@ -373,8 +373,8 @@ TEST_CASE("withUnload: real mikro/module export unloads (e2e)"
         "globalThis.__leafEvals = (globalThis.__leafEvals || 0) + 1;\n"
         "export const v = 99;\n");
     /* The real shipped withUnload() from mikro/module — no inlined
-     * copy. mikro/module imports only native:sys (pure C, host-available), so
-     * unlike mikro/sys it needs no native:sleep stub. */
+     * copy. mikro/module imports only native:mikro/sys (pure C, host-available), so
+     * unlike mikro/sys it needs no native:mikro/sleep stub. */
     std::string entry_src =
         "import {withUnload} from 'mikro/module';\n"
         "globalThis.__firstLoaded = await withUnload(import('" + leaf + "'), m => m.v);\n"

@@ -1,4 +1,4 @@
-import {Observable} from 'native:observable'
+import {Observable} from 'native:mikro/observable'
 
 import type {Subscriber} from './types.js'
 

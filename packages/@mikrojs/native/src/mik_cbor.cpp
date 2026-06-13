@@ -322,7 +322,7 @@ static int mik__cbor_module_init(JSContext* ctx, JSModuleDef* m) {
 }
 
 JSModuleDef* mik__cbor_init(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "native:cbor", mik__cbor_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/cbor", mik__cbor_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "encode");
     JS_AddModuleExport(ctx, m, "decode");

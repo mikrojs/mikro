@@ -1,11 +1,11 @@
-import * as native from 'native:pin'
+import * as native from 'native:mikro/pin'
 
 import type {Result} from '../result/types.js'
 import type {AnalogReadOptions, Attenuation, PinError, PinMode} from './types.js'
 
 // Public mode lookup. Kept as a runtime value (rather than inlined) because
 // user code occasionally reads it to build a mode-picker UI on host-side
-// tooling; the native:pin layer uses the numeric constants directly.
+// tooling; the native:mikro/pin layer uses the numeric constants directly.
 const PIN_MODE_INPUT = 0x01
 const PIN_MODE_OUTPUT = 0x03
 const PIN_MODE_INPUT_PULLUP = 0x05
@@ -24,7 +24,7 @@ const NativeAttenuation: Record<Attenuation, number> = {
 } as const
 
 // Wrappers translate the string/enum JS-idiom args to the numeric codes the
-// native layer expects. Errors flow through unchanged: native:pin returns
+// native layer expects. Errors flow through unchanged: native:mikro/pin returns
 // {ok, error:{name,message}} directly (see mik_pin.cpp), so no remapping.
 
 export function pinMode(pin: number, mode: PinMode): Result<void, PinError> {

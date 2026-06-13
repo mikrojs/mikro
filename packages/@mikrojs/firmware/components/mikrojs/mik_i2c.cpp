@@ -4,7 +4,7 @@
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
-#define MIK_I2C_TAG "native:i2c"
+#define MIK_I2C_TAG "native:mikro/i2c"
 #define MIK_I2C_DEFAULT_FREQ 100000
 #define MIK_I2C_DEFAULT_TIMEOUT_MS 100
 #define MIK_I2C_SCAN_START 0x08
@@ -355,10 +355,10 @@ static JSModuleDef* mik__i2c_init(JSContext* ctx) {
     JS_SetClassProto(ctx, mik_i2c_class_id, proto);  /* consumed */
 
     /* Register module */
-    JSModuleDef* m = JS_NewCModule(ctx, "native:i2c", mik__i2c_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/i2c", mik__i2c_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "I2c");
     return m;
 }
 
-MIK_REGISTER_MODULE(i2c, "native:i2c", mik__i2c_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(i2c, "native:mikro/i2c", mik__i2c_init, nullptr, nullptr)

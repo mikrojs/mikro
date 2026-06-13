@@ -1,5 +1,5 @@
 /**
- * native:nvs_kv — NVS-backed key-value storage native module.
+ * native:mikro/nvs_kv — NVS-backed key-value storage native module.
  *
  * Values are CBOR-encoded and stored as NVS blobs in the "mik.kv" namespace.
  * Survives power cycles. NVS keys are limited to 15 characters.
@@ -206,7 +206,7 @@ static int mik__nvs_kv_module_init(JSContext* ctx, JSModuleDef* m) {
 }
 
 static JSModuleDef* mik__nvs_kv_init(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "native:nvs_kv", mik__nvs_kv_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/nvs_kv", mik__nvs_kv_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "set");
     JS_AddModuleExport(ctx, m, "get");
@@ -216,4 +216,4 @@ static JSModuleDef* mik__nvs_kv_init(JSContext* ctx) {
     return m;
 }
 
-MIK_REGISTER_MODULE(nvs_kv, "native:nvs_kv", mik__nvs_kv_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(nvs_kv, "native:mikro/nvs_kv", mik__nvs_kv_init, nullptr, nullptr)

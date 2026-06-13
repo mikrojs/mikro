@@ -1,4 +1,4 @@
-import {isUnloadableNamespace, unloadNamespace} from 'native:sys'
+import {isUnloadableNamespace, unloadNamespace} from 'native:mikro/sys'
 
 /**
  * Load a dynamically imported module, run `use` with it, then unload it and

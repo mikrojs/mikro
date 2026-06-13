@@ -869,7 +869,7 @@ void mik__pub_fs_register(JSContext* ctx) {
     JS_SetPropertyFunctionList(ctx, proto, mik_file_proto_funcs, countof(mik_file_proto_funcs));
     JS_SetClassProto(ctx, mik_file_class_id, proto);
 
-    JSModuleDef* m = JS_NewCModule(ctx, "native:fs", mik__pub_fs_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/fs", mik__pub_fs_module_init);
     if (m) {
         for (size_t i = 0; i < countof(pub_fs_exports); i++) {
             JS_AddModuleExport(ctx, m, pub_fs_exports[i]);

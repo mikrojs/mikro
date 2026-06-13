@@ -5,11 +5,11 @@
 #include "unity.h"
 
 /*
- * These tests exercise the native:fs JS module (FileHandle, readFile, stat, etc.)
+ * These tests exercise the native:mikro/fs JS module (FileHandle, readFile, stat, etc.)
  * through the mikrojs runtime. They require LittleFS to be mounted at /littlefs
  * with a dummy.txt file containing "Hello World".
  *
- * native:fs returns Result values; tests unwrap via `.value` / check `.ok`
+ * native:mikro/fs returns Result values; tests unwrap via `.value` / check `.ok`
  * explicitly rather than wrapping in try/catch.
  *
  * IMPORTANT: teardown must be called BEFORE any TEST_ASSERT macros, because
@@ -82,11 +82,11 @@ static int32_t fs_get_global_int32(const char* name) {
     return result;
 }
 
-TEST_CASE("native:fs open + FileHandle.read returns file contents", "[fs]") {
+TEST_CASE("native:mikro/fs open + FileHandle.read returns file contents", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open } from "native:fs";
+        import { open } from "native:mikro/fs";
         const r = open("/dummy.txt");
         globalThis.__ok = r.ok;
         if (r.ok) {
@@ -107,11 +107,11 @@ TEST_CASE("native:fs open + FileHandle.read returns file contents", "[fs]") {
     free(content);
 }
 
-TEST_CASE("native:fs open returns NotFound for non-existent file", "[fs]") {
+TEST_CASE("native:mikro/fs open returns NotFound for non-existent file", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open } from "native:fs";
+        import { open } from "native:mikro/fs";
         const r = open("/nonexistent.txt");
         globalThis.__ok = r.ok;
         if (!r.ok) globalThis.__name = r.error.name;
@@ -127,11 +127,11 @@ TEST_CASE("native:fs open returns NotFound for non-existent file", "[fs]") {
     free(name);
 }
 
-TEST_CASE("native:fs FileHandle.write and readFile roundtrip", "[fs]") {
+TEST_CASE("native:mikro/fs FileHandle.write and readFile roundtrip", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open, readFile } from "native:fs";
+        import { open, readFile } from "native:mikro/fs";
         const fh = open("/test_write.txt", "w").value;
         fh.write("test content");
         fh.close();
@@ -147,11 +147,11 @@ TEST_CASE("native:fs FileHandle.write and readFile roundtrip", "[fs]") {
     free(readback);
 }
 
-TEST_CASE("native:fs FileHandle.stat returns size and type flags", "[fs]") {
+TEST_CASE("native:mikro/fs FileHandle.stat returns size and type flags", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open } from "native:fs";
+        import { open } from "native:mikro/fs";
         const fh = open("/dummy.txt").value;
         const st = fh.stat().value;
         globalThis.__size = st.size;
@@ -171,11 +171,11 @@ TEST_CASE("native:fs FileHandle.stat returns size and type flags", "[fs]") {
     TEST_ASSERT_FALSE(is_dir);
 }
 
-TEST_CASE("native:fs FileHandle.path returns the virtual path", "[fs]") {
+TEST_CASE("native:mikro/fs FileHandle.path returns the virtual path", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open } from "native:fs";
+        import { open } from "native:mikro/fs";
         const fh = open("/dummy.txt").value;
         globalThis.__path = fh.path;
         fh.close();
@@ -189,11 +189,11 @@ TEST_CASE("native:fs FileHandle.path returns the virtual path", "[fs]") {
     free(path);
 }
 
-TEST_CASE("native:fs FileHandle.seek absolute and relative", "[fs]") {
+TEST_CASE("native:mikro/fs FileHandle.seek absolute and relative", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open, writeFile, unlink } from "native:fs";
+        import { open, writeFile, unlink } from "native:mikro/fs";
         writeFile("/seek.txt", "0123456789");
         const fh = open("/seek.txt").value;
         const dec = new TextDecoder();
@@ -223,11 +223,11 @@ TEST_CASE("native:fs FileHandle.seek absolute and relative", "[fs]") {
     free(d);
 }
 
-TEST_CASE("native:fs FileHandle after close returns BadFileDescriptor", "[fs]") {
+TEST_CASE("native:mikro/fs FileHandle after close returns BadFileDescriptor", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open, writeFile, unlink } from "native:fs";
+        import { open, writeFile, unlink } from "native:mikro/fs";
         writeFile("/bad.txt", "x");
         const fh = open("/bad.txt").value;
         fh.close();
@@ -247,11 +247,11 @@ TEST_CASE("native:fs FileHandle after close returns BadFileDescriptor", "[fs]") 
     free(name);
 }
 
-TEST_CASE("native:fs FileHandle.read returns undefined at EOF", "[fs]") {
+TEST_CASE("native:mikro/fs FileHandle.read returns undefined at EOF", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open } from "native:fs";
+        import { open } from "native:mikro/fs";
         const fh = open("/dummy.txt").value;
         fh.read(11);
         const after = fh.read(1);
@@ -266,11 +266,11 @@ TEST_CASE("native:fs FileHandle.read returns undefined at EOF", "[fs]") {
     TEST_ASSERT_TRUE_MESSAGE(at_eof, "read past EOF should return ok(undefined)");
 }
 
-TEST_CASE("native:fs stat on path returns correct info", "[fs]") {
+TEST_CASE("native:mikro/fs stat on path returns correct info", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { stat } from "native:fs";
+        import { stat } from "native:mikro/fs";
         const st = stat("/dummy.txt").value;
         globalThis.__size = st.size;
         globalThis.__isFile = st.isFile;
@@ -285,11 +285,11 @@ TEST_CASE("native:fs stat on path returns correct info", "[fs]") {
     TEST_ASSERT_TRUE(is_file);
 }
 
-TEST_CASE("native:fs unlink removes a file", "[fs]") {
+TEST_CASE("native:mikro/fs unlink removes a file", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open, unlink, stat } from "native:fs";
+        import { open, unlink, stat } from "native:mikro/fs";
         const fh = open("/to_delete.txt", "w").value;
         fh.write("delete me");
         fh.close();
@@ -305,11 +305,11 @@ TEST_CASE("native:fs unlink removes a file", "[fs]") {
     TEST_ASSERT_TRUE(deleted);
 }
 
-TEST_CASE("native:fs rename moves a file", "[fs]") {
+TEST_CASE("native:mikro/fs rename moves a file", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open, rename, readFile } from "native:fs";
+        import { open, rename, readFile } from "native:mikro/fs";
         const fh = open("/rename_src.txt", "w").value;
         fh.write("renamed content");
         fh.close();
@@ -326,11 +326,11 @@ TEST_CASE("native:fs rename moves a file", "[fs]") {
     free(content);
 }
 
-TEST_CASE("native:fs mkdir and readDir", "[fs]") {
+TEST_CASE("native:mikro/fs mkdir and readDir", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { mkdir, readDir, open, rmdir, unlink } from "native:fs";
+        import { mkdir, readDir, open, rmdir, unlink } from "native:mikro/fs";
         mkdir("/testdir");
         const fh = open("/testdir/file.txt", "w").value;
         fh.write("hi");
@@ -352,11 +352,11 @@ TEST_CASE("native:fs mkdir and readDir", "[fs]") {
                                                "Directory should have at least 1 entry");
 }
 
-TEST_CASE("native:fs open with mode=w creates a new file", "[fs]") {
+TEST_CASE("native:mikro/fs open with mode=w creates a new file", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { open, unlink } from "native:fs";
+        import { open, unlink } from "native:mikro/fs";
         const fh = open("/create_true.txt", "w").value;
         fh.write("created");
         fh.close();
@@ -375,11 +375,11 @@ TEST_CASE("native:fs open with mode=w creates a new file", "[fs]") {
     free(content);
 }
 
-TEST_CASE("native:fs exists returns true for existing file", "[fs]") {
+TEST_CASE("native:mikro/fs exists returns true for existing file", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { exists } from "native:fs";
+        import { exists } from "native:mikro/fs";
         globalThis.__exists = exists("/dummy.txt");
     )");
     bool was_exception = JS_IsException(ret);
@@ -390,11 +390,11 @@ TEST_CASE("native:fs exists returns true for existing file", "[fs]") {
     TEST_ASSERT_TRUE(exists);
 }
 
-TEST_CASE("native:fs exists returns false for non-existent file", "[fs]") {
+TEST_CASE("native:mikro/fs exists returns false for non-existent file", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { exists } from "native:fs";
+        import { exists } from "native:mikro/fs";
         globalThis.__exists = exists("/no_such_file.txt");
     )");
     bool was_exception = JS_IsException(ret);
@@ -405,11 +405,11 @@ TEST_CASE("native:fs exists returns false for non-existent file", "[fs]") {
     TEST_ASSERT_FALSE(exists);
 }
 
-TEST_CASE("native:fs unlink returns NotFound for missing file", "[fs]") {
+TEST_CASE("native:mikro/fs unlink returns NotFound for missing file", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { unlink } from "native:fs";
+        import { unlink } from "native:mikro/fs";
         const r = unlink("/no_such_file.txt");
         globalThis.__ok = r.ok;
         if (!r.ok) globalThis.__name = r.error.name;
@@ -425,11 +425,11 @@ TEST_CASE("native:fs unlink returns NotFound for missing file", "[fs]") {
     free(name);
 }
 
-TEST_CASE("native:fs readDir returns error for missing directory", "[fs]") {
+TEST_CASE("native:mikro/fs readDir returns error for missing directory", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { readDir } from "native:fs";
+        import { readDir } from "native:mikro/fs";
         const r = readDir("/no_such_dir");
         globalThis.__ok = r.ok;
     )");
@@ -441,11 +441,11 @@ TEST_CASE("native:fs readDir returns error for missing directory", "[fs]") {
     TEST_ASSERT_FALSE(ok);
 }
 
-TEST_CASE("native:fs rmdir returns error for missing directory", "[fs]") {
+TEST_CASE("native:mikro/fs rmdir returns error for missing directory", "[fs]") {
     fs_js_setup();
 
     JSValue ret = fs_eval_module(R"(
-        import { rmdir } from "native:fs";
+        import { rmdir } from "native:mikro/fs";
         const r = rmdir("/no_such_dir");
         globalThis.__ok = r.ok;
     )");

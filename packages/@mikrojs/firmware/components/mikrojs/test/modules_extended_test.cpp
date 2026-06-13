@@ -103,19 +103,19 @@ TEST_CASE("native:* internal import blocked from user code", "[modules]") {
     JSRuntime* rt = JS_NewRuntime();
     JSContext* ctx = JS_NewContext(rt);
 
-    // User code at "/appfs/main.js" should NOT be able to import native:sys
-    char* result = mik_module_normalizer(ctx, "/appfs/main.js", "native:sys", nullptr);
-    TEST_ASSERT_NULL_MESSAGE(result, "native:sys should be blocked from user code");
+    // User code at "/appfs/main.js" should NOT be able to import native:mikro/sys
+    char* result = mik_module_normalizer(ctx, "/appfs/main.js", "native:mikro/sys", nullptr);
+    TEST_ASSERT_NULL_MESSAGE(result, "native:mikro/sys should be blocked from user code");
 
-    // But a built-in module should be allowed to import native:sys
-    result = mik_module_normalizer(ctx, "mikrojs/sys", "native:sys", nullptr);
-    TEST_ASSERT_NOT_NULL_MESSAGE(result, "native:sys should be allowed from mikrojs/ modules");
-    TEST_ASSERT_EQUAL_STRING("native:sys", result);
+    // But a built-in module should be allowed to import native:mikro/sys
+    result = mik_module_normalizer(ctx, "mikrojs/sys", "native:mikro/sys", nullptr);
+    TEST_ASSERT_NOT_NULL_MESSAGE(result, "native:mikro/sys should be allowed from mikrojs/ modules");
+    TEST_ASSERT_EQUAL_STRING("native:mikro/sys", result);
     js_free(ctx, result);
 
     // native: modules should also be allowed to import other native:* modules
-    result = mik_module_normalizer(ctx, "native:sys", "native:stdio", nullptr);
-    TEST_ASSERT_NOT_NULL_MESSAGE(result, "native:stdio should be allowed from native: modules");
+    result = mik_module_normalizer(ctx, "native:mikro/sys", "native:mikro/stdio", nullptr);
+    TEST_ASSERT_NOT_NULL_MESSAGE(result, "native:mikro/stdio should be allowed from native: modules");
     js_free(ctx, result);
 
     JS_FreeContext(ctx);
