@@ -1,4 +1,4 @@
-// Internal: native:http_server-backed server implementation. Bundled into
+// Internal: native:mikro/http_server-backed server implementation. Bundled into
 // http/server.js; not exposed as its own subpath. Exists as a seam so host
 // tests can inject a fake native module (mirrors http/native.ts for the client).
 

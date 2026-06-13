@@ -36,10 +36,12 @@ This page explains how the pieces fit together. The goal is "enough to understan
 Native modules (C/C++ functions callable from JavaScript) self-register using the `MIK_REGISTER_MODULE` macro:
 
 ```cpp
-MIK_REGISTER_MODULE(bme280, "native:bme280", mik__bme280_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(bme280, "native:@mikrojs/driver-bme280/bme280", mik__bme280_init, nullptr, nullptr)
 ```
 
-The macro takes five arguments: a unique C identifier, the module name, an init function, an optional loop consumer, and an optional destroy function. It works via a GCC/Clang constructor attribute. At program startup, before `main()` runs, each registered module adds itself to a global linked list. When JavaScript code imports `native:bme280`, the module loader walks this list and calls the module's init function.
+The macro takes five arguments: a unique C identifier, the module name, an init function, an optional loop consumer, and an optional destroy function. It works via a GCC/Clang constructor attribute. At program startup, before `main()` runs, each registered module adds itself to a global linked list. When JavaScript code imports `native:@mikrojs/driver-bme280/bme280`, the module loader walks this list and calls the module's init function.
+
+Native module names are package-qualified: `native:<package-name>/<module>`. The bare `native:mikro/*` namespace is reserved for the core runtime. The build defines `MIK_PACKAGE_NAME` per component and the macro enforces the prefix at compile time, so a package cannot claim or shadow another's `native:` name.
 
 Modules are initialized lazily: the factory function runs on first import, not at startup. This keeps boot time and memory usage low when a module is compiled in but not used.
 

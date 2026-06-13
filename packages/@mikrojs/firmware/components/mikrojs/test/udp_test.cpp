@@ -3,7 +3,7 @@
 #include "quickjs.h"
 #include "unity.h"
 
-/* native:udp lives in @mikrojs/native and is initialized eagerly via
+/* native:mikro/udp lives in @mikrojs/native and is initialized eagerly via
  * MIK_NewRuntime — no force-include needed. These tests are smoke-level:
  * verify the module loads and a basic bind/close cycle works. Full
  * roundtrip + multicast tests live host-side (ctest). */

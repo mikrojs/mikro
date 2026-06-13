@@ -336,7 +336,7 @@ JSModuleDef* mik__result_init(JSContext* ctx) {
         rt->result_ok_void_singleton = singleton;
     }
 
-    JSModuleDef* m = JS_NewCModule(ctx, "native:result", mik__result_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/result", mik__result_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "ok");
     JS_AddModuleExport(ctx, m, "err");

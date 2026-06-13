@@ -1,5 +1,5 @@
 import {ok} from 'mikro/result'
-import * as native from 'native:uart'
+import * as native from 'native:mikro/uart'
 
 import type {Result} from '../result/types.js'
 import type {

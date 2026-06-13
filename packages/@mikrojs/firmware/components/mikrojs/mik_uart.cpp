@@ -5,7 +5,7 @@
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
-#define MIK_UART_TAG "native:uart"
+#define MIK_UART_TAG "native:mikro/uart"
 #define MIK_UART_RX_BUF_SIZE 2048
 #define MIK_UART_MAX_INSTANCES 3
 
@@ -490,7 +490,7 @@ static JSModuleDef* mik__uart_init(JSContext* ctx) {
     JS_SetClassProto(ctx, mik_uart_iter_class_id, iter_proto);
 
     /* Register module */
-    JSModuleDef* m = JS_NewCModule(ctx, "native:uart", mik__uart_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/uart", mik__uart_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "Uart");
     return m;
@@ -547,4 +547,4 @@ void mik__uart_destroy(JSContext* ctx) {
     mik__uart_slot_data(mik_rt) = nullptr;
 }
 
-MIK_REGISTER_MODULE(uart, "native:uart", mik__uart_init, mik__uart_consume, mik__uart_destroy)
+MIK_REGISTER_MODULE(uart, "native:mikro/uart", mik__uart_init, mik__uart_consume, mik__uart_destroy)

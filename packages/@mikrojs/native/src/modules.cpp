@@ -693,7 +693,10 @@ static char* mik__module_normalizer_impl(JSContext* ctx, const char* base_name,
     static const char internal_prefix[] = "native:";
     if (strncmp(name, internal_prefix, strlen(internal_prefix)) == 0) {
         // Only firmware-embedded modules (native:, mikro/, @mikrojs/, registered
-        // external builtins) may import native: internals
+        // external builtins) may import native: internals. A builtin may import
+        // any native: module, including another package's — native-level
+        // composition (e.g. an audio driver reusing a codec package's bindings)
+        // is intentionally allowed.
         if (strncmp(base_name, "native:", 7) != 0 && strncmp(base_name, "mikro/", 6) != 0 &&
             strncmp(base_name, "@mikrojs/", 9) != 0 && !mik__is_ext_builtin_name(base_name)) {
             JS_ThrowTypeError(

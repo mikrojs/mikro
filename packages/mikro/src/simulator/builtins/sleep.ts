@@ -3,7 +3,7 @@ import type {BuiltinDefinition} from './types.js'
 // sleep uses a raw source module so deepSleep can use setTimeout + restart.
 export const sleepBuiltin: BuiltinDefinition = {
   source: `
-import {restart} from 'native:sys'
+import {restart} from 'native:mikro/sys'
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 

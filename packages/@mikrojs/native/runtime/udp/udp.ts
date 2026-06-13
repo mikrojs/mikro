@@ -1,6 +1,6 @@
 import {ok} from 'mikro/result'
-import {Observable} from 'native:observable'
-import {bind as nativeBind, type NativeUdpSocket} from 'native:udp'
+import {Observable} from 'native:mikro/observable'
+import {bind as nativeBind, type NativeUdpSocket} from 'native:mikro/udp'
 
 import type {Subscriber} from '../observable/types.js'
 import type {Result} from '../result/types.js'

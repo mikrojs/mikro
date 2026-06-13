@@ -1,1 +1,1 @@
-export {decode, encode} from 'native:cbor'
+export {decode, encode} from 'native:mikro/cbor'

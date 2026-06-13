@@ -1,10 +1,10 @@
 import {err, ok} from 'mikro/result'
-import {setTimezone, stop as nativeStop, sync as nativeSync} from 'native:sntp'
+import {setTimezone, stop as nativeStop, sync as nativeSync} from 'native:mikro/sntp'
 
 import type {Result} from '../result/types.js'
 import type {Sntp, SntpError, SntpOptions, SntpSyncResult, SntpSyncResultWithStop} from './types.js'
 
-// native:sntp emits `InitFailed` / `Cancelled` directly; `Timeout` is a
+// native:mikro/sntp emits `InitFailed` / `Cancelled` directly; `Timeout` is a
 // JS-side variant (the Promise racer below owns the clock).
 
 const DEFAULT_SERVERS = ['pool.ntp.org']

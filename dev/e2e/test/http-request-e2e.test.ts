@@ -4,7 +4,7 @@ import {memoryUsage} from 'mikro/sys'
 import {assert, beforeAll, describe, test} from 'mikro/test'
 
 // These tests require WIFI_SSID and WIFI_PASSPHRASE env vars to run on
-// the device. They exercise the full JS → native:http → esp_http_client
+// the device. They exercise the full JS → native:mikro/http → esp_http_client
 // stack against real endpoints.
 //
 // Convention: any request() that might run slow under heap fragmentation
@@ -38,7 +38,7 @@ describe.runIf(hasWifi && !isSim && fitsHttp)('http request e2e', () => {
     if (connected.ok) console.log(`connected: ${connected.value.ip}`)
 
     // Warm up fetch + AbortController. Lazy-initialized classes and the
-    // fetch/transport/native:http module load account for ~15KB of
+    // fetch/transport/native:mikro/http module load account for ~15KB of
     // one-time heap cost that would otherwise be attributed to whichever
     // test touches them first. The harness recaptures the baseline after
     // beforeAll resolves, so no manual reset is needed.
@@ -130,7 +130,7 @@ describe.runIf(hasWifi && !isSim && fitsHttp)('http request e2e', () => {
   test(
     'break inside for-await cancels the request and frees the pending slot',
     async () => {
-      // The test harness captures pendingCount() from native:http before
+      // The test harness captures pendingCount() from native:mikro/http before
       // run() and after, emits both on the run_done event, and the CLI
       // surfaces any leaked in-flight requests as a teardown warning. So
       // we only need to exercise the break path — if cancel+drain didn't

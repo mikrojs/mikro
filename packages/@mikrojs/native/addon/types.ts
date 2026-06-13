@@ -6,7 +6,7 @@ export interface MikroRuntimeOptions {
   fsLimit?: number
   fsReadMax?: number
   env?: Record<string, string>
-  /** Virtual module sources to register, keyed by module name (e.g. 'native:pin'). */
+  /** Virtual module sources to register, keyed by module name (e.g. 'native:mikro/pin'). */
   modules?: Record<string, string>
 }
 

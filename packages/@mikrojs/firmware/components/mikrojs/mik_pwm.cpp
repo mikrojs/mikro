@@ -7,7 +7,7 @@
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
-#define MIK_PWM_TAG "native:pwm"
+#define MIK_PWM_TAG "native:mikro/pwm"
 #define MIK_PWM_MAX_CHANNELS LEDC_CHANNEL_MAX
 #define MIK_PWM_MAX_TIMERS LEDC_TIMER_MAX
 #define MIK_PWM_MAX_PENDING_FADES 8
@@ -479,7 +479,7 @@ static JSModuleDef* mik__pwm_init(JSContext* ctx) {
     JS_SetClassProto(ctx, mik_pwm_class_id, proto);  /* consumed */
 
     /* Register module */
-    JSModuleDef* m = JS_NewCModule(ctx, "native:pwm", mik__pwm_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/pwm", mik__pwm_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "Pwm");
     return m;
@@ -522,4 +522,4 @@ void mik__pwm_destroy(JSContext* ctx) {
     mik__pwm_fades(mik_rt) = nullptr;
 }
 
-MIK_REGISTER_MODULE(pwm, "native:pwm", mik__pwm_init, mik__pwm_consume, mik__pwm_destroy)
+MIK_REGISTER_MODULE(pwm, "native:mikro/pwm", mik__pwm_init, mik__pwm_consume, mik__pwm_destroy)

@@ -23,7 +23,7 @@ static inline MIKHttpState*& mik__http_st(MIKRuntime* rt) {
     return reinterpret_cast<MIKHttpState*&>(rt->module_data[mik__http_slot]);
 }
 
-#define MIK_HTTP_TAG "native:http"
+#define MIK_HTTP_TAG "native:mikro/http"
 /* 8 KB was tight for HTTPS — mbedTLS handshake + request header buffer can
  * spike the task stack; the ESP-HTTP-client header list was corrupted once
  * the stack overran. 12 KB matches the recommendation for esp-tls users. */
@@ -808,7 +808,7 @@ static JSModuleDef* mik__http_init(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     mik__http_slot = MIK_AllocModuleSlot(mik_rt);
 
-    JSModuleDef* m = JS_NewCModule(ctx, "native:http", mik__http_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/http", mik__http_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "request");
     JS_AddModuleExport(ctx, m, "nextMessage");
@@ -976,4 +976,4 @@ void mik__http_destroy(JSContext* ctx) {
     mik__http_st(mik_rt) = nullptr;
 }
 
-MIK_REGISTER_MODULE(http, "native:http", mik__http_init, mik__http_consume, mik__http_destroy)
+MIK_REGISTER_MODULE(http, "native:mikro/http", mik__http_init, mik__http_consume, mik__http_destroy)

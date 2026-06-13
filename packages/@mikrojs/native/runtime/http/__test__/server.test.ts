@@ -3,7 +3,7 @@ import {describe, expect, it} from 'vitest'
 
 import {createServerFromNative, type NativeHttpServerModule, ServerError} from '../server-impl.js'
 
-/* ── Fake native:http_server ───────────────────────────────────────── */
+/* ── Fake native:mikro/http_server ───────────────────────────────────────── */
 
 interface CapturedResponse {
   id: number

@@ -943,7 +943,7 @@ JSModuleDef* mik__observable_init(JSContext* ctx) {
     JS_NewClassID(rt, &multicast_class_id);
     JS_NewClass(rt, multicast_class_id, &multicast_class_def);
 
-    JSModuleDef* m = JS_NewCModule(ctx, "native:observable", observable_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/observable", observable_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "Observable");
     return m;

@@ -2,7 +2,7 @@ import type {BuiltinDefinition} from './types.js'
 
 export const kvBuiltin: BuiltinDefinition = {
   source: `
-import {encode, decode} from 'native:cbor'
+import {encode, decode} from 'native:mikro/cbor'
 import {ok} from 'mikro/result'
 
 const store = new Map()

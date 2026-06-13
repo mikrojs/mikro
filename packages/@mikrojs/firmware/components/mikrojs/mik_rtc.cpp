@@ -9,7 +9,7 @@
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
-#define MIK_RTC_TAG "native:rtc"
+#define MIK_RTC_TAG "native:mikro/rtc"
 #define MIK_RTC_STORE_SIZE 2048
 #define MIK_RTC_MAGIC 0x4D524A53 /* "MRJS" */
 #define MIK_RTC_MAX_KEY_LEN 255
@@ -292,7 +292,7 @@ static int mik__rtc_module_init(JSContext* ctx, JSModuleDef* m) {
 /* ── Public API ──────────────────────────────────────────────────── */
 
 static JSModuleDef* mik__rtc_init(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "native:rtc", mik__rtc_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/rtc", mik__rtc_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "set");
     JS_AddModuleExport(ctx, m, "get");
@@ -302,4 +302,4 @@ static JSModuleDef* mik__rtc_init(JSContext* ctx) {
     return m;
 }
 
-MIK_REGISTER_MODULE(rtc, "native:rtc", mik__rtc_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(rtc, "native:mikro/rtc", mik__rtc_init, nullptr, nullptr)

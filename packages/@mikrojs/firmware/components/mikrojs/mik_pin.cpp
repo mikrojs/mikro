@@ -93,7 +93,7 @@ static int mik_adc_read_millivolts(int pin, adc_atten_t atten) {
     return mv;
 }
 
-/* ── native:pin JS module ────────────────────────────────────────────── */
+/* ── native:mikro/pin JS module ────────────────────────────────────────────── */
 
 static JSValue mik__pin_mode(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     int32_t pin, mode;
@@ -182,7 +182,7 @@ static int mik__pin_module_init(JSContext* ctx, JSModuleDef* m) {
 }
 
 static JSModuleDef* mik__pin_init(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "native:pin", mik__pin_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/pin", mik__pin_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "pinMode");
     JS_AddModuleExport(ctx, m, "digitalWrite");
@@ -192,4 +192,4 @@ static JSModuleDef* mik__pin_init(JSContext* ctx) {
     return m;
 }
 
-MIK_REGISTER_MODULE(pin, "native:pin", mik__pin_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(pin, "native:mikro/pin", mik__pin_init, nullptr, nullptr)

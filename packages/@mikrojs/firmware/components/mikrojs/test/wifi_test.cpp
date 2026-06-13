@@ -36,7 +36,7 @@ static void setup() {
     MIK_SetConfig(rt, &cfg);
     /* WiFi module is self-registered and lazily initialized.
      * The import below triggers init + loop consumer registration. */
-    const char* init_code = "import { Wifi } from \"native:wifi\"; new Wifi();";
+    const char* init_code = "import { Wifi } from \"native:mikro/wifi\"; new Wifi();";
     JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test-setup", init_code, strlen(init_code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
@@ -78,11 +78,11 @@ static int32_t get_wifi_status() {
 
 /* ── Module structure tests ───────────────────────────────────────── */
 
-TEST_CASE("native:wifi exports Wifi with expected methods", "[wifi]") {
+TEST_CASE("native:mikro/wifi exports Wifi with expected methods", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         globalThis.__isFunc = typeof Wifi === "function";
         const wifi = new Wifi();
         globalThis.__isObj = typeof wifi === "object" && wifi !== null;
@@ -113,7 +113,7 @@ TEST_CASE("Wifi ip returns 0.0.0.0 and rssi returns 0 when not connected", "[wif
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         globalThis.__ip = wifi.ip();
         globalThis.__rssi = wifi.rssi();
@@ -153,7 +153,7 @@ TEST_CASE("Wifi connect returns a promise", "[wifi]") {
     // Only test that connect() returns a Promise — don't actually wait for connection.
     // We call disconnect() right after to avoid leaving WiFi in "connecting" state.
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         const result = wifi.connect("test", "pass");
         globalThis.__isPromise = result.ok && result.value instanceof Promise;
@@ -175,7 +175,7 @@ TEST_CASE("Wifi scan returns a promise", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         const result = wifi.scan();
         globalThis.__isPromise = result.ok && result.value instanceof Promise;
@@ -196,7 +196,7 @@ TEST_CASE("WiFi status reflects events through connect-disconnect cycle", "[wifi
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         globalThis.__wifi = new Wifi();
     )");
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
@@ -251,7 +251,7 @@ TEST_CASE("Wifi on/off registers and removes event listeners", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         globalThis.__disconnectCount = 0;
         function onDisconnect(reason) {
@@ -311,7 +311,7 @@ TEST_CASE("Wifi mac returns a valid MAC address format", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         const result = wifi.mac();
         globalThis.__mac = result.ok ? result.value : "";
@@ -350,7 +350,7 @@ TEST_CASE("Wifi hostname reflects configured wifi.hostname", "[wifi]") {
     MIK_SetConfig(rt, &cfg);
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         globalThis.__hostname = new Wifi().getHostname();
     )");
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
@@ -369,7 +369,7 @@ TEST_CASE("Wifi getIpConfig returns object with expected keys", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         const result = wifi.getIpConfig();
         const cfg = result.ok ? result.value : undefined;
@@ -408,7 +408,7 @@ TEST_CASE("Wifi AP methods exist and return expected types", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         globalThis.__apMethods = ["apStart","apStop","apIsActive","apIp","apStations"]
             .every(m => typeof wifi[m] === "function");
@@ -441,7 +441,7 @@ TEST_CASE("Wifi power save get/set round-trips", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         wifi.setPowerSave("min");
         globalThis.__ps = wifi.getPowerSave();
@@ -464,7 +464,7 @@ TEST_CASE("Wifi country reflects configured wifi.country", "[wifi]") {
     /* setup() populated wifi_country = "US"; trigger a wifi op so
      * mik__wifi_try_auto_country applies it, then read back via getCountry. */
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         wifi.scan();
         globalThis.__cc = wifi.getCountry();
@@ -487,7 +487,7 @@ TEST_CASE("Wifi scan accepts filter options", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         const result = wifi.scan({channel: 1, passive: true});
         globalThis.__isPromise = result.ok && result.value instanceof Promise;
@@ -508,7 +508,7 @@ TEST_CASE("Wifi txPower get/set round-trips", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         wifi.setTxPower(8);
         const result = wifi.getTxPower();
@@ -533,7 +533,7 @@ TEST_CASE("Wifi RSSI threshold get/set and event listener", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         wifi.setRssiThreshold(-70);
         globalThis.__threshold = wifi.getRssiThreshold();
@@ -584,7 +584,7 @@ TEST_CASE("Wifi AP extra methods exist", "[wifi]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { Wifi } from "native:wifi";
+        import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         globalThis.__hasDeauth = typeof wifi.apDeauthStation === "function";
         globalThis.__hasGetTimeout = typeof wifi.apGetInactiveTimeout === "function";

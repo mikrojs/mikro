@@ -1,5 +1,5 @@
 // Pure validation helpers for the BLE module. Extracted so they can be
-// unit-tested on the host without pulling in the native `native:ble` module.
+// unit-tested on the host without pulling in the native `native:mikro/ble` module.
 
 import type {AdvertiseInterval, AdvertiseOptions, BleError} from './types.js'
 

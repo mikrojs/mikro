@@ -42,7 +42,7 @@ static void setup() {
 }
 
 static void ensure_http_initialized() {
-    const char* code = "import { request } from 'native:http';";
+    const char* code = "import { request } from 'native:mikro/http';";
     JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
@@ -139,11 +139,11 @@ static bool read_global_bool(const char* key) {
 
 /* ── Module structure tests ───────────────────────────────────────── */
 
-TEST_CASE("native:http exports request, nextMessage, cancel", "[http]") {
+TEST_CASE("native:mikro/http exports request, nextMessage, cancel", "[http]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { request, nextMessage, cancel } from "native:http";
+        import { request, nextMessage, cancel } from "native:mikro/http";
         globalThis.__requestType = typeof request;
         globalThis.__nextType = typeof nextMessage;
         globalThis.__cancelType = typeof cancel;
@@ -163,10 +163,10 @@ TEST_CASE("native:http exports request, nextMessage, cancel", "[http]") {
     TEST_ASSERT_EQUAL_STRING("function", types[2]);
 }
 
-TEST_CASE("native:http cannot be imported from non-internal module", "[http]") {
+TEST_CASE("native:mikro/http cannot be imported from non-internal module", "[http]") {
     setup();
     const char* code = R"(
-        import { request } from "native:http";
+        import { request } from "native:mikro/http";
     )";
     JSValue ret = MIK_EvalModuleContent(ctx, "/user/app.js", code, strlen(code));
     bool wasException = JS_IsException(ret);
@@ -177,7 +177,7 @@ TEST_CASE("native:http cannot be imported from non-internal module", "[http]") {
     teardown();
 
     TEST_ASSERT_TRUE_MESSAGE(wasException,
-                             "Importing native:http from user module should fail");
+                             "Importing native:mikro/http from user module should fail");
 }
 
 TEST_CASE("http state is lazily initialized", "[http]") {
@@ -274,7 +274,7 @@ TEST_CASE("nextMessage delivers buffered chunks in order", "[http]") {
 
     char code[512];
     snprintf(code, sizeof(code),
-             "import { nextMessage } from 'native:http';"
+             "import { nextMessage } from 'native:mikro/http';"
              "globalThis.__body = '';"
              "(async () => {"
              "  for (;;) {"
@@ -312,7 +312,7 @@ TEST_CASE("error message surfaces kind/cancelled/message fields", "[http]") {
 
     char code[512];
     snprintf(code, sizeof(code),
-             "import { nextMessage } from 'native:http';"
+             "import { nextMessage } from 'native:mikro/http';"
              "globalThis.__kind = '';"
              "globalThis.__cancelled = null;"
              "globalThis.__message = '';"
@@ -403,7 +403,7 @@ TEST_CASE("error before headers also resolves pending nextMessage", "[http]") {
      * nextMessage hangs and JSValues leak. */
     char code[512];
     snprintf(code, sizeof(code),
-             "import { nextMessage } from 'native:http';"
+             "import { nextMessage } from 'native:mikro/http';"
              "globalThis.__headersOk = null;"
              "globalThis.__nextKind = '';"
              "globalThis.__hp.then((r) => { globalThis.__headersOk = r.ok; });"
@@ -453,7 +453,7 @@ TEST_CASE("cancel sets the pending cancelled flag", "[http]") {
      * drains cleanly once we simulate the task's ERROR response. */
     char code[512];
     snprintf(code, sizeof(code),
-             "import { cancel, nextMessage } from 'native:http';"
+             "import { cancel, nextMessage } from 'native:mikro/http';"
              "cancel(%u);"
              "(async () => { await nextMessage(%u); })();",
              id, id);

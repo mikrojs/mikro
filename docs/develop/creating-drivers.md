@@ -28,7 +28,7 @@ packages/@mikrojs/driver-bme280/
     bme280/
       bme280.ts                  # JS wrapper (public API)
       types.ts                   # TypeScript types
-    internal.d.ts                # Type declarations for native:bme280
+    internal.d.ts                # Type declarations for native:@mikrojs/driver-bme280/bme280
   tsconfig.json
 ```
 
@@ -100,14 +100,14 @@ static int mik__bme280_module_init(JSContext* ctx, JSModuleDef* m) {
 
 // Module constructor: lazily called on first import; declares exports
 static JSModuleDef* mik__bme280_init(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "native:bme280", mik__bme280_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:@mikrojs/driver-bme280/bme280", mik__bme280_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "default");
     return m;
 }
 
 // Self-register: the runtime discovers this at link time
-MIK_REGISTER_MODULE(bme280, "native:bme280", mik__bme280_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(bme280, "native:@mikrojs/driver-bme280/bme280", mik__bme280_init, nullptr, nullptr)
 
 static JSValue js_bme280_read(JSContext* ctx, JSValueConst this_val,
                                int argc, JSValueConst* argv) {
@@ -124,7 +124,7 @@ Key points:
 
 - `MIK_REGISTER_MODULE` uses a constructor attribute to add the module to a linked list at startup. No manual registration step needed.
 - The two trailing `nullptr` arguments are optional event-loop hooks. The first is a _consume_ callback that the runtime calls on every event loop iteration once the module has been imported; use it to drain completion queues from interrupt handlers or background tasks into JS callbacks (see `mik_http.cpp` for an example). The second is a _destroy_ callback called on runtime shutdown to release anything the module allocated. Pass `nullptr` for hooks you don't need.
-- The module name must start with `native:` (underscore marks it as internal). The public API goes through the TypeScript wrapper.
+- The native module name must be package-qualified: `native:<your-package-name>/<module>` (here `native:@mikrojs/driver-bme280/bme280`). It is literally `native:` plus the builtin specifier registered in Step 4. The bare `native:mikro/*` namespace is reserved for the core runtime, so a driver reaching a core peripheral imports e.g. `native:mikro/i2c`. This rule is enforced at build time; an unqualified name fails to compile. The public API goes through the TypeScript wrapper.
 
 ## Step 4: Bytecode builtin registration
 
@@ -176,6 +176,12 @@ idf_component_register(
     REQUIRES driver mikrojs
 )
 
+# Declare this component's package namespace. MIK_REGISTER_MODULE /
+# MIK_REGISTER_BUILTIN enforce at build time that names are qualified with it
+# (native:@mikrojs/driver-bme280/<module> and @mikrojs/driver-bme280/<module>),
+# so a package can't claim or shadow another's native: name.
+target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"@mikrojs/driver-bme280\"")
+
 include("${_BYTECODE_CMAKE}")
 
 # Generate bytecode from TypeScript runtime modules
@@ -213,7 +219,7 @@ import {ok, err} from 'mikro/result'
 import type {Reading} from './types.js'
 
 // Import the native module (compiled into firmware)
-import native from 'native:bme280'
+import native from 'native:@mikrojs/driver-bme280/bme280'
 
 export function readSensor(bus: number, address?: number): Result<Reading, Error> {
   try {
@@ -240,7 +246,7 @@ export interface Reading {
 Type declarations for the native module so TypeScript can check imports:
 
 ```ts
-declare module 'native:bme280' {
+declare module 'native:@mikrojs/driver-bme280/bme280' {
   interface Native {
     read(
       bus: number,

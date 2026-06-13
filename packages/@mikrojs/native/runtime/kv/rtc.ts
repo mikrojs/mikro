@@ -1,9 +1,9 @@
 import {KVError, makeCreateValue} from 'mikro/kv/shared'
-import {clear, get, info, remove, set} from 'native:rtc'
+import {clear, get, info, remove, set} from 'native:mikro/rtc'
 
 import type {RtcStorage} from './types.js'
 
-// Loaded in isolation: this file avoids `native:nvs_kv`, so apps importing
+// Loaded in isolation: this file avoids `native:mikro/nvs_kv`, so apps importing
 // `mikrojs/kv/rtc` directly don't pay for the NVS backend. `KVError` and
 // `makeCreateValue` come from the shared bytecode module at runtime so
 // they aren't duplicated across nvs.js and rtc.js.

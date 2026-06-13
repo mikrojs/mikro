@@ -1,4 +1,4 @@
-// Host-side shim for `native:observable`, used only in vitest (Node) where
+// Host-side shim for `native:mikro/observable`, used only in vitest (Node) where
 // the mikrojs C runtime isn't available. Keep in sync with mik_observable.cpp.
 //
 // Mirrors the locked design in .claude/plans/observable.md:

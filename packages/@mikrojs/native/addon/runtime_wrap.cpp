@@ -57,13 +57,13 @@ class LoopWorker : public Napi::AsyncWorker {
     std::atomic<bool> stopped_{false};
 };
 
-/* ── native:host C module ──────────────────────────────────────────── */
+/* ── native:mikro/host C module ──────────────────────────────────────────── */
 
 static JSValue mik__host_send(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     auto* bridge = static_cast<HostBridge*>(MIK_GetModuleData(mik_rt, s_host_slot));
     if (!bridge) {
-        return JS_ThrowInternalError(ctx, "native:host bridge not initialized");
+        return JS_ThrowInternalError(ctx, "native:mikro/host bridge not initialized");
     }
 
     const char* type = JS_ToCString(ctx, argv[0]);
@@ -81,7 +81,7 @@ static JSValue mik__host_on_message(JSContext* ctx, JSValue this_val, int argc, 
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     auto* bridge = static_cast<HostBridge*>(MIK_GetModuleData(mik_rt, s_host_slot));
     if (!bridge) {
-        return JS_ThrowInternalError(ctx, "native:host bridge not initialized");
+        return JS_ThrowInternalError(ctx, "native:mikro/host bridge not initialized");
     }
 
     if (!JS_IsFunction(ctx, argv[0])) {
@@ -99,10 +99,10 @@ static JSValue mik__host_call(JSContext* ctx, JSValue this_val, int argc, JSValu
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     auto* bridge = static_cast<HostBridge*>(MIK_GetModuleData(mik_rt, s_host_slot));
     if (!bridge) {
-        return JS_ThrowInternalError(ctx, "native:host bridge not initialized");
+        return JS_ThrowInternalError(ctx, "native:mikro/host bridge not initialized");
     }
     if (bridge->rpc_handler.IsEmpty() || !bridge->current_env) {
-        return JS_ThrowInternalError(ctx, "native:host RPC handler not set");
+        return JS_ThrowInternalError(ctx, "native:mikro/host RPC handler not set");
     }
 
     const char* method = JS_ToCString(ctx, argv[0]);
@@ -352,14 +352,14 @@ RuntimeWrap::RuntimeWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<Runt
         return;
     }
 
-    /* Register native:host C module + host bridge */
+    /* Register native:mikro/host C module + host bridge */
     host_bridge_ = new HostBridge();
     host_slot_ = MIK_AllocModuleSlot(mik_rt_);
     s_host_slot = host_slot_;
     MIK_SetModuleData(mik_rt_, host_slot_, host_bridge_);
 
     JSContext* ctx = MIK_GetJSContext(mik_rt_);
-    JSModuleDef* host_mod = JS_NewCModule(ctx, "native:host", mik__host_module_init);
+    JSModuleDef* host_mod = JS_NewCModule(ctx, "native:mikro/host", mik__host_module_init);
     if (host_mod) {
         JS_AddModuleExportList(ctx, host_mod, mik__host_funcs, countof(mik__host_funcs));
     }

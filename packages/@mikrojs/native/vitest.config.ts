@@ -25,11 +25,11 @@ export default defineConfig({
         replacement: path.resolve(import.meta.dirname, 'runtime/http/helpers.ts'),
       },
       {
-        find: 'native:result',
+        find: 'native:mikro/result',
         replacement: path.resolve(import.meta.dirname, 'runtime/result/native-result.node-shim.ts'),
       },
       {
-        find: 'native:observable',
+        find: 'native:mikro/observable',
         replacement: path.resolve(
           import.meta.dirname,
           'runtime/observable/native-observable.node-shim.ts',

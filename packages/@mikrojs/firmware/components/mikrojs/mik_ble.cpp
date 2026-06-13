@@ -57,7 +57,7 @@ static inline MIKBleState*& mik__ble_st(MIKRuntime* rt) {
     return reinterpret_cast<MIKBleState*&>(rt->module_data[mik__ble_slot]);
 }
 
-#define MIK_BLE_TAG "native:ble"
+#define MIK_BLE_TAG "native:mikro/ble"
 
 /* Max advertising payload (31 bytes) minus mandatory flags overhead (3 bytes). */
 #define MIK_BLE_NAME_MAX_LEN 29
@@ -1492,7 +1492,7 @@ static JSModuleDef* mik__ble_init(JSContext* ctx) {
         CHECK_NOT_NULL(s_ble_event_queue);
     }
 
-    JSModuleDef* m = JS_NewCModule(ctx, "native:ble", mik__ble_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/ble", mik__ble_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "Ble");
     return m;
@@ -1585,4 +1585,4 @@ void mik__ble_destroy(JSContext* ctx) {
     mik__ble_st(mik_rt) = nullptr;
 }
 
-MIK_REGISTER_MODULE(ble, "native:ble", mik__ble_init, mik__ble_consume, mik__ble_destroy)
+MIK_REGISTER_MODULE(ble, "native:mikro/ble", mik__ble_init, mik__ble_consume, mik__ble_destroy)

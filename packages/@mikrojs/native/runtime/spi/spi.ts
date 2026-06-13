@@ -1,4 +1,4 @@
-import * as native from 'native:spi'
+import * as native from 'native:mikro/spi'
 
 import type {Result} from '../result/types.js'
 import type {Spi as PlatformSpi, SpiError, SpiOptions} from './types.js'

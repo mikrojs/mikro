@@ -1,4 +1,4 @@
-// Host-side shim for `native:result` used only in vitest (Node) where the
+// Host-side shim for `native:mikro/result` used only in vitest (Node) where the
 // mikrojs C runtime isn't available. Keep in sync with mik_result.cpp.
 
 const proto = {

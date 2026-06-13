@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import {gc, memoryUsage, MonotonicTimestamp} from 'mikro/sys'
-import {pendingCount as pendingHttpCount} from 'native:http'
-import {activeTimers} from 'native:sys'
+import {pendingCount as pendingHttpCount} from 'native:mikro/http'
+import {activeTimers} from 'native:mikro/sys'
 
 import type {ErrResult, OkResult, Result} from '../result/types.js'
 import type {Assert, TestFn, TestOptions} from './types.js'

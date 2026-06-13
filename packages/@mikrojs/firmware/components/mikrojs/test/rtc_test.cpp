@@ -26,11 +26,11 @@ static JSValue eval_module(const char* code) {
 
 /* ── Module structure tests ───────────────────────────────────────── */
 
-TEST_CASE("native:rtc exports set, get, remove, clear, info", "[modules]") {
+TEST_CASE("native:mikro/rtc exports set, get, remove, clear, info", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { set, get, remove, clear, info } from "native:rtc";
+        import { set, get, remove, clear, info } from "native:mikro/rtc";
         globalThis.__setIsFunc = typeof set === "function";
         globalThis.__getIsFunc = typeof get === "function";
         globalThis.__removeIsFunc = typeof remove === "function";
@@ -68,11 +68,11 @@ TEST_CASE("native:rtc exports set, get, remove, clear, info", "[modules]") {
 
 /* ── set/get round-trip ───────────────────────────────────────────── */
 
-TEST_CASE("native:rtc set/get round-trip", "[modules]") {
+TEST_CASE("native:mikro/rtc set/get round-trip", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { set, get, clear } from "native:rtc";
+        import { set, get, clear } from "native:mikro/rtc";
         clear();
         set("hello", "world");
         globalThis.__result = get("hello");
@@ -91,11 +91,11 @@ TEST_CASE("native:rtc set/get round-trip", "[modules]") {
 
 /* ── get returns undefined for missing key ────────────────────────── */
 
-TEST_CASE("native:rtc get returns undefined for missing key", "[modules]") {
+TEST_CASE("native:mikro/rtc get returns undefined for missing key", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { get, clear } from "native:rtc";
+        import { get, clear } from "native:mikro/rtc";
         clear();
         globalThis.__result = get("nonexistent");
         globalThis.__isUndef = get("nonexistent") === undefined;
@@ -112,11 +112,11 @@ TEST_CASE("native:rtc get returns undefined for missing key", "[modules]") {
 
 /* ── remove deletes entry ─────────────────────────────────────────── */
 
-TEST_CASE("native:rtc remove deletes entry", "[modules]") {
+TEST_CASE("native:mikro/rtc remove deletes entry", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { set, get, remove, clear } from "native:rtc";
+        import { set, get, remove, clear } from "native:mikro/rtc";
         clear();
         set("key1", "val1");
         set("key2", "val2");
@@ -147,11 +147,11 @@ TEST_CASE("native:rtc remove deletes entry", "[modules]") {
 
 /* ── remove returns false for missing key ─────────────────────────── */
 
-TEST_CASE("native:rtc remove returns false for missing key", "[modules]") {
+TEST_CASE("native:mikro/rtc remove returns false for missing key", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { remove, clear } from "native:rtc";
+        import { remove, clear } from "native:mikro/rtc";
         clear();
         globalThis.__result = remove("nonexistent");
     )");
@@ -167,11 +167,11 @@ TEST_CASE("native:rtc remove returns false for missing key", "[modules]") {
 
 /* ── clear removes all entries ────────────────────────────────────── */
 
-TEST_CASE("native:rtc clear removes all entries", "[modules]") {
+TEST_CASE("native:mikro/rtc clear removes all entries", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { set, get, clear, info } from "native:rtc";
+        import { set, get, clear, info } from "native:mikro/rtc";
         clear();
         set("a", "1");
         set("b", "2");
@@ -212,11 +212,11 @@ TEST_CASE("native:rtc clear removes all entries", "[modules]") {
 
 /* ── info returns correct structure ───────────────────────────────── */
 
-TEST_CASE("native:rtc info returns used, total, entries", "[modules]") {
+TEST_CASE("native:mikro/rtc info returns used, total, entries", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { set, info, clear } from "native:rtc";
+        import { set, info, clear } from "native:mikro/rtc";
         clear();
         set("key", "value");
         const i = info();
@@ -264,11 +264,11 @@ TEST_CASE("native:rtc info returns used, total, entries", "[modules]") {
 
 /* ── set overwrites existing key ──────────────────────────────────── */
 
-TEST_CASE("native:rtc set overwrites existing key", "[modules]") {
+TEST_CASE("native:mikro/rtc set overwrites existing key", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { set, get, info, clear } from "native:rtc";
+        import { set, get, info, clear } from "native:mikro/rtc";
         clear();
         set("key", "old");
         set("key", "new");
@@ -297,15 +297,15 @@ TEST_CASE("native:rtc set overwrites existing key", "[modules]") {
 
 /* ── set throws on overflow ───────────────────────────────────────── */
 
-TEST_CASE("native:rtc set returns an error Result when storage is full", "[modules]") {
+TEST_CASE("native:mikro/rtc set returns an error Result when storage is full", "[modules]") {
     setup();
 
-    /* native:rtc set returns a Result rather than throwing. A 2100-byte
+    /* native:mikro/rtc set returns a Result rather than throwing. A 2100-byte
      * value is well under MIK_RTC_MAX_VAL_LEN (64KB) but larger than the
      * RTC store capacity, so the error is MIK_ERR_KV_STORAGE_FULL
      * (0x8000 + 0xD3 = 0x80D3), not KV_TOO_LARGE. */
     JSValue ret = eval_module(R"(
-        import { set, clear } from "native:rtc";
+        import { set, clear } from "native:mikro/rtc";
         clear();
         const big = "x".repeat(2100);
         const result = set("big", big);

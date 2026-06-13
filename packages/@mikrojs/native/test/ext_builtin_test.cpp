@@ -73,7 +73,7 @@ std::string pending_exception_message(JSContext* ctx) {
 TEST_CASE("ext builtin under a third-party scope can import native: modules" *
           doctest::test_suite("modules")) {
     ExtBuiltin driver("@acme/driver-x/x");
-    driver.compile("import {memoryUsage} from 'native:sys'\n"
+    driver.compile("import {memoryUsage} from 'native:mikro/sys'\n"
                    "export function ping() { return typeof memoryUsage === 'function' ? 42 : -1 }\n");
 
     auto* rt = MIK_NewRuntime();
@@ -103,7 +103,7 @@ TEST_CASE("app code still cannot import native: modules directly" *
     auto* rt = MIK_NewRuntime();
     auto* ctx = MIK_GetJSContext(rt);
 
-    const char* code = "import * as sys from 'native:sys'\n";
+    const char* code = "import * as sys from 'native:mikro/sys'\n";
     JSValue ret = MIK_EvalModuleContent(ctx, "/app/main.js", code, strlen(code));
     CHECK(JS_IsException(ret));
     JS_FreeValue(ctx, ret);
@@ -115,14 +115,14 @@ TEST_CASE("app code still cannot import native: modules directly" *
 
 TEST_CASE("ext builtin load failure propagates instead of falling through to fs" *
           doctest::test_suite("modules")) {
-    /* The builtin compiles against a virtual native:wifi stub, but the
-     * runtime under test has no native:wifi (host build, no stub). Loading
-     * must surface the real "Native module 'native:wifi' is not available"
+    /* The builtin compiles against a virtual native:mikro/wifi stub, but the
+     * runtime under test has no native:mikro/wifi (host build, no stub). Loading
+     * must surface the real "Native module 'native:mikro/wifi' is not available"
      * error, not a generic resolution failure for the package name. */
     ExtBuiltin driver("@acme/bad-driver/bad");
-    driver.compile("import {Wifi} from 'native:wifi'\n"
+    driver.compile("import {Wifi} from 'native:mikro/wifi'\n"
                    "export function f() { return new Wifi() }\n",
-                   "native:wifi", "export class Wifi {}\n");
+                   "native:mikro/wifi", "export class Wifi {}\n");
 
     auto* rt = MIK_NewRuntime();
     auto* ctx = MIK_GetJSContext(rt);
@@ -132,8 +132,33 @@ TEST_CASE("ext builtin load failure propagates instead of falling through to fs"
     CHECK(JS_IsException(ret));
     JS_FreeValue(ctx, ret);
     std::string msg = pending_exception_message(ctx);
-    CHECK_MESSAGE(msg.find("native:wifi") != std::string::npos, "unexpected error: " << msg);
+    CHECK_MESSAGE(msg.find("native:mikro/wifi") != std::string::npos, "unexpected error: " << msg);
     CHECK_MESSAGE(msg.find("@acme/bad-driver/bad") == std::string::npos,
                   "real error was masked: " << msg);
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("a driver may import another package's native: modules" *
+          doctest::test_suite("modules")) {
+    /* Native-level composition across packages is allowed: an @acme driver may
+     * import @other's native: binding directly (e.g. an audio driver reusing a
+     * codec package's primitives). There is no such module on the host build, so
+     * it fails at load with "not available" — proving the gate let it through
+     * rather than rejecting the cross-package import. */
+    ExtBuiltin driver("@acme/audio/audio");
+    driver.compile("import 'native:@other/codec/decode'\n"
+                   "export function f() {}\n",
+                   "native:@other/codec/decode", "export default {}\n");
+
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+    const char* code = "import {f} from '@acme/audio/audio'\n";
+    JSValue ret = MIK_EvalModuleContent(ctx, "/app/main.js", code, strlen(code));
+    CHECK(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    std::string msg = pending_exception_message(ctx);
+    CHECK_MESSAGE(msg.find("not available") != std::string::npos, "unexpected error: " << msg);
+    CHECK_MESSAGE(msg.find("can only be imported by firmware builtins") == std::string::npos,
+                  "cross-package native: import was wrongly rejected: " << msg);
     MIK_FreeRuntime(rt);
 }

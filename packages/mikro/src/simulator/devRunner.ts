@@ -41,7 +41,7 @@ async function rpcHttpFetch(args: HttpFetchArgs): Promise<HttpFetchResult> {
 // `mikro/kv/nvs` survives power cycles on device, so it must survive
 // `mikro sim dev` restarts here. Stored alongside `nvs.json` (env config) as
 // `nvs_kv.json` — values are base64-encoded CBOR blobs (the QuickJS-side
-// stub wraps user values via native:cbor before persistence).
+// stub wraps user values via native:mikro/cbor before persistence).
 interface NvsKvStore {
   entries: Record<string, string> // key → base64(cbor)
 }
@@ -67,7 +67,7 @@ export interface DevRunnerOptions {
   fsReadMax?: number
   env?: Record<string, string>
   /**
-   * User-provided stub sources keyed by module name (e.g. 'native:wifi').
+   * User-provided stub sources keyed by module name (e.g. 'native:mikro/wifi').
    * These override the default stubs. TypeScript is stripped before registration.
    */
   stubSources?: Record<string, string>

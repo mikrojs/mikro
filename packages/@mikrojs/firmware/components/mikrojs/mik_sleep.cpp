@@ -246,7 +246,7 @@ static bool mik__configure_wakeup_sources(JSContext* ctx, JSValue sources) {
     return true;
 }
 
-/* ── native:sleep JS module ─────────────────────────────────────────── */
+/* ── native:mikro/sleep JS module ─────────────────────────────────────────── */
 
 static JSValue mik__sleep_deep(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     if (!mik__configure_wakeup_sources(ctx, argv[0])) return JS_EXCEPTION;
@@ -323,7 +323,7 @@ static int mik__sleep_module_init(JSContext* ctx, JSModuleDef* m) {
 }
 
 static JSModuleDef* mik__sleep_init(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "native:sleep", mik__sleep_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/sleep", mik__sleep_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "deepSleep");
     JS_AddModuleExport(ctx, m, "lightSleep");
@@ -333,4 +333,4 @@ static JSModuleDef* mik__sleep_init(JSContext* ctx) {
     return m;
 }
 
-MIK_REGISTER_MODULE(sleep, "native:sleep", mik__sleep_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(sleep, "native:mikro/sleep", mik__sleep_init, nullptr, nullptr)

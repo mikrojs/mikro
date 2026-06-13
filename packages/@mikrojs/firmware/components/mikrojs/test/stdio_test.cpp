@@ -28,7 +28,7 @@ TEST_CASE("stdout.write with string does not throw", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdout } from "native:stdio";
+        import { stdout } from "native:mikro/stdio";
         stdout.write("hello from test\n");
         globalThis.__ok = true;
     )");
@@ -47,7 +47,7 @@ TEST_CASE("stdout.write with Uint8Array does not throw", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdout } from "native:stdio";
+        import { stdout } from "native:mikro/stdio";
         const enc = new TextEncoder();
         stdout.write(enc.encode("binary data\n"));
         globalThis.__ok = true;
@@ -67,7 +67,7 @@ TEST_CASE("stdout.write returns undefined", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdout } from "native:stdio";
+        import { stdout } from "native:mikro/stdio";
         globalThis.__result = stdout.write("test");
         globalThis.__isUndef = globalThis.__result === undefined;
     )");
@@ -86,7 +86,7 @@ TEST_CASE("stdout.write with empty string does not throw", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdout } from "native:stdio";
+        import { stdout } from "native:mikro/stdio";
         stdout.write("");
         globalThis.__ok = true;
     )");
@@ -105,7 +105,7 @@ TEST_CASE("stdout.write with empty Uint8Array does not throw", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdout } from "native:stdio";
+        import { stdout } from "native:mikro/stdio";
         stdout.write(new Uint8Array(0));
         globalThis.__ok = true;
     )");
@@ -127,7 +127,7 @@ TEST_CASE("stdout.flush does not throw", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdout } from "native:stdio";
+        import { stdout } from "native:mikro/stdio";
         stdout.flush();
         globalThis.__ok = true;
     )");
@@ -146,7 +146,7 @@ TEST_CASE("stdout.flush returns undefined", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdout } from "native:stdio";
+        import { stdout } from "native:mikro/stdio";
         globalThis.__isUndef = stdout.flush() === undefined;
     )");
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
@@ -166,7 +166,7 @@ TEST_CASE("stdin.read returns undefined when no data available", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdin } from "native:stdio";
+        import { stdin } from "native:mikro/stdio";
         const data = stdin.read();
         globalThis.__isUndef = data === undefined;
     )");
@@ -188,7 +188,7 @@ TEST_CASE("stdin.setHandler accepts a function", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdin } from "native:stdio";
+        import { stdin } from "native:mikro/stdio";
         stdin.setHandler(() => {});
         globalThis.__ok = true;
     )");
@@ -207,7 +207,7 @@ TEST_CASE("stdin.setHandler throws TypeError for non-function", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdin } from "native:stdio";
+        import { stdin } from "native:mikro/stdio";
         try {
             stdin.setHandler("not a function");
             globalThis.__threw = false;
@@ -239,7 +239,7 @@ TEST_CASE("stdin.clearHandler does not throw when no handler set", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdin } from "native:stdio";
+        import { stdin } from "native:mikro/stdio";
         stdin.clearHandler();
         globalThis.__ok = true;
     )");
@@ -259,7 +259,7 @@ TEST_CASE("stdin.clearHandler unregisters a previously set handler", "[stdio]") 
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdin } from "native:stdio";
+        import { stdin } from "native:mikro/stdio";
         stdin.setHandler(() => {});
         stdin.clearHandler();
         globalThis.__ok = true;
@@ -284,7 +284,7 @@ TEST_CASE("stdin.setHandler replaces previous handler", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdin } from "native:stdio";
+        import { stdin } from "native:mikro/stdio";
         stdin.setHandler(() => { globalThis.__first = true; });
         stdin.setHandler(() => { globalThis.__second = true; });
         globalThis.__ok = true;
@@ -323,15 +323,15 @@ TEST_CASE("mik__stdin_consume is a no-op when no handler is registered", "[stdio
 
 /* ── Module exports shape ─────────────────────────────────────────── */
 
-TEST_CASE("native:stdio exports stdout and stdin objects", "[stdio]") {
+TEST_CASE("native:mikro/stdio exports stdout and stdin objects", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdout, stdin } from "native:stdio";
+        import { stdout, stdin } from "native:mikro/stdio";
         globalThis.__hasStdout = typeof stdout === "object" && stdout !== null;
         globalThis.__hasStdin = typeof stdin === "object" && stdin !== null;
     )");
-    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Importing native:stdio should not throw");
+    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Importing native:mikro/stdio should not throw");
 
     JSValue global = JS_GetGlobalObject(ctx);
 
@@ -353,7 +353,7 @@ TEST_CASE("stdout has write and flush functions", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdout } from "native:stdio";
+        import { stdout } from "native:mikro/stdio";
         globalThis.__hasWrite = typeof stdout.write === "function";
         globalThis.__hasFlush = typeof stdout.flush === "function";
     )");
@@ -379,7 +379,7 @@ TEST_CASE("stdin has read, setHandler, and clearHandler functions", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdin } from "native:stdio";
+        import { stdin } from "native:mikro/stdio";
         globalThis.__hasRead = typeof stdin.read === "function";
         globalThis.__hasSetHandler = typeof stdin.setHandler === "function";
         globalThis.__hasClearHandler = typeof stdin.clearHandler === "function";
@@ -412,7 +412,7 @@ TEST_CASE("stdout.write coerces number to string", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdout } from "native:stdio";
+        import { stdout } from "native:mikro/stdio";
         stdout.write(42);
         globalThis.__ok = true;
     )");
@@ -434,7 +434,7 @@ TEST_CASE("stdin handler is cleaned up on runtime free", "[stdio]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { stdin } from "native:stdio";
+        import { stdin } from "native:mikro/stdio";
         stdin.setHandler((data) => {});
     )");
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");

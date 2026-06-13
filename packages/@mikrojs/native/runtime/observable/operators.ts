@@ -17,11 +17,11 @@
  * See `.claude/plans/observable.md` for the full design.
  */
 
-import {Observable as NativeObservable} from 'native:observable'
+import {Observable as NativeObservable} from 'native:mikro/observable'
 
 import type {Observable as ObservableT} from './types.js'
 
-/* `native:observable` resolves only inside the runtime build; outside
+/* `native:mikro/observable` resolves only inside the runtime build; outside
  * (twoslash, host typecheck without internal.d.ts) it falls back to `any`,
  * which collapses pipe/operator inference at use sites. Pin the type to the
  * declared class in `./types.ts` so consumers always see the typed shape. */

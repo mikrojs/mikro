@@ -42,7 +42,7 @@ static JSValue eval_module(const char* code) {
 }
 
 static void ensure_initialized() {
-    const char* code = "import { nextRequest } from 'native:http_server';";
+    const char* code = "import { nextRequest } from 'native:mikro/http_server';";
     JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
@@ -108,11 +108,11 @@ static void free_exchange(MIKHsExchange* ex) {
 
 /* ── Tests ─────────────────────────────────────────────────────────── */
 
-TEST_CASE("native:http_server exports the expected functions", "[httpd]") {
+TEST_CASE("native:mikro/http_server exports the expected functions", "[httpd]") {
     setup();
     JSValue ret = eval_module(R"(
         import { start, stop, nextRequest, respond,
-                 respondStart, respondChunk, respondEnd, getHeader } from "native:http_server";
+                 respondStart, respondChunk, respondEnd, getHeader } from "native:mikro/http_server";
         globalThis.__t = [start, stop, nextRequest, respond,
                           respondStart, respondChunk, respondEnd, getHeader]
                           .every((f) => typeof f === "function") ? "ok" : "bad";
@@ -143,7 +143,7 @@ TEST_CASE("nextRequest delivers method/url and respond fills the exchange", "[ht
     MIKHsExchange* ex = push_request("GET", "/hello?x=1");
 
     eval_module(R"(
-        import { nextRequest, respond } from 'native:http_server';
+        import { nextRequest, respond } from 'native:mikro/http_server';
         globalThis.__method = '';
         globalThis.__url = '';
         (async () => {
@@ -188,7 +188,7 @@ TEST_CASE("respond tolerates a bodyless response", "[httpd]") {
     MIKHsExchange* ex = push_request("POST", "/save");
 
     eval_module(R"(
-        import { nextRequest, respond } from 'native:http_server';
+        import { nextRequest, respond } from 'native:mikro/http_server';
         globalThis.__threw = false;
         (async () => {
             const r = await nextRequest();

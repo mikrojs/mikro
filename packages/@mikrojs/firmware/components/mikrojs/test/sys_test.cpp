@@ -22,11 +22,11 @@ static void setup() {
 
 static void teardown() { MIK_FreeRuntime(rt); }
 
-TEST_CASE("native:sys evalScript evaluates global code", "[modules]") {
+TEST_CASE("native:mikro/sys evalScript evaluates global code", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { evalScript } from "native:sys";
+        import { evalScript } from "native:mikro/sys";
         globalThis.__evalResult = evalScript("2 + 2");
     )");
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
@@ -46,11 +46,11 @@ TEST_CASE("native:sys evalScript evaluates global code", "[modules]") {
     teardown();
 }
 
-TEST_CASE("native:sys memoryUsage returns object with heapTotal and heapUsed", "[modules]") {
+TEST_CASE("native:mikro/sys memoryUsage returns object with heapTotal and heapUsed", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { memoryUsage } from "native:sys";
+        import { memoryUsage } from "native:mikro/sys";
         const mem = memoryUsage();
         globalThis.__hasTotal = "heapTotal" in mem;
         globalThis.__hasUsed = "heapUsed" in mem;
@@ -93,11 +93,11 @@ TEST_CASE("native:sys memoryUsage returns object with heapTotal and heapUsed", "
     teardown();
 }
 
-TEST_CASE("native:sys exports are not uninitialized", "[modules]") {
+TEST_CASE("native:mikro/sys exports are not uninitialized", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { evalScript, memoryUsage, gc, setTime, uptime, restart } from "native:sys";
+        import { evalScript, memoryUsage, gc, setTime, uptime, restart } from "native:mikro/sys";
         globalThis.__allFunctions =
             typeof evalScript === "function" &&
             typeof memoryUsage === "function" &&
@@ -106,23 +106,23 @@ TEST_CASE("native:sys exports are not uninitialized", "[modules]") {
             typeof uptime === "function" &&
             typeof restart === "function";
     )");
-    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Importing native:sys should not throw");
+    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Importing native:mikro/sys should not throw");
 
     JSValue global = JS_GetGlobalObject(ctx);
     JSValue v = JS_GetPropertyStr(ctx, global, "__allFunctions");
     TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, v),
-                             "All native:sys exports should be functions, not uninitialized");
+                             "All native:mikro/sys exports should be functions, not uninitialized");
     JS_FreeValue(ctx, v);
     JS_FreeValue(ctx, global);
 
     teardown();
 }
 
-TEST_CASE("native:sys uptime returns a positive number", "[modules]") {
+TEST_CASE("native:mikro/sys uptime returns a positive number", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { uptime } from "native:sys";
+        import { uptime } from "native:mikro/sys";
         const t = uptime();
         globalThis.__isObj = typeof t === "object" && t !== null;
         globalThis.__isPositive = typeof t.boot === "number" && t.boot >= 0;
@@ -145,11 +145,11 @@ TEST_CASE("native:sys uptime returns a positive number", "[modules]") {
     teardown();
 }
 
-TEST_CASE("native:sys gc does not crash", "[modules]") {
+TEST_CASE("native:mikro/sys gc does not crash", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import { gc } from "native:sys";
+        import { gc } from "native:mikro/sys";
         gc();
         globalThis.__gcDone = true;
     )");

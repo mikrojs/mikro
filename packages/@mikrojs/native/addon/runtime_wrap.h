@@ -10,13 +10,13 @@
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/platform.h"
 
-/* Bidirectional message bridge between QuickJS (native:host) and Node.js. */
+/* Bidirectional message bridge between QuickJS (native:mikro/host) and Node.js. */
 struct HostBridge {
     std::vector<std::pair<std::string, std::string>> outbound_messages;
     std::vector<std::pair<std::string, std::string>> inbound_messages;
     JSValue on_message_callback = JS_UNDEFINED;
 
-    /* Synchronous RPC handler: called from QuickJS via native:host.call() */
+    /* Synchronous RPC handler: called from QuickJS via native:mikro/host.call() */
     Napi::FunctionReference rpc_handler;
     napi_env current_env = nullptr;
 

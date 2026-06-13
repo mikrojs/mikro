@@ -3,12 +3,12 @@ import type {BuiltinDefinition} from './types.js'
 // http delegates to Node's global fetch via the dev runner's RPC handler
 // ('http.fetch'). The QuickJS-side stub keeps a per-request message queue so
 // nextMessage() can deliver the body as one chunk followed by {kind: 'end'},
-// matching the streaming contract that mikro/http expects from native:http.
+// matching the streaming contract that mikro/http expects from native:mikro/http.
 export const httpBuiltin: BuiltinDefinition = {
   source: `/* eslint-disable no-console */
 // Simulator stub for http
 // Runs inside the mikrojs runtime (QuickJS), not Node.js. Node built-ins are not available.
-import {call} from 'native:host'
+import {call} from 'native:mikro/host'
 import {err, ok} from 'mikro/result'
 import type {SimHttp} from 'mikro/sim'
 

@@ -1,7 +1,7 @@
 // Pure-types entry for `mikro/http/server`. Runtime values are provided
 // on-device by the bundled `http/server` bytecode module. This file declares
 // the shapes so TypeScript and host tooling can see them without pulling in
-// `native:http_server`.
+// `native:mikro/http_server`.
 
 import type {
   CreateServer,

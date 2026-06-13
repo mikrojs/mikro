@@ -5,7 +5,7 @@
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
-#define MIK_SPI_TAG "native:spi"
+#define MIK_SPI_TAG "native:mikro/spi"
 #define MIK_SPI_DEFAULT_FREQ 1000000
 #define MIK_SPI_DEFAULT_MODE 0
 
@@ -321,10 +321,10 @@ static JSModuleDef* mik__spi_init(JSContext* ctx) {
     JS_SetClassProto(ctx, mik_spi_class_id, proto);  /* consumed */
 
     /* Register module */
-    JSModuleDef* m = JS_NewCModule(ctx, "native:spi", mik__spi_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/spi", mik__spi_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "Spi");
     return m;
 }
 
-MIK_REGISTER_MODULE(spi, "native:spi", mik__spi_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(spi, "native:mikro/spi", mik__spi_init, nullptr, nullptr)

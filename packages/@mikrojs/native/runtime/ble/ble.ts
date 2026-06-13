@@ -1,6 +1,6 @@
 import {lazyEvent} from 'mikro/observable/lazy'
 import {err, ok} from 'mikro/result'
-import {Ble as NativeBle} from 'native:ble'
+import {Ble as NativeBle} from 'native:mikro/ble'
 
 import type {Result} from '../result/types.js'
 import type {
@@ -18,7 +18,7 @@ import type {
 import {parseUuid} from './uuid.js'
 import {ADV_PAYLOAD_MAX, computeAdvertisingPayloadSize, validateInterval} from './validators.js'
 
-// Inline constructors for the JS-side validated variants (native:ble doesn't
+// Inline constructors for the JS-side validated variants (native:mikro/ble doesn't
 // emit these — they come from validateInterval, validateServices, and the
 // advertise payload-size check). Kept as `const` factories so validators.ts
 // can stay decoupled from the BleError shape for unit testing.

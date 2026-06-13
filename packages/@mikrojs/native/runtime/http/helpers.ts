@@ -1,5 +1,5 @@
 // Transport-agnostic HTTP request/response primitives. No dependency on
-// `native:http`. Apps driving HTTP through a non-lwIP transport (e.g. an
+// `native:mikro/http`. Apps driving HTTP through a non-lwIP transport (e.g. an
 // LTE modem over UART) implement the `Request` type directly and reuse
 // `prepareBody` + `makeResponse` for the boring parts.
 
