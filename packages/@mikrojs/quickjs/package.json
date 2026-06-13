@@ -1,6 +1,6 @@
 {
   "name": "@mikrojs/quickjs",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "QuickJS-NG engine source, shared CMake module, and qjsc bytecode compiler",
   "keywords": [
     "bytecode",

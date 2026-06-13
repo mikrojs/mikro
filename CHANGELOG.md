@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.14.0 (2026-06-13)
+
+### Features
+
+- **docs:** publish llms.txt for AI coding assistants ([#230](https://github.com/mikrojs/mikro/pull/230))
+- **cli:** offer to reflash incompatible device firmware ([#227](https://github.com/mikrojs/mikro/pull/227))
+
+### Bug fixes
+
+- **firmware:** fix external build issues ([#229](https://github.com/mikrojs/mikro/pull/229))
+- **native:** keep '/*' out of a block comment ([#239](https://github.com/mikrojs/mikro/pull/239))
+- **releaser:** order prerelease versions by publish time ([#236](https://github.com/mikrojs/mikro/pull/236))
+- **firmware:** make third-party driver packages work in custom firmware builds ([#235](https://github.com/mikrojs/mikro/pull/235))
+- **cli:** keep reflash prompt hints from reading as a menu ([#234](https://github.com/mikrojs/mikro/pull/234))
+- **firmware:** pick up version changes without a clean build ([#233](https://github.com/mikrojs/mikro/pull/233))
+- **cli:** don't flag identical prerelease firmware as incompatible ([#232](https://github.com/mikrojs/mikro/pull/232))
+- **wifi:** refuse start under low heap instead of PHY abort ([#225](https://github.com/mikrojs/mikro/pull/225))
+- **firmware:** guard MIK_InitPromise OOM to avoid gc_decref double-free ([#224](https://github.com/mikrojs/mikro/pull/224))
+
+### Other
+
+- **release:** mint the App token before release-PR guard ([#238](https://github.com/mikrojs/mikro/pull/238))
+- **release:** guard the release PR from being merged mid-regeneration ([#237](https://github.com/mikrojs/mikro/pull/237))
+- **repo:** drop leftover CommonJS require() ([#228](https://github.com/mikrojs/mikro/pull/228))
+- **deps:** update dependency prettier to v3.8.4 ([#222](https://github.com/mikrojs/mikro/pull/222))
+
 ## 0.13.0 (2026-06-11)
 
 ### Features
