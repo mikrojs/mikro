@@ -36,10 +36,10 @@ This page explains how the pieces fit together. The goal is "enough to understan
 Native modules (C/C++ functions callable from JavaScript) self-register using the `MIK_REGISTER_MODULE` macro:
 
 ```cpp
-MIK_REGISTER_MODULE(bme280, "native:@mikrojs/driver-bme280/bme280", mik__bme280_init, nullptr, nullptr)
+MIK_REGISTER_MODULE(bme280, "native:@my-scope/bme280/sensor", mik__bme280_init, nullptr, nullptr)
 ```
 
-The macro takes five arguments: a unique C identifier, the module name, an init function, an optional loop consumer, and an optional destroy function. It works via a GCC/Clang constructor attribute. At program startup, before `main()` runs, each registered module adds itself to a global linked list. When JavaScript code imports `native:@mikrojs/driver-bme280/bme280`, the module loader walks this list and calls the module's init function.
+The macro takes five arguments: a unique C identifier, the module name, an init function, an optional loop consumer, and an optional destroy function. It works via a GCC/Clang constructor attribute. At program startup, before `main()` runs, each registered module adds itself to a global linked list. When JavaScript code imports `native:@my-scope/bme280/sensor`, the module loader walks this list and calls the module's init function.
 
 Native module names are package-qualified: `native:<package-name>/<module>`. The bare `native:mikro/*` namespace is reserved for the core runtime. The build defines `MIK_PACKAGE_NAME` per component and the macro enforces the prefix at compile time, so a package cannot claim or shadow another's `native:` name.
 
@@ -58,13 +58,13 @@ mikrojs_force_include_modules(bme280)
 TypeScript wrapper modules are pre-compiled to QuickJS bytecode and embedded in the firmware binary. They register with `MIK_REGISTER_BUILTIN`:
 
 ```cpp
-MIK_REGISTER_BUILTIN("@mikrojs/driver-bme280/bme280",
+MIK_REGISTER_BUILTIN("@my-scope/bme280/sensor",
                       qjsc_bme280, qjsc_bme280_size)
 ```
 
-This uses the same constructor/linked-list pattern as native modules. When JavaScript imports `@mikrojs/driver-bme280/bme280`, the loader finds the matching builtin, deserializes the bytecode with `JS_ReadObject`, and returns the module.
+This uses the same constructor/linked-list pattern as native modules. When JavaScript imports `@my-scope/bme280/sensor`, the loader finds the matching builtin, deserializes the bytecode with `JS_ReadObject`, and returns the module.
 
-The builtin name matches the npm package path that user code imports. This is how `import {readSensor} from '@mikrojs/driver-bme280/bme280'` resolves without a filesystem lookup.
+The builtin name matches the npm package path that user code imports. This is how `import {readSensor} from '@my-scope/bme280/sensor'` resolves without a filesystem lookup.
 
 Like native modules, builtins need force-include linker flags:
 
@@ -94,9 +94,9 @@ The `mikrojs_generate_bytecode()` CMake function orchestrates both steps:
 ```cmake
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${CMAKE_CURRENT_LIST_DIR}/../runtime"
-    MODULES bme280/bme280
-    MODULE_PREFIX "@mikrojs/driver-bme280"
-    SYMBOL_PREFIX "driver_bme280"
+    MODULES sensor
+    MODULE_PREFIX "@my-scope/bme280"
+    SYMBOL_PREFIX "bme280"
 )
 ```
 
@@ -109,7 +109,7 @@ mikrojs_generate_bytecode(
 When JavaScript executes an `import` statement, the module loader checks several sources in order:
 
 1. **Native modules**: Names starting with `native:` are looked up in the native module registry (the linked list populated by `MIK_REGISTER_MODULE`).
-2. **Bytecode builtins**: Names matching registered builtins (e.g., `@mikrojs/driver-bme280/bme280`, `mikro/result`) are deserialized from embedded bytecode.
+2. **Bytecode builtins**: Names matching registered builtins (e.g., `@my-scope/bme280/sensor`, `mikro/result`) are deserialized from embedded bytecode.
 3. **Filesystem**: Relative paths (starting with `.` or `/`) are loaded from the device filesystem (LittleFS). JSON files are auto-wrapped. `.bjs` files are loaded as pre-compiled bytecode.
 
 The module normalizer passes through `native:`, `mikro/`, and `@mikrojs/` prefixed names unchanged. Relative paths are resolved against the importing module's directory.
