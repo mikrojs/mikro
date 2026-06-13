@@ -200,6 +200,15 @@ jobs:
           ignore-scripts: 'true' # no C++ toolchain on this runner; pure-TS dists only
           registry-url: https://registry.npmjs.org
 
+      # ignore-scripts skips the @mikrojs/quickjs postinstall that applies the
+      # mikrojs-local QuickJS patches. Apply them explicitly so the packed
+      # tarball ships patched source; the gate fails the release if it didn't
+      # (an unpatched tarball makes @mikrojs/native fail to compile downstream).
+      - name: Apply QuickJS patches
+        run: node packages/@mikrojs/quickjs/apply-patches.js
+      - name: Verify QuickJS patches applied
+        run: node packages/@mikrojs/quickjs/verify-patches.js
+
       # Apply the version computed by plan. Same value also written by the
       # firmware-build action — using one source of truth ensures sys.version
       # in the firmware matches the version published to npm.

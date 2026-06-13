@@ -19,6 +19,7 @@
     "url": "git+https://github.com/mikrojs/mikro.git"
   },
   "files": [
+    "apply-patches.js",
     "deps/quickjs/*.c",
     "deps/quickjs/*.h",
     "deps/quickjs/LICENSE",
@@ -33,7 +34,9 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "postinstall": "node postinstall.js"
+    "apply-patches": "node apply-patches.js",
+    "postinstall": "node postinstall.js",
+    "verify-patches": "node verify-patches.js"
   },
   "engines": {
     "node": ">=24.0.0"
