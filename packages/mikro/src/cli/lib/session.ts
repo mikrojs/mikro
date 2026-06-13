@@ -97,6 +97,9 @@ export interface ReadyEvent {
 export interface TextEvent {
   type: 'log' | 'warn' | 'error' | 'info' | 'debug' | 'result' | 'eval_error'
   text: string
+  /** Attached by the REPL state machine to `result`/`eval_error` entries so the
+   *  eval duration (from the preceding `prompt`) renders on the result line. */
+  timing?: string
 }
 
 export interface CompletionsEvent {

@@ -25,7 +25,6 @@ static JSContext* repl_ctx = nullptr;
 static MIKRuntime* repl_mik_rt = nullptr;
 static int show_depth = 2;
 static bool show_hidden = false;
-static bool show_time = false;
 
 /* ── Protocol mode state ─────────────────────────────────────────── */
 
@@ -285,6 +284,15 @@ static JSValue repl_eval_and_pump(JSContext* ctx, const char* code, size_t len) 
     }
 }
 
+/* Emit eval duration (since t0) as a PROMPT message; the CLI renders it on the
+ * result line when timing display is enabled. */
+static void repl_send_timing(MIKReplTransport* transport, int64_t t0) {
+    int64_t elapsed = MIK_GetPlatform()->get_boot_us() - t0;
+    char timing[32];
+    int tlen = snprintf(timing, sizeof(timing), "%.1fms", (double)elapsed / 1000.0);
+    mik__proto_send(transport, MIK_MSG_PROMPT, timing, tlen);
+}
+
 /* ── Tab completion ──────────────────────────────────────────────── */
 
 static constexpr int MAX_COMPLETIONS = 32;
@@ -315,10 +323,10 @@ static void completion_callback(CompletionBuf& cb, int argc, const char* const* 
 
     /* Check for directive completion */
     if (argc == 1 && last_token[0] == '/') {
-        static const char* directives[] = {"/help",   "/mem",    "/gc",     "/exit",
-                                           "/ls",     "/cat",    "/rm",     "/time",
-                                           "/depth",  "/hidden", "/df",     "/du",
-                                           "/pause",  "/resume", "/info"};
+        static const char* directives[] = {"/help",   "/mem",    "/gc",   "/exit",
+                                           "/ls",     "/cat",    "/rm",   "/depth",
+                                           "/hidden", "/df",     "/du",   "/pause",
+                                           "/resume", "/info"};
         size_t tok_len = strlen(last_token);
         for (size_t i = 0; i < countof(directives); i++) {
             if (strncmp(directives[i], last_token, tok_len) == 0) {
@@ -431,7 +439,6 @@ static bool handle_directive_impl(JSContext* ctx, const char* line, std::string&
             "/help      Show this help\n"
             "/mem       Show heap memory usage\n"
             "/gc        Run garbage collector\n"
-            "/time      Toggle timing display\n"
             "/depth N   Set object inspection depth (default 2)\n"
             "/hidden    Toggle hidden property display\n"
             "/pause     Pause app (suspend timers/callbacks)\n"
@@ -559,12 +566,6 @@ static bool handle_directive_impl(JSContext* ctx, const char* line, std::string&
         long freed = (long)before.malloc_size - (long)after.malloc_size;
         dir_printf(out, "GC collected %ld bytes (%ld -> %ld)\n", freed,
                    (long)before.malloc_size, (long)after.malloc_size);
-        return true;
-    }
-
-    if (strcmp(line, "/time") == 0) {
-        show_time = !show_time;
-        dir_printf(out, "Timing %s\n", show_time ? "on" : "off");
         return true;
     }
 
@@ -884,7 +885,6 @@ void MIK_ProtocolOpen(MIKReplTransport* transport) {
     repl_active = true;
     show_depth = 2;
     show_hidden = false;
-    show_time = false;
 
     /* Build MSG_READY with CBOR device info: {"chip": tstr, "id": tstr, "v": tstr}.
      * Cached here and only emitted in response to a client CMD_HELLO so a
@@ -985,10 +985,7 @@ void MIK_ProtocolServeLoop(void) {
                 std::string code = repl_rewrite_const_let(payload.c_str());
                 code = repl_maybe_wrap_object(code);
 
-                int64_t t0 = 0;
-                if (show_time) {
-                    t0 = platform->get_boot_us();
-                }
+                int64_t t0 = platform->get_boot_us();
 
                 repl_evaluating = true;
                 repl_async_skipped = false;
@@ -1045,15 +1042,8 @@ void MIK_ProtocolServeLoop(void) {
 
                     JS_FreeValue(ctx, exc);
 
-                    /* Send timing before error so CLI can attach it to the input echo */
-                    if (show_time) {
-                        int64_t elapsed = platform->get_boot_us() - t0;
-                        char timing[64];
-                        int tlen =
-                            snprintf(timing, sizeof(timing), "%.1fms", (double)elapsed / 1000.0);
-                        mik__proto_send(transport, MIK_MSG_PROMPT, timing, tlen);
-                    }
-
+                    /* Timing precedes the error so the CLI can render it on that line. */
+                    repl_send_timing(transport, t0);
                     mik__proto_send(transport, MIK_MSG_EVAL_ERROR, msg.c_str(), msg.size());
                 } else if (!JS_IsUndefined(result)) {
                     std::string inspected = mik_inspect(ctx, result, show_depth, false, show_hidden);
@@ -1063,28 +1053,14 @@ void MIK_ProtocolServeLoop(void) {
                     JS_SetPropertyStr(ctx, global, "_", JS_DupValue(ctx, result));
                     JS_FreeValue(ctx, global);
 
-                    /* Send timing before result so CLI can attach it to the input echo */
-                    if (show_time) {
-                        int64_t elapsed = platform->get_boot_us() - t0;
-                        char timing[64];
-                        int tlen =
-                            snprintf(timing, sizeof(timing), "%.1fms", (double)elapsed / 1000.0);
-                        mik__proto_send(transport, MIK_MSG_PROMPT, timing, tlen);
-                    }
-
+                    /* Timing precedes the result so the CLI can render it on that line. */
+                    repl_send_timing(transport, t0);
                     mik__proto_send(transport, MIK_MSG_RESULT, inspected.c_str(),
                                     inspected.size());
                 } else {
-                    /* Send timing before empty result */
-                    if (show_time) {
-                        int64_t elapsed = platform->get_boot_us() - t0;
-                        char timing[64];
-                        int tlen =
-                            snprintf(timing, sizeof(timing), "%.1fms", (double)elapsed / 1000.0);
-                        mik__proto_send(transport, MIK_MSG_PROMPT, timing, tlen);
-                    }
-
-                    /* undefined result — send empty result so CLI knows eval finished */
+                    /* undefined result — send timing then an empty result so the CLI
+                     * knows the eval finished. */
+                    repl_send_timing(transport, t0);
                     mik__proto_send(transport, MIK_MSG_RESULT, nullptr, 0);
                 }
 

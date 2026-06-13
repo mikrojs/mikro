@@ -317,13 +317,29 @@ export function ReplConsole({
         {(event, index) => {
           const text = eventText(event, deviceName)
           const color = eventColor(event)
-          const isDimmed = event.type === 'input' || event.type === 'debug'
-          const timing = event.type === 'input' ? event.timing : undefined
+          const isResult = event.type === 'result'
+          const isDimmed = event.type === 'input' || event.type === 'debug' || isResult
+          // Timing always arrives from the device; `/time` decides whether to show it.
+          const timing =
+            state.showTiming && (event.type === 'result' || event.type === 'eval_error')
+              ? event.timing
+              : undefined
+          // `❯` you typed, `❮•` the value returning, `✖` an error.
+          const prefix = isResult
+            ? '❮• '
+            : event.type === 'eval_error'
+              ? `${figures.cross} `
+              : event.type === 'input'
+                ? prompt
+                : ''
+          // Empty result means the eval produced `undefined` (shown, dimmed).
+          const body = isResult && text === '' ? 'undefined' : text
 
           return (
             <Text key={index} color={color} dimColor={isDimmed}>
-              {timing ? `${timing} ` : ''}
-              {text}
+              {prefix}
+              {body}
+              {timing ? <Text dimColor>{`   ${timing}`}</Text> : null}
             </Text>
           )
         }}

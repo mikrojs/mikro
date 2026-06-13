@@ -252,7 +252,7 @@ describe('replStateMachine', () => {
       const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
       expect(next.input).toBe('')
       expect(next.evaluating).toBe(true)
-      expect(next.pendingInput).toBe('1+1')
+      expect(next.events.at(-1)).toEqual({type: 'input', code: '1+1'})
       expect(effects).toContainEqual({type: 'eval', code: '1+1'})
       expect(effects).toContainEqual({type: 'appendHistory', entry: '1+1'})
     })
@@ -358,6 +358,26 @@ describe('replStateMachine', () => {
       expect(effects).toContainEqual({type: 'setAlias', name: ''})
     })
 
+    test('/time toggles display host-side without forwarding to the device', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      expect(ready.showTiming).toBe(false)
+
+      const s = typeChars(ready, '/time')
+      const [on, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      expect(on.showTiming).toBe(true)
+      // Host-side only: never sent to the device.
+      expect(effects.find((e) => e.type === 'directive')).toBeUndefined()
+      expect(on.events.at(-1)).toEqual({type: 'info', text: 'Timing display on'})
+
+      const s2 = typeChars(on, '/time')
+      const [off] = reduce(s2, keyAction('', {return: true, ctrl: true}))
+      expect(off.showTiming).toBe(false)
+    })
+
     test('/pause sets paused flag', () => {
       const state = createInitialState()
       const [ready] = reduce(
@@ -456,7 +476,7 @@ describe('replStateMachine', () => {
       expect(next.events.at(-1)).toEqual({type: 'log', text: 'hello'})
     })
 
-    test('result event clears evaluating and flushes pending input', () => {
+    test('input is echoed on submit, before the result arrives', () => {
       const state = createInitialState()
       const [ready] = reduce(
         state,
@@ -465,17 +485,39 @@ describe('replStateMachine', () => {
       const s = typeChars(ready, '1+1')
       const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
       expect(submitted.evaluating).toBe(true)
-      expect(submitted.pendingInput).toBe('1+1')
+      // Echo lands immediately — no device round-trip required.
+      expect(submitted.events.find((e) => e.type === 'input')).toEqual({type: 'input', code: '1+1'})
 
       const [afterResult] = reduce(submitted, deviceEvent({type: 'result', text: '2'}))
       expect(afterResult.evaluating).toBe(false)
-      // pendingInput is flushed by prompt (which carries timing), not result
-      expect(afterResult.pendingInput).toBe('1+1')
+      expect(afterResult.events.at(-1)).toEqual({type: 'result', text: '2', timing: undefined})
+    })
 
-      const [next] = reduce(afterResult, deviceEvent({type: 'prompt', timing: ''}))
-      expect(next.pendingInput).toBeNull()
-      const inputEvent = next.events.find((e) => e.type === 'input')
-      expect(inputEvent).toBeDefined()
+    test('empty result is kept (renders as undefined)', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      const s = typeChars(ready, 'void 0')
+      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [next] = reduce(submitted, deviceEvent({type: 'result', text: ''}))
+      expect(next.events.at(-1)).toEqual({type: 'result', text: '', timing: undefined})
+    })
+
+    test('prompt timing is attached to the result line', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      const s = typeChars(ready, '1+1')
+      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      // Device sends timing (prompt) just before the result.
+      const [withTiming] = reduce(submitted, deviceEvent({type: 'prompt', timing: '5ms'}))
+      const [next] = reduce(withTiming, deviceEvent({type: 'result', text: '2'}))
+      expect(next.events.at(-1)).toEqual({type: 'result', text: '2', timing: '5ms'})
+      expect(next.pendingTiming).toBeNull()
     })
 
     test('eval_error clears evaluating', () => {
@@ -908,39 +950,6 @@ describe('replStateMachine', () => {
       const state = createInitialState()
       const [next] = reduce(state, deviceEvent({type: 'prompt', timing: '3ms'}))
       expect(next.pendingTiming).toBe('3ms')
-    })
-
-    test('timing is attached to flushed input', () => {
-      const state = createInitialState()
-      const [ready] = reduce(
-        state,
-        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
-      )
-      const s = typeChars(ready, '1+1')
-      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
-      // Device sends timing, then result
-      const [withTiming] = reduce(submitted, deviceEvent({type: 'prompt', timing: '5ms'}))
-      const [next] = reduce(withTiming, deviceEvent({type: 'result', text: '2'}))
-      const inputEvent = next.events.find((e) => e.type === 'input')
-      expect(inputEvent).toEqual({type: 'input', code: '1+1', timing: '5ms'})
-    })
-
-    test('empty result does not add result event', () => {
-      const state = createInitialState()
-      const [ready] = reduce(
-        state,
-        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
-      )
-      const s = typeChars(ready, 'undefined')
-      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
-      const [afterResult] = reduce(submitted, deviceEvent({type: 'result', text: ''}))
-      // No result event added
-      const resultEvents = afterResult.events.filter((e) => e.type === 'result')
-      expect(resultEvents).toHaveLength(0)
-
-      // Input flushed by prompt
-      const [next] = reduce(afterResult, deviceEvent({type: 'prompt', timing: ''}))
-      expect(next.pendingInput).toBeNull()
     })
 
     test('empty completions are ignored', () => {

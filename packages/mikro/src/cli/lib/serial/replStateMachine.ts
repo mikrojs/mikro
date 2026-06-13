@@ -39,7 +39,7 @@ export type ReplLogEvent =
   | ReplEvent
   | {type: 'connecting'; port?: string}
   | {type: 'restarting'}
-  | {type: 'input'; code: string; timing?: string}
+  | {type: 'input'; code: string}
 
 export interface ReplMachineState {
   connection: ConnectionState
@@ -51,6 +51,9 @@ export interface ReplMachineState {
   historyDraft: string | null
   showWelcome: boolean
   evaluating: boolean
+  /** Whether eval timing is shown on result lines. Host-side toggle (`/time`);
+   *  the device always reports timing, the CLI decides whether to render it. */
+  showTiming: boolean
   paused: boolean
   ctrlCPending: boolean
   returnPending: boolean
@@ -61,7 +64,6 @@ export interface ReplMachineState {
   footerError: string | null
   overrideHint: string | null
   contextHint: string | null
-  pendingInput: string | null
   pendingTiming: string | null
   overlay: null | 'env'
   events: ReplLogEvent[]
@@ -224,6 +226,7 @@ export function createInitialState(port?: string, history: string[] = []): ReplM
     historyDraft: null,
     showWelcome: true,
     evaluating: false,
+    showTiming: false,
     paused: false,
     ctrlCPending: false,
     returnPending: false,
@@ -232,7 +235,6 @@ export function createInitialState(port?: string, history: string[] = []): ReplM
     footerError: null,
     overrideHint: null,
     contextHint: null,
-    pendingInput: null,
     pendingTiming: null,
     overlay: null,
     events: [{type: 'connecting', port}],
@@ -312,12 +314,14 @@ function reduceSessionEvent(
     case 'debug':
       return [{...state, events: [...state.events, event]}, []]
     case 'eval_error':
-      return [{...state, evaluating: false, events: [...state.events, event]}, []]
     case 'result': {
-      if (event.text.length > 0) {
-        return [{...state, evaluating: false, events: [...state.events, event]}, []]
-      }
-      return [{...state, evaluating: false}, []]
+      // Attach the timing captured from the preceding `prompt` so it renders on
+      // the result line. Empty results are kept (rendered as `undefined`).
+      const entry = {...event, timing: state.pendingTiming ?? undefined}
+      return [
+        {...state, evaluating: false, pendingTiming: null, events: [...state.events, entry]},
+        [],
+      ]
     }
     case 'completions': {
       const result = event.result
@@ -329,9 +333,8 @@ function reduceSessionEvent(
       return [{...state, events: [...state.events, event]}, []]
     }
     case 'prompt': {
-      // Flush pending input now that we have timing info from the prompt
-      const next = flushPendingInput({...state, pendingTiming: event.timing}, event)
-      return [next, []]
+      // Stash timing; it's attached to the next result/error line.
+      return [{...state, pendingTiming: event.timing}, []]
     }
     case 'raw':
     case 'test':
@@ -361,21 +364,6 @@ function reduceSessionEvent(
     }
     default:
       return [state, []]
-  }
-}
-
-function flushPendingInput(state: ReplMachineState, _trigger: ReplEvent): ReplMachineState {
-  if (!state.pendingInput) return state
-  const inputEvent: ReplLogEvent = {
-    type: 'input',
-    code: state.pendingInput,
-    timing: state.pendingTiming ?? undefined,
-  }
-  return {
-    ...state,
-    pendingInput: null,
-    pendingTiming: null,
-    events: [...state.events, inputEvent],
   }
 }
 
@@ -676,10 +664,19 @@ function reduceSubmit(state: ReplMachineState): [ReplMachineState, ReplEffect[]]
     const inputEvent: ReplLogEvent = {type: 'input', code}
     const hostHelp: ReplLogEvent = {
       type: 'info',
-      text: 'Host commands: /alias set <name> (set a local alias) · /alias unset (remove the alias)',
+      text: 'Host commands: /time (toggle eval timing) · /alias set <name> (set a local alias) · /alias unset (remove the alias)',
     }
     const next = {...resetState, events: [...resetState.events, inputEvent, hostHelp]}
     return [next, [...effects, {type: 'directive', code}]]
+  }
+
+  // `/time` is host-side: the device always reports timing, this toggles display.
+  if (code === '/time') {
+    const showTiming = !state.showTiming
+    const inputEvent: ReplLogEvent = {type: 'input', code}
+    const info: ReplLogEvent = {type: 'info', text: `Timing display ${showTiming ? 'on' : 'off'}`}
+    const next = {...resetState, showTiming, events: [...resetState.events, inputEvent, info]}
+    return [next, effects]
   }
 
   // `/alias` is host-side (writes the local alias file), not forwarded.
@@ -704,11 +701,12 @@ function reduceSubmit(state: ReplMachineState): [ReplMachineState, ReplEffect[]]
     return [next, [...effects, {type: 'directive', code}]]
   }
 
-  // Eval: defer input echo until result arrives
+  // Eval: echo immediately; timing (if any) rides on the result line later.
+  const inputEvent: ReplLogEvent = {type: 'input', code}
   return [
     {
       ...resetState,
-      pendingInput: code,
+      events: [...resetState.events, inputEvent],
       pendingTiming: null,
       evaluating: true,
     },

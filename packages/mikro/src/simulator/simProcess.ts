@@ -261,7 +261,6 @@ function forwardHostMessage(msg: {type: string; data: string}): void {
 let runner: DevRunner | null = null
 let stopRunner: (() => void) | null = null
 let messagesSub: {unsubscribe(): void} | null = null
-let showTime = false
 
 /** Resolve `package.json#main` (or `main.js` fallback) to an absolute path
  * inside appDir, or null if no entry can be found. */
@@ -528,10 +527,13 @@ function processEvalQueue(): void {
   if (!runner) return
   while (evalQueue.length > 0) {
     const code = evalQueue.shift()!
-    const t0 = showTime ? performance.now() : 0
+    const t0 = performance.now()
+    const timing = (): string => `${(performance.now() - t0).toFixed(1)}ms`
     try {
       const result = runner.runtime.evalForRepl(code)
       forwardPendingMessages()
+      // Timing precedes the result so the CLI can render it on that line.
+      send(MSG_PROMPT, timing())
       if (result !== undefined) {
         send(MSG_RESULT, result)
       } else {
@@ -543,9 +545,9 @@ function processEvalQueue(): void {
       // "Name: message\nstack" string from the QuickJS exception. err.stack
       // would prepend "Error: " plus the Node-side frames we don't want.
       const text = err instanceof Error ? err.message : String(err)
+      send(MSG_PROMPT, timing())
       send(MSG_EVAL_ERROR, text)
     }
-    send(MSG_PROMPT, showTime ? `${(performance.now() - t0).toFixed(1)}ms` : '')
   }
 }
 
@@ -757,7 +759,6 @@ function handleDirective(payload: Buffer): void {
         '/help      Show this help\n' +
           '/mem       Show heap memory usage\n' +
           '/gc        Run garbage collector\n' +
-          '/time      Toggle timing display\n' +
           '/pause     Pause app (suspend timers/callbacks)\n' +
           '/resume    Resume app\n' +
           '/ls [DIR]  List directory contents\n' +
@@ -811,11 +812,6 @@ function handleDirective(payload: Buffer): void {
         runner.paused = false
         send(MSG_INFO, 'App resumed')
       }
-      break
-
-    case '/time':
-      showTime = !showTime
-      send(MSG_INFO, `Timing ${showTime ? 'on' : 'off'}`)
       break
 
     case '/info': {

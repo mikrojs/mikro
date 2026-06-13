@@ -508,26 +508,19 @@ TEST_CASE("CMD_DIRECTIVE /gc returns MSG_INFO" * doctest::test_suite("repl_proto
     proto_teardown();
 }
 
-TEST_CASE("CMD_DIRECTIVE /time toggles timing" * doctest::test_suite("repl_protocol")) {
+TEST_CASE("CMD_EVAL always emits MSG_PROMPT with timing" * doctest::test_suite("repl_protocol")) {
     proto_setup();
 
     std::vector<uint8_t> input;
-    append_frame(input, MIK_CMD_DIRECTIVE, "/time");
     append_frame(input, MIK_CMD_EVAL, "1");
-    append_frame(input, MIK_CMD_DIRECTIVE, "/time"); /* toggle off */
     append_frame(input, MIK_CMD_EXIT, nullptr);
 
     auto frames = run_protocol(input);
 
-    /* First /time should report "on" */
-    auto infos = find_frames(frames, MIK_MSG_INFO);
-    CHECK_MESSAGE(infos.size() >= 1, "Should have at least one MSG_INFO");
-    CHECK_MESSAGE(infos[0]->payload.find("on") != std::string::npos,
-                  "First /time should report 'on'");
-
-    /* Should have a MSG_PROMPT with timing info after eval */
+    /* Timing is reported unconditionally; whether to display it is a host-side
+     * concern (the CLI's `/time` toggle). */
     auto* prompt = find_frame(frames, MIK_MSG_PROMPT);
-    CHECK_MESSAGE(prompt != nullptr, "Should receive MSG_PROMPT with timing");
+    CHECK_MESSAGE(prompt != nullptr, "Every eval should emit MSG_PROMPT with timing");
     CHECK_MESSAGE(prompt->payload.find("ms") != std::string::npos,
                   "Timing prompt should contain 'ms'");
 
