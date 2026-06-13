@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      pull-requests: write # `releaser plan` PR lookups + `guard-release-pr` draft/body edits
+      pull-requests: read # for `releaser plan` to look up the merged PR's head ref
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6
         with:
@@ -35,17 +35,27 @@ jobs:
 
       - uses: ./.github/actions/setup-pnpm
 
-      # Mark the rolling release PR as regenerating before anything else:
-      # convert it to a draft (drafts cannot be merged) and prepend a caution
-      # notice to the body, so a stale release PR isn't merged
-      # mid-regeneration. The PR stays a draft afterwards — marking it ready
-      # for review is the human act of deciding to release. The final step
-      # only removes the notice; a failed run leaves it in place on purpose.
-      # No-ops when there is no open release PR (e.g. when this push IS the
-      # release-PR merge).
+      # The mikrodroid GitHub App must have these repo permissions:
+      #   - Contents: Read and write   (push the ci/release-main branch)
+      #   - Pull requests: Read and write   (create/update the rolling PR,
+      #     conversation comments, draft conversion)
+      # GITHUB_TOKEN won't do: its merges don't trigger release.yml, and it
+      # cannot call the convertPullRequestToDraft mutation.
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ secrets.MIKRODROID_CLIENT_ID }}
+          private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
+          permission-contents: write # push the ci/release-main branch
+          permission-pull-requests: write # create/update PR + draft conversion + comments
+
+      # Draft the release PR (drafts can't be merged) and add a caution
+      # notice while it regenerates. It stays a draft; marking it ready is
+      # the human act of releasing. No-op when no release PR is open.
       - name: Guard release PR (regenerating)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: pnpm --silent releaser guard-release-pr --phase start
 
@@ -61,24 +71,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm --silent releaser plan --context create-release-pr >> "$GITHUB_OUTPUT"
-
-      # The mikrodroid GitHub App must have these repo permissions:
-      #   - Contents: Read and write   (push the ci/release-main branch)
-      #   - Pull requests: Read and write   (create/update the rolling PR,
-      #     including conversation comments — PR-shaped endpoints under
-      #     /issues/ are gated by the pull-requests permission)
-      # Using GITHUB_TOKEN here would prevent the merge of the resulting PR
-      # from triggering downstream workflows (release.yml). The App token
-      # workaround is required, not optional.
-      - name: Generate GitHub App token
-        if: steps.plan.outputs.should_run == 'true'
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
-        with:
-          client-id: ${{ secrets.MIKRODROID_CLIENT_ID }}
-          private-key: ${{ secrets.MIKRODROID_APP_PRIVATE_KEY }}
-          permission-contents: write # push the ci/release-main branch
-          permission-pull-requests: write # create/update PR + conversation comments
 
       - name: Configure git
         if: steps.plan.outputs.should_run == 'true'
@@ -140,19 +132,14 @@ jobs:
           commit-message: 'chore(release): publish v${{ steps.next.outputs.version }}'
           branch: ci/release-main
           base: main
-          # Born as a draft: the release PR is only marked ready for review by
-          # a human deciding to release (guard-release-pr re-drafts it on
-          # every regeneration). The action can't change draft state on
-          # updates, so this only applies at creation.
+          # Creation only; guard-release-pr re-drafts on every regeneration.
           draft: true
           sign-commits: true
 
-      # Remove the caution notice from the regenerated PR (the body rewrite
-      # above already drops it; this also covers the case where the body was
-      # left untouched). The PR intentionally stays a draft.
+      # Remove the caution notice. The PR stays a draft.
       - name: Guard release PR (regenerated)
         if: steps.plan.outputs.should_run == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: pnpm --silent releaser guard-release-pr --phase finish
