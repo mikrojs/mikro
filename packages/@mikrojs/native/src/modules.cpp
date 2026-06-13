@@ -661,7 +661,7 @@ static bool mik__is_anchored_name(const char* name) {
 }
 
 /* A name registered via MIK_REGISTER_BUILTIN() is bytecode compiled into the
- * firmware — the same trust level as @mikrojs/* builtins, regardless of the
+ * firmware — the same trust level as @mikrojs builtins, regardless of the
  * package's npm scope. */
 static bool mik__is_ext_builtin_name(const char* name) {
     for (mik_ext_builtin_t* p = mik__ext_builtin_head; p != nullptr; p = p->next) {
