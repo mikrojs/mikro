@@ -38,7 +38,8 @@ export function formatTimestamp(now: Date): string {
 // publish (pnpm#11518), so local versions (which carry `+sha`) must be
 // stripped before any registry lookup or comparison against published ones.
 export function stripBuildMetadata(version: string): string {
-  return version.split('+')[0]
+  const plus = version.indexOf('+')
+  return plus === -1 ? version : version.slice(0, plus)
 }
 
 export function computeVersion({
