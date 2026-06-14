@@ -221,10 +221,12 @@ static JSValue js_spi_transfer(JSContext* ctx, JSValue this_val, int argc, JSVal
     /* Extract data from Uint8Array or ArrayBuffer */
     size_t data_len;
     uint8_t* data;
-    size_t offset, elem_size;
+    size_t offset, elem_size, buf_len;
     JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[0], &offset, &data_len, &elem_size);
     if (!JS_IsException(ab)) {
-        data = JS_GetArrayBuffer(ctx, &data_len, ab);
+        /* data_len keeps the view length; the full backing buffer goes to a
+         * throwaway so a subarray view isn't over-read. */
+        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
         JS_FreeValue(ctx, ab);
         if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 1");
         data += offset;
@@ -264,10 +266,12 @@ static JSValue js_spi_write(JSContext* ctx, JSValue this_val, int argc, JSValue*
     /* Extract data from Uint8Array or ArrayBuffer */
     size_t data_len;
     uint8_t* data;
-    size_t offset, elem_size;
+    size_t offset, elem_size, buf_len;
     JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[0], &offset, &data_len, &elem_size);
     if (!JS_IsException(ab)) {
-        data = JS_GetArrayBuffer(ctx, &data_len, ab);
+        /* data_len keeps the view length; the full backing buffer goes to a
+         * throwaway so a subarray view isn't over-read. */
+        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
         JS_FreeValue(ctx, ab);
         if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 1");
         data += offset;
