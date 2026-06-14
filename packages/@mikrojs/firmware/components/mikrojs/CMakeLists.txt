@@ -43,7 +43,7 @@ endif()
 
 idf_component_register(
     INCLUDE_DIRS "include" "${MIK_INCLUDE_DIR}"
-    REQUIRES bt littlefs esp_adc esp_app_format esp_driver_gpio esp_driver_i2c esp_driver_ledc esp_driver_rmt esp_driver_spi esp_psram esp_timer esp_http_client esp_http_server esp-tls esp_netif esp_event esp_wifi nvs_flash esp_driver_uart esp_driver_usb_serial_jtag spi_flash
+    REQUIRES bt littlefs esp_adc esp_app_format esp_driver_gpio esp_driver_i2c esp_driver_i2s esp_driver_ledc esp_driver_rmt esp_driver_spi esp_psram esp_timer esp_http_client esp_http_server esp-tls esp_netif esp_event esp_wifi nvs_flash esp_driver_uart esp_driver_usb_serial_jtag spi_flash
     SRCS
     # QuickJS engine
     ${QUICKJS_SOURCES}
@@ -84,6 +84,7 @@ idf_component_register(
     "mik_http.cpp"
     "mik_http_server.cpp"
     "mik_i2c.cpp"
+    "mik_i2s.cpp"
     "mik_logfile.cpp"
     "mik_neopixel.cpp"
     "mik_pin.cpp"
@@ -142,8 +143,8 @@ endif()
 include("${MIK_BYTECODE_CMAKE}")
 
 # Force linker to include self-registering native modules
-set(_MIK_MODULES cbor pin i2c spi http http_server wifi rtc nvs_kv sntp sleep neopixel pwm uart)
-set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/helpers http/request http/server i2c kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi)
+set(_MIK_MODULES cbor pin i2c i2s spi http http_server wifi rtc nvs_kv sntp sleep neopixel pwm uart)
+set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/helpers http/request http/server i2c i2s kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi)
 if(CONFIG_BT_ENABLED)
     list(APPEND _MIK_MODULES ble)
     list(APPEND _MIK_BYTECODE_MODULES ble)

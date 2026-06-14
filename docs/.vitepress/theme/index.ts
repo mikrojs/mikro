@@ -10,6 +10,7 @@ import Abbr from './Abbr.vue'
 import BlinkyDiagram from './BlinkyDiagram.vue'
 import {restorePreferred, setupCodeGroupSync} from './codeGroupSync'
 import CodeWiringTabs from './CodeWiringTabs.vue'
+import Ics43434Diagram from './Ics43434Diagram.vue'
 import Layout from './Layout.vue'
 import NeoPixelDiagram from './NeoPixelDiagram.vue'
 
@@ -22,6 +23,7 @@ export default {
     app.component('CodeWiringTabs', CodeWiringTabs)
     app.component('BlinkyDiagram', BlinkyDiagram)
     app.component('NeoPixelDiagram', NeoPixelDiagram)
+    app.component('Ics43434Diagram', Ics43434Diagram)
 
     // Suppress upstream VitePress bug: VPSidebar passes a plain object to watch()
     app.config.warnHandler = (msg, _instance, trace) => {

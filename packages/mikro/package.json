@@ -80,6 +80,10 @@
       "development": "./src/_exports/i2c.ts",
       "import": "./dist/_exports/i2c.js"
     },
+    "./i2s": {
+      "development": "./src/_exports/i2s.ts",
+      "import": "./dist/_exports/i2s.js"
+    },
     "./inspect": {
       "development": "./src/_exports/inspect.ts",
       "import": "./dist/_exports/inspect.js"
@@ -187,6 +191,7 @@
       "./observable": "./dist/_exports/observable.js",
       "./observable/operators": "./dist/_exports/observable/operators.js",
       "./i2c": "./dist/_exports/i2c.js",
+      "./i2s": "./dist/_exports/i2s.js",
       "./spi": "./dist/_exports/spi.js",
       "./ble": "./dist/_exports/ble.js",
       "./cbor": "./dist/_exports/cbor.js",
