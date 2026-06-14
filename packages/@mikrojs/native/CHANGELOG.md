@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.15.0 (2026-06-14)
+
+### Breaking changes
+
+- **native:** scope `native:` module names to their owning package ([#243](https://github.com/mikrojs/mikro/pull/243))
+
+### Features
+
+- **i2s:** add I2S audio module for mic capture and playback ([#246](https://github.com/mikrojs/mikro/pull/246))
+
+### Bug fixes
+
+- **native:** export runtime/i2s/types from the published package ([#248](https://github.com/mikrojs/mikro/pull/248))
+- **firmware:** stop spi/uart/i2c write over-reading buffer views ([#247](https://github.com/mikrojs/mikro/pull/247))
+- **cli:** treat native: specifiers as firmware builtins in the tracer ([#245](https://github.com/mikrojs/mikro/pull/245))
+- **release:** apply quickjs patches before packing tarball ([#242](https://github.com/mikrojs/mikro/pull/242))
+- **repl:** echo input immediately instead of waiting on device timing ([#240](https://github.com/mikrojs/mikro/pull/240))
+
+### Other
+
+- **drivers:** use a publishable `@my-scope` single-package example ([#244](https://github.com/mikrojs/mikro/pull/244))
+
 ## 0.14.0 (2026-06-13)
 
 ### Features
