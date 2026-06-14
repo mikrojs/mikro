@@ -198,10 +198,12 @@ static JSValue js_i2c_write(JSContext* ctx, JSValue this_val, int argc, JSValue*
     uint8_t* data;
 
     /* Try typed array (Uint8Array) first, then raw ArrayBuffer */
-    size_t offset, elem_size;
+    size_t offset, elem_size, buf_len;
     JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[1], &offset, &data_len, &elem_size);
     if (!JS_IsException(ab)) {
-        data = JS_GetArrayBuffer(ctx, &data_len, ab);
+        /* data_len keeps the view length; the full backing buffer goes to a
+         * throwaway so a subarray view isn't over-read. */
+        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
         JS_FreeValue(ctx, ab);
         if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 2");
         data += offset;
