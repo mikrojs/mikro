@@ -97,6 +97,7 @@
       "./runtime/http/server-impl": "./runtime/http/server-impl.ts",
       "./runtime/fs/types": "./runtime/fs/types.ts",
       "./runtime/i2c/types": "./runtime/i2c/types.ts",
+      "./runtime/i2s/types": "./runtime/i2s/types.ts",
       "./runtime/inspect/types": "./runtime/inspect/types.ts",
       "./runtime/kv/shared": "./runtime/kv/shared.ts",
       "./runtime/kv/types": "./runtime/kv/types.ts",
