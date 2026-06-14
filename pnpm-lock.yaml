@@ -296,6 +296,16 @@ importers:
         specifier: workspace:*
         version: link:../../packages/mikro
 
+  examples/network-mic:
+    dependencies:
+      mikro:
+        specifier: workspace:*
+        version: link:../../packages/mikro
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   examples/pwm-led:
     dependencies:
       mikro:

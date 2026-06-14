@@ -7,6 +7,7 @@ set(_MIK_TEST_SRCS
     http_test.cpp
     http_server_test.cpp
     i2c_test.cpp
+    i2s_test.cpp
     modules_extended_test.cpp
     modules_test.cpp
     pins_test.cpp

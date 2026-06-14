@@ -1,0 +1,28 @@
+{
+  "name": "mikrojs-network-mic-example",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mikro.js network microphone example: stream an ICS-43434 I2S mic over HTTP",
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "dev": "mikro dev"
+  },
+  "dependencies": {
+    "mikro": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  },
+  "mikro": {
+    "predeploy": [
+      "tsc --noEmit --pretty"
+    ]
+  }
+}
