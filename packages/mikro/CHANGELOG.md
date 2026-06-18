@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.0 (2026-06-18)
+
+### Breaking changes
+
+- **wifi:** configure txPower on connect, power radio down on disconnect ([#250](https://github.com/mikrojs/mikro/pull/250))
+
 ## 0.15.0 (2026-06-14)
 
 ### Breaking changes
