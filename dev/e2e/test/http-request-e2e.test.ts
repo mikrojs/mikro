@@ -33,7 +33,7 @@ describe.runIf(hasWifi && !isSim && fitsHttp)('http request e2e', () => {
   beforeAll(async () => {
     ;({request} = await import('mikro/http/request'))
     const {wifi} = await import('mikro/wifi')
-    const connected = await wifi.connect(WIFI_SSID!, WIFI_PASSPHRASE!)
+    const connected = await wifi.connect({ssid: WIFI_SSID!, passphrase: WIFI_PASSPHRASE!})
     assert.equal(connected.ok, true, 'wifi connect')
     if (connected.ok) console.log(`connected: ${connected.value.ip}`)
 

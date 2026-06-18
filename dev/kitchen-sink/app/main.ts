@@ -105,7 +105,7 @@ console.log('connecting to wifi...')
 logMem('before wifi connect')
 
 if (WIFI_SSID && WIFI_PASSPHRASE) {
-  const connectResult = await wifi.connect(WIFI_SSID, WIFI_PASSPHRASE)
+  const connectResult = await wifi.connect({ssid: WIFI_SSID, passphrase: WIFI_PASSPHRASE})
   console.log('wifi connect:', connectResult)
   logMem('after wifi connect')
 

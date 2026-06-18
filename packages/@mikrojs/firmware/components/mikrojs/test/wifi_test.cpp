@@ -151,13 +151,13 @@ TEST_CASE("Wifi connect returns a promise", "[wifi]") {
     setup();
 
     // Only test that connect() returns a Promise — don't actually wait for connection.
-    // We call disconnect() right after to avoid leaving WiFi in "connecting" state.
+    // disconnect(false) keeps the radio up to avoid tearing it down between tests.
     JSValue ret = eval_module(R"(
         import { Wifi } from "native:mikro/wifi";
         const wifi = new Wifi();
         const result = wifi.connect("test", "pass");
         globalThis.__isPromise = result.ok && result.value instanceof Promise;
-        wifi.disconnect();
+        wifi.disconnect(false);
     )");
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
 
@@ -165,6 +165,68 @@ TEST_CASE("Wifi connect returns a promise", "[wifi]") {
     JSValue isPromise = JS_GetPropertyStr(ctx, global, "__isPromise");
     TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, isPromise), "connect() should return a Promise");
     JS_FreeValue(ctx, isPromise);
+    JS_FreeValue(ctx, global);
+    teardown();
+}
+
+/* ── Disconnect shutdown powers the radio down and stays reusable ──── */
+
+TEST_CASE("Wifi disconnect({shutdown:true}) tears down and re-inits on reuse", "[wifi]") {
+    setup();
+
+    // disconnect(true) is the default: it powers the radio down. A subsequent
+    // call (here getTxPower, which lazily restarts the radio) must still work.
+    JSValue ret = eval_module(R"(
+        import { Wifi } from "native:mikro/wifi";
+        const wifi = new Wifi();
+        wifi.connect("test", "pass");
+        const down = wifi.disconnect(true);
+        const reuse = wifi.getTxPower();
+        globalThis.__downOk = down.ok;
+        globalThis.__reuseOk = reuse.ok;
+    )");
+    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue downOk = JS_GetPropertyStr(ctx, global, "__downOk");
+    JSValue reuseOk = JS_GetPropertyStr(ctx, global, "__reuseOk");
+    TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, downOk), "disconnect(true) should return ok");
+    TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, reuseOk), "radio should re-init after shutdown");
+    JS_FreeValue(ctx, downOk);
+    JS_FreeValue(ctx, reuseOk);
+    JS_FreeValue(ctx, global);
+    teardown();
+}
+
+/* ── Disconnect shutdown settles a connect in flight ──────────────── */
+
+TEST_CASE("Wifi disconnect({shutdown:true}) settles a pending connect", "[wifi]") {
+    setup();
+
+    // Teardown unregisters the event handlers, so the connect promise must be
+    // settled by disconnect() itself — otherwise the await would hang forever.
+    JSValue ret = eval_module(R"(
+        import { Wifi } from "native:mikro/wifi";
+        const wifi = new Wifi();
+        const result = wifi.connect("test", "pass");
+        globalThis.__settled = "pending";
+        if (result.ok) {
+            result.value.then((res) => {
+                globalThis.__settled = res.ok ? "ok" : res.error.name;
+            });
+        }
+        wifi.disconnect(true);
+    )");
+    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue settled = JS_GetPropertyStr(ctx, global, "__settled");
+    const char* settled_str = JS_ToCString(ctx, settled);
+    TEST_ASSERT_NOT_NULL(settled_str);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("ConnectFailed", settled_str,
+                                     "pending connect should settle as ConnectFailed, not hang");
+    JS_FreeCString(ctx, settled_str);
+    JS_FreeValue(ctx, settled);
     JS_FreeValue(ctx, global);
     teardown();
 }

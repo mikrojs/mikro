@@ -21,7 +21,7 @@ const fitsFetch = m.heapTotal - m.heapUsed > 48 * 1024
 describe.runIf(hasWifi)('wifi e2e', () => {
   test('connect to wifi', async () => {
     const {wifi} = await import('mikro/wifi')
-    const result = await wifi.connect(WIFI_SSID!, WIFI_PASSPHRASE!)
+    const result = await wifi.connect({ssid: WIFI_SSID!, passphrase: WIFI_PASSPHRASE!})
     assert.equal(result.ok, true)
     assert.truthy(result.ok && result.value.ip, 'should have an IP address')
     if (result.ok) console.log(`connected: ${result.value.ip}`)

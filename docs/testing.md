@@ -121,7 +121,10 @@ const hasWifi = env.get('WIFI_SSID') && env.get('WIFI_PASSPHRASE')
 describe.runIf(hasWifi)('wifi', () => {
   test('connect', async () => {
     const {wifi} = await import('mikro/wifi')
-    const result = await wifi.connect(env.get('WIFI_SSID')!, env.get('WIFI_PASSPHRASE')!)
+    const result = await wifi.connect({
+      ssid: env.get('WIFI_SSID')!,
+      passphrase: env.get('WIFI_PASSPHRASE')!,
+    })
     assert.ok(result)
   })
 })
@@ -312,7 +315,7 @@ const pass = env.get('WIFI_PASSPHRASE')
 describe.runIf(ssid && pass)('wifi', () => {
   test('connect', async () => {
     const {wifi} = await import('mikro/wifi')
-    const result = await wifi.connect(ssid!, pass!)
+    const result = await wifi.connect({ssid: ssid!, passphrase: pass!})
     assert.equal(result.ok, true)
   })
 })

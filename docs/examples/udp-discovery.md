@@ -57,7 +57,7 @@ const ANNOUNCE_MS = 2000
 const ssid = env.require('WIFI_SSID')
 const passphrase = env.require('WIFI_PASSPHRASE')
 
-const connected = await wifi.connect(ssid, passphrase)
+const connected = await wifi.connect({ssid, passphrase})
 if (connected.ok) {
   const bound = await bind({port: PORT, family: 'ipv4'})
   if (bound.ok) {

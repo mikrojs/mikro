@@ -18,7 +18,7 @@ export interface SimStubMethods {
       ssid: string,
       passphrase: string,
     ): NR<Promise<NR<{ip: string; netmask: string; gateway: string}>>>
-    disconnect(): NRV
+    disconnect(shutdown?: boolean): NRV
     rssi(): NR<number>
     ip(): string
     status(): number

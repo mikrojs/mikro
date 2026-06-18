@@ -8,7 +8,7 @@ const passphrase = env.require('WIFI_PASSPHRASE')
 
 // Connect to WiFi
 console.log(`Connecting to ${ssid}...`)
-const connectResult = await wifi.connect(ssid, passphrase)
+const connectResult = await wifi.connect({ssid, passphrase})
 if (!connectResult.ok) {
   console.error('WiFi connect failed:', connectResult.error)
 } else {

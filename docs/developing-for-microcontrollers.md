@@ -175,7 +175,7 @@ import {wifi} from 'mikro/wifi'
 declare const ssid: string
 declare const passphrase: string
 // ---cut---
-const result = await wifi.connect(ssid, passphrase)
+const result = await wifi.connect({ssid, passphrase})
 if (!result.ok) {
   console.error('WiFi failed: %s', result.error.name)
   // Retry, fall back, or sleep and try later

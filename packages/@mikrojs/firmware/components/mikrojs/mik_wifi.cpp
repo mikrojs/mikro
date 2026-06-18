@@ -477,11 +477,65 @@ static JSValue mik__wifi_connect(JSContext* ctx, JSValue this_val, int argc, JSV
     return mik__result_ok(ctx, promise);
 }
 
+/* Fully tear down the WiFi driver so the heap used by the radio stack, beacon
+ * offsets, event handlers, and netif interfaces is returned to the pool. Shared
+ * by disconnect({shutdown:true}) and runtime teardown. Safe to call when the
+ * radio is already down. */
+static void mik__wifi_radio_teardown(void) {
+    if (!s_wifi_initialized) return;
+    if (s_wifi_started) {
+        esp_wifi_stop();
+        s_wifi_started = false;
+    }
+    /* ensure_initialized registered these via esp_event_handler_instance_register
+     * with a nullptr context out-param, so we can't use instance_unregister.
+     * esp_event_handler_unregister matches on (base, id, handler fn) instead. */
+    esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, mik__wifi_event_handler);
+    esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, mik__wifi_event_handler);
+    esp_wifi_deinit();
+    if (s_sta_netif) {
+        esp_netif_destroy_default_wifi(s_sta_netif);
+        s_sta_netif = nullptr;
+    }
+    if (s_ap_netif) {
+        esp_netif_destroy_default_wifi(s_ap_netif);
+        s_ap_netif = nullptr;
+    }
+    s_wifi_initialized = false;
+}
+
 static JSValue mik__wifi_disconnect(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    bool shutdown = argc < 1 || JS_IsUndefined(argv[0]) || JS_ToBool(ctx, argv[0]);
+
     esp_err_t err = esp_wifi_disconnect();
-    if (err != ESP_OK) {
+    /* When shutting down we proceed to teardown even if the radio was never
+     * started, so a plain disconnect() reliably powers things down. */
+    if (err != ESP_OK && !(shutdown && (err == ESP_ERR_WIFI_NOT_STARTED ||
+                                        err == ESP_ERR_WIFI_NOT_INIT))) {
         return mik__result_err_named(ctx, "DisconnectFailed",
                                "Failed to disconnect from WiFi: %s", esp_err_to_name(err));
+    }
+
+    if (shutdown) {
+        /* Teardown unregisters the event handlers, so a connect/scan in flight
+         * would never be settled by the event loop. Settle them now (with an
+         * error Result, matching the consume failure path) so the awaiting JS
+         * resolves deterministically instead of hanging until runtime teardown. */
+        MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+        MIKWifiState* state = mik_rt ? mik__wifi_st(mik_rt) : nullptr;
+        if (state && state->connect_pending) {
+            JSValue result = mik__result_err_named(ctx, "ConnectFailed",
+                                                   "WiFi disconnected before connecting");
+            MIK_ResolvePromise(ctx, &state->connect_promise, 1, &result);
+            state->connect_pending = false;
+        }
+        if (state && state->scan_pending) {
+            JSValue result = mik__result_err_named(ctx, "ScanFailed",
+                                                   "WiFi shut down during scan");
+            MIK_ResolvePromise(ctx, &state->scan_promise, 1, &result);
+            state->scan_pending = false;
+        }
+        mik__wifi_radio_teardown();
     }
     return mik__result_ok_void(ctx);
 }
@@ -1100,7 +1154,7 @@ static JSValue mik__wifi_ap_set_inactive_timeout(JSContext* ctx, JSValue this_va
 
 static const JSCFunctionListEntry mik__wifi_proto_funcs[] = {
     MIK_CFUNC_DEF("connect", 2, mik__wifi_connect),
-    MIK_CFUNC_DEF("disconnect", 0, mik__wifi_disconnect),
+    MIK_CFUNC_DEF("disconnect", 1, mik__wifi_disconnect),
     MIK_CFUNC_DEF("rssi", 0, mik__wifi_rssi),
     MIK_CFUNC_DEF("ip", 0, mik__wifi_ip),
     MIK_CFUNC_DEF("status", 0, mik__wifi_status),
@@ -1410,35 +1464,11 @@ void mik__wifi_destroy(JSContext* ctx) {
     delete state;
     mik__wifi_st(mik_rt) = nullptr;
 
-    /* Fully tear down the WiFi driver so the heap used by the radio stack,
-     * beacon offsets, event handlers, and netif interfaces is returned to
-     * the pool. Without this, repeated runtime lifecycles (e.g. on-device
-     * test suites that create + destroy a runtime per test) eventually hit
-     * `alloc pm_beacon_offset fail` when the heap is too fragmented for
-     * even small internal allocations. */
-    if (s_wifi_initialized) {
-        if (s_wifi_started) {
-            esp_wifi_stop();
-            s_wifi_started = false;
-        }
-        /* ensure_initialized registered these via esp_event_handler_instance_register
-         * with a nullptr context out-param, so we can't use instance_unregister.
-         * esp_event_handler_unregister matches on (base, id, handler fn) instead. */
-        esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID,
-                                     mik__wifi_event_handler);
-        esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP,
-                                     mik__wifi_event_handler);
-        esp_wifi_deinit();
-        if (s_sta_netif) {
-            esp_netif_destroy_default_wifi(s_sta_netif);
-            s_sta_netif = nullptr;
-        }
-        if (s_ap_netif) {
-            esp_netif_destroy_default_wifi(s_ap_netif);
-            s_ap_netif = nullptr;
-        }
-        s_wifi_initialized = false;
-    }
+    /* Return the radio heap to the pool. Without this, repeated runtime
+     * lifecycles (e.g. on-device test suites that create + destroy a runtime
+     * per test) eventually hit `alloc pm_beacon_offset fail` when the heap is
+     * too fragmented for even small internal allocations. */
+    mik__wifi_radio_teardown();
 }
 
 MIK_REGISTER_MODULE(wifi, "native:mikro/wifi", mik__wifi_init, mik__wifi_consume, mik__wifi_destroy)

@@ -425,7 +425,7 @@ declare module 'native:mikro/wifi' {
       ssid: string,
       passphrase: string,
     ): R<Promise<R<{ip: string; netmask: string; gateway: string}>>>
-    disconnect(): R<void>
+    disconnect(shutdown?: boolean): R<void>
     rssi(): R<number>
     ip(): string
     status(): number
