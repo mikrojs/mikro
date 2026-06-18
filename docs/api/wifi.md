@@ -16,7 +16,7 @@ The default export is a `Wifi` singleton. Use it to connect to networks, scan fo
 ```ts twoslash
 import {wifi} from 'mikro/wifi'
 // ---cut---
-const result = await wifi.connect('MyNetwork', 'password123')
+const result = await wifi.connect({ssid: 'MyNetwork', passphrase: 'password123'})
 if (!result.ok) {
   console.error('WiFi failed: %s', result.error.name)
 } else {
@@ -26,18 +26,34 @@ if (!result.ok) {
 
 ## Station methods
 
-### wifi.connect(ssid, passphrase)
+### wifi.connect(options)
 
 ```ts
-connect(ssid: string, passphrase: string): Promise<Result<WifiConnectionInfo, WifiError>>
+connect(options: WifiConnectOptions): Promise<Result<WifiConnectionInfo, WifiError>>
 ```
 
-Connects to a WiFi network. Returns connection info with IP, netmask, and gateway on success.
-
-### wifi.disconnect()
+Connects to a WiFi network. Returns connection info with IP, netmask, and gateway on success. Set `txPower` to cap the radio's transmit power (in dBm) for this session; the driver quantizes it to an allowed level.
 
 ```ts
-disconnect(): Result<void, WifiError>
+interface WifiConnectOptions {
+  ssid: string
+  passphrase: string
+  txPower?: number
+}
+```
+
+### wifi.disconnect(options?)
+
+```ts
+disconnect(options?: WifiDisconnectOptions): Result<void, WifiError>
+```
+
+Disconnects from the current network. By default this also powers the radio down and releases its memory. Pass `{shutdown: false}` to keep the radio up for a faster reconnect.
+
+```ts
+interface WifiDisconnectOptions {
+  shutdown?: boolean // default: true
+}
 ```
 
 ### wifi.scan(options?)
@@ -97,15 +113,15 @@ ipConfig(opts: StaticIpConfig): Result<void, WifiError>
 
 ## Station properties
 
-| Property        | Type                           | Description                                 |
-| --------------- | ------------------------------ | ------------------------------------------- |
-| `isConnected`   | `boolean`                      | Whether the station is connected            |
-| `mac`           | `string` (readonly)            | MAC address                                 |
-| `hostname`      | `string \| undefined`          | Hostname (read/write)                       |
-| `txPower`       | `number`                       | Transmit power (read/write)                 |
-| `rssiThreshold` | `number`                       | Low-RSSI event threshold (read/write)       |
-| `powerSave`     | `PowerSaveMode`                | Power save mode: `'none'`, `'min'`, `'max'` |
-| `country`       | `WifiCountryCode \| undefined` | Regulatory country code                     |
+| Property        | Type                           | Description                                         |
+| --------------- | ------------------------------ | --------------------------------------------------- |
+| `isConnected`   | `boolean`                      | Whether the station is connected                    |
+| `mac`           | `string` (readonly)            | MAC address                                         |
+| `hostname`      | `string \| undefined`          | Hostname (read/write)                               |
+| `txPower`       | `number` (readonly)            | Transmit power in dBm; set via `connect({txPower})` |
+| `rssiThreshold` | `number`                       | Low-RSSI event threshold (read/write)               |
+| `powerSave`     | `PowerSaveMode`                | Power save mode: `'none'`, `'min'`, `'max'`         |
+| `country`       | `WifiCountryCode \| undefined` | Regulatory country code                             |
 
 ## Station events
 

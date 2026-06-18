@@ -14,7 +14,9 @@ import type {
   Wifi,
   WifiAp,
   WifiConnectionInfo,
+  WifiConnectOptions,
   WifiCountryCode,
+  WifiDisconnectOptions,
   WifiDisconnectReason,
   WifiError,
   WifiStatus,
@@ -81,7 +83,12 @@ const RETRY_DELAY_MS = 2000
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 const wifi: Wifi = {
-  async connect(ssid: string, passphrase: string): Promise<Result<WifiConnectionInfo, WifiError>> {
+  async connect(options: WifiConnectOptions): Promise<Result<WifiConnectionInfo, WifiError>> {
+    const {ssid, passphrase, txPower} = options
+    if (txPower !== undefined) {
+      const txResult = native.setTxPower(txPower)
+      if (!txResult.ok) return txResult
+    }
     for (let attempt = 0; attempt <= MAX_CONNECT_RETRIES; attempt++) {
       const startResult = native.connect(ssid, passphrase)
       if (!startResult.ok) return startResult
@@ -93,14 +100,15 @@ const wifi: Wifi = {
 
       // eslint-disable-next-line no-console
       console.warn(`WiFi connect failed, retrying in ${RETRY_DELAY_MS}ms…`)
-      native.disconnect()
+      // Keep the radio up between retries so the next attempt reconnects fast.
+      native.disconnect(false)
       await sleep(RETRY_DELAY_MS)
     }
     return err({name: 'ConnectFailed' as const, message: 'max retries exceeded'})
   },
 
-  disconnect(): Result<void, WifiError> {
-    return native.disconnect()
+  disconnect(options?: WifiDisconnectOptions): Result<void, WifiError> {
+    return native.disconnect(options?.shutdown)
   },
 
   rssi(): Result<number, WifiError> {
@@ -157,10 +165,6 @@ const wifi: Wifi = {
   get txPower(): number {
     const result = native.getTxPower()
     return result.ok ? result.value : 0
-  },
-
-  set txPower(dbm: number) {
-    native.setTxPower(dbm)
   },
 
   get rssiThreshold(): number {

@@ -158,7 +158,10 @@ import {wifi} from 'mikro/wifi'
 import {request} from 'mikro/http/request'
 
 // WiFi uses 40-65 KB of heap. Connecting/disconnecting repeatedly wastes memory.
-const conn = await wifi.connect(import.meta.env.WIFI_SSID, import.meta.env.WIFI_PASS)
+const conn = await wifi.connect({
+  ssid: import.meta.env.WIFI_SSID,
+  passphrase: import.meta.env.WIFI_PASS,
+})
 if (!conn.ok) {
   console.error('WiFi failed:', conn.error)
   // Consider: retry with backoff, or panic if WiFi is required

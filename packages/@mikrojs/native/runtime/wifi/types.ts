@@ -116,9 +116,24 @@ export interface WifiAp {
   readonly onStationDisconnect: Observable<ApStationInfo>
 }
 
+export interface WifiConnectOptions {
+  ssid: string
+  passphrase: string
+  /** Max transmit power in dBm. Applies to the radio; quantized by the driver. */
+  txPower?: number
+}
+
+export interface WifiDisconnectOptions {
+  /**
+   * Power the radio down and release its heap after disconnecting. Defaults to
+   * `true`. Pass `false` to keep the radio up for a faster reconnect.
+   */
+  shutdown?: boolean
+}
+
 export interface Wifi {
-  connect(ssid: string, passphrase: string): Promise<Result<WifiConnectionInfo, WifiError>>
-  disconnect(): Result<void, WifiError>
+  connect(options: WifiConnectOptions): Promise<Result<WifiConnectionInfo, WifiError>>
+  disconnect(options?: WifiDisconnectOptions): Result<void, WifiError>
   rssi(): Result<number, WifiError>
   ip(): string | undefined
   status(): WifiStatus
@@ -137,7 +152,7 @@ export interface Wifi {
 
   readonly ap: WifiAp
 
-  txPower: number
+  readonly txPower: number
   rssiThreshold: number
 
   powerSave: PowerSaveMode
