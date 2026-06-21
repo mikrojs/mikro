@@ -587,10 +587,10 @@ importers:
         version: 6.1.0
       ink:
         specifier: ^7.0.1
-        version: 7.0.5(@types/react@19.2.15)(react@19.2.6)
+        version: 7.0.5(@types/react@19.2.17)(react@19.2.7)
       ink-select-input:
         specifier: ^6.2.0
-        version: 6.2.0(ink@7.0.5(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)
+        version: 6.2.0(ink@7.0.5(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
       open:
         specifier: ^11.0.0
         version: 11.0.0
@@ -599,7 +599,7 @@ importers:
         version: 5.0.0(ts-toolbelt@9.6.0)
       react:
         specifier: ^19.2.5
-        version: 19.2.6
+        version: 19.2.7
       rxjs:
         specifier: ^7.8.2
         version: 7.8.2
@@ -627,7 +627,7 @@ importers:
         version: 1.15.40
       '@types/react':
         specifier: ^19.2.14
-        version: 19.2.15
+        version: 19.2.17
       '@types/semver':
         specifier: ^7.7.1
         version: 7.7.1
@@ -639,7 +639,7 @@ importers:
         version: 0.28.0
       ink-testing-library:
         specifier: ^4.0.0
-        version: 4.0.0(@types/react@19.2.15)
+        version: 4.0.0(@types/react@19.2.17)
       terser:
         specifier: ^5.46.2
         version: 5.48.0
@@ -2778,8 +2778,8 @@ packages:
   '@types/node@25.9.1':
     resolution: {integrity: sha512-xfrlY7UD5rMJk3ZVJP8BNzS28J36YJg+xp+LPXV1TdWxr8uMH5A860QNxYDGQe/ylDSgjxE52Q9VnO7p75tJxg==}
 
-  '@types/react@19.2.15':
-    resolution: {integrity: sha512-eRwcGNHve+E8qtEQSSRl6urh+rFop4v8gm6O8rGv25CodbvFdLjA1vVQ1KkiFE0w0UPOnb8tDiFKL5lp0rtY5Q==}
+  '@types/react@19.2.17':
+    resolution: {integrity: sha512-MXfmqaVPEVgkBT/aY0aGCkRWWtByiYQXo3xdQ8r5RzuFrPiRn8Gar2tQdXSUQ2GKV3bkXckek89V8wQBY2Q/Aw==}
 
   '@types/semver@7.7.1':
     resolution: {integrity: sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA==}
@@ -5101,8 +5101,8 @@ packages:
     peerDependencies:
       react: ^19.2.0
 
-  react@19.2.6:
-    resolution: {integrity: sha512-sfWGGfavi0xr8Pg0sVsyHMAOziVYKgPLNrS7ig+ivMNb3wbCBw3KxtflsGBAwD3gYQlE/AEZsTLgToRrSCjb0Q==}
+  react@19.2.7:
+    resolution: {integrity: sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ==}
     engines: {node: '>=0.10.0'}
 
   read-package-json-fast@6.0.0:
@@ -7566,7 +7566,7 @@ snapshots:
     dependencies:
       undici-types: 7.24.6
 
-  '@types/react@19.2.15':
+  '@types/react@19.2.17':
     dependencies:
       csstype: 3.2.3
 
@@ -9084,18 +9084,18 @@ snapshots:
 
   ini@4.1.1: {}
 
-  ink-select-input@6.2.0(ink@7.0.5(@types/react@19.2.15)(react@19.2.6))(react@19.2.6):
+  ink-select-input@6.2.0(ink@7.0.5(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
     dependencies:
       figures: 6.1.0
-      ink: 7.0.5(@types/react@19.2.15)(react@19.2.6)
-      react: 19.2.6
+      ink: 7.0.5(@types/react@19.2.17)(react@19.2.7)
+      react: 19.2.7
       to-rotated: 1.0.0
 
-  ink-testing-library@4.0.0(@types/react@19.2.15):
+  ink-testing-library@4.0.0(@types/react@19.2.17):
     optionalDependencies:
-      '@types/react': 19.2.15
+      '@types/react': 19.2.17
 
-  ink@7.0.5(@types/react@19.2.15)(react@19.2.6):
+  ink@7.0.5(@types/react@19.2.17)(react@19.2.7):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.0
       ansi-escapes: 7.3.0
@@ -9110,8 +9110,8 @@ snapshots:
       indent-string: 5.0.0
       is-in-ci: 2.0.0
       patch-console: 2.0.0
-      react: 19.2.6
-      react-reconciler: 0.33.0(react@19.2.6)
+      react: 19.2.7
+      react-reconciler: 0.33.0(react@19.2.7)
       scheduler: 0.27.0
       signal-exit: 3.0.7
       slice-ansi: 9.0.0
@@ -9124,7 +9124,7 @@ snapshots:
       ws: 8.21.0
       yoga-layout: 3.2.1
     optionalDependencies:
-      '@types/react': 19.2.15
+      '@types/react': 19.2.17
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -10232,12 +10232,12 @@ snapshots:
       minimist: 1.2.8
       strip-json-comments: 2.0.1
 
-  react-reconciler@0.33.0(react@19.2.6):
+  react-reconciler@0.33.0(react@19.2.7):
     dependencies:
-      react: 19.2.6
+      react: 19.2.7
       scheduler: 0.27.0
 
-  react@19.2.6: {}
+  react@19.2.7: {}
 
   read-package-json-fast@6.0.0:
     dependencies:
