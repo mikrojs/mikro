@@ -14,7 +14,7 @@ You can build custom firmware projects by depending on `@mikrojs/firmware` from 
 - [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/) with ESP-IDF >= 6.0.1
 
 ```sh
-eim install -i v6.0.1 -t all -n true
+eim install -i v6.0.2 -t all -n true
 ```
 
 ## Project structure
@@ -105,8 +105,8 @@ First activate ESP-IDF in your shell. With [EIM](https://docs.espressif.com/proj
 ```sh
 eim select
 # To activate this environment, run the following command in your terminal:
-# source ~/.espressif/tools/activate_idf_v6.0.1.sh
-source ~/.espressif/tools/activate_idf_v6.0.1.sh
+# source ~/.espressif/tools/activate_idf_v6.0.2.sh
+source ~/.espressif/tools/activate_idf_v6.0.2.sh
 ```
 
 Then install and build:

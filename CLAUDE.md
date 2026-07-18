@@ -103,7 +103,7 @@ The project is a pnpm workspace (pnpm 10.30.1, Node >= 24). Key areas:
 
 Git submodule: `packages/@mikrojs/quickjs/deps/quickjs` (QuickJS-NG). Clone with `--recurse-submodules` or run `git submodule update --init --recursive`.
 
-ESP-IDF (>= 6.0.1) is a prerequisite for firmware builds. Install via [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/): `eim install -i v6.0.1 -t all -n true`. The `idf.py` wrapper is provided by the monorepo-internal `@repo/idf.py` package (added to PATH via direnv in `esp32/`) and runs through `eim run` (no manual activation needed).
+ESP-IDF (>= 6.0.1) is a prerequisite for firmware builds. Install via [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/): `eim install -i v6.0.2 -t all -n true`. The `idf.py` wrapper is provided by the monorepo-internal `@repo/idf.py` package (added to PATH via direnv in `esp32/`) and runs through `eim run` (no manual activation needed).
 
 ## Build & Development Commands
 
@@ -147,7 +147,7 @@ pnpm vitest                     # Run JS/TS tests
 Requires ESP-IDF >= 6.0.1 via [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/). One-time setup:
 
 ```sh
-eim install -i v6.0.1 -t all -n true
+eim install -i v6.0.2 -t all -n true
 ```
 
 The `idf.py` wrapper (from the monorepo-internal `@repo/idf.py` package, added to PATH via direnv) runs `idf.py` through `eim run`. From `esp32/`:
