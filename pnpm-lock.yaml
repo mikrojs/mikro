@@ -477,7 +477,7 @@ importers:
         version: 22.0.1
       '@optique/core':
         specifier: ^1.0.2
-        version: 1.0.2
+        version: 1.1.1
       '@optique/run':
         specifier: ^1.0.2
         version: 1.0.2
@@ -514,7 +514,7 @@ importers:
         version: 1.7.0
       '@optique/core':
         specifier: ^1.0.2
-        version: 1.0.2
+        version: 1.1.1
       '@optique/run':
         specifier: ^1.0.2
         version: 1.0.2
@@ -566,7 +566,7 @@ importers:
         version: link:../@mikrojs/quickjs
       '@optique/core':
         specifier: ^1.0.2
-        version: 1.0.2
+        version: 1.1.1
       '@optique/run':
         specifier: ^1.0.2
         version: 1.0.2
@@ -1486,6 +1486,10 @@ packages:
 
   '@optique/core@1.0.2':
     resolution: {integrity: sha512-znsqMmjAdeOgSJzdJlpZpgAscojwQmeQYXzYnuEKllz5VCj6WyEkdzU4QuvJQtWQY3ve2taXwudEBRur0VHBOQ==}
+    engines: {bun: '>=1.2.0', deno: '>=2.3.0', node: '>=20.0.0'}
+
+  '@optique/core@1.1.1':
+    resolution: {integrity: sha512-tbZLdH5wEnh8IRG8KTmWPZCKHLmD4bXigoPdzoSUVi+V46qZTNEaTdqtR7EuEwhbPI0KQjLSYRZCxFTdr9OZkA==}
     engines: {bun: '>=1.2.0', deno: '>=2.3.0', node: '>=20.0.0'}
 
   '@optique/run@1.0.2':
@@ -6414,6 +6418,8 @@ snapshots:
       '@octokit/openapi-types': 27.0.0
 
   '@optique/core@1.0.2': {}
+
+  '@optique/core@1.1.1': {}
 
   '@optique/run@1.0.2':
     dependencies:
