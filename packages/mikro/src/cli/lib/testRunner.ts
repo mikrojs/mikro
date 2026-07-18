@@ -17,7 +17,7 @@ import {
 } from 'rxjs'
 
 import type {Minifier, MinifyLevel} from '../../_exports/index.js'
-import {buildTests} from './build.js'
+import {buildTests, entryRootDir} from './build.js'
 import {collectFiles, type EnvVar} from './deploy.js'
 import {readBaseline, writeBaseline} from './heapBaseline.js'
 import type {DeployEvent, ReplEvent, ReplSession, TestEvent} from './session.js'
@@ -40,8 +40,8 @@ function resolveAppRoot(cwd: string): string {
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
       if (typeof pkg.main === 'string') {
         const rel = pathlib.relative(cwd, pathlib.resolve(cwd, pkg.main))
-        const dir = pathlib.dirname(rel)
-        if (dir && dir !== '.') return dir
+        const dir = entryRootDir(rel)
+        if (dir !== '.') return dir
       }
     } catch {
       // Fall through to default
