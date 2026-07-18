@@ -113,6 +113,15 @@ function isFirmwareBuiltin(id: string): boolean {
   }
 }
 
+/** Top-level directory of a normalized relative entry path: `app/debug/test.ts`
+ * → `app`, `main.ts` → `.`. Deploy promotes only the tree's top-level app dir
+ * and the firmware searches for package.json at most one directory deep, so the
+ * deploy tree root must be the entry's top-level dir, not its immediate parent. */
+export function entryRootDir(entry: string): string {
+  const idx = entry.indexOf(pathlib.sep)
+  return idx === -1 ? '.' : entry.slice(0, idx)
+}
+
 export type BuildEvent =
   | {type: 'phase'; phase: string}
   | {type: 'file'; path: string; size: number}
@@ -215,14 +224,20 @@ export function build(
     env?: MikroEnv
   },
 ): Observable<BuildEvent> {
+  // Resolve the entry to a cwd-relative path so absolute paths (drag-and-drop,
+  // tab completion) and `./`-prefixed paths build the same tree: the rootDir
+  // prefix checks below compare against traced file paths, which are
+  // cwd-relative with no `./` prefix.
+  entry = pathlib.relative(process.cwd(), pathlib.resolve(entry))
   // rootDir is the directory that becomes the root of the deploy tree.
   // Files outside it are co-located into it (so node_modules/ is findable by
   // the on-device module resolver). Files inside it keep their relative
   // position, which matters for bytecode: the baked-in module name is the
   // file's buildDir-relative path, and must match the on-device deploy path.
-  // Defaults to dirname(entry). Test runner overrides with the user's app dir
-  // so that tests deeper than entry's parent still co-locate correctly.
-  const rootDir = options.rootDir ?? pathlib.dirname(entry)
+  // Defaults to the entry's top-level dir. Test runner overrides with the
+  // user's app dir so that tests deeper than entry's parent still co-locate
+  // correctly.
+  const rootDir = options.rootDir ?? entryRootDir(entry)
   return defer(() => loadConfig(entry, options.env)).pipe(
     mergeMap((config) => {
       const shouldBundle = options.bundle ?? config?.build?.bundle ?? false
@@ -447,6 +462,8 @@ export function buildTests(
   if (entries.length === 0) {
     return throwError(() => new Error('buildTests: no entries'))
   }
+  // Same resolution as build(): prefix checks require cwd-relative paths.
+  entries = entries.map((e) => pathlib.relative(process.cwd(), pathlib.resolve(e)))
   const rootDir = options.rootDir
   // Load config from the first entry's directory; assume all tests share a project.
   return defer(() => loadConfig(entries[0]!, options.env)).pipe(
