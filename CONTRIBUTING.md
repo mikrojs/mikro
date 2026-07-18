@@ -27,7 +27,7 @@ git submodule update --init --recursive
 For firmware builds, install ESP-IDF >= 6.0.1 via [EIM](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html) before proceeding:
 
 ```sh
-eim install -i v6.0.1 -t all -n true
+eim install -i v6.0.2 -t all -n true
 ```
 
 ## Node.js / TypeScript

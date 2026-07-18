@@ -14,7 +14,7 @@ For building custom firmware from npm packages without cloning the monorepo, see
 Install ESP-IDF >= 6.0.1 using [EIM (ESP-IDF Installation Manager)](https://docs.espressif.com/projects/idf-im-ui/en/latest/):
 
 ```sh
-eim install -i v6.0.1 -t all -n true
+eim install -i v6.0.2 -t all -n true
 ```
 
 Then allow direnv in the `esp32/` directory (adds the monorepo's `idf.py` wrapper to your PATH):
