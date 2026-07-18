@@ -5,11 +5,12 @@ import type {InferValue} from '@optique/core/parser'
 import {flag, option} from '@optique/core/primitives'
 import {choice} from '@optique/core/valueparser'
 
+import {findReleaseBase, getCommitsSince} from '../util/commits.js'
 import {PREVIEW_LABEL, RELEASE_BRANCH} from '../util/constants.js'
 import {readGitInfo} from '../util/git.js'
 import {type EventPayload, hasLabel, isSameRepoPr, readGitHubEvent} from '../util/githubEvent.js'
 import {octokit, repoSlug} from '../util/octokit.js'
-import {getRecommendedBump} from '../util/version.js'
+import {recommendBump} from '../util/version.js'
 import {readCanonicalVersion} from '../util/workspace.js'
 import {computeBumpPure} from './bump.js'
 
@@ -153,35 +154,34 @@ async function decidePushReleaseMerge(): Promise<Plan> {
 }
 
 // For create-release-pr.yml: skip when the push is the merge commit of a
-// release PR. Manual workflow_dispatch always runs — useful for cutting a
-// release out of band of the regular push-driven flow.
+// release PR, or when nothing landed since the last release (bump would
+// fall back to patch and produce an empty-changelog PR). Manual
+// workflow_dispatch skips only the release-PR-merge check, since it has no
+// triggering commit.
 async function decideCreateReleasePr(): Promise<Plan> {
   const {eventName} = readGitHubEvent()
-  if (eventName === 'workflow_dispatch') {
-    return {
-      mode: 'create-release-pr',
-      shouldRun: true,
-      npmTag: null,
-      pr: null,
-      reason: 'workflow_dispatch',
-      version: null,
+  if (eventName !== 'push' && eventName !== 'workflow_dispatch') {
+    return SKIP(
+      `create-release-pr context expects push or workflow_dispatch event, got ${eventName ?? '<none>'}`,
+    )
+  }
+  if (eventName === 'push') {
+    const sha = process.env.GITHUB_SHA
+    if (!sha) return SKIP('GITHUB_SHA not set')
+    const releasePr = await findAssociatedReleasePr(sha)
+    if (releasePr) {
+      return SKIP(`push is merge of release PR #${releasePr.number}`, releasePr.number)
     }
   }
-  if (eventName !== 'push') {
-    return SKIP(`create-release-pr context expects push event, got ${eventName ?? '<none>'}`)
-  }
-  const sha = process.env.GITHUB_SHA
-  if (!sha) return SKIP('GITHUB_SHA not set')
-  const releasePr = await findAssociatedReleasePr(sha)
-  if (releasePr) {
-    return SKIP(`push is merge of release PR #${releasePr.number}`, releasePr.number)
+  if (getCommitsSince(findReleaseBase()).length === 0) {
+    return SKIP('no commits since the last release')
   }
   return {
     mode: 'create-release-pr',
     shouldRun: true,
     npmTag: null,
     pr: null,
-    reason: 'regular push to main',
+    reason: eventName === 'workflow_dispatch' ? 'workflow_dispatch' : 'regular push to main',
     version: null,
   }
 }
@@ -212,7 +212,7 @@ async function computePlannedVersion(plan: Plan): Promise<string | null> {
     // release will be 0.x.0.
     breakingIsMinorOn0x: true,
     currentVersion: readCanonicalVersion(),
-    semverIncrement: await getRecommendedBump(),
+    semverIncrement: recommendBump(getCommitsSince(findReleaseBase())),
     git: readGitInfo(),
     now: new Date(),
   })

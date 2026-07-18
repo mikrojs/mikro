@@ -9,7 +9,7 @@ import {flag, option} from '@optique/core/primitives'
 import {string} from '@optique/core/valueparser'
 
 import {formatChangelog} from '../util/changelogFormat.js'
-import {findLastReleaseTag, getCommitsSince} from '../util/commits.js'
+import {findReleaseBase, getCommitsSince} from '../util/commits.js'
 import {MONOREPO_ROOT} from '../util/repo.js'
 import {getPublishablePackages} from '../util/workspace.js'
 
@@ -41,10 +41,10 @@ function prepend(path: string, section: string): void {
 }
 
 export async function run(opts: ChangelogArgs): Promise<void> {
-  const lastTag = findLastReleaseTag()
-  const commits = getCommitsSince(lastTag)
+  const base = findReleaseBase()
+  const commits = getCommitsSince(base)
   console.error(
-    `Generating changelog for ${commits.length} commits since ${lastTag ?? 'repo start'}`,
+    `Generating changelog for ${commits.length} commits since ${base?.slice(0, 7) ?? 'repo start'}`,
   )
 
   const date = new Date().toISOString().slice(0, 10)
