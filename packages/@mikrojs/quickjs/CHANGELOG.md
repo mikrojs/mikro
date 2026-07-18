@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.16.0 (2026-07-18)
+
+### Breaking changes
+
+- **wifi:** configure txPower on connect, power radio down on disconnect ([#250](https://github.com/mikrojs/mikro/pull/250))
+
+### Bug fixes
+
+- **cli:** root the deploy tree at the entry's top-level dir ([#258](https://github.com/mikrojs/mikro/pull/258))
+
+### Other
+
+- **deps:** update actions/cache digest to caa2961 ([#252](https://github.com/mikrojs/mikro/pull/252))
+- **deps:** update actions/setup-node digest to 2499707 ([#253](https://github.com/mikrojs/mikro/pull/253))
+- **deps:** update pnpm/action-setup digest to 0ebf471 ([#254](https://github.com/mikrojs/mikro/pull/254))
+- **deps:** update dependency lefthook to v2.1.10 ([#257](https://github.com/mikrojs/mikro/pull/257))
+- **deps:** update dependency vite to v8.0.16 [security] ([#249](https://github.com/mikrojs/mikro/pull/249))
+- **deps:** update dependency @swc/core to v1.15.43 ([#256](https://github.com/mikrojs/mikro/pull/256))
+- **deps:** update dependency esbuild to v0.28.1 [security] ([#231](https://github.com/mikrojs/mikro/pull/231))
+- **deps:** update dependency semver to v7.8.5 ([#226](https://github.com/mikrojs/mikro/pull/226))
+- **deps:** update react monorepo ([#204](https://github.com/mikrojs/mikro/pull/204))
+- **deps:** update dependency eslint-plugin-package-json to v1.6.0 ([#206](https://github.com/mikrojs/mikro/pull/206))
+- **deps:** update vitest monorepo to v4.1.10 ([#200](https://github.com/mikrojs/mikro/pull/200))
+- **deps:** update dependency @sveltejs/acorn-typescript to v1.0.11 ([#255](https://github.com/mikrojs/mikro/pull/255))
+- **deps:** update dependency tsx to v4.23.1 ([#195](https://github.com/mikrojs/mikro/pull/195))
+- **deps:** update actions/checkout digest to df4cb1c ([#208](https://github.com/mikrojs/mikro/pull/208))
+- **deps:** update dependency @clack/prompts to v1.7.0 ([#213](https://github.com/mikrojs/mikro/pull/213))
+- **deps:** update dependency type-fest to v5.8.0 ([#198](https://github.com/mikrojs/mikro/pull/198))
+- **deps:** update typescript-eslint monorepo to v8.64.0 ([#205](https://github.com/mikrojs/mikro/pull/205))
+
 ## 0.15.0 (2026-06-14)
 
 ### Breaking changes
