@@ -1,12 +1,19 @@
+import {spawn} from 'node:child_process'
+
 import spinners from 'cli-spinners'
 import figures from 'figures'
-import {Box, Text, useInput} from 'ink'
+import {Box, Text, useApp, useInput} from 'ink'
 import pkg from 'mikro/package.json' with {type: 'json'}
 import {type ReactNode, useEffect, useState} from 'react'
 import {firstValueFrom} from 'rxjs'
 
 import {flashFirmware} from '../flashFirmware.js'
-import {detectPreferredPm, installVersionCommand, mikroCommand} from '../pkgManager.js'
+import {
+  detectPreferredPm,
+  installVersionCommand,
+  mikroCommand,
+  rerunCommand,
+} from '../pkgManager.js'
 import {Spinner} from '../Spinner.js'
 import {openSession} from './openSession.js'
 
@@ -119,8 +126,9 @@ export function FirmwareGate(props: FirmwareGateProps) {
   }, [state.status === 'flashing', devicePath])
 
   // Terminal states exit the process as a side effect (not during render).
+  // 'flashed' is handled by FlashedNotice: it prompts to re-run (or, with
+  // `yes`, exits with a re-run hint like before).
   useEffect(() => {
-    if (state.status === 'flashed') process.exit(0)
     if (state.status === 'flash_error') process.exit(1)
   }, [state.status])
 
@@ -147,7 +155,7 @@ export function FirmwareGate(props: FirmwareGateProps) {
   }
 
   if (state.status === 'flashed') {
-    return <FlashedNotice command={command} />
+    return <FlashedNotice yes={yes === true} />
   }
 
   if (state.status === 'flash_error') {
@@ -208,17 +216,78 @@ function ReflashPrompt(props: {
   )
 }
 
-function FlashedNotice(props: {command: 'dev' | 'deploy' | 'console'}) {
+/** Post-flash notice. Interactively offers to re-run the original command by
+ *  re-spawning this exact process invocation; with `yes` it keeps the
+ *  non-prompting behavior and just exits with a re-run hint. */
+function FlashedNotice(props: {yes: boolean}) {
   const [pm, setPm] = useState<'npm' | 'pnpm' | 'yarn' | 'bun'>('npm')
+  const [rerunning, setRerunning] = useState(false)
+  const {exit: exitInk} = useApp()
+
   useEffect(() => {
     detectPreferredPm().then(setPm, () => {})
   }, [])
+
+  // With `yes` the user asked for a non-interactive flash: print the hint
+  // (first render happens before this effect) and exit as before.
+  useEffect(() => {
+    if (props.yes) process.exit(0)
+  }, [props.yes])
+
+  useInput(
+    (input, key) => {
+      if (key.ctrl && (input === 'c' || input === 'q')) process.exit(0)
+      const ch = input.toLowerCase()
+      if (ch === 'y' || key.return) {
+        setRerunning(true)
+      } else if (ch === 'n' || key.escape) {
+        process.exit(0)
+      }
+      // Any other key is ignored.
+    },
+    {isActive: !props.yes && !rerunning},
+  )
+
+  // Re-spawn the exact original invocation. Ink must unmount first so raw
+  // mode is restored and the child gets a clean inherited TTY; the spawn is
+  // deferred a tick to run after that teardown. The parent then just waits
+  // and mirrors the child's exit code. Ctrl+C is delivered to the whole
+  // process group, so the parent ignores it and lets the child handle it.
+  useEffect(() => {
+    if (!rerunning) return
+    exitInk()
+    setImmediate(() => {
+      process.on('SIGINT', () => {})
+      process.on('SIGTERM', () => {})
+      const child = spawn(process.execPath, process.argv.slice(1), {stdio: 'inherit'})
+      child.on('error', (err) => {
+        // eslint-disable-next-line no-console
+        console.error(`${figures.cross} Failed to re-run the command`, err)
+        process.exit(1)
+      })
+      child.on('exit', (code, signal) => {
+        process.exit(signal !== null ? 1 : (code ?? 0))
+      })
+    })
+  }, [rerunning, exitInk])
+
   return (
     <Box flexDirection="column">
       <Text color="green">{figures.tick} Firmware updated.</Text>
-      <Text>
-        {figures.pointerSmall} Re-run <Text bold>{mikroCommand(pm, props.command)}</Text>
-      </Text>
+      {props.yes ? (
+        <Text>
+          {figures.pointerSmall} Re-run <Text bold>{rerunCommand(pm)}</Text>
+        </Text>
+      ) : rerunning ? (
+        <Text>
+          {figures.pointerSmall} Re-running <Text bold>{rerunCommand(pm)}</Text>…
+        </Text>
+      ) : (
+        <Text>
+          {figures.pointerSmall} Re-run <Text bold>{rerunCommand(pm)}</Text> now?{' '}
+          <Text bold>(Y/n)</Text>
+        </Text>
+      )}
     </Box>
   )
 }

@@ -10,7 +10,7 @@ import {
 } from '../agent.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {flashFirmware} from '../flashFirmware.js'
-import {detectPreferredPm, mikroCommand} from '../pkgManager.js'
+import {detectPreferredPm, rerunCommand} from '../pkgManager.js'
 import {openSession, type SessionHandles} from './openSession.js'
 
 export interface AgentReplHooks {
@@ -104,7 +104,7 @@ export async function runAgentRepl<T extends {port?: string; recover?: boolean; 
       }
       const pm = await detectPreferredPm()
       agentResult(hooks.command, {firmwareUpdated: true}, [
-        {command: mikroCommand(pm, hooks.command), description: `Re-run ${hooks.command}`},
+        {command: rerunCommand(pm), description: `Re-run ${hooks.command}`},
       ])
       process.exit(0)
     }
