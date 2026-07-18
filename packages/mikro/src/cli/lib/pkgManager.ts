@@ -24,6 +24,34 @@ export function mikroCommand(pm: PkgManager, cmd: string): string {
   return `${pm} mikro ${cmd}`
 }
 
+/** Reconstruct the command the user originally ran, for "re-run" hints.
+ *  Invocations through a package.json script (`pnpm dev app.ts`) render as
+ *  pm + script name + the args after the mikro subcommand; anything else
+ *  falls back to a direct `mikro <args>` invocation for the given pm. */
+export function rerunCommand(pm: PkgManager): string {
+  const args = process.argv.slice(2)
+  const script = process.env.npm_lifecycle_event
+  // npx/npm exec set npm_lifecycle_event to the literal "npx".
+  if (script !== undefined && script !== 'npx') {
+    const scriptPm = pmFromUserAgent() ?? pm
+    const extras = args.slice(1)
+    const run =
+      scriptPm === 'npm'
+        ? ['npm', 'run', script, ...(extras.length > 0 ? ['--'] : [])]
+        : scriptPm === 'bun'
+          ? ['bun', 'run', script]
+          : [scriptPm, script]
+    return [...run, ...extras].join(' ')
+  }
+  return mikroCommand(pm, args.join(' '))
+}
+
+/** The pm that actually invoked this process, from its user-agent env var. */
+function pmFromUserAgent(): PkgManager | undefined {
+  const name = process.env.npm_config_user_agent?.split('/')[0]
+  return name === 'npm' || name === 'pnpm' || name === 'yarn' || name === 'bun' ? name : undefined
+}
+
 /** Render an "install latest version of <pkg>" command appropriate for the pm. */
 export function installLatestCommand(pm: PkgManager, pkg: string): string {
   const verb = pm === 'npm' ? 'install' : 'add'

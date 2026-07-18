@@ -19,7 +19,7 @@ import {formatDeployEvent} from '../lib/deployProgress.js'
 import {FirmwareIncompatibleError} from '../lib/firmwareCompat.js'
 import {flashFirmware} from '../lib/flashFirmware.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
-import {detectPreferredPm, mikroCommand} from '../lib/pkgManager.js'
+import {detectPreferredPm, rerunCommand} from '../lib/pkgManager.js'
 import {port} from '../lib/portValueParser.js'
 import {getMikroDir, resolveProjectRoot} from '../lib/projectRoot.js'
 import {resolveEntry} from '../lib/resolveEntry.js'
@@ -242,7 +242,7 @@ export async function run(
       log('Device firmware is incompatible with this CLI. Flashing CLI-matched firmware…')
       await flashFirmware({port: devicePath, onProgress: (m) => log(m)})
       const pm = await detectPreferredPm()
-      log(`Firmware updated. Re-run ${mikroCommand(pm, 'deploy')}.`)
+      log(`Firmware updated. Re-run ${rerunCommand(pm)}.`)
       process.exit(0)
     }
     throw err
