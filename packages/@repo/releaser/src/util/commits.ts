@@ -23,7 +23,7 @@ const FIELD_SEP = '\x1f'
 // Commits v1.0.0 syntax for breaking changes), so type/scope/subject all
 // come back null and breaking commits silently disappear from the
 // changelog. Load the conventionalcommits preset's parserOpts so the
-// `!` is recognized — this matches what `Bumper` uses in version.ts.
+// `!` is recognized.
 // Upstream issue (open since 2020):
 //   https://github.com/conventional-changelog/conventional-changelog/issues/648
 const parser = new CommitParser((await preset()).parser)
@@ -68,10 +68,27 @@ export function getCommitsSince(ref: string | null): ParsedCommit[] {
   return commits
 }
 
-export function findLastReleaseTag(): string | null {
+function versionAt(ref: string): string | null {
+  let raw: string
   try {
-    return git('git describe --tags --abbrev=0 --match=v*')
+    raw = git(`git show ${ref}:package.json`)
   } catch {
-    return null
+    return null // no parent commit, or no package.json at that ref
   }
+  return (JSON.parse(raw) as {version?: string}).version ?? null
+}
+
+// The base for changelogs and bump recommendations: the commit that set the
+// root package.json to its current version, i.e. the latest release-PR merge.
+// Derived from history instead of release tags because release.yml pushes the
+// tag only after a successful publish, minutes after the merge; a tag-derived
+// range recomputed in that window re-lists already-released commits.
+export function findReleaseBase(): string | null {
+  // -G narrows to commits whose diff touches a version-shaped line; the
+  // parent comparison decides.
+  const out = git(`git log --format=%H -G'"version":' -- package.json`)
+  for (const sha of out ? out.split('\n') : []) {
+    if (versionAt(sha) !== versionAt(`${sha}^`)) return sha
+  }
+  return null
 }

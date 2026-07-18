@@ -6,14 +6,10 @@ import {flag, option} from '@optique/core/primitives'
 import {choice, integer, string} from '@optique/core/valueparser'
 import semver from 'semver'
 
+import {findReleaseBase, getCommitsSince} from '../util/commits.js'
 import {readGitInfo} from '../util/git.js'
 import {MONOREPO_ROOT} from '../util/repo.js'
-import {
-  computeVersion,
-  formatTimestamp,
-  getRecommendedBump,
-  type ReleaseType,
-} from '../util/version.js'
+import {computeVersion, formatTimestamp, recommendBump, type ReleaseType} from '../util/version.js'
 import {getPublishablePackages, readCanonicalVersion, writeVersion} from '../util/workspace.js'
 
 export type Mode = 'release' | 'release-preview' | 'canary' | 'pr-preview'
@@ -176,7 +172,7 @@ async function gather(opts: BumpArgs): Promise<BumpInputs> {
     useCurrent,
     breakingIsMinorOn0x: opts.breakingIsMinorOn0x === true,
     currentVersion: readCanonicalVersion(),
-    semverIncrement: useCurrent ? 'patch' : await getRecommendedBump(),
+    semverIncrement: useCurrent ? 'patch' : recommendBump(getCommitsSince(findReleaseBase())),
     git: useCurrent ? {commitHash: ''} : readGitInfo(),
     now: new Date(),
   }

@@ -1,18 +1,14 @@
-import {Bumper} from 'conventional-recommended-bump'
 import semver from 'semver'
 
-import {MONOREPO_ROOT} from './repo.js'
+import type {ParsedCommit} from './commits.js'
 
 export type ReleaseType = 'major' | 'minor' | 'patch'
 
-export async function getRecommendedBump(): Promise<ReleaseType> {
-  const bumper = new Bumper(MONOREPO_ROOT)
-  bumper.loadPreset('conventionalcommits')
-  bumper.tag({prefix: 'v', skipUnstable: true})
-  const result = await bumper.bump()
-  if ('releaseType' in result && result.releaseType) {
-    return result.releaseType as ReleaseType
-  }
+// Conventional-commits bump policy: breaking → major, feat → minor,
+// anything else (including an empty range) → patch.
+export function recommendBump(commits: ParsedCommit[]): ReleaseType {
+  if (commits.some((c) => c.breaking)) return 'major'
+  if (commits.some((c) => c.type === 'feat')) return 'minor'
   return 'patch'
 }
 
