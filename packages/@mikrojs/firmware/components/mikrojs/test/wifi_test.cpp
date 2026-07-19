@@ -37,7 +37,7 @@ static void setup() {
     /* WiFi module is self-registered and lazily initialized.
      * The import below triggers init + loop consumer registration. */
     const char* init_code = "import { Wifi } from \"native:mikro/wifi\"; new Wifi();";
-    JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test-setup", init_code, strlen(init_code));
+    JSValue ret = MIK_EvalModuleContent(ctx, "mikro/test-setup", init_code, strlen(init_code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
         mik__execute_jobs(ctx);
@@ -56,7 +56,7 @@ static void teardown() {
 }
 
 static JSValue eval_module(const char* code) {
-    JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test", code, strlen(code));
+    JSValue ret = MIK_EvalModuleContent(ctx, "mikro/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
         mik__execute_jobs(ctx);

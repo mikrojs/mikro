@@ -19,7 +19,7 @@ static void setup() {
 static void teardown() { MIK_FreeRuntime(rt); }
 
 static JSValue eval_module(const char* code) {
-    JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test", code, strlen(code));
+    JSValue ret = MIK_EvalModuleContent(ctx, "mikro/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
         mik__execute_jobs(ctx);
@@ -27,11 +27,11 @@ static JSValue eval_module(const char* code) {
     return ret;
 }
 
-TEST_CASE("mikrojs/udp module is importable", "[modules]") {
+TEST_CASE("mikro/udp module is importable", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
-        import {bind} from "mikrojs/udp";
+        import {bind} from "mikro/udp";
         globalThis.__hasBind = typeof bind === "function";
     )");
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
@@ -45,13 +45,13 @@ TEST_CASE("mikrojs/udp module is importable", "[modules]") {
     teardown();
 }
 
-TEST_CASE("mikrojs/udp bind and close work on device", "[modules]") {
+TEST_CASE("mikro/udp bind and close work on device", "[modules]") {
     setup();
 
     /* Drives a bind+close, holds the socket on globalThis to keep it alive
      * past the IIFE, then verifies port assignment and idempotent close. */
     JSValue ret = eval_module(R"(
-        import {bind} from "mikrojs/udp";
+        import {bind} from "mikro/udp";
         globalThis.__phase = "init";
         (async () => {
           const r = await bind({port: 0, family: 'ipv4'});

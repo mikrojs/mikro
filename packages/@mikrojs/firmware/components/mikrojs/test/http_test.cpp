@@ -43,7 +43,7 @@ static void setup() {
 
 static void ensure_http_initialized() {
     const char* code = "import { request } from 'native:mikro/http';";
-    JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test", code, strlen(code));
+    JSValue ret = MIK_EvalModuleContent(ctx, "mikro/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
         mik__execute_jobs(ctx);
@@ -53,7 +53,7 @@ static void ensure_http_initialized() {
 static void teardown() { MIK_FreeRuntime(rt); }
 
 static JSValue eval_module(const char* code) {
-    JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test", code, strlen(code));
+    JSValue ret = MIK_EvalModuleContent(ctx, "mikro/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
         mik__execute_jobs(ctx);

@@ -28,7 +28,7 @@ static void teardown() {
     /* Ensure the BLE stack is stopped between tests so every test starts
      * from a clean state. stop() is idempotent. */
     JSValue ret = MIK_EvalModuleContent(
-        ctx, "mikrojs/ble-test-teardown",
+        ctx, "mikro/ble-test-teardown",
         "import {Ble} from \"native:mikro/ble\"; new Ble().stop();", 48);
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
@@ -43,7 +43,7 @@ static void teardown() {
 }
 
 static JSValue eval_module(const char* code) {
-    JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/ble-test", code, strlen(code));
+    JSValue ret = MIK_EvalModuleContent(ctx, "mikro/ble-test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
         mik__execute_jobs(ctx);

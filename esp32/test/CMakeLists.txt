@@ -25,6 +25,15 @@ set(_MIK_TEST_DIR "${_MIK_CONFIG_DIR}/test")
 file(COPY "${_MIK_TEST_DIR}/littlefs_partition.csv" DESTINATION "${CMAKE_CURRENT_LIST_DIR}")
 set(SDKCONFIG_DEFAULTS "${_MIK_TEST_DIR}/sdkconfig.defaults")
 
+# Board overrides from the parent project (e.g. octal PSRAM) apply to test
+# builds too; later entries win.
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../sdkconfig.defaults")
+    list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/../sdkconfig.defaults")
+endif()
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../sdkconfig.defaults.${IDF_TARGET}")
+    list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/../sdkconfig.defaults.${IDF_TARGET}")
+endif()
+
 set(TEST_COMPONENTS "mikrojs" CACHE STRING "List of components to test")
 
 add_compile_options($<$<COMPILE_LANGUAGE:C>:-Wno-incompatible-pointer-types>)

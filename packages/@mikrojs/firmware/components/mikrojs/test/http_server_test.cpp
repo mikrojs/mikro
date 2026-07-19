@@ -33,7 +33,7 @@ static void setup() {
 static void teardown() { MIK_FreeRuntime(rt); }
 
 static JSValue eval_module(const char* code) {
-    JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test", code, strlen(code));
+    JSValue ret = MIK_EvalModuleContent(ctx, "mikro/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
         mik__execute_jobs(ctx);
@@ -43,12 +43,18 @@ static JSValue eval_module(const char* code) {
 
 static void ensure_initialized() {
     const char* code = "import { nextRequest } from 'native:mikro/http_server';";
-    JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test", code, strlen(code));
+    JSValue ret = MIK_EvalModuleContent(ctx, "mikro/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
         mik__execute_jobs(ctx);
     }
 }
+
+/* nextRequest() resolves with the closed sentinel unless a server is running.
+ * Fake a handle so tests can drive the queues without esp_http_server; clear
+ * it before teardown so destroy doesn't httpd_stop the fake. */
+static void fake_server_start() { mik__hs(rt)->server = reinterpret_cast<httpd_handle_t>(1); }
+static void fake_server_stop() { mik__hs(rt)->server = nullptr; }
 
 static void read_global_string(const char* key, char* out, size_t out_len) {
     JSValue global = JS_GetGlobalObject(ctx);
@@ -139,6 +145,7 @@ TEST_CASE("http_server consume with no messages is a no-op", "[httpd]") {
 TEST_CASE("nextRequest delivers method/url and respond fills the exchange", "[httpd]") {
     setup();
     ensure_initialized();
+    fake_server_start();
 
     MIKHsExchange* ex = push_request("GET", "/hello?x=1");
 
@@ -168,6 +175,7 @@ TEST_CASE("nextRequest delivers method/url and respond fills the exchange", "[ht
     size_t headerCount = ex->header_count;
 
     free_exchange(ex);
+    fake_server_stop();
     teardown();
 
     TEST_ASSERT_EQUAL_STRING("GET", method);
@@ -184,6 +192,7 @@ TEST_CASE("nextRequest delivers method/url and respond fills the exchange", "[ht
 TEST_CASE("respond tolerates a bodyless response", "[httpd]") {
     setup();
     ensure_initialized();
+    fake_server_start();
 
     MIKHsExchange* ex = push_request("POST", "/save");
 
@@ -208,6 +217,7 @@ TEST_CASE("respond tolerates a bodyless response", "[httpd]") {
     bool bodyNull = (ex->body == nullptr);
 
     free_exchange(ex);
+    fake_server_stop();
     teardown();
 
     TEST_ASSERT_FALSE_MESSAGE(threw, "bodyless respond must not throw");

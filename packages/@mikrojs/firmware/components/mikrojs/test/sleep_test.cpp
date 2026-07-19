@@ -17,7 +17,7 @@ static void setup() {
 static void teardown() { MIK_FreeRuntime(rt); }
 
 static JSValue eval_module(const char* code) {
-    JSValue ret = MIK_EvalModuleContent(ctx, "mikrojs/test", code, strlen(code));
+    JSValue ret = MIK_EvalModuleContent(ctx, "mikro/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(ctx, ret);
         mik__execute_jobs(ctx);
