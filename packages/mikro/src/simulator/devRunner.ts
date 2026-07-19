@@ -40,23 +40,26 @@ async function rpcHttpFetch(args: HttpFetchArgs): Promise<HttpFetchResult> {
 // Persistent NVS-backed kv for the simulator. Mirrors the firmware contract:
 // `mikro/kv/nvs` survives power cycles on device, so it must survive
 // `mikro sim dev` restarts here. Stored alongside `nvs.json` (env config) as
-// `nvs_kv.json` — values are base64-encoded CBOR blobs (the QuickJS-side
-// stub wraps user values via native:mikro/cbor before persistence).
+// `nvs_kv.json` (app data) and `nvs_sys.json` (system store); values are
+// base64-encoded CBOR blobs (the QuickJS-side stub wraps user values via
+// native:mikro/cbor before persistence). The `ns` discriminator mirrors the
+// firmware's mik.kv / mik.sys namespace split.
 interface NvsKvStore {
   entries: Record<string, string> // key → base64(cbor)
 }
-function nvsKvPath(fsRoot: string): string {
-  return pathlib.join(pathlib.dirname(fsRoot), 'nvs_kv.json')
+type NvsNs = 'kv' | 'sys'
+function nvsKvPath(fsRoot: string, ns: NvsNs): string {
+  return pathlib.join(pathlib.dirname(fsRoot), ns === 'sys' ? 'nvs_sys.json' : 'nvs_kv.json')
 }
-function readNvsKvStore(fsRoot: string): NvsKvStore {
+function readNvsKvStore(fsRoot: string, ns: NvsNs): NvsKvStore {
   try {
-    return JSON.parse(nodeFs.readFileSync(nvsKvPath(fsRoot), 'utf-8')) as NvsKvStore
+    return JSON.parse(nodeFs.readFileSync(nvsKvPath(fsRoot, ns), 'utf-8')) as NvsKvStore
   } catch {
     return {entries: {}}
   }
 }
-function writeNvsKvStore(fsRoot: string, store: NvsKvStore): void {
-  nodeFs.writeFileSync(nvsKvPath(fsRoot), JSON.stringify(store, null, 2) + '\n')
+function writeNvsKvStore(fsRoot: string, ns: NvsNs, store: NvsKvStore): void {
+  nodeFs.writeFileSync(nvsKvPath(fsRoot, ns), JSON.stringify(store, null, 2) + '\n')
 }
 
 export interface DevRunnerOptions {
@@ -195,27 +198,37 @@ export function createDevRunner(options: DevRunnerOptions): DevRunner {
       return rpcHttpFetch(JSON.parse(argsJson)).then((r) => JSON.stringify(r))
     }
     if (method === 'nvs_kv.list') {
-      return JSON.stringify(readNvsKvStore(fsRoot).entries)
+      const {ns = 'kv'} = JSON.parse(argsJson) as {ns?: NvsNs}
+      return JSON.stringify(readNvsKvStore(fsRoot, ns).entries)
     }
     if (method === 'nvs_kv.set') {
-      const {key, value} = JSON.parse(argsJson) as {key: string; value: string}
-      const store = readNvsKvStore(fsRoot)
+      const {
+        key,
+        value,
+        ns = 'kv',
+      } = JSON.parse(argsJson) as {
+        key: string
+        value: string
+        ns?: NvsNs
+      }
+      const store = readNvsKvStore(fsRoot, ns)
       store.entries[key] = value
-      writeNvsKvStore(fsRoot, store)
+      writeNvsKvStore(fsRoot, ns, store)
       return '{}'
     }
     if (method === 'nvs_kv.remove') {
-      const {key} = JSON.parse(argsJson) as {key: string}
-      const store = readNvsKvStore(fsRoot)
+      const {key, ns = 'kv'} = JSON.parse(argsJson) as {key: string; ns?: NvsNs}
+      const store = readNvsKvStore(fsRoot, ns)
       const existed = key in store.entries
       if (existed) {
         const {[key]: _omit, ...rest} = store.entries
-        writeNvsKvStore(fsRoot, {entries: rest})
+        writeNvsKvStore(fsRoot, ns, {entries: rest})
       }
       return JSON.stringify({existed})
     }
     if (method === 'nvs_kv.clear') {
-      writeNvsKvStore(fsRoot, {entries: {}})
+      const {ns = 'kv'} = JSON.parse(argsJson) as {ns?: NvsNs}
+      writeNvsKvStore(fsRoot, ns, {entries: {}})
       return '{}'
     }
     throw new Error(`Unknown sim RPC method: ${method}`)

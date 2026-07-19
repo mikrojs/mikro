@@ -313,6 +313,7 @@ declare module 'native:@my-scope/bme280/sensor' {
   }
   ```
 
+- **NVS namespaces**: if your driver stores state in NVS, use your own namespace. Namespace names starting with `mik.` are reserved for the runtime.
 - **C vs C++ source files**: Vendor C libraries (like sensor SDKs) should be compiled as `.c` files. Mixing them into `.cpp` files can cause issues with `-Werror` due to C++ strictness.
 - **DMA buffers**: If your peripheral uses DMA (SPI displays, etc.), allocate buffers with `heap_caps_malloc(size, MALLOC_CAP_DMA)`. DMA requires internal SRAM; PSRAM will not work.
 

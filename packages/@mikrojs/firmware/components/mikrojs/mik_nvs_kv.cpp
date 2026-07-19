@@ -1,8 +1,10 @@
 /**
  * native:mikro/nvs_kv — NVS-backed key-value storage native module.
  *
- * Values are CBOR-encoded and stored as NVS blobs in the "mik.kv" namespace.
- * Survives power cycles. NVS keys are limited to 15 characters.
+ * Values are CBOR-encoded and stored as NVS blobs. App data lives in the
+ * "mik.kv" namespace (set/get/remove/clear); runtime-internal state lives
+ * in "mik.sys" (sysSet/sysGet/sysRemove/sysClear), never implicitly
+ * cleared. Survives power cycles. NVS keys are limited to 15 characters.
  */
 
 #include <cstring>
@@ -16,12 +18,19 @@
 #include "mikrojs/utils.h"
 
 #define MIK_NVS_KV_NS "mik.kv"
+#define MIK_NVS_SYS_NS "mik.sys"
 #define MIK_NVS_MAX_KEY_LEN 15
 #define MIK_NVS_MAX_VAL_LEN (16 * 1024)
 
+/* magic selects the namespace: 0 = mik.kv (app data), 1 = mik.sys (runtime) */
+static const char* mik__nvs_ns(int magic) {
+    return magic ? MIK_NVS_SYS_NS : MIK_NVS_KV_NS;
+}
+
 /* ── JS functions ────────────────────────────────────────────────── */
 
-static JSValue mik__nvs_kv_set(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+static JSValue mik__nvs_kv_set(JSContext* ctx, JSValue this_val, int argc, JSValue* argv,
+                               int magic) {
     const char* key = JS_ToCString(ctx, argv[0]);
     if (!key) return JS_EXCEPTION;
     size_t key_len = strlen(key);
@@ -58,7 +67,7 @@ static JSValue mik__nvs_kv_set(JSContext* ctx, JSValue this_val, int argc, JSVal
 
     /* Write to NVS */
     nvs_handle_t handle;
-    esp_err_t err = nvs_open(MIK_NVS_KV_NS, NVS_READWRITE, &handle);
+    esp_err_t err = nvs_open(mik__nvs_ns(magic), NVS_READWRITE, &handle);
     if (err != ESP_OK) {
         js_free(ctx, buf);
         JS_FreeCString(ctx, key);
@@ -87,7 +96,8 @@ static JSValue mik__nvs_kv_set(JSContext* ctx, JSValue this_val, int argc, JSVal
     return mik__result_ok_void(ctx);
 }
 
-static JSValue mik__nvs_kv_get(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+static JSValue mik__nvs_kv_get(JSContext* ctx, JSValue this_val, int argc, JSValue* argv,
+                               int magic) {
     const char* key = JS_ToCString(ctx, argv[0]);
     if (!key) return JS_EXCEPTION;
     size_t key_len = strlen(key);
@@ -98,7 +108,7 @@ static JSValue mik__nvs_kv_get(JSContext* ctx, JSValue this_val, int argc, JSVal
     }
 
     nvs_handle_t handle;
-    if (nvs_open(MIK_NVS_KV_NS, NVS_READONLY, &handle) != ESP_OK) {
+    if (nvs_open(mik__nvs_ns(magic), NVS_READONLY, &handle) != ESP_OK) {
         JS_FreeCString(ctx, key);
         return JS_UNDEFINED;
     }
@@ -139,12 +149,13 @@ static JSValue mik__nvs_kv_get(JSContext* ctx, JSValue this_val, int argc, JSVal
     return result;
 }
 
-static JSValue mik__nvs_kv_remove(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+static JSValue mik__nvs_kv_remove(JSContext* ctx, JSValue this_val, int argc, JSValue* argv,
+                                  int magic) {
     const char* key = JS_ToCString(ctx, argv[0]);
     if (!key) return JS_EXCEPTION;
 
     nvs_handle_t handle;
-    if (nvs_open(MIK_NVS_KV_NS, NVS_READWRITE, &handle) != ESP_OK) {
+    if (nvs_open(mik__nvs_ns(magic), NVS_READWRITE, &handle) != ESP_OK) {
         JS_FreeCString(ctx, key);
         return JS_NewBool(ctx, false);
     }
@@ -162,16 +173,27 @@ static JSValue mik__nvs_kv_remove(JSContext* ctx, JSValue this_val, int argc, JS
     return JS_NewBool(ctx, true);
 }
 
-static JSValue mik__nvs_kv_clear(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+static JSValue mik__nvs_kv_clear(JSContext* ctx, JSValue this_val, int argc, JSValue* argv,
+                                 int magic) {
     nvs_handle_t handle;
-    if (nvs_open(MIK_NVS_KV_NS, NVS_READWRITE, &handle) != ESP_OK) {
-        return JS_UNDEFINED;
+    esp_err_t err = nvs_open(mik__nvs_ns(magic), NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        return mik__result_err(ctx, MIK_ERR_KV_WRITE, err,
+                               "NVS open failed: %s", esp_err_to_name(err));
     }
 
-    nvs_erase_all(handle);
-    nvs_commit(handle);
+    err = nvs_erase_all(handle);
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
     nvs_close(handle);
-    return JS_UNDEFINED;
+
+    if (err != ESP_OK) {
+        return mik__result_err(ctx, MIK_ERR_KV_WRITE, err,
+                               "NVS clear failed: %s", esp_err_to_name(err));
+    }
+
+    return mik__result_ok_void(ctx);
 }
 
 static JSValue mik__nvs_kv_info(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
@@ -197,10 +219,30 @@ static JSValue mik__nvs_kv_info(JSContext* ctx, JSValue this_val, int argc, JSVa
 /* ── Module init ─────────────────────────────────────────────────── */
 
 static int mik__nvs_kv_module_init(JSContext* ctx, JSModuleDef* m) {
-    JS_SetModuleExport(ctx, m, "set", JS_NewCFunction(ctx, mik__nvs_kv_set, "set", 2));
-    JS_SetModuleExport(ctx, m, "get", JS_NewCFunction(ctx, mik__nvs_kv_get, "get", 1));
-    JS_SetModuleExport(ctx, m, "remove", JS_NewCFunction(ctx, mik__nvs_kv_remove, "remove", 1));
-    JS_SetModuleExport(ctx, m, "clear", JS_NewCFunction(ctx, mik__nvs_kv_clear, "clear", 0));
+    JS_SetModuleExport(ctx, m, "set",
+                       JS_NewCFunctionMagic(ctx, mik__nvs_kv_set, "set", 2,
+                                            JS_CFUNC_generic_magic, 0));
+    JS_SetModuleExport(ctx, m, "get",
+                       JS_NewCFunctionMagic(ctx, mik__nvs_kv_get, "get", 1,
+                                            JS_CFUNC_generic_magic, 0));
+    JS_SetModuleExport(ctx, m, "remove",
+                       JS_NewCFunctionMagic(ctx, mik__nvs_kv_remove, "remove", 1,
+                                            JS_CFUNC_generic_magic, 0));
+    JS_SetModuleExport(ctx, m, "clear",
+                       JS_NewCFunctionMagic(ctx, mik__nvs_kv_clear, "clear", 0,
+                                            JS_CFUNC_generic_magic, 0));
+    JS_SetModuleExport(ctx, m, "sysSet",
+                       JS_NewCFunctionMagic(ctx, mik__nvs_kv_set, "sysSet", 2,
+                                            JS_CFUNC_generic_magic, 1));
+    JS_SetModuleExport(ctx, m, "sysGet",
+                       JS_NewCFunctionMagic(ctx, mik__nvs_kv_get, "sysGet", 1,
+                                            JS_CFUNC_generic_magic, 1));
+    JS_SetModuleExport(ctx, m, "sysRemove",
+                       JS_NewCFunctionMagic(ctx, mik__nvs_kv_remove, "sysRemove", 1,
+                                            JS_CFUNC_generic_magic, 1));
+    JS_SetModuleExport(ctx, m, "sysClear",
+                       JS_NewCFunctionMagic(ctx, mik__nvs_kv_clear, "sysClear", 0,
+                                            JS_CFUNC_generic_magic, 1));
     JS_SetModuleExport(ctx, m, "info", JS_NewCFunction(ctx, mik__nvs_kv_info, "info", 0));
     return 0;
 }
@@ -212,6 +254,10 @@ static JSModuleDef* mik__nvs_kv_init(JSContext* ctx) {
     JS_AddModuleExport(ctx, m, "get");
     JS_AddModuleExport(ctx, m, "remove");
     JS_AddModuleExport(ctx, m, "clear");
+    JS_AddModuleExport(ctx, m, "sysSet");
+    JS_AddModuleExport(ctx, m, "sysGet");
+    JS_AddModuleExport(ctx, m, "sysRemove");
+    JS_AddModuleExport(ctx, m, "sysClear");
     JS_AddModuleExport(ctx, m, "info");
     return m;
 }

@@ -58,7 +58,7 @@ describe('kv: rtcStorage', () => {
 
 describe('kv: nvsStorage', () => {
   afterAll(() => {
-    nvsStorage.clear()
+    nvsStorage.clear().orPanic('nvs clear failed')
   })
 
   test('set and get string', () => {

@@ -17,14 +17,14 @@
  * Locally:  SIM_SMOKE=1 pnpm --filter mikro exec vitest run simDevSmoke
  */
 import {type ChildProcess, spawn} from 'node:child_process'
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs'
+import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {createInterface} from 'node:readline'
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest'
 
-const cliBin = join(__dirname, '../../../../bin/mikrojs.js')
+const cliBin = join(__dirname, '../../../bin/mikrojs.js')
 
 // Default-skipped: some CI / agent sandboxes SIGKILL the @mikrojs/native
 // addon child before it can emit anything, and the test is heavier than
@@ -178,5 +178,51 @@ describeIfEnabled('mikro sim dev --agent smoke test', () => {
     sim.send({type: 'eval', code: 'await Promise.resolve(42)'})
     const result4 = await sim.waitFor((e) => e.type === 'result' && e.text === '42')
     expect(result4.text).toBe('42')
+
+    // kv/sys namespace isolation through the real runtime + stub + RPC stack.
+    // Eval code cannot import native:* modules in the sim, so sys state is
+    // seeded and observed via the Node-side persistence file instead. 'Ag=='
+    // is base64(cbor(2)), a single 0x02 byte.
+    const sysJsonPath = join(tempDir, '.mikro', 'nvs_sys.json')
+    writeFileSync(sysJsonPath, JSON.stringify({entries: {probe: 'Ag=='}}, null, 2) + '\n')
+    sim.send({
+      type: 'eval',
+      code: [
+        'await (async () => {',
+        "  const {nvsStorage} = await import('mikro/kv/nvs')",
+        "  const probe = nvsStorage.createValue('probe')",
+        "  probe.set('app').orPanic('set failed')",
+        "  const results = {kvSees: probe.get() === 'app'}",
+        "  nvsStorage.clear().orPanic('clear failed')",
+        '  results.kvGone = probe.get() === undefined',
+        '  return results',
+        '})()',
+      ].join('\n'),
+    })
+    const kvResult = await sim.waitFor(
+      (e) => e.type === 'result' && typeof e.text === 'string' && String(e.text).includes('kvSees'),
+    )
+    expect(kvResult.text).toContain('kvSees: true')
+    expect(kvResult.text).toContain('kvGone: true')
+    // clear() must not touch the system store.
+    expect(JSON.parse(readFileSync(sysJsonPath, 'utf-8')).entries).toEqual({probe: 'Ag=='})
+
+    sim.send({
+      type: 'eval',
+      code: [
+        'await (async () => {',
+        "  const {nvsStorage} = await import('mikro/kv/nvs')",
+        "  nvsStorage.clear({full: true}).orPanic('full clear failed')",
+        '  return {fullClearOk: true}',
+        '})()',
+      ].join('\n'),
+    })
+    const fullResult = await sim.waitFor(
+      (e) =>
+        e.type === 'result' && typeof e.text === 'string' && String(e.text).includes('fullClearOk'),
+    )
+    expect(fullResult.text).toContain('fullClearOk: true')
+    // clear({full: true}) empties the system store too.
+    expect(JSON.parse(readFileSync(sysJsonPath, 'utf-8')).entries).toEqual({})
   }, 45_000)
 })

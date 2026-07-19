@@ -8,7 +8,7 @@ type NR<T> = {ok: true; value: T} | {ok: false; error: {code: number; message: s
 // import them. Keep these in sync with the MODULES list in the firmware +
 // @mikrojs/native CMakeLists.
 declare module 'mikro/kv/shared' {
-  export {KVError, makeCreateValue, type NativeKvFns} from './kv/shared.js'
+  export {KVError, makeCreateValue, mapKvError, type NativeKvFns} from './kv/shared.js'
 }
 
 declare module 'mikro/observable/lazy' {
@@ -289,7 +289,11 @@ declare module 'native:mikro/nvs_kv' {
   export function set(key: string, value: unknown): NRV
   export function get(key: string): unknown
   export function remove(key: string): boolean
-  export function clear(): void
+  export function clear(): NRV
+  export function sysSet(key: string, value: unknown): NRV
+  export function sysGet(key: string): unknown
+  export function sysRemove(key: string): boolean
+  export function sysClear(): NRV
   export function info(): {entries: number; used: number; total: number; free: number}
 }
 

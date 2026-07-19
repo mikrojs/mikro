@@ -10,6 +10,7 @@ set(_MIK_TEST_SRCS
     i2s_test.cpp
     modules_extended_test.cpp
     modules_test.cpp
+    nvs_kv_test.cpp
     pins_test.cpp
     pwm_test.cpp
     repl_protocol_test.cpp
