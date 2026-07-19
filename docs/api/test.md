@@ -305,7 +305,7 @@ import {nvsStorage} from 'mikro/kv/nvs'
 // ---cut---
 describe('storage', () => {
   afterAll(() => {
-    nvsStorage.clear()
+    nvsStorage.clear().orPanic('nvs clear failed')
   })
 
   test('write and read', () => {

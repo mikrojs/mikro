@@ -138,8 +138,9 @@ export interface NvsStorage {
     options?: Opts,
   ): KVValue<InferOpts<Schema, Opts>>
 
-  /** Erase all NVS key-value data. */
-  clear(): void
+  /** Erase all app key-value data. With `{full: true}`, also erase the runtime's
+   *  system store. The system store is never touched otherwise. */
+  clear(options?: {full?: boolean}): Result<void, KVError>
   /** Get info about NVS key-value usage. */
   info(): NvsStorageInfo
 }

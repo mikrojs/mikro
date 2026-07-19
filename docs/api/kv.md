@@ -35,6 +35,20 @@ Store values in NVS flash that persist across power cycles. Keys limited to 15 c
 NVS values are stored as plaintext in flash. Anyone with physical access to the device can dump the flash and read them.
 :::
 
+### Storage ownership
+
+NVS flash is divided into namespaces with distinct owners:
+
+| Namespace           | Holds                                    | Owner       | Cleared by           |
+| ------------------- | ---------------------------------------- | ----------- | -------------------- |
+| `mik.env`/`mik.sec` | Environment variables (and secret flags) | the project | deploy sync          |
+| `mik.kv`            | App key-value data                       | your app    | `nvsStorage.clear()` |
+| `mik.sys`           | Runtime-internal state                   | mikrojs     | never implicitly     |
+
+Everything you store through `nvsStorage` lives in `mik.kv`, fully separate from the runtime's namespaces. No key names are reserved: a key called `sys.foo` or `ota.url` is yours alone and collides with nothing.
+
+All namespaces draw from the same NVS partition entry pool. The runtime's own use is small and bounded, but a nearly full partition can fail writes regardless of namespace (NVS needs free space for its internal garbage collection); `set()` surfaces that as a `StorageFull` or `WriteFailed` error.
+
 ## Shared API
 
 Both stores share the same `createValue` API.
@@ -82,6 +96,17 @@ const state = nvsStorage.createValue('state', {
 ### clear()
 
 Erase all data in the store.
+
+- `rtcStorage.clear(): void`
+- `nvsStorage.clear(options?: {full?: boolean}): Result<void, KVError>`
+
+`nvsStorage.clear()` erases app data only; the runtime's system store is never touched.
+
+::: danger clear({full: true})
+`nvsStorage.clear({full: true})` additionally erases the runtime's system store, which holds runtime-internal state. Intended for deliberate factory-reset flows; there is no undo. Both wipes are attempted even if one fails; an error result means at least one store may still hold data.
+:::
+
+The CLI's `mikro clean --full` shares the word but not the scope: it wipes environment variables, files, and the deployed app, and never touches key-value storage.
 
 ### info()
 

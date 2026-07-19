@@ -67,7 +67,8 @@ STUB_FUNCS(sntp, "native:mikro/sntp", "sync", "stop", "setTimezone")
 STUB_FUNCS(sleep, "native:mikro/sleep", "deepSleep", "lightSleep", "getWakeupCause",
            "canWakeFromExt0", "canWakeFromExt1")
 STUB_FUNCS(http, "native:mikro/http", "request", "nextMessage", "cancel", "pendingCount")
-STUB_FUNCS(nvs_kv, "native:mikro/nvs_kv", "set", "get", "remove", "clear", "info")
+STUB_FUNCS(nvs_kv, "native:mikro/nvs_kv", "set", "get", "remove", "clear", "sysSet", "sysGet",
+           "sysRemove", "sysClear", "info")
 STUB_FUNCS(rtc, "native:mikro/rtc", "set", "get", "remove", "clear", "info")
 
 STUB_CLASS(wifi, "native:mikro/wifi", "Wifi")

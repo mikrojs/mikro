@@ -43,6 +43,8 @@ The macro takes five arguments: a unique C identifier, the module name, an init 
 
 Native module names are package-qualified: `native:<package-name>/<module>`. The bare `native:mikro/*` namespace is reserved for the core runtime. The build defines `MIK_PACKAGE_NAME` per component and the macro enforces the prefix at compile time, so a package cannot claim or shadow another's `native:` name.
 
+The same reservation applies to NVS: namespace names starting with `mik.` belong to the runtime (`mik.env`, `mik.sec`, `mik.kv`, `mik.sys`). Inside `mik.sys`, runtime subsystems name their keys with a `<subsystem>.<key>` dotted prefix under the 15-character NVS limit.
+
 Modules are initialized lazily: the factory function runs on first import, not at startup. This keeps boot time and memory usage low when a module is compiled in but not used.
 
 ### Linker considerations

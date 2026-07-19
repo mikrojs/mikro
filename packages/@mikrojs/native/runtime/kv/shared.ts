@@ -30,11 +30,12 @@ export type NativeKvFns = {
   get: (key: string) => unknown
   set: (key: string, value: unknown) => NativeResult
   remove: (key: string) => boolean
-  clear: () => void
+  /* void (rtc) or a native Result (nvs); unused by createValue */
+  clear: () => unknown
   info: () => unknown
 }
 
-function mapKvError(e: NativeError) {
+export function mapKvError(e: NativeError) {
   switch (e.code) {
     case KV_STORAGE_FULL:
     case KV_TOO_LARGE:

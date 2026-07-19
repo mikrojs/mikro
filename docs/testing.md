@@ -213,7 +213,7 @@ describe('storage', () => {
   const val = nvsStorage.createValue('test-key')
 
   afterAll(() => {
-    nvsStorage.clear()
+    nvsStorage.clear().orPanic('nvs clear failed')
   })
 
   afterEach(() => {
