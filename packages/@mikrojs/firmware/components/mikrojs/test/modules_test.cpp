@@ -17,7 +17,7 @@ TEST_CASE("Bare module names pass through unchanged", "[modules]") {
     JSRuntime* rt = JS_NewRuntime();
     JSContext* ctx = JS_NewContext(rt);
 
-    assert_normalizes_to(ctx, "main.js", "mikrojs/fs", "mikrojs/fs");
+    assert_normalizes_to(ctx, "main.js", "mikro/fs", "mikro/fs");
     assert_normalizes_to(ctx, "main.js", "lodash", "lodash");
 
     JS_FreeContext(ctx);
@@ -112,7 +112,7 @@ TEST_CASE("withUnload() unloads a module after the callback returns", "[modules]
 
     /* Exercises the real shipped mikrojs/module withUnload() on device. */
     const char* code =
-        "import {withUnload} from 'mikrojs/module';\n"
+        "import {withUnload} from 'mikro/module';\n"
         "globalThis.__first = await withUnload(import('./leaf.js'), (mod) => mod.v);\n"
         "globalThis.__after = true;\n"
         "const b = await import('./leaf.js');\n"

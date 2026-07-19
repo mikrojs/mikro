@@ -25,7 +25,7 @@ static void pub_fs_teardown() {
 }
 
 static JSValue pub_fs_eval(const char* code) {
-    JSValue ret = MIK_EvalModuleContent(mik_ctx, "mikrojs/test", code, strlen(code));
+    JSValue ret = MIK_EvalModuleContent(mik_ctx, "mikro/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(mik_ctx, ret);
         mik__execute_jobs(mik_ctx);
@@ -65,11 +65,11 @@ static int32_t get_global_int32(const char* name) {
 
 /* ── readFile ────────────────────────────────────────────────────── */
 
-TEST_CASE("mikrojs/fs readFile returns Uint8Array", "[fs]") {
+TEST_CASE("mikro/fs readFile returns Uint8Array", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { readFile } from "mikrojs/fs";
+        import { readFile } from "mikro/fs";
         const r = readFile("/dummy.txt");
         globalThis.__ok = r.ok;
         if (r.ok) globalThis.__content = new TextDecoder().decode(r.value);
@@ -85,11 +85,11 @@ TEST_CASE("mikrojs/fs readFile returns Uint8Array", "[fs]") {
     free(content);
 }
 
-TEST_CASE("mikrojs/fs readFile with utf-8 returns string", "[fs]") {
+TEST_CASE("mikro/fs readFile with utf-8 returns string", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { readFile } from "mikrojs/fs";
+        import { readFile } from "mikro/fs";
         const r = readFile("/dummy.txt", "utf-8");
         globalThis.__ok = r.ok;
         globalThis.__isString = r.ok && typeof r.value === "string";
@@ -108,11 +108,11 @@ TEST_CASE("mikrojs/fs readFile with utf-8 returns string", "[fs]") {
     free(content);
 }
 
-TEST_CASE("mikrojs/fs readFile returns NotFound error for missing file", "[fs]") {
+TEST_CASE("mikro/fs readFile returns NotFound error for missing file", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { readFile } from "mikrojs/fs";
+        import { readFile } from "mikro/fs";
         const r = readFile("/nonexistent.txt");
         globalThis.__ok = r.ok;
         if (!r.ok) {
@@ -136,11 +136,11 @@ TEST_CASE("mikrojs/fs readFile returns NotFound error for missing file", "[fs]")
 
 /* ── writeFile ───────────────────────────────────────────────────── */
 
-TEST_CASE("mikrojs/fs writeFile and readFile roundtrip", "[fs]") {
+TEST_CASE("mikro/fs writeFile and readFile roundtrip", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { writeFile, readFile } from "mikrojs/fs";
+        import { writeFile, readFile } from "mikro/fs";
         const w = writeFile("/test_pub_write.txt", "hello from pub fs");
         const r = readFile("/test_pub_write.txt", "utf-8");
         globalThis.__ok = w.ok && r.ok;
@@ -157,11 +157,11 @@ TEST_CASE("mikrojs/fs writeFile and readFile roundtrip", "[fs]") {
     free(content);
 }
 
-TEST_CASE("mikrojs/fs writeFile with Uint8Array", "[fs]") {
+TEST_CASE("mikro/fs writeFile with Uint8Array", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { writeFile, readFile } from "mikrojs/fs";
+        import { writeFile, readFile } from "mikro/fs";
         const data = new TextEncoder().encode("binary data");
         const w = writeFile("/test_pub_binary.txt", data);
         const r = readFile("/test_pub_binary.txt", "utf-8");
@@ -181,11 +181,11 @@ TEST_CASE("mikrojs/fs writeFile with Uint8Array", "[fs]") {
 
 /* ── stat ────────────────────────────────────────────────────────── */
 
-TEST_CASE("mikrojs/fs stat returns file info", "[fs]") {
+TEST_CASE("mikro/fs stat returns file info", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { stat } from "mikrojs/fs";
+        import { stat } from "mikro/fs";
         const r = stat("/dummy.txt");
         globalThis.__ok = r.ok;
         if (r.ok) {
@@ -208,11 +208,11 @@ TEST_CASE("mikrojs/fs stat returns file info", "[fs]") {
     TEST_ASSERT_FALSE(is_dir);
 }
 
-TEST_CASE("mikrojs/fs stat returns NotFound for missing path", "[fs]") {
+TEST_CASE("mikro/fs stat returns NotFound for missing path", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { stat } from "mikrojs/fs";
+        import { stat } from "mikro/fs";
         const r = stat("/nonexistent.txt");
         globalThis.__ok = r.ok;
         if (!r.ok) globalThis.__name = r.error.name;
@@ -230,11 +230,11 @@ TEST_CASE("mikrojs/fs stat returns NotFound for missing path", "[fs]") {
 
 /* ── exists ──────────────────────────────────────────────────────── */
 
-TEST_CASE("mikrojs/fs exists returns true for existing file", "[fs]") {
+TEST_CASE("mikro/fs exists returns true for existing file", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { exists } from "mikrojs/fs";
+        import { exists } from "mikro/fs";
         globalThis.__exists = exists("/dummy.txt");
     )");
     bool was_exception = JS_IsException(ret);
@@ -245,11 +245,11 @@ TEST_CASE("mikrojs/fs exists returns true for existing file", "[fs]") {
     TEST_ASSERT_TRUE(file_exists);
 }
 
-TEST_CASE("mikrojs/fs exists returns false for missing file", "[fs]") {
+TEST_CASE("mikro/fs exists returns false for missing file", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { exists } from "mikrojs/fs";
+        import { exists } from "mikro/fs";
         globalThis.__exists = exists("/nonexistent.txt");
     )");
     bool was_exception = JS_IsException(ret);
@@ -262,11 +262,11 @@ TEST_CASE("mikrojs/fs exists returns false for missing file", "[fs]") {
 
 /* ── mkdir / readDir / rmdir ─────────────────────────────────────── */
 
-TEST_CASE("mikrojs/fs mkdir, readDir, rmdir roundtrip", "[fs]") {
+TEST_CASE("mikro/fs mkdir, readDir, rmdir roundtrip", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { mkdir, readDir, writeFile, unlink, rmdir } from "mikrojs/fs";
+        import { mkdir, readDir, writeFile, unlink, rmdir } from "mikro/fs";
         const m = mkdir("/test_pub_dir");
         const w = writeFile("/test_pub_dir/file.txt", "hi");
         const entries = readDir("/test_pub_dir");
@@ -288,11 +288,11 @@ TEST_CASE("mikrojs/fs mkdir, readDir, rmdir roundtrip", "[fs]") {
 
 /* ── unlink / rename ─────────────────────────────────────────────── */
 
-TEST_CASE("mikrojs/fs unlink and rename", "[fs]") {
+TEST_CASE("mikro/fs unlink and rename", "[fs]") {
     pub_fs_setup();
 
     JSValue ret = pub_fs_eval(R"(
-        import { writeFile, rename, readFile, unlink } from "mikrojs/fs";
+        import { writeFile, rename, readFile, unlink } from "mikro/fs";
         const w = writeFile("/test_pub_rename_src.txt", "rename me");
         const mv = rename("/test_pub_rename_src.txt", "/test_pub_rename_dst.txt");
         const r = readFile("/test_pub_rename_dst.txt", "utf-8");

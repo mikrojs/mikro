@@ -108,8 +108,8 @@ TEST_CASE("native:* internal import blocked from user code", "[modules]") {
     TEST_ASSERT_NULL_MESSAGE(result, "native:mikro/sys should be blocked from user code");
 
     // But a built-in module should be allowed to import native:mikro/sys
-    result = mik_module_normalizer(ctx, "mikrojs/sys", "native:mikro/sys", nullptr);
-    TEST_ASSERT_NOT_NULL_MESSAGE(result, "native:mikro/sys should be allowed from mikrojs/ modules");
+    result = mik_module_normalizer(ctx, "mikro/sys", "native:mikro/sys", nullptr);
+    TEST_ASSERT_NOT_NULL_MESSAGE(result, "native:mikro/sys should be allowed from mikro/ modules");
     TEST_ASSERT_EQUAL_STRING("native:mikro/sys", result);
     js_free(ctx, result);
 

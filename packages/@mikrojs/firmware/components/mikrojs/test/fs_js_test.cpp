@@ -44,7 +44,7 @@ static void fs_js_setup() {
 static void fs_js_teardown() { MIK_FreeRuntime(mik_rt); }
 
 static JSValue fs_eval_module(const char* code) {
-    JSValue ret = MIK_EvalModuleContent(mik_ctx, "mikrojs/test", code, strlen(code));
+    JSValue ret = MIK_EvalModuleContent(mik_ctx, "mikro/test", code, strlen(code));
     if (!JS_IsException(ret)) {
         JS_FreeValue(mik_ctx, ret);
         mik__execute_jobs(mik_ctx);
