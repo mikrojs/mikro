@@ -18,6 +18,8 @@ import {
   type PackArtifact,
   readBytecodeVersion,
   resolveFirmwareVersion,
+  resolveGitState,
+  snapshotVersion,
 } from '../../lib/ota.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../../lib/parseMinifier.js'
 import {getMikroDir, resolveProjectRoot} from '../../lib/projectRoot.js'
@@ -30,6 +32,11 @@ export const args = command(
     out: optional(
       option('--out', path({metavar: 'FILE', allowCreate: true, type: 'file'}), {
         description: message`Output path for the build (default: app-<version>.tgz)`,
+      }),
+    ),
+    snapshot: optional(
+      flag('--snapshot', {
+        description: message`Derive a unique version from git state (<version>-snapshot.g<sha>) so iteration doesn't need a package.json bump`,
       }),
     ),
     noMinify: optional(flag('--no-minify', {description: message`Skip minification`})),
@@ -87,6 +94,9 @@ export async function packProject(options: {
   minifier?: Minifier
   minifyLevel?: MinifyLevel
   logLevel?: LogLevel
+  /** Derive a unique version from git state instead of `package.json`, so dev
+   *  iteration does not collide with the registry's version immutability. */
+  snapshot?: boolean
 }): Promise<PackArtifact> {
   const log = options.log ?? (() => {})
   const projectRoot = resolveProjectRoot()
@@ -111,12 +121,16 @@ export async function packProject(options: {
     {defaultValue: undefined},
   )
 
-  const [app, firmwareVersion, bytecodeVersion, version] = await Promise.all([
+  const [app, firmwareVersion, bytecodeVersion, baseVersion] = await Promise.all([
     readProjectName(projectRoot),
     resolveFirmwareVersion(projectRoot),
     readBytecodeVersion(buildDir),
     readProjectVersion(projectRoot),
   ])
+
+  const version = options.snapshot
+    ? snapshotVersion(baseVersion, await resolveGitState(projectRoot), new Date())
+    : baseVersion
 
   const outPath = options.out ?? pathlib.join(getMikroDir(), `app-${version}.tgz`)
   log('Packing…')
@@ -135,6 +149,7 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
       minifier: parseMinifier(config.minifier),
       minifyLevel: parseMinifyLevel(config.minifyLevel),
       logLevel: parseLogLevel(config.logLevel),
+      snapshot: config.snapshot,
     })
     if (jsonOutput) {
       agentResult('ota pack', {
@@ -142,12 +157,17 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
         checksum: artifact.checksum,
         size: artifact.size,
         app: artifact.manifest.app,
+        version: artifact.manifest.version,
         firmwareVersion: artifact.manifest.firmwareVersion,
         bytecodeVersion: artifact.manifest.bytecodeVersion,
       })
     } else {
       // eslint-disable-next-line no-console
       console.log(artifact.outPath)
+      // Show the version explicitly: with --snapshot it is derived, and --out
+      // hides it from the default app-<version>.tgz filename.
+      // eslint-disable-next-line no-console
+      console.log(`  version   ${artifact.manifest.version}`)
       // eslint-disable-next-line no-console
       console.log(`  checksum  ${artifact.checksum}`)
       // eslint-disable-next-line no-console

@@ -47,6 +47,11 @@ export const args = command(
         description: message`Create the app on first publish instead of failing on an unknown app`,
       }),
     ),
+    snapshot: optional(
+      flag('--snapshot', {
+        description: message`Derive a unique version from git state (<version>-snapshot.g<sha>) so iteration doesn't need a package.json bump`,
+      }),
+    ),
     noMinify: optional(flag('--no-minify', {description: message`Skip minification`})),
     minifier: optional(
       option('--minifier', string({metavar: 'NAME'}), {
@@ -81,6 +86,11 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
     let buildPath: string
     let input: PublishInput
     if (config.build) {
+      if (config.snapshot) {
+        throw new Error(
+          '--snapshot has no effect with --build: the version is baked into the packed build. Pack with --snapshot instead.',
+        )
+      }
       buildPath = config.build
       const [manifest, checksum, info] = await Promise.all([
         readManifestFromTarball(buildPath),
@@ -102,6 +112,7 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
         minifier: parseMinifier(config.minifier),
         minifyLevel: parseMinifyLevel(config.minifyLevel),
         logLevel: parseLogLevel(config.logLevel),
+        snapshot: config.snapshot,
       })
       buildPath = artifact.outPath
       input = {
@@ -120,12 +131,15 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
     if (jsonOutput) {
       agentResult('ota publish', {
         registry,
+        version: input.manifest.version,
         checksum: input.checksum,
         size: input.size,
       })
     } else {
+      // Show the version: with --snapshot it is derived, so this is the only
+      // place the user sees what was actually published.
       // eslint-disable-next-line no-console
-      console.log(`Published ${input.checksum} to ${registry}`)
+      console.log(`Published ${input.manifest.version} (${input.checksum}) to ${registry}`)
     }
   } catch (err) {
     if (jsonOutput) {

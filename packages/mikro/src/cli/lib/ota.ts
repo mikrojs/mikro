@@ -200,6 +200,87 @@ export async function readManifestFromTarball(tarballPath: string): Promise<OtaM
   }
 }
 
+/** A working tree's git state, as used to derive a unique snapshot version. */
+export interface GitSnapshotState {
+  /** Short commit hash of HEAD, or null outside a git repo. */
+  sha: string | null
+  /** Whether the working tree has uncommitted changes. */
+  dirty: boolean
+}
+
+/** `YYYYMMDDTHHmmssZ` in UTC. A valid semver prerelease identifier: the `T`/`Z`
+ *  keep it alphanumeric, so it dodges the leading-zero rule that would reject an
+ *  all-digit identifier. */
+function compactUtcTimestamp(now: Date): string {
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return (
+    `${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}` +
+    `T${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}Z`
+  )
+}
+
+/** Drop any `+build` metadata from a version. Appended prerelease identifiers
+ *  must precede build metadata in semver order, so a stray `+…` on the base
+ *  would make the derived string invalid. A `package.json` version never carries
+ *  it, but strip defensively. */
+function stripBuildMetadata(version: string): string {
+  const plus = version.indexOf('+')
+  return plus === -1 ? version : version.slice(0, plus)
+}
+
+/**
+ * Derive a unique OTA version for `--snapshot`, so dev iteration does not need a
+ * manual `package.json` bump. The registry keys build immutability on
+ * `(app, version, bytecodeVersion)`, so each iteration needs a distinct version.
+ *
+ * Uniqueness rides in a semver **prerelease**, not build metadata: build
+ * metadata is ignored in semver equality (`1.2.3+a` equals `1.2.3+b`), so a
+ * conformant registry would collapse two snapshots into one. A prerelease is
+ * always significant.
+ *
+ *   clean    `<base>-snapshot.g<sha>`             commit fully identifies it, so
+ *                                                 re-publishing a commit is idempotent
+ *   dirty    `<base>-snapshot.g<sha>-dirty.<ts>`  `g<sha>-dirty` is the `git describe`
+ *                                                 idiom; the timestamp makes repeated
+ *                                                 builds of an ephemeral tree distinct
+ *   no git   `<base>-snapshot.<ts>`               no commit to name
+ *
+ * The `g` prefix keeps the sha identifier alphanumeric (an all-digit sha with a
+ * leading zero would be an invalid numeric identifier). A base that already has
+ * a prerelease is extended with `.`; a plain base opens one with `-`.
+ */
+export function snapshotVersion(base: string, git: GitSnapshotState, now: Date): string {
+  const core = stripBuildMetadata(base)
+  let suffix: string
+  if (git.sha === null) {
+    suffix = `snapshot.${compactUtcTimestamp(now)}`
+  } else if (git.dirty) {
+    suffix = `snapshot.g${git.sha}-dirty.${compactUtcTimestamp(now)}`
+  } else {
+    suffix = `snapshot.g${git.sha}`
+  }
+  return core.includes('-') ? `${core}.${suffix}` : `${core}-${suffix}`
+}
+
+/**
+ * Read the working tree's git state for `snapshotVersion`. A failure (not a git
+ * repo, git absent) is the expected "no commit" case, not an error: it resolves
+ * to no sha, routing `snapshotVersion` to its timestamp fallback.
+ */
+export async function resolveGitState(cwd: string): Promise<GitSnapshotState> {
+  try {
+    const [{stdout: sha}, {stdout: status}] = await Promise.all([
+      // Pin the abbreviation length so "same commit -> same version" is stable
+      // over time; git's default length grows as the object database does.
+      execFileAsync('git', ['rev-parse', '--short=12', 'HEAD'], {cwd, encoding: 'utf-8'}),
+      execFileAsync('git', ['status', '--porcelain'], {cwd, encoding: 'utf-8'}),
+    ])
+    return {sha: sha.trim() || null, dirty: status.trim().length > 0}
+  } catch {
+    return {sha: null, dirty: false}
+  }
+}
+
 /** SHA-256 of a file as lowercase hex. */
 export function sha256File(filePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
