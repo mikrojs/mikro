@@ -67,6 +67,7 @@
     "./runtime/neopixel/types": "./runtime/neopixel/types.ts",
     "./runtime/observable/operators": "./runtime/observable/operators.ts",
     "./runtime/observable/types": "./runtime/observable/types.ts",
+    "./runtime/ota/types": "./runtime/ota/types.ts",
     "./runtime/pin/types": "./runtime/pin/types.ts",
     "./runtime/pwm/types": "./runtime/pwm/types.ts",
     "./runtime/reader/types": "./runtime/reader/types.ts",
@@ -105,6 +106,7 @@
       "./runtime/neopixel/types": "./runtime/neopixel/types.ts",
       "./runtime/observable/operators": "./runtime/observable/operators.ts",
       "./runtime/observable/types": "./runtime/observable/types.ts",
+      "./runtime/ota/types": "./runtime/ota/types.ts",
       "./runtime/pin/types": "./runtime/pin/types.ts",
       "./runtime/pwm/types": "./runtime/pwm/types.ts",
       "./runtime/reader/types": "./runtime/reader/types.ts",
@@ -140,6 +142,7 @@
     "node-gyp-build": "^4.8.4"
   },
   "devDependencies": {
+    "@mikrojs/registry": "workspace:*",
     "@swc/core": "^1.15.30",
     "@types/node": "catalog:node24",
     "esbuild": "^0.28.0",

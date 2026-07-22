@@ -15,7 +15,11 @@ const config = {
     },
     'packages/@mikrojs/firmware': {
       ignoreDependencies: ['@mikrojs/native', '@mikrojs/quickjs', 'esbuild'],
-      ignore: ['resolve.js'],
+      // resolve.js is invoked by CMake, not imported. The ota_host .build/ tree
+      // is scratch the gunzip host test generates (gitignored); knip still walks
+      // it once the test has run, so the ignore is only redundant on a clean
+      // checkout.
+      ignore: ['resolve.js', 'components/mikrojs/test/ota_host/.build/**'],
     },
     'examples/sleep': {
       // Each app/*.ts file is a stand-alone entry — users pick one with
@@ -80,8 +84,10 @@ const config = {
     '**/*.stub.ts',
   ],
   ignoreDependencies: ['unbarrelify', 'taze'],
-  // zizmor is installed system-wide (brew/uv/pipx), not via npm
-  ignoreBinaries: ['cmake', 'ctest', 'zizmor'],
+  // zizmor is installed system-wide (brew/uv/pipx), not via npm.
+  // `packages/` is how knip reads the `test:ota-unpack` script, which runs a
+  // shell script by path rather than invoking a binary off PATH.
+  ignoreBinaries: ['cmake', 'ctest', 'zizmor', 'packages/'],
   // Knip can't trace `import * as` namespace member access or type-only re-exports
   // through barrel files. All remaining "unused" exports/types have been manually
   // verified as used.

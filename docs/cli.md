@@ -46,11 +46,9 @@ mikro deploy [ENTRY]
 | `--env-file FILE`  | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence)          |
 | `--no-auto-env`    | Skip auto-loading of `.env` and `.env.production`                                                                |
 | `--console`        | Attach console after deploy and restart device                                                                   |
-| `-e, --erase`      | Erase current app before uploading                                                                               |
 | `--recover`        | Reset into safe mode before deploying. See [Troubleshooting](/troubleshooting#recovering-a-crash-looping-device) |
 | `--no-restart`     | Do not restart device after deploy                                                                               |
 | `--no-minify`      | Skip minification                                                                                                |
-| `--no-bytecode`    | Skip bytecode compilation                                                                                        |
 | `--loglevel LEVEL` | Log level: `none`, `error`, `warn`, `info`, `debug`. Default: `warn`                                             |
 | `--json`           | Output as JSON                                                                                                   |
 
@@ -109,30 +107,34 @@ mikro ls
 swift-otter  /dev/tty.usbmodem1101  (chip=esp32c6, id=2m68224yym)
 ```
 
-The name is the device's [alias](#mikro-alias) if you've set one, otherwise a stable generated name derived from its device ID. `id` is the same stable device ID the firmware reports; `chip` appears once you've connected to the device at least once.
+The name is the [name](#mikro-name) the device reports for itself if one is set, otherwise its stable device ID. `id` is that same device ID as the firmware reports it; `chip` appears once you've connected to the device at least once.
 
-| Option   | Description                                                                                     |
-| -------- | ----------------------------------------------------------------------------------------------- |
-| `--json` | Output as JSON (includes `name`, `alias`, `deviceId`, `serialNumber`, `chip`, and USB metadata) |
+| Option   | Description                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------------- |
+| `--json` | Output as JSON (includes `name`, `deviceName`, `deviceId`, `serialNumber`, `chip`, and USB metadata) |
 
-## mikro alias
+## mikro name
 
-Give a device a memorable, personal name. Every device already has a stable generated name — an `adjective-animal` derived from its device ID, like `swift-otter` — and an alias overrides it for display. Aliases are stored per user (`~/.config/mikro/device-aliases.json`), so a board keeps its name across projects.
+Give a device a memorable name. The device stores it itself, so it travels with the board: plug it into another machine and it still answers to the same name, and a registry the device is enrolled with shows the same one.
 
 ```sh
-mikro alias              # list aliases
-mikro alias set [NAME]   # alias the connected device (omit NAME to use the generated one)
-mikro alias rm NAME      # remove an alias
+mikro name              # show the connected device's name
+mikro name set [NAME]   # name it (omit NAME to use an `adjective-animal` suggestion, like `swift-otter`)
+mikro name unset        # clear the name
 ```
 
-| Option            | Description                                                                              |
-| ----------------- | ---------------------------------------------------------------------------------------- |
-| `-p, --port PORT` | Device to name (path, serial, or existing alias). Defaults to the only connected device. |
-| `--json`          | Output as JSON                                                                           |
+| Option            | Description                                                                      |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `-p, --port PORT` | Device to act on (path, serial, or name). Defaults to the only connected device. |
+| `--json`          | Output as JSON                                                                   |
 
-You can also manage aliases interactively: press <kbd>r</kbd> in the device picker, or run `/alias set <name>` / `/alias unset` inside `mikro console` or `mikro dev`.
+Because the name is written to the device, these need it connected. You can also run `/name set <name>` / `/name unset` inside `mikro console` or `mikro dev`.
 
-Anywhere a command takes `--port`, the value can be a device path, its name or alias, serial number, or device ID. When an alias is set, the device resolves by its alias rather than its generated name.
+A device with no name set shows its device ID instead. The suggestion offered by `mikro name set` is only ever used to mint a name you then keep — nothing displays it until it has been stored, so upgrading the CLI can never rename a board behind your back.
+
+Devices enrolled with an update registry are always named: `mikro ota enroll` writes one if you don't pass `--name`, and thereafter a rename on either side syncs to the other at the next check-in.
+
+Anywhere a command takes `--port`, the value can be a device path, its name, serial number, or device ID.
 
 ## mikro console
 
@@ -317,6 +319,76 @@ mikro env delete KEY
 | `KEY`             | Variable name to delete                |
 | `-p, --port PORT` | Serial port (auto-detected if omitted) |
 
+## mikro ota
+
+Pack and publish app builds for over-the-air updates, and enroll devices with an update registry. See the [OTA guide](/ota).
+
+Which registry to use lives in `.mikro/registry.json` (project) or `~/.mikro/registry.json` (user), as `{"url": …, "token": …}`; `publish` and `enroll` read it so neither needs flags once it is set. Precedence: flags, then `MIKRO_OTA_TOKEN`, then the project file, then the user file.
+
+### mikro ota setup
+
+Configure which update registry to use and write it to `.mikro/registry.json`. Prompts for the registry url (checked for reachability), then obtains the token: registries that support browser login get an approval url to open (the CLI sends your project's app name so the registry can offer a token scoped to it, and waits for the exchange); other registries fall back to a hidden token prompt. Re-run it any time the registry moves or the token rotates; existing values are offered as defaults.
+
+```sh
+mikro ota setup
+```
+
+| Option           | Description                                                            |
+| ---------------- | ---------------------------------------------------------------------- |
+| `--registry URL` | Registry base URL (skips the url prompt)                               |
+| `--token TOKEN`  | Registry token (with `--registry`, setup runs without prompts)         |
+| `--user`         | Write `~/.mikro/registry.json` (all projects) instead of the project's |
+
+### mikro ota pack
+
+Build the current project to bytecode and pack it into a deployable OTA build: a `.tgz` with a manifest recording the app name, the firmware version it requires, and the bytecode version it targets.
+
+```sh
+mikro ota pack
+```
+
+| Option             | Description                                              |
+| ------------------ | -------------------------------------------------------- |
+| `--out FILE`       | Output path for the build (default: `app-<version>.tgz`) |
+| `--no-minify`      | Skip minification                                        |
+| `--loglevel LEVEL` | Log level: `none`, `error`, `warn`, `info`, `debug`      |
+
+See [Build options](#build-options) for details on `--no-minify`, `--minifier`, and other build flags.
+
+### mikro ota publish
+
+Upload a build to your OTA registry. Without `--build`, the current project is packed first (same as `mikro ota pack`).
+
+```sh
+mikro ota publish
+```
+
+| Option           | Description                                                          |
+| ---------------- | -------------------------------------------------------------------- |
+| `--registry URL` | Registry origin (default: `.mikro/registry.json`)                    |
+| `--build FILE`   | Publish an existing build instead of packing the current project     |
+| `--token TOKEN`  | Registry auth token (default: `MIKRO_OTA_TOKEN` env var)             |
+| `--note TEXT`    | Free-text note stored with the build (e.g. what changed)             |
+| `--create`       | Create the app on first publish instead of failing on an unknown app |
+
+### mikro ota enroll
+
+Enroll the connected device with an update registry: reads the device's hardware id, registers it, and writes the registry url and the returned credential to the device's system store, where deploys never touch them. See [Enrolling devices](/ota#enrolling-devices).
+
+```sh
+mikro ota enroll
+```
+
+| Option                | Description                                                                             |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| `--registry URL`      | Registry origin (default: `.mikro/registry.json`)                                       |
+| `--token TOKEN`       | Registry API token (default: `MIKRO_OTA_TOKEN` env var)                                 |
+| `--name NAME`         | Display name stored with the device in the registry                                     |
+| `--re-enroll`         | Mint a fresh credential when the device is already enrolled (the old one stops working) |
+| `--credential SECRET` | Write an externally minted credential to the device; the registry is not contacted      |
+| `-p, --port PORT`     | Serial port (auto-detected if omitted)                                                  |
+| `--json`              | Output as JSON                                                                          |
+
 ## mikro clean
 
 Remove the deployed app from the device. The device restarts and boots into the REPL with no app.
@@ -495,7 +567,7 @@ mikro sim scaffold [--overwrite]
 
 ## Build options {#build-options}
 
-Commands that build your code (`dev`, `deploy`, `build`, `test`, and their `sim` equivalents) share these options:
+Commands that build your code (`dev`, `deploy`, `build`, `test`, `ota pack`, `ota publish`, and the `sim` equivalents) share these options:
 
 - `--no-minify` disables minification. Useful for debugging; the output is larger but more readable in stack traces.
 - `--minifier MINIFIER` selects the minifier: `esbuild` (default), `terser`, or `swc`. Can also be set via [`build.minifier`](/config#buildminifier).

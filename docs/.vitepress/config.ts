@@ -77,6 +77,7 @@ export default defineConfig({
           {text: 'Error Handling', link: '/error-handling'},
           {text: 'Environment Variables', link: '/environment-variables'},
           {text: 'Using npm Packages', link: '/npm-packages'},
+          {text: 'Over-the-air Updates', link: '/ota'},
           {text: 'Testing', link: '/testing'},
           {text: 'Troubleshooting', link: '/troubleshooting'},
           {text: 'Comparison', link: '/comparison'},
@@ -88,6 +89,7 @@ export default defineConfig({
           {text: 'CLI', link: '/cli'},
           {text: 'Configuration', link: '/config'},
           {text: 'ESLint Rules', link: '/eslint-rules'},
+          {text: 'OTA Registry Spec', link: '/registry-spec'},
         ],
       },
       {
@@ -136,6 +138,7 @@ export default defineConfig({
           {text: 'sntp', link: '/api/sntp'},
           {text: 'kv', link: '/api/kv'},
           {text: 'fs', link: '/api/fs'},
+          {text: 'ota', link: '/api/ota'},
           {text: 'cbor', link: '/api/cbor'},
           {text: 'sys', link: '/api/sys'},
           {text: 'test', link: '/api/test'},

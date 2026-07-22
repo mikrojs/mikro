@@ -6,5 +6,6 @@
     "declarationMap": true,
     "rootDir": "addon",
     "outDir": "dist"
-  }
+  },
+  "exclude": ["addon/**/__test__/**", "addon/**/*.test.ts"]
 }

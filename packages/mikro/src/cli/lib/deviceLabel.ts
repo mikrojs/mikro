@@ -1,6 +1,6 @@
-import {deviceDisplayName} from './deviceAliases.js'
 import {getCachedChip, getCachedDeviceId} from './deviceCache.js'
 import {deviceIdFromSerial} from './deviceId.js'
+import {deviceDisplayName} from './deviceName.js'
 
 /**
  * One canonical way to render a device wherever it's listed, so the picker, an
@@ -17,29 +17,30 @@ type DeviceLike = {path: string; serialNumber?: string | undefined}
  * cached from a prior connect (bridge boards), else the raw serial. The whole
  * group is dropped if there's nothing to show.
  */
-function deviceMeta(serialNumber: string | undefined): string {
+function deviceMeta(serialNumber: string | undefined, displayName: string): string {
   const chip = getCachedChip(serialNumber)
   const id = deviceIdFromSerial(serialNumber) ?? getCachedDeviceId(serialNumber) ?? serialNumber
   const parts: string[] = []
   if (chip) parts.push(`chip=${chip}`)
-  if (id) parts.push(`id=${id}`)
+  // An unnamed device is displayed *as* its id, so repeating it here would
+  // render "2m68224yym (id=2m68224yym)".
+  if (id && id !== displayName) parts.push(`id=${id}`)
   return parts.length ? `(${parts.join(', ')})` : ''
 }
 
 /** Inline label for sentences/badges, e.g. "swift-cheetah (chip=esp32c6, id=0r8m4h2qyk)". */
 export function deviceLabel(device: DeviceLike): string {
   const name = deviceDisplayName(device.serialNumber)
-  const meta = deviceMeta(device.serialNumber)
+  const meta = deviceMeta(device.serialNumber, name)
   return meta ? `${name} ${meta}` : name
 }
 
 /** Column-aligned listing lines: "name  path  (chip=…, id=…)". */
 export function formatDeviceList(devices: readonly DeviceLike[]): string[] {
-  const rows = devices.map((d) => ({
-    name: deviceDisplayName(d.serialNumber),
-    path: d.path,
-    meta: deviceMeta(d.serialNumber),
-  }))
+  const rows = devices.map((d) => {
+    const name = deviceDisplayName(d.serialNumber)
+    return {name, path: d.path, meta: deviceMeta(d.serialNumber, name)}
+  })
   const wName = Math.max(0, ...rows.map((r) => r.name.length))
   const wPath = Math.max(0, ...rows.map((r) => r.path.length))
   return rows.map((r) => `${r.name.padEnd(wName)}  ${r.path.padEnd(wPath)}  ${r.meta}`.trimEnd())

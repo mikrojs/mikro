@@ -49,6 +49,7 @@ set(MIKROJS_CORE_SOURCES
     src/mik_sys.cpp
     src/mik_repl.cpp
     src/mik_app_config.cpp
+    src/mik_app_store.cpp
     src/mik_udp.cpp
     src/mik_observable.cpp
 )
@@ -81,7 +82,7 @@ endif()
 include(cmake/mikrojs_bytecode.cmake)
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
-    MODULES abort cbor env result schema fs http/helpers http/request i2c kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi
+    MODULES abort cbor env result schema fs http/helpers http/request i2c kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi
     MODULE_PREFIX "mikro"
     SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode
@@ -163,6 +164,7 @@ if(BUILD_TESTING)
         test/abort_test.cpp
         test/repl_protocol_test.cpp
         test/app_config_test.cpp
+        test/app_store_test.cpp
         test/oom_test.cpp
         test/reader_test.cpp
         test/stream_test.cpp

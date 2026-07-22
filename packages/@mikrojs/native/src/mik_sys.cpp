@@ -28,6 +28,27 @@ static JSValue mik__sys_eval_script(JSContext* ctx, JSValue this_val, int argc, 
     return ret;
 }
 
+/* Free/used bytes on the app filesystem ("user", mounted at /appfs) — the
+ * partition an OTA build is downloaded and staged onto. Undefined when the
+ * platform can't report it. */
+static JSValue mik__sys_storage_usage(JSContext* ctx, JSValue this_val, int argc,
+                                      JSValue* argv) {
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    const MIKPlatform* platform = MIK_GetPlatform();
+    size_t total = 0;
+    size_t used = 0;
+    if (!platform->get_fs_info || !platform->get_fs_info("user", &total, &used)) {
+        return JS_UNDEFINED;
+    }
+    JSValue obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, obj, "total", JS_NewInt64(ctx, (int64_t)total));
+    JS_SetPropertyStr(ctx, obj, "used", JS_NewInt64(ctx, (int64_t)used));
+    JS_SetPropertyStr(ctx, obj, "free", JS_NewInt64(ctx, (int64_t)(total > used ? total - used : 0)));
+    return obj;
+}
+
 static JSValue mik__sys_memory_usage(JSContext* ctx, JSValue this_val, int argc,
                                          JSValue* argv) {
     JSMemoryUsage mem;
@@ -227,7 +248,43 @@ static JSValue mik__sys_firmware(JSContext* ctx) {
     JS_SetPropertyStr(ctx, obj, "date", JS_NewString(ctx, MIK_BUILD_DATE_UTC));
     JS_SetPropertyStr(ctx, obj, "idfVersion", JS_NewString(ctx, "n/a"));
 #endif
+    /* BC_VERSION is a #define inside quickjs.c (not exported in any header).
+     * Serialize a trivial value and read byte 0 of the output: that's the
+     * bytecode version the linked engine writes (matches builtins.cpp's
+     * data[0] read). */
+    size_t bc_len = 0;
+    uint8_t* bc_buf = JS_WriteObject(ctx, &bc_len, JS_NULL, JS_WRITE_OBJ_BYTECODE);
+    int bc = (bc_buf && bc_len > 0) ? bc_buf[0] : 0;
+    if (bc_buf) js_free(ctx, bc_buf);
+    JS_SetPropertyStr(ctx, obj, "bytecodeVersion", JS_NewInt32(ctx, bc));
     return obj;
+}
+
+/* The stored `[rev, name]` pair, or undefined when never named. Read through
+ * the platform so `mikro/sys` stays loadable on hosts with no NVS. */
+static JSValue mik__sys_device_name(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    const MIKPlatform* platform = MIK_GetPlatform();
+    const char* value = platform->get_device_name ? platform->get_device_name() : NULL;
+    return value ? JS_NewString(ctx, value) : JS_UNDEFINED;
+}
+
+static JSValue mik__sys_set_device_name(JSContext* ctx, JSValue this_val, int argc,
+                                        JSValue* argv) {
+    (void)this_val;
+    const MIKPlatform* platform = MIK_GetPlatform();
+    if (!platform->set_device_name) return JS_UNDEFINED;
+    if (argc < 1 || JS_IsUndefined(argv[0]) || JS_IsNull(argv[0])) {
+        platform->set_device_name(NULL);
+        return JS_UNDEFINED;
+    }
+    const char* value = JS_ToCString(ctx, argv[0]);
+    if (!value) return JS_EXCEPTION;
+    platform->set_device_name(value);
+    JS_FreeCString(ctx, value);
+    return JS_UNDEFINED;
 }
 
 void mik__sys_api_init(JSContext* ctx, JSValue ns) {
@@ -235,6 +292,8 @@ void mik__sys_api_init(JSContext* ctx, JSValue ns) {
                       JS_NewCFunction(ctx, mik__sys_eval_script, "evalScript", 1));
     JS_SetPropertyStr(ctx, ns, "memoryUsage",
                       JS_NewCFunction(ctx, mik__sys_memory_usage, "memoryUsage", 0));
+    JS_SetPropertyStr(ctx, ns, "storageUsage",
+                      JS_NewCFunction(ctx, mik__sys_storage_usage, "storageUsage", 0));
     JS_SetPropertyStr(ctx, ns, "jsMemoryUsage",
                       JS_NewCFunction(ctx, mik__sys_js_memory_usage, "jsMemoryUsage", 0));
     JS_SetPropertyStr(ctx, ns, "gc", JS_NewCFunction(ctx, mik__sys_gc, "gc", 0));
@@ -268,6 +327,11 @@ void mik__sys_api_init(JSContext* ctx, JSValue ns) {
     const char* device_id = platform->get_device_id ? platform->get_device_id() : NULL;
     JS_SetPropertyStr(ctx, ns, "deviceId",
                       device_id ? JS_NewString(ctx, device_id) : JS_UNDEFINED);
+
+    JS_SetPropertyStr(ctx, ns, "deviceName",
+                      JS_NewCFunction(ctx, mik__sys_device_name, "deviceName", 0));
+    JS_SetPropertyStr(ctx, ns, "setDeviceName",
+                      JS_NewCFunction(ctx, mik__sys_set_device_name, "setDeviceName", 1));
 
     const char* reset_reason =
         platform->get_reset_reason ? platform->get_reset_reason() : NULL;

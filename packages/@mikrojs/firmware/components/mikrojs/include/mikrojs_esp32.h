@@ -20,6 +20,29 @@ void MIK_Main(void);
 /* Deploy recovery (mik_deploy.cpp) */
 void MIK_DeployRecover(void);
 
+/* OTA boot reconcile (mik_ota.cpp). Runs before the JS app loads: reflash
+ * guard, trial verdict, and a deferred clean-heap install of a staged build
+ * (may esp_restart). Call right after MIK_DeployRecover(). */
+void mik__ota_boot_reconcile(void);
+
+/* Adopt a streamed .tgz as the live app with no trial, recording it as the OTA
+ * rollback baseline (.ota-last-good.tgz). Backs MIK_CMD_DEPLOY_BUILD: a deploy
+ * (not an OTA download) becomes the known-good build. Verifies the build
+ * against `checksum` (lowercase hex, may be empty to skip), installs it, sets
+ * state GOOD with no trial, and clears any pending build. Returns false with
+ * *err pointing at a static reason string on failure. */
+bool mik__ota_adopt_build(const char* tgz_path, const char* checksum, const char** err);
+
+/* True while the running build is an unconfirmed OTA trial (mik_ota.cpp). Lets
+ * the boot path treat a JS-level fatal during a trial as a failed trial. */
+bool mik__ota_in_trial(void);
+
+/* Record that the running trial build hit a fatal JS error (an uncaught
+ * exception or unhandled rejection), so the next reconcile reverts it even
+ * though the reboot looks like a clean software reset. No-op outside a trial.
+ * `detail` is a short message kept for the revert diagnostic. */
+void mik__ota_note_trial_failure(const char* detail);
+
 /* Safe-mode recovery window (mik_recovery.cpp).
  * Opens a brief window (typ. 500ms) right after console init that watches
  * for two triggers and returns true if either fires:

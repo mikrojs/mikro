@@ -316,46 +316,46 @@ describe('replStateMachine', () => {
       const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
       // Still answered by the device...
       expect(effects).toContainEqual({type: 'directive', code: '/help'})
-      // ...with a host-side note mentioning /alias.
+      // ...with a host-side note mentioning /name.
       const last = next.events.at(-1)
       expect(last?.type).toBe('info')
-      expect(last && 'text' in last ? last.text : '').toContain('/alias')
+      expect(last && 'text' in last ? last.text : '').toContain('/name')
     })
 
-    test('/alias set <name> emits a setAlias effect, not a directive', () => {
+    test('/name set <name> emits a setName effect, not a directive', () => {
       const state = createInitialState()
       const [ready] = reduce(
         state,
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
-      const s = typeChars(ready, '/alias set kitchen-sensor')
+      const s = typeChars(ready, '/name set kitchen-sensor')
       const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
-      expect(effects).toContainEqual({type: 'setAlias', name: 'kitchen-sensor'})
+      expect(effects).toContainEqual({type: 'setName', name: 'kitchen-sensor'})
       expect(effects.find((e) => e.type === 'directive')).toBeUndefined()
       // Command input is logged immediately
-      expect(next.events.at(-1)).toEqual({type: 'input', code: '/alias set kitchen-sensor'})
+      expect(next.events.at(-1)).toEqual({type: 'input', code: '/name set kitchen-sensor'})
     })
 
-    test('/alias unset emits an unsetAlias effect', () => {
+    test('/name unset emits an unsetName effect', () => {
       const state = createInitialState()
       const [ready] = reduce(
         state,
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
-      const s = typeChars(ready, '/alias unset')
+      const s = typeChars(ready, '/name unset')
       const [, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
-      expect(effects).toContainEqual({type: 'unsetAlias'})
+      expect(effects).toContainEqual({type: 'unsetName'})
     })
 
-    test('/alias without set/unset emits setAlias with empty name (usage)', () => {
+    test('/name without set/unset emits setName with empty name (usage)', () => {
       const state = createInitialState()
       const [ready] = reduce(
         state,
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
-      const s = typeChars(ready, '/alias')
+      const s = typeChars(ready, '/name')
       const [, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
-      expect(effects).toContainEqual({type: 'setAlias', name: ''})
+      expect(effects).toContainEqual({type: 'setName', name: ''})
     })
 
     test('/time toggles display host-side without forwarding to the device', () => {
@@ -1124,7 +1124,7 @@ describe('replStateMachine', () => {
       sub.unsubscribe()
     })
 
-    test('/alias with no args surfaces the usage message inline', async () => {
+    test('/name with no args surfaces the usage message inline', async () => {
       const {Subject} = await import('rxjs')
       const messages$ = new Subject<Extract<ReplAction, {type: 'deviceEvent'}>['event']>()
       const mockSession = {
@@ -1154,15 +1154,15 @@ describe('replStateMachine', () => {
       const sub = repl.state$.subscribe((s) => states.push(s))
       messages$.next({type: 'ready', chip: 'ESP32', id: null, version: null})
 
-      for (const ch of '/alias') repl.keyInput(ch, NO_KEY)
+      for (const ch of '/name') repl.keyInput(ch, NO_KEY)
       repl.keyInput('', {...NO_KEY, return: true, ctrl: true})
 
-      // emitAlias defers to a microtask; flush before asserting. Without that
+      // emitName defers to a microtask; flush before asserting. Without that
       // deferral the usage event is dropped by re-entry into the scan reducer.
       await new Promise((resolve) => setTimeout(resolve, 0))
 
       const events = states.at(-1)!.events
-      expect(events.some((e) => 'text' in e && /Usage: \/alias/.test(e.text))).toBe(true)
+      expect(events.some((e) => 'text' in e && /Usage: \/name/.test(e.text))).toBe(true)
 
       sub.unsubscribe()
     })

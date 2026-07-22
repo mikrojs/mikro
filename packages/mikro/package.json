@@ -112,6 +112,10 @@
       "development": "./src/_exports/observable/operators.ts",
       "import": "./dist/_exports/observable/operators.js"
     },
+    "./ota": {
+      "development": "./src/_exports/ota.ts",
+      "import": "./dist/_exports/ota.js"
+    },
     "./package.json": "./package.json",
     "./pin": {
       "development": "./src/_exports/pin.ts",
@@ -188,6 +192,7 @@
       "./pwm": "./dist/_exports/pwm.js",
       "./reader": "./dist/_exports/reader.js",
       "./neopixel": "./dist/_exports/neopixel.js",
+      "./ota": "./dist/_exports/ota.js",
       "./observable": "./dist/_exports/observable.js",
       "./observable/operators": "./dist/_exports/observable/operators.js",
       "./i2c": "./dist/_exports/i2c.js",
@@ -251,6 +256,7 @@
     "semver": "^7.7.4",
     "serialport": "^13.0.0",
     "std-env": "^4.1.0",
+    "tar": "^7.5.13",
     "uint8array-extras": "^1.5.0",
     "update-notifier": "^7.3.1"
   },

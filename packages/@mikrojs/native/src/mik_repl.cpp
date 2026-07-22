@@ -32,7 +32,9 @@ static bool repl_protocol_mode = false;
 static bool repl_paused = false;
 static bool repl_async_skipped = false;  /* set when eval bails on paused async */
 static MIKReplTransport* repl_transport = nullptr;
-static uint8_t ready_buf[96];
+/* Sized to hold the base map plus the longest `[rev, name]` pair the platform
+ * name setter accepts, so a named device never has to drop its name. */
+static uint8_t ready_buf[256];
 static size_t ready_len = 0;
 
 /* Transient flag: set by MIK_ProtocolExit to break the current ServeLoop
@@ -876,6 +878,65 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
 
 /* ── Protocol-mode REPL ──────────────────────────────────────────── */
 
+/* Fills ready_buf/ready_len with CBOR device info:
+ * {"chip": tstr, "id": tstr, "v": tstr, "name": tstr (only when named)}.
+ * `name` carries the raw `[rev, name]` pair from mik.sys, so the host reads the
+ * name and its revision together and can never see them out of step. Omitted
+ * entirely when the device has never been named, which the host reads as
+ * revision 0.
+ *
+ * Rebuilt per CMD_HELLO rather than cached at protocol open: the running app
+ * can adopt a registry name mid-session, and a host holding a revision from the
+ * opening handshake would write its next rename at a stale revision, which the
+ * registry then reads as behind and reverts. Only ever emitted in reply to a
+ * client CMD_HELLO, so a passive serial viewer (e.g. idf.py monitor) still
+ * doesn't see the device announcing itself unprompted. */
+static void refresh_ready(MIKReplTransport* transport);
+
+/* Encodes the MSG_READY map into buf, or measures it when buf is null. Returns
+ * the length the encoding needs, which exceeds cap when it did not fit. */
+static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const char* id,
+                           const char* version, const char* name) {
+    nanocbor_encoder_t enc;
+    nanocbor_encoder_init(&enc, buf, cap);
+    nanocbor_fmt_map(&enc, name ? 4 : 3);
+    nanocbor_put_tstr(&enc, "chip");
+    nanocbor_put_tstr(&enc, chip);
+    nanocbor_put_tstr(&enc, "id");
+    nanocbor_put_tstr(&enc, id);
+    nanocbor_put_tstr(&enc, "v");
+    nanocbor_put_tstr(&enc, version);
+    if (name) {
+        nanocbor_put_tstr(&enc, "name");
+        nanocbor_put_tstr(&enc, name);
+    }
+    return nanocbor_encoded_len(&enc);
+}
+
+static void refresh_ready(MIKReplTransport* transport) {
+    const char* chip = transport->chip_name ? transport->chip_name : "unknown";
+    const char* id = MIK_GetPlatform()->get_device_id();
+    if (!id) id = "";
+    const char* version =
+#ifdef MIK_FW_VERSION
+        MIK_FW_VERSION;
+#else
+        "0.0.0-dev";
+#endif
+    const char* name =
+        MIK_GetPlatform()->get_device_name ? MIK_GetPlatform()->get_device_name() : nullptr;
+    /* Measured against a null buffer first. nanocbor stops writing at the buffer
+     * end but still reports the length it would have needed, so ready_len must
+     * come from a run that actually fit: sending the measured length would read
+     * past ready_buf. Drop `name` rather than truncate it, since a partial pair
+     * decodes as a different name at the host. */
+    if (name && encode_ready(nullptr, 0, chip, id, version, name) > sizeof(ready_buf)) {
+        name = nullptr;
+    }
+    ready_len = encode_ready(ready_buf, sizeof(ready_buf), chip, id, version, name);
+    if (ready_len > sizeof(ready_buf)) ready_len = 0;
+}
+
 void MIK_ProtocolOpen(MIKReplTransport* transport) {
     if (repl_active) return;
 
@@ -886,41 +947,6 @@ void MIK_ProtocolOpen(MIKReplTransport* transport) {
     show_depth = 2;
     show_hidden = false;
 
-    /* Build MSG_READY with CBOR device info: {"chip": tstr, "id": tstr, "v": tstr}.
-     * Cached here and only emitted in response to a client CMD_HELLO so a
-     * passive serial viewer (e.g. idf.py monitor) doesn't see the device
-     * spamming its identity unprompted. */
-    {
-        const char* chip = transport->chip_name ? transport->chip_name : "unknown";
-        const char* id = MIK_GetPlatform()->get_device_id();
-        if (!id) id = "";
-        const char* version =
-#ifdef MIK_FW_VERSION
-            MIK_FW_VERSION;
-#else
-            "0.0.0-dev";
-#endif
-
-        nanocbor_encoder_t enc;
-        nanocbor_encoder_init(&enc, nullptr, 0);
-        nanocbor_fmt_map(&enc, 3);
-        nanocbor_put_tstr(&enc, "chip");
-        nanocbor_put_tstr(&enc, chip);
-        nanocbor_put_tstr(&enc, "id");
-        nanocbor_put_tstr(&enc, id);
-        nanocbor_put_tstr(&enc, "v");
-        nanocbor_put_tstr(&enc, version);
-        ready_len = nanocbor_encoded_len(&enc);
-
-        nanocbor_encoder_init(&enc, ready_buf, sizeof(ready_buf));
-        nanocbor_fmt_map(&enc, 3);
-        nanocbor_put_tstr(&enc, "chip");
-        nanocbor_put_tstr(&enc, chip);
-        nanocbor_put_tstr(&enc, "id");
-        nanocbor_put_tstr(&enc, id);
-        nanocbor_put_tstr(&enc, "v");
-        nanocbor_put_tstr(&enc, version);
-    }
 }
 
 void MIK_ProtocolAttach(MIKRuntime* mik_rt) {
@@ -1102,7 +1128,9 @@ void MIK_ProtocolServeLoop(void) {
                 break;
 
             case MIK_CMD_HELLO:
-                /* Client-initiated handshake: reply with cached MSG_READY. */
+                /* Client-initiated handshake: rebuild so the name pair is
+                 * current, then reply. */
+                refresh_ready(transport);
                 mik__proto_send(transport, MIK_MSG_READY, ready_buf, ready_len);
                 break;
             }

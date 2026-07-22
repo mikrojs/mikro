@@ -3,7 +3,6 @@ import {object} from '@optique/core/constructs'
 import {defineProgram} from '@optique/core/program'
 
 import pkg from '../../package.json' with {type: 'json'}
-import * as aliasCommand from './commands/alias.js'
 import * as buildCommand from './commands/build.js'
 import * as buildRuntimeCommand from './commands/build-runtime.js'
 import * as cleanCommand from './commands/clean.js'
@@ -17,11 +16,12 @@ import * as flashCommand from './commands/flash.js'
 import * as homeCommand from './commands/home.js'
 import * as logsCommand from './commands/logs.js'
 import * as listCommand from './commands/ls.js'
+import * as nameCommand from './commands/name.js'
+import * as otaCommand from './commands/ota.js'
 import * as simCommand from './commands/sim.js'
 import * as testCommand from './commands/test.js'
 
 export {
-  aliasCommand,
   buildCommand,
   buildRuntimeCommand,
   cleanCommand,
@@ -35,12 +35,14 @@ export {
   homeCommand,
   listCommand,
   logsCommand,
+  nameCommand,
+  otaCommand,
   simCommand,
   testCommand,
 }
 
 export const commands = {
-  alias: aliasCommand,
+  name: nameCommand,
   flash: flashCommand,
   build: buildCommand,
   'build-runtime': buildRuntimeCommand,
@@ -56,6 +58,7 @@ export const commands = {
   logs: logsCommand,
   test: testCommand,
   sim: simCommand,
+  ota: otaCommand,
 }
 
 export const argsParser = or(
@@ -66,7 +69,7 @@ export const argsParser = or(
     object({command: commands.build.args}),
     object({command: commands.flash.args}),
     object({command: commands.console.args}),
-    object({command: commands.alias.args}),
+    object({command: commands.name.args}),
   ),
   or(
     object({command: commands.list.args}),
@@ -78,6 +81,7 @@ export const argsParser = or(
     object({command: commands.docs.args}),
     object({command: commands.home.args}),
     object({command: commands.logs.args}),
+    object({command: commands.ota.args}),
   ),
 )
 

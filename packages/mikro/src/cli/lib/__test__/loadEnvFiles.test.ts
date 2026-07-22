@@ -79,6 +79,18 @@ describe('loadEnvFiles', () => {
   it('does not throw when auto-discovered files are missing', async () => {
     expect(await loadEnvFiles({cwd, mode: 'production'})).to.deep.equal([])
   })
+
+  // Everything returned here is written to the device's NVS. MIKRO_OTA_TOKEN
+  // publishes builds and enrols devices for the whole fleet, and its name is
+  // exactly at the 15-character NVS limit, so nothing else would stop it: one
+  // recovered board would hand over every other.
+  it('never deploys the registry token, wherever it was set', async () => {
+    writeFileSync(pathlib.join(cwd, '.env'), 'FOO=bar\nMIKRO_OTA_TOKEN=tok_fleet_secret\n')
+    writeFileSync(pathlib.join(cwd, '.env.production'), 'MIKRO_OTA_TOKEN=tok_also_here\n')
+    const vars = await loadEnvFiles({cwd, mode: 'production'})
+    expect(vars.map((v) => v.key)).to.deep.equal(['FOO'])
+    expect(JSON.stringify(vars)).not.to.contain('tok_')
+  })
 })
 
 describe('validateNvsKeys', () => {

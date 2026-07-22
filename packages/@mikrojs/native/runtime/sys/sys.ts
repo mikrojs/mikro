@@ -2,6 +2,8 @@ import {err, ok, PanicError, type Result} from 'mikro/result'
 import {getWakeupCause as nativeGetWakeupCause} from 'native:mikro/sleep'
 import * as native from 'native:mikro/sys'
 
+import type {DeviceName} from './types.js'
+
 export function uptime(): {boot: number; rtc: number} {
   return native.uptime()
 }
@@ -21,6 +23,12 @@ export function memoryUsage() {
   return native.memoryUsage()
 }
 
+/** Bytes on the app filesystem, the partition an OTA build is downloaded and
+ *  staged onto. Undefined when the platform cannot report it. */
+export function storageUsage() {
+  return native.storageUsage()
+}
+
 export function jsMemoryUsage() {
   return native.jsMemoryUsage()
 }
@@ -36,6 +44,34 @@ export const board = native.board
 export const firmware = native.firmware
 
 export const deviceId: string = native.deviceId
+
+/**
+ * The device's name and the logical revision that orders renames against a
+ * registry. Stored as one `[rev, name]` value — the same shape a check-in
+ * carries — so the pair can never be read or written half-updated. Revision 0
+ * with no name means never named, and callers fall back to {@link deviceId}.
+ */
+export function deviceName(): DeviceName {
+  const raw = native.deviceName()
+  if (typeof raw !== 'string') return {rev: 0}
+  try {
+    const pair = JSON.parse(raw) as unknown
+    if (!Array.isArray(pair)) return {rev: 0}
+    const rev: unknown = pair[0]
+    if (typeof rev !== 'number' || !Number.isInteger(rev) || rev < 0) return {rev: 0}
+    const value: unknown = pair[1]
+    return typeof value === 'string' && value !== '' ? {rev, name: value} : {rev}
+  } catch {
+    return {rev: 0}
+  }
+}
+
+/** Persist a name pair, e.g. one adopted from a registry check-in. */
+export function setDeviceName(value: DeviceName): void {
+  native.setDeviceName(
+    JSON.stringify(value.name === undefined ? [value.rev] : [value.rev, value.name]),
+  )
+}
 
 export const resetReason = native.resetReason
 

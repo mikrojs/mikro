@@ -112,6 +112,22 @@ static const char* node_get_reset_reason(void) {
 /* Derive a stable device ID from the hostname. FNV-1a hash truncated to
  * 6 bytes, then Crockford's Base32 encoded (10 lowercase chars).
  * Deterministic across restarts on the same machine. */
+/* The simulator has no NVS: the name lives for the process, which is enough
+ * for a sim session. */
+static char node_device_name[128] = {0};
+
+static const char* node_get_device_name(void) {
+    return node_device_name[0] == '\0' ? nullptr : node_device_name;
+}
+
+static void node_set_device_name(const char* value) {
+    if (!value) {
+        node_device_name[0] = '\0';
+        return;
+    }
+    snprintf(node_device_name, sizeof(node_device_name), "%s", value);
+}
+
 static const char* node_get_device_id(void) {
     static const char cb32[] = "0123456789abcdefghjkmnpqrstvwxyz";
     static char id[11] = {0};
@@ -182,6 +198,8 @@ static const MIKPlatform node_platform = {
     .stderr_write = node_stderr_write,
     .stdin_read = node_stdin_read,
     .get_device_id = node_get_device_id,
+    .get_device_name = node_get_device_name,
+    .set_device_name = node_set_device_name,
     .get_reset_reason = node_get_reset_reason,
 };
 

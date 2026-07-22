@@ -3,9 +3,10 @@ import * as pathlib from 'node:path'
 import {access, readdir, readFile, stat} from 'fs/promises'
 import {SerialPort} from 'serialport'
 
-import {matchPortToken} from './deviceAliases.js'
 import {formatDeviceList} from './deviceLabel.js'
+import {matchPortToken} from './deviceName.js'
 import {parseDotenv} from './dotenv.js'
+import {TOKEN_ENV} from './registryConfig.js'
 import {TROUBLESHOOTING_URL} from './troubleshooting.js'
 
 export const BAUD_RATE = 115200
@@ -115,6 +116,16 @@ async function readDotenvFile(path: string): Promise<EnvVar[]> {
  * Vars are marked secret by default. Add a `# @no-secret` comment line
  * directly above an entry to opt that one var out (visible in `mikro env list`).
  */
+/**
+ * Names that configure the CLI on this workstation and must never reach a
+ * device. Everything else in `.env` is deployed, so a workstation credential
+ * left there would be written to NVS on every board — and `MIKRO_OTA_TOKEN` is
+ * a fleet-wide publish and enroll credential, so one compromised board would
+ * hand over every other. Its name is exactly at the NVS key limit, so nothing
+ * else stops it.
+ */
+const HOST_ONLY_ENV = new Set([TOKEN_ENV])
+
 export async function loadEnvFiles(opts: LoadEnvOptions): Promise<EnvVar[]> {
   const vars: EnvVar[] = []
 
@@ -139,6 +150,7 @@ export async function loadEnvFiles(opts: LoadEnvOptions): Promise<EnvVar[]> {
   // Dedup by key, last wins.
   const merged = new Map<string, EnvVar>()
   for (const v of vars) merged.set(v.key, v)
+  for (const key of HOST_ONLY_ENV) merged.delete(key)
   return Array.from(merged.values())
 }
 

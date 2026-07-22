@@ -8,6 +8,7 @@ export default defineConfig({
       'packages/@mikrojs/eslint-plugin/vitest.config.ts',
       'packages/@mikrojs/firmware/vitest.config.ts',
       'packages/@mikrojs/native/vitest.config.ts',
+      'packages/@mikrojs/registry/vitest.config.ts',
       'packages/@repo/releaser/vitest.config.ts',
       'packages/create-mikro/vitest.config.ts',
     ],

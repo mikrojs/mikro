@@ -4,6 +4,8 @@
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 #include <esp_mac.h>
+#include <nanocbor/nanocbor.h>
+#include <nvs.h>
 #include <esp_random.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
@@ -143,6 +145,61 @@ static int esp32_stdin_read(void* buf, size_t len) {
 /* Base MAC (6 bytes) encoded as Crockford's Base32 (10 lowercase chars).
  * Lossless: decode the 10 chars to recover the original 6 MAC bytes.
  * Crockford's Base32 excludes I, L, O, U to avoid visual ambiguity. */
+/* The name pair lives in mik.sys under `name`, stored the way every other
+ * mik.sys value is: a CBOR text-string blob, so `mikro/kv/nvs` and CMD_KV_SET
+ * both read and write it unchanged. */
+static char esp32_device_name[128] = {0};
+
+static const char* esp32_get_device_name(void) {
+    nvs_handle_t handle;
+    if (nvs_open("mik.sys", NVS_READONLY, &handle) != ESP_OK) return NULL;
+
+    size_t len = 0;
+    if (nvs_get_blob(handle, "name", NULL, &len) != ESP_OK || len == 0 || len > 256) {
+        nvs_close(handle);
+        return NULL;
+    }
+    uint8_t buf[256];
+    esp_err_t err = nvs_get_blob(handle, "name", buf, &len);
+    nvs_close(handle);
+    if (err != ESP_OK) return NULL;
+
+    nanocbor_value_t decoder;
+    nanocbor_decoder_init(&decoder, buf, len);
+    const uint8_t* str = NULL;
+    size_t str_len = 0;
+    if (nanocbor_get_tstr(&decoder, &str, &str_len) < 0) return NULL;
+    if (str_len == 0 || str_len >= sizeof(esp32_device_name)) return NULL;
+
+    memcpy(esp32_device_name, str, str_len);
+    esp32_device_name[str_len] = '\0';
+    return esp32_device_name;
+}
+
+static void esp32_set_device_name(const char* value) {
+    nvs_handle_t handle;
+    if (nvs_open("mik.sys", NVS_READWRITE, &handle) != ESP_OK) return;
+
+    if (!value || value[0] == '\0') {
+        nvs_erase_key(handle, "name");
+        nvs_commit(handle);
+        nvs_close(handle);
+        return;
+    }
+
+    size_t value_len = strlen(value);
+    uint8_t buf[256];
+    nanocbor_encoder_t enc;
+    nanocbor_encoder_init(&enc, buf, sizeof(buf));
+    if (nanocbor_put_tstrn(&enc, value, value_len) < 0) {
+        nvs_close(handle);
+        return;
+    }
+    nvs_set_blob(handle, "name", buf, nanocbor_encoded_len(&enc));
+    nvs_commit(handle);
+    nvs_close(handle);
+}
+
 static const char* esp32_get_device_id(void) {
     static const char cb32[] = "0123456789abcdefghjkmnpqrstvwxyz";
     static char id[11] = {0};  /* 6 bytes (48 bits) -> 10 x 5-bit chars + NUL */
@@ -275,6 +332,8 @@ static const MIKPlatform esp32_platform = {
     .stderr_write = esp32_stderr_write,
     .stdin_read = esp32_stdin_read,
     .get_device_id = esp32_get_device_id,
+    .get_device_name = esp32_get_device_name,
+    .set_device_name = esp32_set_device_name,
     .get_reset_reason = esp32_get_reset_reason,
 };
 

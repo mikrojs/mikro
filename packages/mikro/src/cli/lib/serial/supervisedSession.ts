@@ -264,11 +264,14 @@ export function createSupervisedSession(
     exit() {
       current().exit()
     },
-    awaitReady$(timeoutMs) {
-      return current().awaitReady$(timeoutMs)
+    awaitReady$(timeoutMs, opts) {
+      return current().awaitReady$(timeoutMs, opts)
     },
     deploy(deployOpts) {
       return current().deploy(deployOpts)
+    },
+    deployBuild(tgzPath, checksum, buildOpts) {
+      return current().deployBuild(tgzPath, checksum, buildOpts)
     },
     eraseApp(eraseOpts) {
       return current().eraseApp(eraseOpts)
@@ -286,6 +289,10 @@ export function createSupervisedSession(
       list: () => current().config.list(),
       set: (k, v, s) => current().config.set(k, v, s),
       delete: (k) => current().config.delete(k),
+    },
+    kv: {
+      set: (k, v, ns) => current().kv.set(k, v, ns),
+      delete: (k, ns) => current().kv.delete(k, ns),
     },
     close() {
       if (closed) return

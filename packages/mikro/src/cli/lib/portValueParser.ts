@@ -2,7 +2,7 @@ import {message} from '@optique/core'
 import type {ValueParser} from '@optique/core/valueparser'
 import {SerialPort} from 'serialport'
 
-import {deviceDisplayName} from './deviceAliases.js'
+import {deviceDisplayName} from './deviceName.js'
 
 /* A ValueParser for the `--port` option that suggests connected serial
  * devices on Tab. Only ports with a serialNumber are surfaced; the rest

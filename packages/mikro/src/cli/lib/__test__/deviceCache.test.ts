@@ -18,8 +18,13 @@ vi.mock('../envPaths.js', () => ({
 const listMock = vi.hoisted(() => vi.fn())
 vi.mock('serialport', () => ({SerialPort: {list: listMock}}))
 
-const {deviceCacheFilePath, getCachedChip, getCachedDeviceId, rememberDeviceForPort} =
-  await import('../deviceCache.js')
+const {
+  deviceCacheFilePath,
+  getCachedChip,
+  getCachedDeviceId,
+  getCachedName,
+  rememberDeviceForPort,
+} = await import('../deviceCache.js')
 
 beforeEach(() => {
   state.dir = mkdtempSync(join(tmpdir(), 'mikro-cache-'))
@@ -41,28 +46,42 @@ describe('device cache', () => {
   })
 
   it('records chip and device id for the device at a given path', async () => {
-    await rememberDeviceForPort('/dev/a', {chip: 'esp32c6', deviceId: '2m68224yym'})
+    await rememberDeviceForPort('/dev/a', {chip: 'esp32c6', deviceId: '2m68224yym', name: null})
     expect(getCachedChip('S1')).toBe('esp32c6')
     expect(getCachedDeviceId('S1')).toBe('2m68224yym')
     expect(getCachedChip('S2')).toBeUndefined()
   })
 
+  // `name` is authoritative rather than merged: the handshake reports the
+  // device's name or its absence, so a connect has to be able to clear a stale
+  // one. That is why DeviceFacts requires it, instead of letting a caller
+  // reporting only a chip wipe a good name by omission.
+  it('writes and clears the name, which is authoritative rather than merged', async () => {
+    await rememberDeviceForPort('/dev/a', {chip: 'esp32c6', name: 'swift-otter'})
+    expect(getCachedName('S1')).toBe('swift-otter')
+
+    await rememberDeviceForPort('/dev/a', {chip: 'esp32c6', name: null})
+    expect(getCachedName('S1')).toBeUndefined()
+    // Clearing the name must not disturb the merged fields.
+    expect(getCachedChip('S1')).toBe('esp32c6')
+  })
+
   it('merges facts across connects without dropping prior fields', async () => {
-    await rememberDeviceForPort('/dev/a', {chip: 'esp32c6'})
-    await rememberDeviceForPort('/dev/a', {deviceId: '2m68224yym'})
+    await rememberDeviceForPort('/dev/a', {chip: 'esp32c6', name: null})
+    await rememberDeviceForPort('/dev/a', {deviceId: '2m68224yym', name: null})
     expect(getCachedChip('S1')).toBe('esp32c6')
     expect(getCachedDeviceId('S1')).toBe('2m68224yym')
   })
 
   it('ignores the simulator, missing port, and empty facts', async () => {
-    await rememberDeviceForPort('simulator', {chip: 'esp32c6'})
-    await rememberDeviceForPort(undefined, {chip: 'esp32c6'})
-    await rememberDeviceForPort('/dev/a', {})
+    await rememberDeviceForPort('simulator', {chip: 'esp32c6', name: null})
+    await rememberDeviceForPort(undefined, {chip: 'esp32c6', name: null})
+    await rememberDeviceForPort('/dev/a', {name: null})
     expect(getCachedChip('S1')).toBeUndefined()
   })
 
   it('does nothing when no connected device matches the path', async () => {
-    await rememberDeviceForPort('/dev/missing', {chip: 'esp32c6'})
+    await rememberDeviceForPort('/dev/missing', {chip: 'esp32c6', name: null})
     expect(getCachedChip('S1')).toBeUndefined()
   })
 

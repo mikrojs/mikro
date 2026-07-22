@@ -10,9 +10,9 @@ import updateNotifier from 'update-notifier'
 
 import pkg from '../../package.json' with {type: 'json'}
 import {isAgentMode} from './lib/agent.js'
+import {noticeLegacyAliases} from './lib/legacyAliases.js'
 import {dispatchReplCommand} from './lib/serial/dispatchReplCommand.js'
 import {
-  aliasCommand,
   buildCommand,
   buildRuntimeCommand,
   cleanCommand,
@@ -25,6 +25,8 @@ import {
   homeCommand,
   listCommand,
   logsCommand,
+  nameCommand,
+  otaCommand,
   prog,
   simCommand,
   testCommand,
@@ -70,6 +72,11 @@ const config = await run(prog, {
 if (process.stdout.isTTY && !isAgentMode()) {
   updateNotifier({pkg}).notify()
 }
+
+// One-shot upgrade notice, and it disarms itself by renaming the file. Skipped
+// in agent mode so a machine-readable run does not spend it before a human
+// sees it.
+if (!isAgentMode()) noticeLegacyAliases()
 
 switch (config.command.action) {
   case 'dev': {
@@ -155,8 +162,8 @@ switch (config.command.action) {
     void homeCommand.run()
     break
   }
-  case 'alias': {
-    void aliasCommand.run(config.command)
+  case 'name': {
+    void nameCommand.run(config.command)
     break
   }
   case 'logs': {
@@ -165,6 +172,10 @@ switch (config.command.action) {
   }
   case 'test': {
     void testCommand.run(config.command)
+    break
+  }
+  case 'ota': {
+    void otaCommand.run(config.command)
     break
   }
   case 'sim': {

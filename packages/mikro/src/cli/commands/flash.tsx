@@ -6,7 +6,8 @@ import spinners from 'cli-spinners'
 import figures from 'figures'
 import {Box, Text, useInput} from 'ink'
 import React, {useEffect, useMemo, useState} from 'react'
-import type {Observable} from 'rxjs'
+import {defer, EMPTY, type Observable, of} from 'rxjs'
+import {catchError, map, startWith} from 'rxjs/operators'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
@@ -15,6 +16,7 @@ import {resolveFlashPlan} from '../lib/flashFirmware.js'
 import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
 import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
 import {port} from '../lib/portValueParser.js'
+import {type PostFlashResult, runPostFlash} from '../lib/postFlash.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
 import {TroubleshootingHint} from '../lib/troubleshooting.js'
@@ -285,6 +287,12 @@ function ConfirmFlash(props: {port: string; onConfirm: () => void; onCancel: () 
   )
 }
 
+type PostFlashState =
+  | {status: 'idle'}
+  | {status: 'running'}
+  | {status: 'done'; result: PostFlashResult}
+  | {status: 'failed'; message: string}
+
 function FlashProgress(props: {
   esptoolPath: string
   flasherArgs: FlasherArgs
@@ -317,6 +325,28 @@ function FlashProgress(props: {
   }, [])
 
   const success = completed && !error
+
+  // Reconnect once the device reboots to prove the image runs, and seed a name
+  // while we're the one provisioning it. Best-effort: the flash has already
+  // succeeded, so a failure here is a warning and never changes the exit code.
+  // `defer` so the connect starts on subscribe, not during render.
+  const postFlashObservable = useMemo(
+    (): Observable<PostFlashState> =>
+      success
+        ? defer(() => runPostFlash(port)).pipe(
+            map((result): PostFlashState => ({status: 'done', result})),
+            catchError((err: unknown) =>
+              of<PostFlashState>({
+                status: 'failed',
+                message: err instanceof Error ? err.message : String(err),
+              }),
+            ),
+            startWith<PostFlashState>({status: 'running'}),
+          )
+        : EMPTY,
+    [success, port],
+  )
+  const postFlash = useObservable(postFlashObservable, {status: 'idle'} as PostFlashState)
   const lastLine = getLastLine(output)
 
   return (
@@ -346,6 +376,31 @@ function FlashProgress(props: {
           ))}
           <Text color="red">{error.stack}</Text>
         </Box>
+      ) : null}
+      {success && postFlash.status !== 'idle' ? (
+        <Text>
+          {postFlash.status === 'running' ? (
+            <Spinner spinner={spinners.dots} />
+          ) : postFlash.status === 'done' ? (
+            <Text color="green">{figures.tick}</Text>
+          ) : (
+            <Text color="yellow">{figures.warning}</Text>
+          )}{' '}
+          {postFlash.status === 'running'
+            ? 'Waiting for the device to boot…'
+            : postFlash.status === 'done'
+              ? `Booted ${postFlash.result.name ?? 'device'}${
+                  postFlash.result.firmware ? ` (firmware ${postFlash.result.firmware})` : ''
+                }${postFlash.result.seeded ? ' · named this device' : ''}`
+              : `Flashed, but the device did not respond: ${postFlash.message}`}
+        </Text>
+      ) : null}
+      {postFlash.status === 'done' && postFlash.result.nameUnreadable ? (
+        <Text color="yellow">
+          {'  '}
+          {figures.warning} This device has a stored name that could not be read, so it was left
+          alone. Set one with <Text bold>mikro name set &lt;name&gt;</Text>.
+        </Text>
       ) : null}
       {success ? (
         <Box flexDirection="column" paddingTop={1} paddingLeft={2}>

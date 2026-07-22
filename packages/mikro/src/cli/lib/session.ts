@@ -10,11 +10,13 @@
  */
 
 import {createHash} from 'node:crypto'
+import {readFile} from 'node:fs/promises'
 
 import {decode as decodeCbor} from 'cbor2'
 import {
   catchError,
   concat,
+  defer,
   filter,
   finalize,
   first,
@@ -38,6 +40,7 @@ import {
   timer,
 } from 'rxjs'
 
+import {decodeDeviceName} from './deviceName.js'
 import {
   checkFirmwareCompat,
   type FirmwareCompatDirection,
@@ -53,6 +56,7 @@ import {
   buildConfigListCommand,
   buildConfigSetCommand,
   buildDeployAbortCommand,
+  buildDeployBuildCommand,
   buildDeployChecksumCommand,
   buildDeployDoneCommand,
   buildDeployEraseCommand,
@@ -64,6 +68,8 @@ import {
   buildExitCommand,
   buildFsGetCommand,
   buildHelloCommand,
+  buildKvDeleteCommand,
+  buildKvSetCommand,
   buildLogResetCommand,
   buildRestartCommand,
   buildRuntimePauseCommand,
@@ -72,6 +78,7 @@ import {
   type Frame,
   FrameParser,
   frameToMessage,
+  type KvNamespace,
   parseCompletions,
 } from './protocol.js'
 import type {Transport} from './transport.js'
@@ -91,6 +98,15 @@ export interface ReadyEvent {
   chip: string | null
   id: string | null
   version: string | null
+  /** The device's own name, when one is set (mik.sys `name`). Absent means
+   *  none is set and callers derive one from the device id. */
+  name?: string | undefined
+  /** Logical revision of `name`, bumped by every deliberate rename on either
+   *  side. Absent (firmware predating name sync) is treated as 0. */
+  nameRev?: number | undefined
+  /** The stored name pair could not be read, so `nameRev` is unknown rather
+   *  than 0. Callers that write identity must decline instead of assuming. */
+  nameCorrupt?: boolean | undefined
   advisory?: FirmwareAdvisory | null
 }
 
@@ -270,11 +286,26 @@ export interface ReplSession {
   /** Send CMD_HELLO repeatedly until the device responds with a fresh
    *  MSG_READY (newer than any pre-restart cached ready). Throws on timeout
    *  or version incompatibility. Most callers can rely on deploy/config
-   *  awaiting ready internally; this is for explicit handshake control. */
-  awaitReady$(timeoutMs?: number): Observable<ReadyEvent>
+   *  awaiting ready internally; this is for explicit handshake control.
+   *
+   *  `{fresh: true}` also rejects a ready already delivered in this session,
+   *  so the result reflects the device's state now rather than at connect.
+   *  Needed when reading a value the running app can change underneath you. */
+  awaitReady$(timeoutMs?: number, opts?: {fresh?: boolean}): Observable<ReadyEvent>
 
   /** High-level incremental deploy. Emits progress events, completes after final event. */
   deploy(options: DeployOptions): Observable<DeployEvent>
+
+  /** Deploy a packed `.tgz` build through the OTA install path. Streams the
+   *  build, adopts it as the live app and rollback baseline
+   *  (`.ota-last-good.tgz`), then restarts. Used by `mikro deploy`; `mikro dev`
+   *  keeps the per-file {@link deploy} path. Emits the same DeployEvent
+   *  progress contract. */
+  deployBuild(
+    tgzPath: string,
+    checksum: string,
+    options?: {envVars?: EnvVar[]; restart?: boolean; timeout?: number},
+  ): Observable<DeployEvent>
 
   /** Erase the deployed app on the device without re-deploying anything.
    * Sends ERASE + DONE + optional RESTART. Unlike deploy({files: [], erase: true}),
@@ -286,6 +317,15 @@ export interface ReplSession {
     list(): Promise<EnvEntry[]>
     set(key: string, value: string, secret: boolean): Promise<void>
     delete(key: string): Promise<void>
+  }
+
+  /** KV provisioning: write/delete a kv string value on the device.
+   * `namespace: 'sys'` targets `mik.sys` (runtime/provisioning state, e.g.
+   * the registry device credential), which deploys never sync or clear;
+   * `'kv'` targets the app data store. */
+  kv: {
+    set(key: string, value: string, namespace: KvNamespace): Promise<void>
+    delete(key: string, namespace: KvNamespace): Promise<void>
   }
 
   /** Pull a file off the device. Streams chunks over the wire and resolves
@@ -307,6 +347,10 @@ export interface ReplSession {
 // ── Checksums manifest ─────────────────────────────────────────────
 
 const CHECKSUMS_PATH = '/app/.checksums'
+
+/** Staged-file name for a build deploy. Leading slash so the device lands it
+ *  at <deploy-tmp>/.build.tgz, where the DEPLOY_BUILD handler reads it back. */
+const BUILD_DEPLOY_NAME = '/.build.tgz'
 
 function buildChecksumsManifest(hashes: Map<string, Buffer>): Buffer {
   const lines: string[] = []
@@ -526,7 +570,10 @@ export function connectRepl(
    * Wait for device to be ready. Emits the ReadyEvent, then completes.
    * Errors if the device firmware version is incompatible.
    */
-  function awaitReady$(timeoutMs = READY_TIMEOUT_MS): Observable<ReadyEvent> {
+  function awaitReady$(
+    timeoutMs = READY_TIMEOUT_MS,
+    opts?: {fresh?: boolean},
+  ): Observable<ReadyEvent> {
     const checkVersion = async (event: ReadyEvent): Promise<ReadyEvent> => {
       const compat = checkFirmwareCompat(event.version)
       if (compat.status === 'match') {
@@ -584,13 +631,24 @@ export function connectRepl(
     // cached pre-restart ready that shareReplay would otherwise replay, so
     // we don't proceed to send commands while the device is still in the
     // middle of rebooting.
-    const ready$ = readyWithMeta$.pipe(
-      filter(
-        ({seq, arrivedAt}) =>
-          seq > lastSeenRestartSeq && arrivedAt >= lastRestartAt + POST_RESTART_BLACKOUT_MS,
-      ),
-      map(({event}) => event),
-    )
+    // `fresh` additionally rejects the cached ready that has already been seen,
+    // which is what a caller re-handshaking mid-session needs: without it,
+    // shareReplay answers synchronously with the handshake this session opened
+    // on, and the "re-read the device's current state" is a no-op. Snapshotted
+    // inside defer so it is taken at subscribe time, and a resubscribe (retry,
+    // reconnect) re-snapshots rather than reusing a stale floor.
+    const ready$ = defer(() => {
+      const minSeq = opts?.fresh === true ? readySeq : -1
+      return readyWithMeta$.pipe(
+        filter(
+          ({seq, arrivedAt}) =>
+            seq > lastSeenRestartSeq &&
+            seq > minSeq &&
+            arrivedAt >= lastRestartAt + POST_RESTART_BLACKOUT_MS,
+        ),
+        map(({event}) => event),
+      )
+    })
 
     return merge(hello$, ready$).pipe(
       first(),
@@ -798,6 +856,102 @@ export function connectRepl(
     }
   }
 
+  // ── Build deploy (OTA install path) ───────────────────────────
+
+  /** Deploy a packed `.tgz` build. Mirrors {@link deploy}'s lifecycle (pause,
+   *  env diff, restart/resume) but installs a single build through the OTA
+   *  adopt path instead of streaming per-file PUT/KEEP, so the deploy becomes
+   *  the OTA rollback baseline. Does not touch {@link deploy}. */
+  function deployBuild(
+    tgzPath: string,
+    checksum: string,
+    options: {envVars?: EnvVar[]; restart?: boolean; timeout?: number} = {},
+  ): Observable<DeployEvent> {
+    const readyTimeoutMs = options.timeout ?? READY_TIMEOUT_MS
+    return concat(
+      of({type: 'connecting'} satisfies DeployEvent),
+      awaitReady$(readyTimeoutMs).pipe(
+        switchMap(() => from(deployBuildAfterReady(tgzPath, checksum, options))),
+      ),
+    )
+  }
+
+  async function* deployBuildAfterReady(
+    tgzPath: string,
+    checksum: string,
+    options: {envVars?: EnvVar[]; restart?: boolean},
+  ): AsyncGenerator<DeployEvent> {
+    const {envVars = [], restart: shouldRestart = true} = options
+    const data = await readFile(tgzPath)
+
+    // Freeze the device's JS runtime for the duration of the upload + install,
+    // same as deploy(). A reboot implicitly resumes; otherwise RESUME fires in
+    // the finally block. `didRestart` drives that, not `shouldRestart`.
+    await sendExpectOk(buildRuntimePauseCommand(), 'runtime pause', JS_YIELD_TIMEOUT_MS)
+
+    let didRestart = false
+    try {
+      // Env vars: diff against current device state, same protocol as deploy().
+      const envChanged: string[] = []
+      const envRemoved: string[] = []
+      if (envVars.length > 0) {
+        const tooLong = envVars.filter((v) => Buffer.byteLength(v.key, 'utf-8') > 15)
+        if (tooLong.length > 0) {
+          throw new Error(
+            `Env key(s) exceed NVS 15-char limit: ${tooLong.map((v) => v.key).join(', ')}`,
+          )
+        }
+
+        const deviceEntries = await config.list()
+        const desiredKeys = new Set(envVars.map((v) => v.key))
+
+        for (const v of envVars) {
+          const payload = await sendExpectOk(
+            buildConfigSetCommand(v.key, v.value, v.secret),
+            `config set '${v.key}'`,
+          )
+          if (payload.length > 0 && payload[0] === 1) envChanged.push(v.key)
+        }
+
+        for (const entry of deviceEntries) {
+          if (desiredKeys.has(entry.key)) continue
+          const payload = await sendExpectOk(
+            buildConfigDeleteCommand(entry.key),
+            `config delete '${entry.key}'`,
+          )
+          if (payload.length > 0 && payload[0] === 1) envRemoved.push(entry.key)
+        }
+      }
+
+      if (envChanged.length > 0 || envRemoved.length > 0) {
+        yield {type: 'env_changed', changed: envChanged, removed: envRemoved}
+      }
+
+      // Stream the .tgz as a single staged file, then adopt it.
+      yield {type: 'uploading', file: BUILD_DEPLOY_NAME, index: 0, total: 1}
+      await streamPutFile(BUILD_DEPLOY_NAME, data)
+      await sendExpectOk(buildDeployBuildCommand(checksum), 'deploy build')
+
+      if (shouldRestart) {
+        yield {type: 'restarting'}
+        lastSeenRestartSeq = readySeq
+        lastRestartAt = Date.now()
+        await transport.write(buildRestartCommand())
+        didRestart = true
+      }
+
+      yield {type: 'complete', deployed: true, stats: {put: 1, kept: 0}}
+    } finally {
+      if (!didRestart) {
+        try {
+          await sendExpectOk(buildRuntimeResumeCommand(), 'runtime resume', JS_YIELD_TIMEOUT_MS)
+        } catch {
+          // Transport likely gone; session_end on device will resume.
+        }
+      }
+    }
+  }
+
   // ── Erase app ──────────────────────────────────────────────────
 
   /** Erase the deployed app without going through the full deploy flow.
@@ -836,6 +990,18 @@ export function connectRepl(
     async delete(key: string): Promise<void> {
       await awaitReady()
       await sendExpectOk(buildConfigDeleteCommand(key), `config delete '${key}'`)
+    },
+  }
+
+  const kv = {
+    async set(key: string, value: string, namespace: KvNamespace): Promise<void> {
+      await awaitReady()
+      await sendExpectOk(buildKvSetCommand(key, value, namespace), `kv set '${key}'`)
+    },
+
+    async delete(key: string, namespace: KvNamespace): Promise<void> {
+      await awaitReady()
+      await sendExpectOk(buildKvDeleteCommand(key, namespace), `kv delete '${key}'`)
     },
   }
 
@@ -913,8 +1079,10 @@ export function connectRepl(
     },
 
     deploy,
+    deployBuild,
     eraseApp,
     config,
+    kv,
     fsGet,
     logsReset,
 
@@ -947,15 +1115,29 @@ function frameToEvent(frame: Frame): ReplEvent | null {
       let chip: string | null = null
       let id: string | null = null
       let version: string | null = null
+      let name: string | undefined
+      let nameRev: number | undefined
+      let nameCorrupt: boolean | undefined
       try {
-        const info = decodeCbor(msg.payload) as {chip?: string; id?: string; v?: string}
+        const info = decodeCbor(msg.payload) as {
+          chip?: string
+          id?: string
+          v?: string
+          name?: string
+        }
         chip = info.chip ?? null
         id = info.id ?? null
         version = info.v ?? null
+        // The device reports name and revision as one JSON `[rev, name?]` pair,
+        // so they can never arrive out of step.
+        const state = decodeDeviceName(info.name)
+        name = state.name
+        nameRev = state.rev
+        nameCorrupt = state.corrupt
       } catch {
         // ignore
       }
-      return {type: 'ready', chip, id, version}
+      return {type: 'ready', chip, id, version, name, nameRev, nameCorrupt}
     }
     case 'log':
     case 'warn':

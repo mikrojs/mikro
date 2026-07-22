@@ -7,6 +7,7 @@ import {
   buildConfigListCommand,
   buildConfigSetCommand,
   buildDeployAbortCommand,
+  buildDeployBuildCommand,
   buildDeployChecksumCommand,
   buildDeployDoneCommand,
   buildDeployEraseCommand,
@@ -17,12 +18,15 @@ import {
   buildEvalCommand,
   buildExitCommand,
   buildFrame,
+  buildKvDeleteCommand,
+  buildKvSetCommand,
   buildRestartCommand,
   CMD_COMPLETE,
   CMD_CONFIG_DELETE,
   CMD_CONFIG_LIST,
   CMD_CONFIG_SET,
   CMD_DEPLOY_ABORT,
+  CMD_DEPLOY_BUILD,
   CMD_DEPLOY_CHECKSUM,
   CMD_DEPLOY_DONE,
   CMD_DEPLOY_ERASE,
@@ -32,6 +36,8 @@ import {
   CMD_DIRECTIVE,
   CMD_EVAL,
   CMD_EXIT,
+  CMD_KV_DELETE,
+  CMD_KV_SET,
   CMD_RESTART,
   FrameParser,
   frameToMessage,
@@ -248,6 +254,19 @@ describe('protocol', () => {
       expect(payload.subarray(2, 2 + nameLen).toString('utf-8')).to.equal('/app/lib.js')
     })
 
+    it('buildDeployBuildCommand encodes checksum length and bytes', () => {
+      const checksum = 'a'.repeat(64)
+      const frame = buildDeployBuildCommand(checksum)
+      const result = parseFrame(frame)
+      expect(result!.frame.type).to.equal(CMD_DEPLOY_BUILD)
+
+      const payload = result!.frame.payload
+      const chkLen = payload.readUInt16LE(0)
+      expect(chkLen).to.equal(64)
+      expect(payload.subarray(2, 2 + chkLen).toString('utf-8')).to.equal(checksum)
+      expect(payload.length).to.equal(2 + 64)
+    })
+
     it('buildDeployChecksumCommand', () => {
       const hash = Buffer.alloc(32, 0xab)
       const frame = buildDeployChecksumCommand('/app/main.js', hash)
@@ -282,6 +301,46 @@ describe('protocol', () => {
       const payload = result!.frame.payload
       const keyLen = payload.readUInt16LE(0)
       expect(payload.subarray(2, 2 + keyLen).toString('utf-8')).to.equal('OLD_KEY')
+    })
+  })
+
+  // The namespace byte decides which NVS namespace a write lands in, and the
+  // only other statement of the mapping is a comment in mik_config.cpp. Every
+  // caller passes the string 'sys', and every test above the wire asserts
+  // against a mock that takes the string, so a flipped mapping would send the
+  // device name and the OTA credential to mik.kv — the app store that deploy
+  // wipes — with nothing failing. These assert the byte itself.
+  describe('kv command builders', () => {
+    it('encodes the sys namespace as 1', () => {
+      const result = parseFrame(buildKvSetCommand('name', '[1,"kitchen"]', 'sys'))
+      expect(result!.frame.type).to.equal(CMD_KV_SET)
+      expect(result!.frame.payload[0]).to.equal(1)
+    })
+
+    it('encodes the kv namespace as 0', () => {
+      const result = parseFrame(buildKvSetCommand('k', 'v', 'kv'))
+      expect(result!.frame.payload[0]).to.equal(0)
+    })
+
+    it('lays out KV_SET as ns | key_len | key | val_len | value', () => {
+      const result = parseFrame(buildKvSetCommand('name', '[1,"kitchen"]', 'sys'))
+      const payload = result!.frame.payload
+      expect(payload[0]).to.equal(1)
+      const keyLen = payload.readUInt16LE(1)
+      expect(payload.subarray(3, 3 + keyLen).toString('utf-8')).to.equal('name')
+      const valLen = payload.readUInt16LE(3 + keyLen)
+      expect(payload.subarray(5 + keyLen, 5 + keyLen + valLen).toString('utf-8')).to.equal(
+        '[1,"kitchen"]',
+      )
+    })
+
+    it('lays out KV_DELETE as ns | key_len | key', () => {
+      const result = parseFrame(buildKvDeleteCommand('name', 'sys'))
+      expect(result!.frame.type).to.equal(CMD_KV_DELETE)
+      const payload = result!.frame.payload
+      expect(payload[0]).to.equal(1)
+      const keyLen = payload.readUInt16LE(1)
+      expect(payload.subarray(3, 3 + keyLen).toString('utf-8')).to.equal('name')
     })
   })
 
