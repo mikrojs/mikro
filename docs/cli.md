@@ -347,11 +347,12 @@ Build the current project to bytecode and pack it into a deployable OTA build: a
 mikro ota pack
 ```
 
-| Option             | Description                                              |
-| ------------------ | -------------------------------------------------------- |
-| `--out FILE`       | Output path for the build (default: `app-<version>.tgz`) |
-| `--no-minify`      | Skip minification                                        |
-| `--loglevel LEVEL` | Log level: `none`, `error`, `warn`, `info`, `debug`      |
+| Option             | Description                                                            |
+| ------------------ | ---------------------------------------------------------------------- |
+| `--out FILE`       | Output path for the build (default: `app-<version>.tgz`)               |
+| `--snapshot`       | Derive a unique version so iteration needs no version bump (see below) |
+| `--no-minify`      | Skip minification                                                      |
+| `--loglevel LEVEL` | Log level: `none`, `error`, `warn`, `info`, `debug`                    |
 
 See [Build options](#build-options) for details on `--no-minify`, `--minifier`, and other build flags.
 
@@ -363,13 +364,16 @@ Upload a build to your OTA registry. Without `--build`, the current project is p
 mikro ota publish
 ```
 
-| Option           | Description                                                          |
-| ---------------- | -------------------------------------------------------------------- |
-| `--registry URL` | Registry origin (default: `.mikro/registry.json`)                    |
-| `--build FILE`   | Publish an existing build instead of packing the current project     |
-| `--token TOKEN`  | Registry auth token (default: `MIKRO_OTA_TOKEN` env var)             |
-| `--note TEXT`    | Free-text note stored with the build (e.g. what changed)             |
-| `--create`       | Create the app on first publish instead of failing on an unknown app |
+| Option           | Description                                                            |
+| ---------------- | ---------------------------------------------------------------------- |
+| `--registry URL` | Registry origin (default: `.mikro/registry.json`)                      |
+| `--build FILE`   | Publish an existing build instead of packing the current project       |
+| `--token TOKEN`  | Registry auth token (default: `MIKRO_OTA_TOKEN` env var)               |
+| `--note TEXT`    | Free-text note stored with the build (e.g. what changed)               |
+| `--create`       | Create the app on first publish instead of failing on an unknown app   |
+| `--snapshot`     | Derive a unique version so iteration needs no version bump (see below) |
+
+A registry stores each `(app, version, bytecode)` build once, so re-publishing without bumping `package.json` fails. `--snapshot` sidesteps that during development by appending a semver prerelease to the version: the commit hash on a clean tree (`1.2.3-snapshot.g0a1b2c3d5e6`), the same plus a timestamp on a dirty tree (`1.2.3-snapshot.g0a1b2c3d5e6-dirty.20260723T003205Z`), or just a timestamp outside a git repo (`1.2.3-snapshot.20260723T003205Z`). A clean tree is idempotent: the same commit derives the same version, so re-publishing it is a no-op. With `--build`, pack with `--snapshot` instead; the version is fixed once a build is packed.
 
 ### mikro ota enroll
 

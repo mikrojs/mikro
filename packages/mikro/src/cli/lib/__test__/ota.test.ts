@@ -6,16 +6,19 @@ import {promisify} from 'node:util'
 
 import {mkdir, readdir, readFile, writeFile} from 'fs/promises'
 import {join} from 'path'
+import semver from 'semver'
 import {afterEach, beforeEach, describe, expect, it} from 'vitest'
 
 import {
   createTarball,
   finalizeBuild,
+  type GitSnapshotState,
   MANIFEST_NAME,
   pruneMacSidecars,
   readBytecodeVersion,
   readManifestFromTarball,
   sha256File,
+  snapshotVersion,
   writeManifest,
 } from '../ota.js'
 
@@ -177,6 +180,54 @@ describe('createTarball + layout', () => {
       ])
     } finally {
       rmSync(out, {force: true})
+    }
+  })
+})
+
+describe('snapshotVersion', () => {
+  // A fixed instant so the timestamp path is deterministic: 2026-07-23T00:32:05Z.
+  const now = new Date(Date.UTC(2026, 6, 23, 0, 32, 5))
+  const sha = '0a1b2c3d4e5f'
+
+  it('appends a prerelease with the g-prefixed sha on a clean tree', () => {
+    expect(snapshotVersion('1.2.3', {sha, dirty: false}, now)).toBe('1.2.3-snapshot.g0a1b2c3d4e5f')
+  })
+
+  it('marks a dirty tree and disambiguates with a UTC timestamp', () => {
+    expect(snapshotVersion('1.2.3', {sha, dirty: true}, now)).toBe(
+      '1.2.3-snapshot.g0a1b2c3d4e5f-dirty.20260723T003205Z',
+    )
+  })
+
+  it('uses only the timestamp outside a git repo', () => {
+    expect(snapshotVersion('1.2.3', {sha: null, dirty: false}, now)).toBe(
+      '1.2.3-snapshot.20260723T003205Z',
+    )
+  })
+
+  it('extends an existing prerelease with a dot, not a second hyphen', () => {
+    expect(snapshotVersion('1.2.3-beta.1', {sha, dirty: false}, now)).toBe(
+      '1.2.3-beta.1.snapshot.g0a1b2c3d4e5f',
+    )
+  })
+
+  it('strips build metadata off the base before appending', () => {
+    expect(snapshotVersion('1.2.3+foo', {sha, dirty: false}, now)).toBe(
+      '1.2.3-snapshot.g0a1b2c3d4e5f',
+    )
+  })
+
+  it('produces valid semver in every case, incl. a leading-zero all-digit sha', () => {
+    const cases: GitSnapshotState[] = [
+      {sha, dirty: false},
+      {sha, dirty: true},
+      {sha: null, dirty: false},
+      // An all-digit sha with a leading zero: invalid as a bare numeric
+      // identifier, which the `g` prefix is there to prevent.
+      {sha: '012345678901', dirty: false},
+    ]
+    for (const git of cases) {
+      expect(semver.valid(snapshotVersion('1.2.3', git, now))).not.toBeNull()
     }
   })
 })
