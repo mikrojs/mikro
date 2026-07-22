@@ -44,6 +44,7 @@ declare module 'native:mikro/sys' {
     systemTotal: number
     systemLargestFree: number
   }
+  export function storageUsage(): {total: number; used: number; free: number} | undefined
   export function jsMemoryUsage(): JsMemoryUsage
   export function gc(): void
   /** Unload the module whose namespace object is `ns`; returns the number of
@@ -52,6 +53,10 @@ declare module 'native:mikro/sys' {
   /** True if `ns` is the namespace of a loaded, non-anchored (non-builtin) module. */
   export function isUnloadableNamespace(ns: object): boolean
   export function activeTimers(): number
+  /** The raw stored `[rev, name]` pair as text, or undefined when never named.
+   *  Backed by NVS on device and by process memory on hosts. */
+  export function deviceName(): string | undefined
+  export function setDeviceName(value: string): void
   export function setTime(millisSinceEpoch: number): void
   export function uptime(): {boot: number; rtc: number}
   export function restart(): never
@@ -521,6 +526,24 @@ declare module 'native:mikro/udp' {
   }
 
   export function bind(opts: BindOptions): Promise<Result<NativeUdpSocket, UdpError>>
+}
+
+declare module 'native:mikro/ota' {
+  import type {NativeOta} from './ota/policy.js'
+
+  // The native module exports the NativeOta contract's methods directly.
+  export function stageBegin(checksum: string, size: number): ReturnType<NativeOta['stageBegin']>
+  export function stageWrite(bytes: Uint8Array): ReturnType<NativeOta['stageWrite']>
+  export function stageFinish(
+    trialBoots: number,
+    requireConfirm: boolean,
+    installNow: boolean,
+  ): ReturnType<NativeOta['stageFinish']>
+  export function stageAbort(): void
+  export function markValid(): void
+  export function revert(): ReturnType<NativeOta['revert']>
+  export function running(): ReturnType<NativeOta['running']>
+  export function reconcile(): ReturnType<NativeOta['reconcile']>
 }
 
 declare module 'native:mikro/i2s' {

@@ -4,20 +4,11 @@ import SelectInput from 'ink-select-input'
 import React, {type ReactNode, useCallback, useEffect, useState} from 'react'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
-import {
-  getDeviceAlias,
-  matchPortToken,
-  removeDeviceAlias,
-  setDeviceAlias,
-} from '../lib/deviceAliases.js'
-import {getCachedDeviceId} from '../lib/deviceCache.js'
-import {deviceIdFromSerial} from '../lib/deviceId.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
+import {matchPortToken} from '../lib/deviceName.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
-import {suggestDeviceName} from '../lib/suggestName.js'
 import {TROUBLESHOOTING_HINT_DELAY_MS, TroubleshootingHint} from '../lib/troubleshooting.js'
-import {EMPTY_INPUT, type InputState, reduceInput, TextInput} from './TextInput.js'
 
 type Item<V> = {
   key?: string
@@ -38,13 +29,6 @@ export function DevicePicker(props: Props) {
   // Stop polling once a device is selected or auto-detected (avoid SerialPort.list() interfering with open port)
   const [pollingEnabled, setPollingEnabled] = useState(true)
   const [waitingTooLong, setWaitingTooLong] = useState(false)
-  const [highlighted, setHighlighted] = useState<PortInfo>()
-  const [mode, setMode] = useState<
-    {type: 'list'} | {type: 'rename'; device: PortInfo; error?: string}
-  >({type: 'list'})
-  const [input, setInput] = useState<InputState>(EMPTY_INPUT)
-  // Bumped after saving an alias to recompute the labels below.
-  const [, setAliasTick] = useState(0)
   const deviceDiscovery = useDevices(pollingEnabled)
 
   useEffect(() => {
@@ -76,66 +60,13 @@ export function DevicePicker(props: Props) {
   const isInteractive = process.stdin.isTTY === true
   const current = device || selectedDevice
 
-  // Handle Ctrl+C/Ctrl+Q exit, the rename flow, and the `r` rename trigger
-  // while a device is still being picked.
+  // Handle Ctrl+C/Ctrl+Q exit while a device is still being picked. Naming a
+  // device lives in `mikro name`, which writes it over a session — the picker
+  // only selects.
   useInput(
     (ch, key) => {
       if (key.ctrl && (ch === 'c' || ch === 'q')) {
         process.exit(0)
-      }
-
-      if (mode.type === 'rename') {
-        if (key.escape) {
-          setInput(EMPTY_INPUT)
-          setMode({type: 'list'})
-          return
-        }
-        if (key.return) {
-          const name = input.value.trim()
-          const serial = mode.device.serialNumber
-          if (!serial) {
-            setInput(EMPTY_INPUT)
-            setMode({type: 'list'})
-            return
-          }
-          // Empty input clears an existing alias (reverting to the generated
-          // name); with no alias to clear it's just a cancel.
-          if (!name) {
-            if (getDeviceAlias(serial)) {
-              removeDeviceAlias(serial)
-              setAliasTick((n) => n + 1)
-            }
-            setInput(EMPTY_INPUT)
-            setMode({type: 'list'})
-            return
-          }
-          const result = setDeviceAlias(serial, name)
-          if (!result.ok) {
-            setMode({type: 'rename', device: mode.device, error: result.error})
-            return
-          }
-          setInput(EMPTY_INPUT)
-          setMode({type: 'list'})
-          setAliasTick((n) => n + 1)
-          return
-        }
-        const next = reduceInput(input, ch, key)
-        if (next) setInput(next)
-        return
-      }
-
-      // List mode: `r` sets an alias for the highlighted device. Prefill with the
-      // existing alias, else the generated name seeded by the device id.
-      if (ch === 'r') {
-        const target = highlighted ?? devices[0]
-        if (!target) return
-        const seed =
-          deviceIdFromSerial(target.serialNumber) ??
-          getCachedDeviceId(target.serialNumber) ??
-          target.serialNumber
-        const prefill = getDeviceAlias(target.serialNumber) ?? (seed ? suggestDeviceName(seed) : '')
-        setInput(prefill ? {value: prefill, cursor: prefill.length} : EMPTY_INPUT)
-        setMode({type: 'rename', device: target})
       }
     },
     {isActive: !current},
@@ -212,27 +143,7 @@ export function DevicePicker(props: Props) {
   return (
     <Box flexDirection="column">
       <Text>Select device</Text>
-      <SelectInput
-        items={items}
-        onSelect={handleSelect}
-        onHighlight={(item) => setHighlighted(item.value)}
-        isFocused={mode.type === 'list'}
-      />
-      {mode.type === 'rename' ? (
-        <Box flexDirection="column" marginTop={1}>
-          <Box>
-            <Text>Alias for {mode.device.path}: </Text>
-            <TextInput value={input.value} cursor={input.cursor} placeholder="my-device" />
-          </Box>
-          {mode.error ? <Text color="red">{mode.error}</Text> : null}
-          <Text dimColor>
-            Enter to save · Esc to cancel
-            {getDeviceAlias(mode.device.serialNumber) ? ' · clear to remove the alias' : ''}
-          </Text>
-        </Box>
-      ) : (
-        <Text dimColor>Press r to set an alias for the selected device</Text>
-      )}
+      <SelectInput items={items} onSelect={handleSelect} />
     </Box>
   )
 }

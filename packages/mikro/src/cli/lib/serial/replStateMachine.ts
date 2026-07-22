@@ -1,7 +1,7 @@
 import {appendFileSync, readFileSync} from 'node:fs'
 import {join} from 'node:path'
 
-import {EMPTY, merge, type Observable, of, Subject, timer} from 'rxjs'
+import {EMPTY, firstValueFrom, merge, type Observable, of, Subject, timer} from 'rxjs'
 import {
   catchError,
   filter,
@@ -15,10 +15,10 @@ import {
   takeUntil,
   tap,
 } from 'rxjs/operators'
-import {SerialPort} from 'serialport'
 
-import {getDeviceAlias, removeDeviceAlias, setDeviceAlias} from '../deviceAliases.js'
 import {rememberDeviceForPort} from '../deviceCache.js'
+import {encodeDeviceName, NAME_KV, validateDeviceName} from '../deviceName.js'
+import {describeError} from '../errorMessage.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {getMikroDir} from '../projectRoot.js'
 import {isIncomplete} from '../protocol.js'
@@ -103,8 +103,8 @@ export type ReplAction =
 export type ReplEffect =
   | {type: 'eval'; code: string}
   | {type: 'directive'; code: string}
-  | {type: 'setAlias'; name: string}
-  | {type: 'unsetAlias'}
+  | {type: 'setName'; name: string}
+  | {type: 'unsetName'}
   | {type: 'exit'}
   | {type: 'restart'}
   | {type: 'end'}
@@ -118,7 +118,7 @@ export type ReplEffect =
 /** All available slash commands */
 const SLASH_COMMANDS = [
   '/help',
-  '/alias',
+  '/name',
   '/env',
   '/mem',
   '/info',
@@ -659,12 +659,12 @@ function reduceSubmit(state: ReplMachineState): [ReplMachineState, ReplEffect[]]
     return [resetState, [...effects, {type: 'exit'}, {type: 'end'}]]
   }
 
-  // `/help` is device-answered; add host-only commands so `/alias` shows up.
+  // `/help` is device-answered; add host-only commands so `/name` shows up.
   if (code === '/help') {
     const inputEvent: ReplLogEvent = {type: 'input', code}
     const hostHelp: ReplLogEvent = {
       type: 'info',
-      text: 'Host commands: /time (toggle eval timing) · /alias set <name> (set a local alias) · /alias unset (remove the alias)',
+      text: 'Host commands: /time (toggle eval timing) · /name set <name> (name this device) · /name unset (clear the name)',
     }
     const next = {...resetState, events: [...resetState.events, inputEvent, hostHelp]}
     return [next, [...effects, {type: 'directive', code}]]
@@ -679,17 +679,17 @@ function reduceSubmit(state: ReplMachineState): [ReplMachineState, ReplEffect[]]
     return [next, effects]
   }
 
-  // `/alias` is host-side (writes the local alias file), not forwarded.
-  if (code === '/alias' || code.startsWith('/alias ')) {
-    const rest = code.slice('/alias'.length).trim()
+  // `/name` is host-side (writes the device's mik.sys name), not forwarded.
+  if (code === '/name' || code.startsWith('/name ')) {
+    const rest = code.slice('/name'.length).trim()
     const inputEvent: ReplLogEvent = {type: 'input', code}
     const next = {...resetState, events: [...resetState.events, inputEvent]}
     if (rest === 'unset') {
-      return [next, [...effects, {type: 'unsetAlias'}]]
+      return [next, [...effects, {type: 'unsetName'}]]
     }
     // Anything but "set <name>" yields an empty name → usage message.
     const name = /^set\s+(.+)$/.exec(rest)?.[1]?.trim() ?? ''
-    return [next, [...effects, {type: 'setAlias', name}]]
+    return [next, [...effects, {type: 'setName', name}]]
   }
 
   if (!code.includes('\n') && /^\/[a-z]+(\s|$)/i.test(code)) {
@@ -777,14 +777,32 @@ export function createRepl(options: {
   const restarts$ = new Subject<void>()
   const initial = createInitialState(port, loadHistoryFn())
 
+  // Latest name pair reported by the handshake; `/name` bumps from here.
+  let deviceName: string | undefined
+  let nameRev = 0
+
   const sessionActions$: Observable<ReplAction> = session.messages$.pipe(
     // Cache chip/deviceId on connect so the picker and `ls` can show them while
     // disconnected (the only id source for USB-UART bridge boards).
     tap((event: ReplEvent) => {
       if (event.type === 'ready') {
+        // The handshake is the only read path for the name pair, so keep the
+        // latest so `/name` can bump the revision without re-reading.
+        //
+        // Monotonic, and that has to live here rather than only at the write:
+        // every ready frame runs this tap, including the fresh handshake
+        // `writeName` asks for, so a plain assignment would overwrite a
+        // revision this session had already bumped locally and the guard there
+        // would compare two copies of the same lowered value. A device
+        // reporting lower (mik.sys wiped, or a write that never landed) must
+        // not drag the revision back, or the rename loses to a registry still
+        // holding the higher one.
+        deviceName = event.name
+        nameRev = Math.max(nameRev, event.nameRev ?? 0)
         void rememberDeviceForPort(port, {
           chip: event.chip ?? undefined,
           deviceId: event.id ?? undefined,
+          name: event.name ?? null,
         })
       }
     }),
@@ -865,11 +883,11 @@ export function createRepl(options: {
       case 'directive':
         session.directive(effect.code)
         break
-      case 'setAlias':
-        void applyAlias(effect.name)
+      case 'setName':
+        void applyName(effect.name)
         break
-      case 'unsetAlias':
-        void applyUnalias()
+      case 'unsetName':
+        void applyUnname()
         break
       case 'exit':
         session.exit()
@@ -899,58 +917,60 @@ export function createRepl(options: {
     }
   }
 
-  // /alias feedback shows up inline as a normal log line. Deferred to a
+  // /name feedback shows up inline as a normal log line. Deferred to a
   // microtask so synchronous callers (the empty-name usage message) don't
   // re-enter the scan reducer mid-action, which would drop the event.
-  function emitAlias(type: 'info' | 'error', text: string) {
+  function emitName(type: 'info' | 'error', text: string) {
     queueMicrotask(() => actions$.next({type: 'deviceEvent', event: {type, text}}))
   }
 
-  // Serial number for the connected port; emits a log line and returns undefined
-  // when it can't be determined. Async, so callers run from an effect.
-  async function aliasSerial(): Promise<string | undefined> {
-    if (!port || port === 'simulator') {
-      emitAlias('error', 'Cannot manage an alias for this session')
-      return undefined
-    }
-    let serial: string | undefined
+  /** Write the name pair at the next revision. Both set and clear go through
+   *  here, so a clear keeps its revision and propagates to the registry. */
+  async function writeName(name: string | undefined, done: string) {
     try {
-      const devices = await SerialPort.list()
-      serial = devices.find((d) => d.path === port)?.serialNumber
+      // Re-handshake first: the app keeps running during a console session and
+      // can adopt a registry name mid-session, bumping the revision without the
+      // host hearing about it. Writing `nameRev + 1` off the opening handshake
+      // could land at or below the device's current revision, which the registry
+      // reads as behind and answers by pushing the old name back.
+      // `fresh` is what makes this a re-read: without it the cached opening
+      // handshake is replayed and the revision below is the one we already had.
+      const fresh = await firstValueFrom(session.awaitReady$(undefined, {fresh: true}))
+      // Never move the revision backwards. A device whose mik.sys was wiped
+      // reports a lower one, and adopting it would make this rename lose to a
+      // registry still holding the higher revision.
+      nameRev = Math.max(nameRev, fresh.nameRev ?? 0)
+      await session.kv.set(NAME_KV, encodeDeviceName({rev: nameRev + 1, name}), 'sys')
     } catch (err) {
-      emitAlias('error', `Could not read serial ports: ${err instanceof Error ? err.message : err}`)
-      return undefined
+      emitName('error', `Could not write the name: ${describeError(err)}`)
+      return
     }
-    if (!serial) {
-      emitAlias('error', `No serial number found for ${port}; cannot manage its alias`)
-    }
-    return serial
+    nameRev += 1
+    deviceName = name
+    void rememberDeviceForPort(port, {name: name ?? null})
+    emitName('info', done)
   }
 
-  async function applyAlias(rawName: string) {
+  async function applyName(rawName: string) {
     const name = rawName.trim()
     if (!name) {
-      emitAlias('error', 'Usage: /alias set <name> | /alias unset')
+      emitName('error', 'Usage: /name set <name> | /name unset')
       return
     }
-    const serial = await aliasSerial()
-    if (!serial) return
-    const result = setDeviceAlias(serial, name)
-    emitAlias(
-      result.ok ? 'info' : 'error',
-      result.ok ? `Aliased this device as "${name}"` : result.error,
-    )
+    const check = validateDeviceName(name)
+    if (!check.ok) {
+      emitName('error', check.error)
+      return
+    }
+    await writeName(name, `Named this device "${name}"`)
   }
 
-  async function applyUnalias() {
-    const serial = await aliasSerial()
-    if (!serial) return
-    if (!getDeviceAlias(serial)) {
-      emitAlias('info', 'This device has no alias')
+  async function applyUnname() {
+    if (deviceName === undefined) {
+      emitName('info', 'This device has no name set')
       return
     }
-    const result = removeDeviceAlias(serial)
-    emitAlias(result.ok ? 'info' : 'error', result.ok ? 'Removed alias' : result.error)
+    await writeName(undefined, 'Cleared the name')
   }
 
   return {

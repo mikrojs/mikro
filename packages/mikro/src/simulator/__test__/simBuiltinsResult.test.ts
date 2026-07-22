@@ -52,11 +52,12 @@ function loadStubs(): Stub[] {
 
 const stubs = loadStubs()
 
-// http.ts intentionally returns a non-Result discriminated union from
-// request() (`{ok: true, id, headers}`); the inner Result inside the
-// `headers` Promise still uses `ok()`/`err()`. The plain literal form is
-// allowed only there.
-const exemptFiles = new Set(['http.ts'])
+// http.ts and ota.ts intentionally return non-Result discriminated unions:
+// http's request() (`{ok: true, id, headers}`), and ota's stub mirrors the
+// `native:mikro/ota` ABI (`{ok, resumeOffset/error/kind}`) that the
+// runtime/ota/ota.ts wrapper converts into a Result via ok()/err(). The plain
+// literal form is allowed only in these native-ABI stubs.
+const exemptFiles = new Set(['http.ts', 'ota.ts'])
 
 describe('simulator stubs use Result factories', () => {
   it('discovers stub files', () => {

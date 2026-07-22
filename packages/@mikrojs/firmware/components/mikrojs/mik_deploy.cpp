@@ -9,6 +9,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "mikrojs/app_store.h"
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/platform.h"
 #include "mikrojs/private.h"
@@ -16,9 +17,11 @@
 
 static const char* FS_BASE = "/appfs";
 static const char* DEPLOY_TMP = "/appfs/.deploy-tmp";
-static const char* DEPLOY_OLD = "/appfs/.deploy-old";
 static const char* APP_DIR = "/appfs/app";
 static const char* CHECKSUMS_PATH = "/appfs/app/.checksums";
+/* Where DEPLOY_PUT("/.build.tgz", ...) streams the OTA build (DEPLOY_TMP +
+ * "/.build.tgz"). Adopted by MIK_CMD_DEPLOY_BUILD. */
+static const char* BUILD_TGZ_PATH = "/appfs/.deploy-tmp/.build.tgz";
 
 /* ── Checksums manifest ─────────────────────────────────────────── */
 
@@ -239,19 +242,7 @@ static bool copy_file(const char* src, const char* dst) {
 /* ── Deploy recovery ─────────────────────────────────────────────── */
 
 void MIK_DeployRecover(void) {
-    bool has_app = path_exists(APP_DIR);
-    bool has_old = path_exists(DEPLOY_OLD);
-    bool has_tmp = path_exists(DEPLOY_TMP);
-
-    if (!has_app && has_old) {
-        rename(DEPLOY_OLD, APP_DIR);
-    } else if (has_old) {
-        rmdir_recursive(DEPLOY_OLD);
-    }
-
-    if (has_tmp) {
-        rmdir_recursive(DEPLOY_TMP);
-    }
+    mik__app_recover(FS_BASE);
 }
 
 /* ── Unified protocol deploy handler ────────────────────────────── */
@@ -540,32 +531,60 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
             }
 
             /* Atomic swap: staging dir → app dir */
-            if (path_exists(APP_DIR) && !s_deploy_erased) {
-                rmdir_recursive(DEPLOY_OLD);
-                if (rename(APP_DIR, DEPLOY_OLD) != 0) {
-                    mik__proto_send_err(transport, "rename app to old failed");
-                    deploy_cleanup();
-                    return true;
-                }
+            MIKAppCommitResult commit = mik__app_commit(FS_BASE, s_deploy_erased);
+            if (commit == MIK_APP_COMMIT_STASH_FAILED) {
+                mik__proto_send_err(transport, "rename app to old failed");
+                deploy_cleanup();
+                return true;
+            }
+            if (commit == MIK_APP_COMMIT_SWAP_FAILED) {
+                mik__proto_send_err(transport, "rename staged to app failed");
+                deploy_cleanup();
+                return true;
             }
 
-            char staged_app[512];
-            snprintf(staged_app, sizeof(staged_app), "%s/app", DEPLOY_TMP);
-            if (path_exists(staged_app)) {
-                if (rename(staged_app, APP_DIR) != 0) {
-                    if (path_exists(DEPLOY_OLD)) {
-                        rename(DEPLOY_OLD, APP_DIR);
-                    }
-                    mik__proto_send_err(transport, "rename staged to app failed");
-                    deploy_cleanup();
-                    return true;
-                }
-            }
-
-            rmdir_recursive(DEPLOY_OLD);
-            rmdir_recursive(DEPLOY_TMP);
             stamp_checksums_manifest();
             mik__proto_send_ok(transport);
+            deploy_cleanup();
+            return true;
+        }
+
+        case MIK_CMD_DEPLOY_BUILD: {
+            /* Adopt a streamed .tgz as the live app via the OTA install path,
+             * establishing the rollback baseline. The build was streamed via
+             * PUT("/.build.tgz") + chunks into BUILD_TGZ_PATH.
+             * Payload: u16le checksum_len | checksum. */
+            if (payload_len < 2) {
+                mik__proto_drain(transport, payload_len);
+                mik__proto_send_err(transport, "build header too short");
+                deploy_cleanup();
+                return true;
+            }
+            uint8_t cl[2];
+            if (!mik__proto_read_exact(transport, cl, 2)) return false;
+            uint16_t chk_len = cl[0] | (cl[1] << 8);
+
+            char checksum[96];
+            if (chk_len >= sizeof(checksum) || (uint32_t)chk_len + 2 > payload_len) {
+                mik__proto_drain(transport, payload_len - 2);
+                mik__proto_send_err(transport, "build checksum too long");
+                deploy_cleanup();
+                return true;
+            }
+            if (!mik__proto_read_exact(transport, checksum, chk_len)) return false;
+            checksum[chk_len] = '\0';
+            uint32_t consumed = 2 + (uint32_t)chk_len;
+            if (payload_len > consumed) mik__proto_drain(transport, payload_len - consumed);
+
+            /* Flush the staged .tgz to disk before adopt reads it back. */
+            put_close_and_clear();
+
+            const char* err = nullptr;
+            if (mik__ota_adopt_build(BUILD_TGZ_PATH, checksum, &err)) {
+                mik__proto_send_ok(transport);
+            } else {
+                mik__proto_send_err(transport, err ? err : "build install failed");
+            }
             deploy_cleanup();
             return true;
         }

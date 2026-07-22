@@ -64,6 +64,15 @@ typedef struct MIKPlatform {
      *  original 6 MAC bytes. The returned pointer must remain valid for the
      *  lifetime of the platform. */
     const char* (*get_device_id)(void);
+    /** The device's stored name, or NULL when it has never been named. The
+     *  value is opaque here: it is the `[rev, name]` pair the OTA check-in
+     *  carries, kept as one string so the name and its revision can never be
+     *  stored out of step. Backed by NVS on ESP32; host platforms keep it in
+     *  memory for the process. The returned pointer must remain valid until
+     *  the next set_device_name call. */
+    const char* (*get_device_name)(void);
+    /** Store the name pair, replacing any previous value. */
+    void (*set_device_name)(const char* value);
     /** Reason the chip last reset, as a stable lowercase string. On ESP32
      *  this maps esp_reset_reason(): "power-on", "software", "panic",
      *  "watchdog", "interrupt-watchdog", "task-watchdog", "brownout",

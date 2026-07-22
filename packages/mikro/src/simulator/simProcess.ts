@@ -11,6 +11,7 @@
 // Side-effect import: must run before any code path that strips .ts types.
 import '../suppressStripTypesWarning.js'
 
+import {execFileSync} from 'node:child_process'
 import {createHash} from 'node:crypto'
 import {
   appendFileSync,
@@ -39,6 +40,7 @@ import {
   CMD_CONFIG_LIST,
   CMD_CONFIG_SET,
   CMD_DEPLOY_ABORT,
+  CMD_DEPLOY_BUILD,
   CMD_DEPLOY_CHECKSUM,
   CMD_DEPLOY_DONE,
   CMD_DEPLOY_ERASE,
@@ -50,6 +52,8 @@ import {
   CMD_EXIT,
   CMD_FS_GET,
   CMD_HELLO,
+  CMD_KV_DELETE,
+  CMD_KV_SET,
   CMD_LOG_RESET,
   CMD_RESTART,
   CMD_RUNTIME_PAUSE,
@@ -682,6 +686,62 @@ function handleDeployAbort(): void {
   sendOk()
 }
 
+/** Adopt a streamed `.tgz` as the live app (mirrors the firmware
+ * MIK_CMD_DEPLOY_BUILD / mik__ota_adopt_build path). The build was streamed
+ * via PUT("/.build.tgz") + chunks into <stagingDir>/.build.tgz; here we
+ * verify its checksum, unpack it, and swap its `app/` member into the live app
+ * dir. The sim has no persistent OTA rollback state, so this just installs.
+ * Payload: u16le checksum_len | checksum. */
+function handleDeployBuild(payload: Buffer): void {
+  clearPut()
+  if (payload.length < 2) {
+    sendErr('build header too short')
+    return
+  }
+  const chkLen = payload.readUInt16LE(0)
+  const checksum = payload.subarray(2, 2 + chkLen).toString('utf-8')
+
+  const tgzPath = pathlib.join(stagingDir, '.build.tgz')
+  if (!existsSync(tgzPath)) {
+    sendErr('build not staged')
+    return
+  }
+  if (checksum) {
+    const got = createHash('sha256').update(readFileSync(tgzPath)).digest('hex')
+    if (got !== checksum) {
+      sendErr('checksum mismatch (corrupt build)')
+      return
+    }
+  }
+
+  const unpackDir = pathlib.join(stagingDir, '.build-unpack')
+  rmSync(unpackDir, {force: true, recursive: true})
+  ensureDir(unpackDir)
+  try {
+    execFileSync('tar', ['-xzf', tgzPath, '-C', unpackDir])
+  } catch {
+    sendErr('unpack build')
+    return
+  }
+
+  const stagedApp = pathlib.join(unpackDir, 'app')
+  if (!existsSync(stagedApp)) {
+    sendErr('build missing app/')
+    return
+  }
+
+  // Atomic-ish swap: app → old, unpacked app/ → app, then drop staging.
+  rmSync(oldDir, {force: true, recursive: true})
+  if (existsSync(appDir)) {
+    renameSync(appDir, oldDir)
+  }
+  ensureDir(pathlib.dirname(appDir))
+  renameSync(stagedApp, appDir)
+  rmSync(stagingDir, {force: true, recursive: true})
+  rmSync(oldDir, {force: true, recursive: true})
+  sendOk()
+}
+
 // ── Config handlers ─────────────────────────────────────────────────
 
 function handleConfigList(): void {
@@ -723,6 +783,66 @@ function handleConfigDelete(payload: Buffer): void {
     const {[key]: _, ...rest} = store.entries
     store.entries = rest
     writeStore(configPath, store)
+  }
+  send(MSG_OK, Buffer.from([existed ? 1 : 0]))
+}
+
+// ── KV provisioning handlers ────────────────────────────────────────
+// Mirror the firmware's kv namespaces: values are CBOR-encoded blobs,
+// persisted where the sim's `mikro/kv/nvs` builtin reads them (nvs_kv.json
+// for mik.kv, nvs_sys.json for mik.sys, base64(cbor) per key — see
+// devRunner's nvs_kv RPC handlers). A leading namespace byte selects the
+// store (0 = kv, 1 = sys), matching the firmware handler.
+
+interface NvsKvStore {
+  entries: Record<string, string>
+}
+
+function kvStorePath(ns: number): string {
+  return pathlib.join(mikroDir, ns === 1 ? 'nvs_sys.json' : 'nvs_kv.json')
+}
+
+function readKvStore(path: string): NvsKvStore {
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8')) as NvsKvStore
+  } catch {
+    return {entries: {}}
+  }
+}
+
+function handleKvSet(payload: Buffer): void {
+  const ns = payload[0]!
+  if (ns > 1) {
+    sendErr('unknown kv namespace')
+    return
+  }
+  const keyLen = payload.readUInt16LE(1)
+  const key = payload.subarray(3, 3 + keyLen).toString('utf-8')
+  const valLen = payload.readUInt16LE(3 + keyLen)
+  const value = payload.subarray(5 + keyLen, 5 + keyLen + valLen).toString('utf-8')
+
+  const path = kvStorePath(ns)
+  const store = readKvStore(path)
+  store.entries[key] = Buffer.from(encodeCbor(value)).toString('base64')
+  writeFileSync(path, JSON.stringify(store, null, 2) + '\n')
+  sendOk()
+}
+
+function handleKvDelete(payload: Buffer): void {
+  const ns = payload[0]!
+  if (ns > 1) {
+    sendErr('unknown kv namespace')
+    return
+  }
+  const keyLen = payload.readUInt16LE(1)
+  const key = payload.subarray(3, 3 + keyLen).toString('utf-8')
+
+  const path = kvStorePath(ns)
+  const store = readKvStore(path)
+  const existed = key in store.entries
+  if (existed) {
+    const {[key]: _, ...rest} = store.entries
+    writeFileSync(path, JSON.stringify({entries: rest}, null, 2) + '\n')
   }
   send(MSG_OK, Buffer.from([existed ? 1 : 0]))
 }
@@ -976,8 +1096,8 @@ async function handleFrame(frame: Frame): Promise<void> {
     return
   }
 
-  // Config commands (0x40-0x42)
-  if (type >= 0x40 && type <= 0x42) {
+  // Config + kv provisioning commands (0x40-0x44)
+  if (type >= 0x40 && type <= 0x44) {
     switch (type) {
       case CMD_CONFIG_LIST:
         handleConfigList()
@@ -987,6 +1107,12 @@ async function handleFrame(frame: Frame): Promise<void> {
         break
       case CMD_CONFIG_DELETE:
         handleConfigDelete(payload)
+        break
+      case CMD_KV_SET:
+        handleKvSet(payload)
+        break
+      case CMD_KV_DELETE:
+        handleKvDelete(payload)
         break
     }
     return
@@ -1039,6 +1165,9 @@ async function handleFrame(frame: Frame): Promise<void> {
       // File logging isn't wired into the simulator yet, so there's nothing
       // to clear. Surface a clear error instead of timing out.
       sendErr('log reset: not supported in simulator')
+      break
+    case CMD_DEPLOY_BUILD:
+      handleDeployBuild(payload)
       break
   }
 }

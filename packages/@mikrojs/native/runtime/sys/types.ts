@@ -113,7 +113,27 @@ export declare const board: BoardInfo
  * yields the original 6 MAC bytes. On host/Node builds, derived from
  * the hostname via FNV-1a hash (stable across restarts on the same
  * machine). */
+/** Bytes on the app filesystem, the partition an OTA build is downloaded and
+ *  staged onto. Undefined when the platform cannot report it. */
+export declare function storageUsage(): {total: number; used: number; free: number} | undefined
+
 export declare const deviceId: string
+
+/** A device name paired with the revision that orders renames. Both sides bump
+ *  the revision on every deliberate rename, so whichever is higher wins without
+ *  needing a clock the device may not have. */
+export interface DeviceName {
+  rev: number
+  /** Absent when the name is cleared, or never set. */
+  name?: string
+}
+
+/** The device's name and its revision; revision 0 with no name means never
+ *  named, and callers fall back to {@link deviceId}. */
+export declare function deviceName(): DeviceName
+
+/** Persist a name pair, e.g. one adopted from a registry check-in. */
+export declare function setDeviceName(value: DeviceName): void
 
 /** Firmware build identifiers */
 export declare const firmware: {
@@ -123,6 +143,8 @@ export declare const firmware: {
   readonly date: string
   /** ESP-IDF version, undefined on host */
   readonly idfVersion: string | undefined
+  /** QuickJS bytecode version the linked engine reads/writes */
+  readonly bytecodeVersion: number
 }
 
 /** Why the device last reset. A clean `restart()` reports `'software'`;

@@ -8,6 +8,9 @@ description: 'System utilities: memory, uptime, GC, restart'
 ```ts twoslash
 import {
   memoryUsage,
+  storageUsage,
+  deviceName,
+  setDeviceName,
   uptime,
   gc,
   restart,
@@ -40,6 +43,23 @@ const mem = memoryUsage()
 const free = mem.heapTotal - mem.heapUsed
 console.log('Free memory: %dKB', free / 1000)
 ```
+
+### storageUsage()
+
+```ts
+function storageUsage(): {total: number; used: number; free: number} | undefined
+```
+
+Bytes on the app filesystem — the partition an over-the-air build is downloaded and staged onto. Returns `undefined` when the platform cannot report it.
+
+```ts twoslash
+import {storageUsage} from 'mikro/sys'
+// ---cut---
+const storage = storageUsage()
+if (storage) console.log('Free storage: %dKB', storage.free / 1000)
+```
+
+An OTA check-in can report `free` so the registry withholds builds that would not fit; see the [over-the-air updates guide](/ota).
 
 ### uptime()
 
@@ -172,11 +192,17 @@ console.log('Build: %s', firmware.hash)
 console.log('Date: %s', firmware.date)
 ```
 
-| Property     | Description                                 |
-| ------------ | ------------------------------------------- |
-| `hash`       | ELF SHA256 hash on ESP32, `"dev"` on host   |
-| `date`       | Build date and time                         |
-| `idfVersion` | ESP-IDF version string, `undefined` on host |
+| Property          | Description                                  |
+| ----------------- | -------------------------------------------- |
+| `hash`            | ELF SHA256 hash on ESP32, `"dev"` on host    |
+| `date`            | Build date and time                          |
+| `idfVersion`      | ESP-IDF version string, `undefined` on host  |
+| `bytecodeVersion` | QuickJS bytecode version this firmware loads |
+
+`bytecodeVersion` is what an app build has to match to run on this device: bytecode is not
+portable across QuickJS versions, so a build compiled for a different one cannot be loaded.
+Send it with [`version`](#version) on an OTA check-in so the registry only offers builds this
+device can actually run. See the [Over-the-air Updates guide](/ota).
 
 ### version
 
@@ -208,6 +234,29 @@ console.log('Device: %s', deviceId)
 ```
 
 On ESP32, derived from the chip's base MAC address. The encoding is lossless: decoding the 10 characters yields the original 6 MAC bytes. On host/Node builds, derived from the hostname (stable across restarts on the same machine).
+
+### deviceName()
+
+```ts
+function deviceName(): {rev: number; name?: string}
+```
+
+The name the device carries for itself, set with [`mikro name`](/cli#mikro-name) or at enrollment, together with the revision that orders renames. Revision `0` with no name means the device has never been named — fall back to [`deviceId`](#deviceid).
+
+```ts twoslash
+import {deviceId, deviceName} from 'mikro/sys'
+// ---cut---
+const {name} = deviceName()
+console.log('I am %s', name ?? deviceId)
+```
+
+### setDeviceName(value)
+
+```ts
+function setDeviceName(value: {rev: number; name?: string}): void
+```
+
+Stores a name pair, replacing any previous one. This is an unconditional write; it does not compare revisions. Mainly for adopting a name handed down by a registry at check-in: the registry arbitrates, comparing the revision the device reports against its own, and the device stores whatever comes back. Every deliberate rename bumps `rev` by one, so the two sides converge without needing a clock the device may not have. Omit `name` to record that the name was cleared. The revision still has to move, or the old name comes back on the next sync.
 
 ### setSystemTime(timestamp)
 

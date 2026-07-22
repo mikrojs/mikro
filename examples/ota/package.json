@@ -1,0 +1,39 @@
+{
+  "name": "mikrojs-ota",
+  "version": "0.0.7",
+  "private": true,
+  "description": "Mikro.js over-the-air update example",
+  "homepage": "https://github.com/mikrojs/mikro#readme",
+  "bugs": {
+    "url": "https://github.com/mikrojs/mikro/issues"
+  },
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mikrojs/mikro.git"
+  },
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "dev": "mikro dev app/main.ts",
+    "registry": "tsx watch registry/server.ts"
+  },
+  "dependencies": {
+    "@mikrojs/registry": "workspace:*",
+    "mikro": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:node24",
+    "tsx": "catalog:"
+  },
+  "mikro": {
+    "predeploy": [
+      "tsc --noEmit --pretty"
+    ]
+  }
+}

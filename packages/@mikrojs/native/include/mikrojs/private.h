@@ -340,10 +340,21 @@ void mik__repl_set_paused(bool paused);
  * log.txt, and replies MIK_MSG_OK. No-op (still OK) when file logging
  * is disabled. */
 #define MIK_CMD_LOG_RESET 0x2C
+/* Adopt a streamed .tgz build as the live app via the OTA install path,
+ * establishing the rollback baseline (.ota-last-good.tgz). The build must
+ * already be staged via DEPLOY_PUT("/.build.tgz", size) + PUT_CHUNK frames.
+ * Payload: u16le checksum_len | checksum bytes. */
+#define MIK_CMD_DEPLOY_BUILD 0x2D
 
 #define MIK_CMD_CONFIG_LIST 0x40
 #define MIK_CMD_CONFIG_SET 0x41
 #define MIK_CMD_CONFIG_DELETE 0x42
+/* KV provisioning: write/delete a `mikro/kv/nvs` string value over serial
+ * (stored as a CBOR text-string blob in the "mik.kv" namespace, the same
+ * encoding the native kv module uses). Device provisioning state, unlike
+ * env config it is never synced or cleared by deploys. */
+#define MIK_CMD_KV_SET 0x43
+#define MIK_CMD_KV_DELETE 0x44
 
 /* Env entry flags */
 #define MIK_ENV_FLAG_SECRET 0x01

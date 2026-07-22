@@ -1,5 +1,3 @@
-import * as pathlib from 'node:path'
-
 import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
@@ -13,21 +11,20 @@ import {lastValueFrom, tap} from 'rxjs'
 import {DevicePicker} from '../components/DevicePicker.js'
 import type {PortInfo} from '../hooks/useDevices.js'
 import {agentEmit, agentResult, isAgentMode} from '../lib/agent.js'
-import {build} from '../lib/build.js'
-import {collectFiles, loadEnvFiles, validateNvsKeys} from '../lib/deploy.js'
+import {loadEnvFiles, validateNvsKeys} from '../lib/deploy.js'
 import {formatDeployEvent} from '../lib/deployProgress.js'
 import {FirmwareIncompatibleError} from '../lib/firmwareCompat.js'
 import {flashFirmware} from '../lib/flashFirmware.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
 import {detectPreferredPm, rerunCommand} from '../lib/pkgManager.js'
 import {port} from '../lib/portValueParser.js'
-import {getMikroDir, resolveProjectRoot} from '../lib/projectRoot.js'
-import {resolveEntry} from '../lib/resolveEntry.js'
+import {resolveProjectRoot} from '../lib/projectRoot.js'
 import {getPredeployCommands, runHooks} from '../lib/runHooks.js'
 import {FirmwareGate} from '../lib/serial/FirmwareGate.js'
 import {InkReplConsole} from '../lib/serial/InkReplConsole.js'
 import {openSession} from '../lib/serial/openSession.js'
 import type {ConnectReplOptions, ReplSession} from '../lib/session.js'
+import {packProject} from './ota/pack.js'
 
 export const args = command(
   'deploy',
@@ -42,16 +39,6 @@ export const args = command(
     console: optional(
       flag('--console', {
         description: message`Attach console after deploy and restart device`,
-      }),
-    ),
-    erase: optional(
-      flag('-e', '--erase', {
-        description: message`Erase current app before uploading`,
-      }),
-    ),
-    force: optional(
-      flag('-f', '--force', {
-        description: message`Force full upload, ignoring cached checksums`,
       }),
     ),
     env: optional(
@@ -85,7 +72,6 @@ export const args = command(
         description: message`Minify level: default or max`,
       }),
     ),
-    noBytecode: optional(flag('--no-bytecode', {description: message`Skip bytecode compilation`})),
     noHooks: optional(
       flag('--no-hooks', {
         description: message`Skip mikro.predeploy hooks from package.json`,
@@ -120,15 +106,6 @@ export async function run(
   config: InferValue<typeof args>,
   options: {compat?: ConnectReplOptions['compat']} = {},
 ): Promise<{session: ReplSession; devicePath: string} | null> {
-  const entry = resolveEntry(config.entry)
-  const buildDir = pathlib.join(getMikroDir(), 'build')
-  const doMinify = !config.noMinify
-  const minifier = parseMinifier(config.minifier)
-  const minifyLevel = parseMinifyLevel(config.minifyLevel)
-  const logLevel = parseLogLevel(config.logLevel) ?? 'warn'
-  const doBytecode = !config.noBytecode
-  const doErase = config.erase === true
-  const doForce = config.force === true
   const doRestart = !config.noRestart
   const jsonOutput = config.json === true || isAgentMode(config.agent)
   // eslint-disable-next-line no-console
@@ -154,24 +131,21 @@ export async function run(
     }
   }
 
-  // Build
-  log('Building…')
-  await lastValueFrom(
-    build(entry, buildDir, {
-      minify: doMinify,
-      bytecode: doBytecode,
-      minifier,
-      minifyLevel,
-      logLevel,
-      env: 'production',
-    }),
-    {defaultValue: undefined},
-  )
-
-  // Collect files
-  const files = await collectFiles(buildDir)
-  const totalBytes = files.reduce((sum, f) => sum + f.data.length, 0)
-  log(`Built ${files.length} file(s), ${totalBytes} bytes total`)
+  // Build + pack into an OTA build. A deploy installs the whole `.tgz`
+  // through the OTA path so it also establishes the rollback baseline
+  // (.ota-last-good.tgz). `mikro dev` keeps the per-file incremental path.
+  const artifact = await packProject({
+    entry: config.entry,
+    log,
+    minify: !config.noMinify,
+    minifier: parseMinifier(config.minifier),
+    minifyLevel: parseMinifyLevel(config.minifyLevel),
+    // deploy is a production deployment, so it strips console.debug/log/info
+    // unless asked otherwise. Without the fallback the shared builder's own
+    // default ('debug') applies and every call is retained.
+    logLevel: parseLogLevel(config.logLevel) ?? 'warn',
+  })
+  log(`Packed build: ${artifact.size} bytes`)
 
   // Load env vars
   const envVars = [
@@ -206,17 +180,14 @@ export async function run(
   try {
     const last = await lastValueFrom(
       session
-        .deploy({
-          files,
+        .deployBuild(artifact.outPath, artifact.checksum, {
           envVars,
-          erase: doErase,
-          force: doForce,
           restart: doRestart,
         })
         .pipe(
           tap((event) => {
             if (jsonOutput) {
-              if (event.type === 'uploading' || event.type === 'checking') {
+              if (event.type === 'uploading') {
                 agentEmit({
                   type: `deploy_${event.type}`,
                   file: event.file,
@@ -255,8 +226,11 @@ export async function run(
       'deploy',
       {
         device: devicePath,
-        files: files.map((f) => ({path: f.path, size: f.data.length})),
-        totalBytes,
+        build: {
+          path: artifact.outPath,
+          checksum: artifact.checksum,
+          size: artifact.size,
+        },
       },
       [
         {command: `mikro console -p ${devicePath}`, description: 'Connect to device console'},
@@ -265,7 +239,7 @@ export async function run(
       ],
     )
   } else {
-    log(`Deployed ${files.length} file(s) to ${devicePath}`)
+    log(`Deployed build (${artifact.size} bytes) to ${devicePath}`)
   }
 
   if (config.console) {

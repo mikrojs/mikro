@@ -21,6 +21,41 @@
 
 static const char* TAG = "mikrojs";
 
+/* Error handler armed during a normal boot: when the app hits a fatal JS error
+ * (uncaught exception or unhandled rejection) while running an OTA trial build,
+ * flag the trial so the next reconcile reverts it. A JS error reboots as a clean
+ * software reset, which the trial state machine can't otherwise tell from a
+ * healthy restart. No-op outside a trial. */
+static void ota_trial_error_handler(JSContext* ctx, JSValue error, void* /*opaque*/) {
+    if (!mik__ota_in_trial()) {
+        return;
+    }
+    char detail[160] = "uncaught error";
+    if (JS_IsObject(error)) {
+        JSValue name_v = JS_GetPropertyStr(ctx, error, "name");
+        JSValue msg_v = JS_GetPropertyStr(ctx, error, "message");
+        const char* name = JS_ToCString(ctx, name_v);
+        const char* msg = JS_ToCString(ctx, msg_v);
+        if (name && name[0] && msg && msg[0]) {
+            snprintf(detail, sizeof(detail), "%s: %s", name, msg);
+        } else if (msg && msg[0]) {
+            snprintf(detail, sizeof(detail), "%s", msg);
+        } else if (name && name[0]) {
+            snprintf(detail, sizeof(detail), "%s", name);
+        }
+        /* A throwing getter (or a toString that throws) leaves an exception
+         * pending on ctx that nothing downstream would ever clear. */
+        if (!name || !msg) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
+        }
+        if (name) JS_FreeCString(ctx, name);
+        if (msg) JS_FreeCString(ctx, msg);
+        JS_FreeValue(ctx, name_v);
+        JS_FreeValue(ctx, msg_v);
+    }
+    mik__ota_note_trial_failure(detail);
+}
+
 /* Apply the MIK_LOG_LEVEL env var (if set in NVS) to our log tags.
  *
  * The firmware compiles in all levels up to DEBUG
@@ -163,8 +198,9 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
         return true;
     }
 
-    /* Deploy commands (0x20-0x27) */
-    if (cmd_type >= MIK_CMD_DEPLOY_PUT && cmd_type <= MIK_CMD_DEPLOY_CHECKSUM) {
+    /* Deploy commands (0x20-0x27) plus the build-install command (0x2D) */
+    if ((cmd_type >= MIK_CMD_DEPLOY_PUT && cmd_type <= MIK_CMD_DEPLOY_CHECKSUM) ||
+        cmd_type == MIK_CMD_DEPLOY_BUILD) {
         return mik__handle_deploy_command(transport, cmd_type, payload_len);
     }
 
@@ -181,8 +217,8 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
         return true;
     }
 
-    /* Config commands (0x40-0x42) */
-    if (cmd_type >= MIK_CMD_CONFIG_LIST && cmd_type <= MIK_CMD_CONFIG_DELETE) {
+    /* Config + kv provisioning commands (0x40-0x44) */
+    if (cmd_type >= MIK_CMD_CONFIG_LIST && cmd_type <= MIK_CMD_KV_DELETE) {
         return mik__handle_config_command(transport, cmd_type, payload_len);
     }
 
@@ -290,6 +326,20 @@ void MIK_Main(void) {
 
     /* Recover from incomplete deploys */
     MIK_DeployRecover();
+
+    /* Reconcile OTA state before the JS app loads: reflash guard, trial
+     * verdict, and a deferred clean-heap install of a staged build (may
+     * restart). Runs after DeployRecover so an interrupted unpack's staging
+     * dir is already cleaned.
+     *
+     * Skipped in safe mode. The install budget bounds a crashing install, but
+     * safe mode is what a developer reaches for while it is still burning
+     * through that budget, and reconcile runs long before the REPL comes up:
+     * without this, the recovery window opens onto an install that panics
+     * before anything can be typed into it. */
+    if (!safe_mode) {
+        mik__ota_boot_reconcile();
+    }
 
     /* Load app config (mikro.config.json) if present */
     MIKConfig app_config;
@@ -565,13 +615,24 @@ void MIK_Main(void) {
         if (safe_mode) {
             ESP_LOGW(TAG, "Safe mode: skipping entry point %s", app_config.entry_point);
         } else {
-            int rc = MIK_RunEntry(mik_rt, app_config.entry_point);
+            /* Catch async fatals (unhandled rejections) during an OTA trial. */
+            MIK_SetErrorHandler(mik_rt, ota_trial_error_handler, nullptr);
+            char entry_err[160] = {0};
+            int rc = MIK_RunEntryErr(mik_rt, app_config.entry_point, entry_err, sizeof(entry_err));
             if (rc == -EINVAL) {
                 ESP_LOGW(TAG, "No entry point configured (no \"main\" field in package.json)");
             } else if (rc == -ENOENT) {
                 ESP_LOGW(TAG, "Entry point not found: %s", app_config.entry_point);
             } else if (rc == -EFAULT) {
                 ESP_LOGE(TAG, "Failed to evaluate %s", app_config.entry_point);
+                /* A synchronous top-level throw doesn't reach the rejection handler
+                 * above. If this is a trial build, flag it and arm the panic restart
+                 * so reconcile reverts on the next (clean-looking) boot. */
+                if (mik__ota_in_trial()) {
+                    mik__ota_note_trial_failure(entry_err[0] ? entry_err
+                                                             : "entry failed to evaluate");
+                    MIK_Stop(mik_rt);
+                }
             }
         }
     }

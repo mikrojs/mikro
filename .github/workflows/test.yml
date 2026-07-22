@@ -27,6 +27,9 @@ jobs:
       - run: pnpm build:native
       - run: pnpm test:js -- --coverage --coverage.reporter=json-summary --coverage.reporter=text
       - run: pnpm test:sim
+      # The unpack path parses bytes served by the registry, so it is the one
+      # place a hostile build reaches the device before any JS runs.
+      - run: pnpm test:ota-unpack
 
       - name: Coverage summary
         if: always()

@@ -1,19 +1,19 @@
 import {describe, expect, it} from 'vitest'
 
+import {validateDeviceName} from '../deviceName.js'
 import {suggestDeviceName} from '../suggestName.js'
-
-// The alias name validator (kept in sync with deviceAliases.ts).
-const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 describe('suggestDeviceName', () => {
   it('is deterministic for a given seed', () => {
     expect(suggestDeviceName('2m68224yym')).toBe(suggestDeviceName('2m68224yym'))
   })
 
-  it('produces a color-animal name that passes the alias validator', () => {
+  // Against the real validator rather than a copy of its regex: a derived name
+  // that `mikro name set` would reject is only useful for producing errors.
+  it('produces a color-animal name the device-name validator accepts', () => {
     const name = suggestDeviceName('2m68224yym')
     expect(name).toMatch(/^[a-z]+-[a-z]+$/)
-    expect(name).toMatch(NAME_RE)
+    expect(validateDeviceName(name)).toEqual({ok: true})
   })
 
   it('varies across different seeds', () => {

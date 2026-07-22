@@ -6,10 +6,10 @@ import {SerialPort} from 'serialport'
 
 import {useDevices} from '../hooks/useDevices.js'
 import {agentResult, isAgentMode} from '../lib/agent.js'
-import {deviceGeneratedName, getDeviceAlias} from '../lib/deviceAliases.js'
-import {getCachedChip, getCachedDeviceId} from '../lib/deviceCache.js'
+import {getCachedChip, getCachedDeviceId, getCachedName} from '../lib/deviceCache.js'
 import {deviceIdFromSerial} from '../lib/deviceId.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
+import {deviceDisplayName, deviceGeneratedName} from '../lib/deviceName.js'
 
 export const args = command(
   'ls',
@@ -26,16 +26,19 @@ export async function run(config: InferValue<typeof args>) {
   if (config.json === true || isAgentMode(config.agent)) {
     const devices = ports.map((d) => ({
       ...d,
-      // `name` is the intrinsic generated name; `alias` is the optional override.
-      // They stay distinct here — `name` does not change when an alias is set.
+      // `name` is the intrinsic generated name; `deviceName` is the optional
+      // name the device reported for itself. They stay distinct here — `name`
+      // does not change when a name is set on the device.
       name: deviceGeneratedName(d.serialNumber),
-      alias: getDeviceAlias(d.serialNumber),
+      deviceName: getCachedName(d.serialNumber),
       deviceId: deviceIdFromSerial(d.serialNumber) ?? getCachedDeviceId(d.serialNumber),
       chip: getCachedChip(d.serialNumber),
     }))
     const nextActions = devices.map((d) => ({
-      command: `mikro console -p ${d.alias ?? d.path}`,
-      description: `Connect to ${d.alias ?? d.name ?? 'device'} (${d.serialNumber})`,
+      command: `mikro console -p ${d.deviceName ?? d.path}`,
+      // Never the derived `name`: `-p` deliberately does not resolve one, so
+      // naming it here hands the reader a token that cannot be used.
+      description: `Connect to ${deviceDisplayName(d.serialNumber, d.deviceId)} (${d.serialNumber})`,
     }))
     agentResult('ls', devices, [
       ...nextActions,

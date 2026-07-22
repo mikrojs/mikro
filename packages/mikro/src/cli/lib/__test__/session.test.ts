@@ -1,3 +1,7 @@
+import {mkdtemp, rm, writeFile} from 'node:fs/promises'
+import {tmpdir} from 'node:os'
+import * as pathlib from 'node:path'
+
 import {encode as encodeCbor} from 'cbor2'
 import pkg from 'mikro/package.json' with {type: 'json'}
 import {firstValueFrom, lastValueFrom, Subject} from 'rxjs'
@@ -8,7 +12,10 @@ import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {
   buildFrame,
   CMD_DEPLOY_ABORT,
+  CMD_DEPLOY_BUILD,
   CMD_DEPLOY_CHECKSUM,
+  CMD_DEPLOY_PUT,
+  CMD_DEPLOY_PUT_CHUNK,
   CMD_DIRECTIVE,
   CMD_EVAL,
   CMD_EXIT,
@@ -387,6 +394,128 @@ describe('session', () => {
       session.close()
     })
 
+    it('deployBuild streams the tgz then adopts it', async () => {
+      const dir = await mkdtemp(pathlib.join(tmpdir(), 'mikro-build-'))
+      const tgzPath = pathlib.join(dir, 'app.tgz')
+      await writeFile(tgzPath, Buffer.from('fake-tgz-bytes'))
+
+      try {
+        const {transport, written, sendFrame} = createMockTransport()
+        const session = connectRepl(transport)
+        session.messages$.subscribe(() => {})
+
+        sendReady(sendFrame)
+
+        // Reply OK to every command (pause, put-begin, put-chunk, build, resume).
+        let lastSeen = 0
+        const autoRespond = setInterval(() => {
+          while (lastSeen < written.length) {
+            if (parseWrittenType(written[lastSeen]!) !== CMD_RESTART) sendFrame(MSG_OK)
+            lastSeen++
+          }
+        }, 5)
+
+        const last = await lastValueFrom(
+          session.deployBuild(tgzPath, 'a'.repeat(64), {restart: false}),
+        )
+
+        clearInterval(autoRespond)
+        expect(last.type).to.equal('complete')
+        if (last.type === 'complete') expect(last.deployed).to.be.true
+
+        const types = written.map(parseWrittenType)
+        expect(types).to.deep.equal([
+          CMD_RUNTIME_PAUSE,
+          CMD_DEPLOY_PUT,
+          CMD_DEPLOY_PUT_CHUNK,
+          CMD_DEPLOY_BUILD,
+          CMD_RUNTIME_RESUME,
+        ])
+
+        // PUT-begin targets the build staging name; BUILD carries the checksum.
+        const putPayload = Buffer.from(written[1]!.subarray(HEADER_SIZE))
+        const nameLen = putPayload.readUInt16LE(0)
+        expect(putPayload.subarray(2, 2 + nameLen).toString('utf-8')).to.equal('/.build.tgz')
+        const buildPayload = Buffer.from(written[3]!.subarray(HEADER_SIZE))
+        const chkLen = buildPayload.readUInt16LE(0)
+        expect(buildPayload.subarray(2, 2 + chkLen).toString('utf-8')).to.equal('a'.repeat(64))
+
+        session.close()
+      } finally {
+        await rm(dir, {recursive: true, force: true})
+      }
+    })
+
+    it('deployBuild with restart:true sends RESTART, not RESUME', async () => {
+      const dir = await mkdtemp(pathlib.join(tmpdir(), 'mikro-build-'))
+      const tgzPath = pathlib.join(dir, 'app.tgz')
+      await writeFile(tgzPath, Buffer.from('fake-tgz-bytes'))
+
+      try {
+        const {transport, written, sendFrame} = createMockTransport()
+        const session = connectRepl(transport)
+        session.messages$.subscribe(() => {})
+
+        sendReady(sendFrame)
+
+        let lastSeen = 0
+        const autoRespond = setInterval(() => {
+          while (lastSeen < written.length) {
+            if (parseWrittenType(written[lastSeen]!) !== CMD_RESTART) sendFrame(MSG_OK)
+            lastSeen++
+          }
+        }, 5)
+
+        await lastValueFrom(session.deployBuild(tgzPath, 'b'.repeat(64), {restart: true}))
+
+        clearInterval(autoRespond)
+        const types = written.map(parseWrittenType)
+        expect(types).to.not.include(CMD_RUNTIME_RESUME)
+        expect(types[types.length - 1]).to.equal(CMD_RESTART)
+
+        session.close()
+      } finally {
+        await rm(dir, {recursive: true, force: true})
+      }
+    })
+
+    it('deployBuild rejects on MSG_ERR from adopt', async () => {
+      const dir = await mkdtemp(pathlib.join(tmpdir(), 'mikro-build-'))
+      const tgzPath = pathlib.join(dir, 'app.tgz')
+      await writeFile(tgzPath, Buffer.from('fake-tgz-bytes'))
+
+      try {
+        const {transport, written, sendFrame} = createMockTransport()
+        const session = connectRepl(transport)
+        session.messages$.subscribe(() => {})
+
+        sendReady(sendFrame)
+
+        // OK for pause/put/chunk; ERR for the BUILD adopt; OK for the
+        // resume issued by the finally block.
+        let lastSeen = 0
+        const autoRespond = setInterval(() => {
+          while (lastSeen < written.length) {
+            const type = parseWrittenType(written[lastSeen]!)
+            if (type === CMD_DEPLOY_BUILD) sendFrame(MSG_ERR, 'corrupt build')
+            else if (type !== CMD_RESTART) sendFrame(MSG_OK)
+            lastSeen++
+          }
+        }, 5)
+
+        await expect(
+          lastValueFrom(session.deployBuild(tgzPath, 'c'.repeat(64), {restart: false})),
+        ).rejects.toThrow('corrupt build')
+
+        clearInterval(autoRespond)
+        expect(written.map(parseWrittenType)).to.include(CMD_RUNTIME_RESUME)
+
+        session.close()
+      } finally {
+        await rm(dir, {recursive: true, force: true})
+      }
+    })
+
     it('config.list resolves with entries', async () => {
       const {transport, sendFrame} = createMockTransport()
       const session = connectRepl(transport)
@@ -432,6 +561,49 @@ describe('session', () => {
       await session.config.delete('KEY')
 
       session.close()
+    })
+  })
+
+  // Everything downstream — the registry sync rules, the re-seed guard in
+  // postFlash, the revision `/name set` writes — reads its input from here, and
+  // none of it was exercised against a real MSG_READY carrying a name.
+  describe('ready frame name pair', () => {
+    function readyWith(name?: string) {
+      const {transport, sendFrame} = createMockTransport()
+      const session = connectRepl(transport, {compat: 'report'})
+      session.messages$.subscribe(() => {})
+      const ready = firstValueFrom(session.awaitReady$(1000))
+      const info: Record<string, string> = {chip: 'test', id: '0', v: CLI_VERSION}
+      if (name !== undefined) info.name = name
+      sendFrame(MSG_READY, Buffer.from(encodeCbor(info)))
+      return ready
+    }
+
+    it('decodes a name and its revision', async () => {
+      const ready = await readyWith('[7,"kitchen"]')
+      expect(ready.name).to.equal('kitchen')
+      expect(ready.nameRev).to.equal(7)
+      expect(ready.nameCorrupt).to.be.undefined
+    })
+
+    // Firmware predating name sync sends no name key at all. That is rev 0 and
+    // never-named, which is what lets a flash seed one.
+    it('treats an absent name field as never named', async () => {
+      const ready = await readyWith()
+      expect(ready.name).to.be.undefined
+      expect(ready.nameRev).to.equal(0)
+      expect(ready.nameCorrupt).to.be.undefined
+    })
+
+    it('keeps the revision of a cleared name so the clear can propagate', async () => {
+      const ready = await readyWith('[4]')
+      expect(ready.name).to.be.undefined
+      expect(ready.nameRev).to.equal(4)
+    })
+
+    it('flags an unreadable pair rather than reporting revision 0', async () => {
+      const ready = await readyWith('not json{')
+      expect(ready.nameCorrupt).to.equal(true)
     })
   })
 

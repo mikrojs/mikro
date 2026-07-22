@@ -76,10 +76,28 @@ export const CMD_FS_GET = 0x2b
  *  log.txt, and replies MSG_OK. No-op (still OK) when file logging is
  *  disabled. */
 export const CMD_LOG_RESET = 0x2c
+/** Adopt a streamed `.tgz` build as the live app via the OTA install path,
+ *  establishing the rollback baseline (`.ota-last-good.tgz`). The build must
+ *  already be staged via CMD_DEPLOY_PUT('/.build.tgz', size) +
+ *  CMD_DEPLOY_PUT_CHUNK frames. Payload: u16le checksum_len | checksum. */
+export const CMD_DEPLOY_BUILD = 0x2d
 
 export const CMD_CONFIG_LIST = 0x40
 export const CMD_CONFIG_SET = 0x41
 export const CMD_CONFIG_DELETE = 0x42
+/** KV provisioning: write/delete a kv string value (stored as a CBOR
+ *  text-string blob). A leading namespace byte selects the store:
+ *  0 = "mik.kv" (app data), 1 = "mik.sys" (runtime/provisioning state,
+ *  never synced or cleared by deploys). */
+export const CMD_KV_SET = 0x43
+export const CMD_KV_DELETE = 0x44
+
+/** Namespace selector for CMD_KV_SET / CMD_KV_DELETE. */
+export type KvNamespace = 'kv' | 'sys'
+
+function kvNamespaceByte(namespace: KvNamespace): number {
+  return namespace === 'sys' ? 1 : 0
+}
 
 /** Env entry flags */
 export const ENV_FLAG_SECRET = 0x01
@@ -235,6 +253,17 @@ export function buildDeployChecksumCommand(filename: string, hash: Buffer): Buff
   return buildFrame(CMD_DEPLOY_CHECKSUM, payload)
 }
 
+/** Build DEPLOY_BUILD payload: u16le checksum_len | checksum (lowercase hex).
+ *  The `.tgz` itself is streamed beforehand via CMD_DEPLOY_PUT('/.build.tgz')
+ *  + CMD_DEPLOY_PUT_CHUNK frames; this command adopts it as the live app. */
+export function buildDeployBuildCommand(checksum: string): Buffer {
+  const chkBytes = Buffer.from(checksum, 'utf-8')
+  const payload = Buffer.alloc(2 + chkBytes.length)
+  payload.writeUInt16LE(chkBytes.length, 0)
+  chkBytes.copy(payload, 2)
+  return buildFrame(CMD_DEPLOY_BUILD, payload)
+}
+
 // ── Config command builders ────────────────────────────────────────
 
 export function buildConfigListCommand(): Buffer {
@@ -265,6 +294,33 @@ export function buildConfigDeleteCommand(key: string): Buffer {
   payload.writeUInt16LE(keyBytes.length, 0)
   keyBytes.copy(payload, 2)
   return buildFrame(CMD_CONFIG_DELETE, payload)
+}
+
+/** Build KV_SET payload: u8 ns | u16le key_len | key | u16le val_len | value */
+export function buildKvSetCommand(key: string, value: string, namespace: KvNamespace): Buffer {
+  const keyBytes = Buffer.from(key, 'utf-8')
+  const valBytes = Buffer.from(value, 'utf-8')
+  const payload = Buffer.alloc(1 + 2 + keyBytes.length + 2 + valBytes.length)
+  let offset = 0
+  payload[offset++] = kvNamespaceByte(namespace)
+  payload.writeUInt16LE(keyBytes.length, offset)
+  offset += 2
+  keyBytes.copy(payload, offset)
+  offset += keyBytes.length
+  payload.writeUInt16LE(valBytes.length, offset)
+  offset += 2
+  valBytes.copy(payload, offset)
+  return buildFrame(CMD_KV_SET, payload)
+}
+
+/** Build KV_DELETE payload: u8 ns | u16le key_len | key */
+export function buildKvDeleteCommand(key: string, namespace: KvNamespace): Buffer {
+  const keyBytes = Buffer.from(key, 'utf-8')
+  const payload = Buffer.alloc(1 + 2 + keyBytes.length)
+  payload[0] = kvNamespaceByte(namespace)
+  payload.writeUInt16LE(keyBytes.length, 1)
+  keyBytes.copy(payload, 3)
+  return buildFrame(CMD_KV_DELETE, payload)
 }
 
 // ── Message parsing ────────────────────────────────────────────────
