@@ -305,9 +305,8 @@ once.
 
 The default channel is `main`. A typical flow: enroll test devices on a `beta` channel with
 `mikro ota enroll --channel beta`, serve them with `mikro ota push --release beta`, and once a
-build is proven, graduate that exact build to everyone on `main` with `mikro ota release
-<version> main`. Rolling a channel back to an earlier build is the same command pointed at an
-older version.
+build is proven, graduate that exact build to everyone with `mikro ota release <version> main`.
+Rolling a channel back to an earlier build is the same command pointed at an older version.
 
 ## Limitations
 
