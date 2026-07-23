@@ -4,16 +4,17 @@ import type {InferValue} from '@optique/core/parser'
 
 import * as enrollSub from './ota/enroll.js'
 import * as packSub from './ota/pack.js'
-import * as publishSub from './ota/publish.js'
+import * as pushSub from './ota/push.js'
+import * as releaseSub from './ota/release.js'
 import * as setupSub from './ota/setup.js'
 
 export const args = command(
   'ota',
   objectConstruct({
     action: constant('ota'),
-    sub: orConstruct(packSub.args, publishSub.args, enrollSub.args, setupSub.args),
+    sub: orConstruct(packSub.args, pushSub.args, enrollSub.args, setupSub.args, releaseSub.args),
   }),
-  {description: message`Pack and publish app builds for over-the-air updates`},
+  {description: message`Build, publish, and release app builds for over-the-air updates`},
 )
 
 type Args = InferValue<typeof args>
@@ -24,14 +25,17 @@ export async function run(config: Args): Promise<void> {
     case 'pack':
       await packSub.run(sub)
       break
-    case 'publish':
-      await publishSub.run(sub)
+    case 'push':
+      await pushSub.run(sub)
       break
     case 'enroll':
       await enrollSub.run(sub)
       break
     case 'setup':
       await setupSub.run(sub)
+      break
+    case 'release':
+      await releaseSub.run(sub)
       break
   }
 }

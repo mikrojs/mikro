@@ -35,6 +35,10 @@ async function publish(
   form.set('size', String(bytes.byteLength))
   form.set('firmwareVersion', overrides.firmwareVersion ?? '1.0.0')
   form.set('bytecodeVersion', overrides.bytecodeVersion ?? '13')
+  // A stored build is served to no device until a channel points at it. These
+  // tests assert the check-in offer, so they publish straight to the default
+  // channel with the `channel` field (the wire form of `push --release main`).
+  form.set('channel', overrides.channel ?? 'main')
   form.set('build', new Blob([bytes], {type: 'application/gzip'}), 'app.tgz')
   const res = await registry.fetch(
     new Request(`${BASE}/api/v1/builds`, {

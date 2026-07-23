@@ -82,7 +82,7 @@ async function readProjectName(projectRoot: string): Promise<string> {
 
 /**
  * Build the current project to bytecode and pack it into an OTA `.tgz`.
- * Shared by `mikro ota pack` and `mikro ota publish` (when no build is given).
+ * Shared by `mikro ota pack` and `mikro ota push` (when no `--tarball` is given).
  */
 export async function packProject(options: {
   out?: string

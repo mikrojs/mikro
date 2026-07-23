@@ -40,6 +40,15 @@ describe('buildEnrollRequest', () => {
     })
     expect(JSON.parse(buildEnrollRequest(input, 't').body!)).not.toHaveProperty('app')
   })
+
+  // Absent channel = the registry's default (main).
+  it('includes the channel only when given', () => {
+    expect(JSON.parse(buildEnrollRequest({...input, channel: 'beta'}, 't').body!)).toEqual({
+      deviceId: '0wvfa7cccg',
+      channel: 'beta',
+    })
+    expect(JSON.parse(buildEnrollRequest(input, 't').body!)).not.toHaveProperty('channel')
+  })
 })
 
 describe('buildRemintRequest', () => {

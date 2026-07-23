@@ -2,8 +2,15 @@ import {mkdirSync, readFileSync, renameSync, statSync, writeFileSync} from 'node
 import {createServer, type Server} from 'node:http'
 import * as pathlib from 'node:path'
 
-import type {BuildRecord, DeviceRecord, Registry, RegistryStorage, TokenRecord} from './types.js'
-import {CLIENT_IP_HEADER} from './util.js'
+import type {
+  BuildRecord,
+  ChannelRecord,
+  DeviceRecord,
+  Registry,
+  RegistryStorage,
+  TokenRecord,
+} from './types.js'
+import {channelKey, CLIENT_IP_HEADER} from './util.js'
 
 /** Publish is the only route with a large body; everything else is a small
  *  JSON document. Bodies are buffered before routing, so this is what keeps an
@@ -19,6 +26,7 @@ export function fileStorage(dir: string): RegistryStorage {
   const buildsDir = pathlib.join(dir, 'builds')
   mkdirSync(buildsDir, {recursive: true})
   const buildsPath = pathlib.join(dir, 'builds.json')
+  const channelsPath = pathlib.join(dir, 'channels.json')
   const devicesPath = pathlib.join(dir, 'devices.json')
   const tokensPath = pathlib.join(dir, 'tokens.json')
 
@@ -107,6 +115,14 @@ export function fileStorage(dir: string): RegistryStorage {
     },
     async listBuilds() {
       return Object.values(readIndex<BuildRecord>(buildsPath))
+    },
+    async getChannel(app, channel, bytecodeVersion) {
+      return readIndex<ChannelRecord>(channelsPath)[channelKey(app, channel, bytecodeVersion)]
+    },
+    async putChannel(record) {
+      const index = readIndex<ChannelRecord>(channelsPath)
+      index[channelKey(record.app, record.channel, record.bytecodeVersion)] = record
+      writeIndex(channelsPath, index)
     },
     async getDevice(deviceId) {
       return readIndex<DeviceRecord>(devicesPath)[deviceId]

@@ -42,6 +42,16 @@ export function normalizeUserCode(input: string): string {
 /** Header carrying the peer address, set by the `serve` adapter from the
  *  socket (overwriting anything the client sent). Hosts that do not set it
  *  share one rate-limit bucket. */
+/** The default release channel. A device or build with no channel reads as this,
+ *  so channels are additive: everything predating them is "everyone on `main`". */
+export const DEFAULT_CHANNEL = 'main'
+
+/** Storage key for a channel pointer. `\u0000` cannot occur in an app, channel,
+ *  or number, so the three fields never run together ambiguously. */
+export function channelKey(app: string, channel: string, bytecodeVersion: number): string {
+  return `${app}\u0000${channel}\u0000${bytecodeVersion}`
+}
+
 export const CLIENT_IP_HEADER = 'mikro-client-ip'
 
 /** Marker in the `GET /` identity document. A client recognizes a registry by

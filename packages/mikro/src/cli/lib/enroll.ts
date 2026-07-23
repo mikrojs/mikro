@@ -17,6 +17,8 @@ export interface EnrollInput {
    *  being offered another app's build; a registry that is not told pins the
    *  device on its first check-in instead. */
   app?: string
+  /** Channel the device follows. Absent = the registry's default (main). */
+  channel?: string
 }
 
 export type EnrollOutcome =
@@ -40,6 +42,7 @@ export function buildEnrollRequest(input: EnrollInput, token: string): RequestPl
       deviceId: input.deviceId,
       ...(input.name === undefined ? {} : {name: input.name}),
       ...(input.app === undefined ? {} : {app: input.app}),
+      ...(input.channel === undefined ? {} : {channel: input.channel}),
     }),
   }
 }

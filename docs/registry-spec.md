@@ -7,9 +7,9 @@ description: The contract a server must satisfy to publish builds, enroll device
 
 This is the contract for building an **OTA registry**: the server that hands out app updates to
 Mikro.js devices. You run it on whatever backend you already have. The device firmware, the
-`mikro/ota` runtime module, and the `mikro ota pack` / `mikro ota publish` / `mikro ota enroll`
-commands are all part of the Mikro.js repo. This document describes what your server has to do
-for them to work.
+`mikro/ota` runtime module, and the `mikro ota pack` / `mikro ota push` / `mikro ota release` /
+`mikro ota enroll` commands are all part of the Mikro.js repo. This document describes what your
+server has to do for them to work.
 
 The spec has two parts:
 
@@ -63,24 +63,36 @@ The build's identity is the **SHA-256 of the `.tgz`, in lowercase hex**. `mikro 
 computes it, and the device firmware verifies it after downloading. Store it and serve it as the
 offer's `checksum`. If it does not match, every download fails verification.
 
-### 2. The publish endpoint
+### 2. The publish and release endpoints
 
-`mikro ota publish` uploads a build here. `POST /builds`, `multipart/form-data`:
+`mikro ota push` uploads a build here. `POST /builds`, `multipart/form-data`:
 
-| Part              | Type             | Value                                                                                    |
-| ----------------- | ---------------- | ---------------------------------------------------------------------------------------- |
-| `app`             | string           | application lineage, from the build's `mikro.app.json`                                   |
-| `version`         | string (semver)  | app version, from the build's `mikro.app.json`                                           |
-| `checksum`        | string           | SHA-256 (lowercase hex) of the `.tgz`                                                    |
-| `size`            | string           | build size in bytes (decimal string)                                                     |
-| `firmwareVersion` | string (semver)  | from the build's `mikro.app.json`; must be valid semver                                  |
-| `bytecodeVersion` | string           | from the build's `mikro.app.json` (decimal string)                                       |
-| `note`            | string, optional | free-text note about the build (omitted when unset)                                      |
-| `create`          | string, optional | truthy flag (`--create`): create an unknown app on first publish instead of rejecting it |
-| `build`           | file             | the `.tgz` (content-type `application/gzip`)                                             |
+| Part              | Type             | Value                                                                                                 |
+| ----------------- | ---------------- | ----------------------------------------------------------------------------------------------------- |
+| `app`             | string           | application lineage, from the build's `mikro.app.json`                                                |
+| `version`         | string (semver)  | app version, from the build's `mikro.app.json`                                                        |
+| `checksum`        | string           | SHA-256 (lowercase hex) of the `.tgz`                                                                 |
+| `size`            | string           | build size in bytes (decimal string)                                                                  |
+| `firmwareVersion` | string (semver)  | from the build's `mikro.app.json`; must be valid semver                                               |
+| `bytecodeVersion` | string           | from the build's `mikro.app.json` (decimal string)                                                    |
+| `note`            | string, optional | free-text note about the build (omitted when unset)                                                   |
+| `create`          | string, optional | truthy flag (`--create`): create an unknown app on first publish instead of rejecting it              |
+| `channel`         | string, optional | serve the stored build on this channel (`push --release <channel>`); absent stores it without serving |
+| `build`           | file             | the `.tgz` (content-type `application/gzip`)                                                          |
 
 Auth is `Authorization: Bearer <token>`. The CLI never parses the token, so any token scheme
 works; `--token` and `MIKRO_OTA_TOKEN` are sent verbatim.
+
+**Storing a build and serving it are separate steps.** A build is stored the moment it uploads,
+but it is offered to a device only once a **channel** points at it. A channel is a movable pointer
+to a build, keyed on `(app, channel, bytecodeVersion)`; the build record stays tag-less (its
+checksum is still its primary key), so one build can be served on more than one channel. The
+optional `channel` part decides serving: absent, it is served to nobody (a bare `push`); present,
+that channel is pointed at it. `channel=main` promotes the
+build (it sets `promotedAt`, the pre-channels mechanism described under
+[Offer selection](#offer-selection)); any other name writes a channel pointer. The default channel
+is `main`, so a build or device with no channel reads as `main`. Channel names must match
+`^[a-zA-Z0-9][a-zA-Z0-9._-]*$` and be at most 64 characters; an invalid one is a `400`.
 
 Releases are immutable. Publishing the same `(app, version, bytecodeVersion)` again with the
 same checksum is a success (a `2xx`), so a CI retry is safe. Publishing it with a different
@@ -95,6 +107,27 @@ Cap request bodies. Publish is the only route that carries more than a few kilob
 that buffers bodies has to enforce the limit while reading and answer `413` once it is passed,
 not after routing, so that an unauthenticated POST cannot exhaust memory. The reference `serve`
 adapter defaults to 16 MiB (`maxBodyBytes`).
+
+**Pointing a channel at an already-stored build.** `mikro ota release` uses this to serve a build
+that is already uploaded. `POST /releases`, JSON body `{app, version, channel}`,
+`Authorization: Bearer <token>`, app-scoped exactly like publish (an app-scoped token that names
+another app is a `403`). It points `channel` at every already-stored build for `(app, version)`
+(one build per bytecode version, since a build pins its bytecode), and responds
+`{ok: true, released: <count>}`. It answers `404` when no such build exists. `channel` follows the
+same rule as at publish. One operation covers two jobs: graduation (point a second channel at a
+proven build) and rollback (point a channel at an older one); the direction does not matter. The
+two endpoints split on upload versus serve: `push --release <channel>` uploads a new build and
+points a channel in one call; `release` points a channel at a build already stored.
+
+**Compatibility.** Absent channel reads as `main` everywhere, so existing devices and stored builds
+keep working with no migration pass: today's fleet is "everyone on `main`", and a build promoted to
+`main` serves exactly as it did before channels. Two changes to the previous contract follow from
+decoupling storage from serving, both to be stated for anyone tracking the CLI:
+
+- A bare `push` no longer serves the build. The previous `mikro ota publish` uploaded and promoted
+  in one step; that is now `push --release main` (or `release <version> main`), and a `push` with no
+  channel uploads without serving.
+- The CLI command `publish` is renamed to `push`.
 
 ### 3. The offer object and the download
 
@@ -148,7 +181,7 @@ whatever the URL needs. A registry may pick any of these:
   live in object storage on a different host. No device change is needed, because the URL is
   opaque to the device.
 - **The checksum as an unauthenticated capability.** Simplest, and weakest. Checksums are not
-  secret: `mikro ota publish` prints them and they end up in CI logs. Anyone who learns one can
+  secret: `mikro ota push` prints them and they end up in CI logs. Anyone who learns one can
   fetch that build forever, and a de-enrolled device keeps its access.
 
 Whichever you choose, scope the download to the requesting device's app. Authenticating the
@@ -162,10 +195,10 @@ off the connected device, calls the registry, and writes the returned credential
 device. A registry that mints credentials some other way can skip this endpoint; users then
 provision with `mikro ota enroll --credential <secret>`.
 
-`POST /devices`, JSON body `{deviceId, name?, app?}`, response `{device: {...}, credential:
-string}`. The credential is returned exactly once, so store only a hash of it. Auth is an opaque
-bearer token. Any tenancy (org, project) is resolved from the token, never from the URL path, so
-the CLI uses one path shape against every registry.
+`POST /devices`, JSON body `{deviceId, name?, app?, channel?}`, response `{device: {...},
+credential: string}`. The credential is returned exactly once, so store only a hash of it. Auth is
+an opaque bearer token. Any tenancy (org, project) is resolved from the token, never from the URL
+path, so the CLI uses one path shape against every registry.
 
 `name` is optional on the wire, but `mikro ota enroll` always sends one. It uses an explicit
 `--name` if given, otherwise the name already on the device, otherwise a default it derives from
@@ -178,6 +211,13 @@ CLI shows (see [Name sync](#name-sync)).
 conflicting `app` with `403`; an unscoped token may name any app. `app` is optional on the wire,
 but enrollment is the only place a binding is ever set, so **always send it**. A device enrolled
 without one is offered nothing until it is re-enrolled with an app.
+
+`channel` puts the device on a named release channel (see [Offer selection](#offer-selection)). It
+is optional and defaults to `main`, so a device enrolled without one, like every device enrolled
+before channels existed, is on `main`. The channel is registry-side state the device never learns:
+it checks in, and the registry offers whatever its channel points at. Only a channel other than
+`main` is stored, and its name follows the same rule as at publish
+(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`, at most 64 characters).
 
 If the `deviceId` is already enrolled, respond `409`. The CLI then offers
 `POST /devices/:deviceId/credential` (through `--re-enroll`), which returns `{credential}`: a
@@ -303,7 +343,8 @@ large space reveals nothing) and is what lets a correct secret bypass a backing-
 reasoning as RFC 8628 §5.1's guidance on brute-forcing the user code.
 
 Browser login mints **a single token**, not one per operation, and it has to authorize
-everything the CLI does over a connection: publishing builds (§2) and enrolling devices (§4). The
+everything the CLI does over a connection: publishing and releasing builds (§2) and enrolling
+devices (§4). The
 CLI never parses it, like every other token here. The `app` context lets the registry scope it to
 one project: a token good for publishing that one app and enrolling that app's devices, rather
 than inheriting the approving user's full authority.
@@ -511,17 +552,22 @@ does not. Whether an unbound device is an error or a device awaiting a decision 
 call, not the registry's. The only consequence is that it receives nothing until it is re-enrolled
 with an app.
 
-Keep one **current build** per `(app, bytecodeVersion)`; publishing makes a build current. This
-has to hold for a release that was published before, too. Re-publishing an earlier release is the
-documented way to downgrade, so an already-stored build stays idempotent in what it writes but
-still becomes current. Track "current" explicitly rather than deriving it from a creation
-timestamp, and give it a total order, so that two publishes in the same millisecond cannot leave
-"current" ambiguous.
+Keep one **current build** per `(app, channel, bytecodeVersion)`; pointing a channel at a build
+makes it that channel's current build for the build's bytecode. A device follows one channel
+(`device.channel`, set at enrollment, absent reads as `main`), and its current build is whatever
+that channel points at. For a named channel that is the `(app, channel, bytecodeVersion)` pointer.
+For `main` it is the pre-channels current build: the highest-`promotedAt` build for
+`(app, bytecodeVersion)` among those that have a `promotedAt`, so a build stored by a bare `push`,
+which has none, is never `main`'s current. Track "current" explicitly rather than deriving it from a
+creation timestamp, and give each channel's pointer a total order, so that two writes in the same
+millisecond cannot leave "current" ambiguous. Pointing a channel at an already-stored build must
+work too, not only a fresh push: that is how a fleet graduates a proven build or rolls back to an
+earlier one, and the pointer still moves even though the write is otherwise idempotent.
 
 Given a check-in, offer the current build only when all of these hold:
 
-1. The device is bound to an app, and a current build exists for that app at the device's
-   `bytecode`. If no build matches the bytecode, offer nothing: the device needs a firmware
+1. The device is bound to an app, and a current build exists for that app and the device's channel
+   at the device's `bytecode`. If no build matches, offer nothing: the device needs a firmware
    reflash first, which happens out of band.
 2. `build.checksum != running.checksum`, so you do not offer what is already running.
 3. `device.firmware` satisfies `^build.firmwareVersion` (npm caret semantics): at or above the
@@ -561,10 +607,16 @@ one build known to work on it.
 
 - **builds**: `checksum` (primary key), `app`, `version`, `bytecodeVersion`, `firmwareVersion`,
   `size`, `storageRef`, `createdAt`, `promotedAt` (the highest `promotedAt` per
-  `(app, bytecodeVersion)` is current).
+  `(app, bytecodeVersion)` is `main`'s current build). Records stay tag-less, so one build can be
+  served on more than one channel.
+- **channels**: `(app, channel, bytecodeVersion)` (primary key), `checksum`. A movable pointer to a
+  build; the key is unique, so a release overwrites it and there is nothing to order. `main` is not
+  stored here; it is the highest-`promotedAt` build (see builds), so today's per-`(app,
+bytecodeVersion)` current build is `main`'s pointer and needs no migration.
 - **devices**: `deviceId` (primary key), `credentialHash`, `app` (the binding, set at enrollment,
-  nullable), `name` (nullable), `lastSeen`, `runningChecksum`, `runningVersion`, `trial`,
-  `lastFirmware`, `lastBytecode`, `lastFree`, `lastInstall`, `failedChecksums` (bounded).
+  nullable), `channel` (the release channel, set at enrollment, nullable, absent reads as `main`),
+  `name` (nullable), `lastSeen`, `runningChecksum`, `runningVersion`, `trial`, `lastFirmware`,
+  `lastBytecode`, `lastFree`, `lastInstall`, `failedChecksums` (bounded).
 - **tokens**: `tokenHash` (primary key), `app` (nullable), `createdAt`, `expiresAt`, `lastUsedAt`.
 
 File-backed storage with no database is enough for a reference implementation. Records are keyed
@@ -597,12 +649,12 @@ registry compromise to a denial of service. It is not part of this version.
 
 **The registry does not block downgrades.** This is about the registry, not the device: the
 firmware still rolls back a build that fails its trial. What a registry does not do is stop a
-_deliberate_ downgrade. Offer selection follows whichever build is current, and publishing is what
-sets "current", so publishing an older build is itself the downgrade. The registry never checks
-whether an offer is older than what a device is running. A publisher can therefore move a fleet to
-any earlier build, including one with a known defect. Registries that need to prevent this should
-refuse to publish a version below the current one, or track a per-app counter that only moves
-forward.
+_deliberate_ downgrade. Offer selection follows whichever build a channel points at, and pointing a
+channel (`push --release` or `release`) is what sets a channel's "current", so releasing an older
+build is itself the downgrade. The registry never checks whether an offer is older than what a
+device is running. A publisher can therefore move a fleet to any earlier build, including one with a
+known defect. Registries that need to prevent this should refuse to release a version below a
+channel's current one, or track a per-channel counter that only moves forward.
 
 ## References
 

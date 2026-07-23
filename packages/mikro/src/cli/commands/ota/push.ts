@@ -19,17 +19,22 @@ import {
 import {packProject} from './pack.js'
 
 export const args = command(
-  'publish',
+  'push',
   object({
-    subcommand: constant('publish' as const),
+    subcommand: constant('push' as const),
     registry: optional(
       option('--registry', string({metavar: 'URL'}), {
         description: message`Registry base URL (default: .mikro/registry.json)`,
       }),
     ),
-    build: optional(
-      option('--build', path({metavar: 'FILE', mustExist: true, type: 'file'}), {
-        description: message`Build to publish (default: build and pack the current project)`,
+    tarball: optional(
+      option('--tarball', path({metavar: 'FILE', mustExist: true, type: 'file'}), {
+        description: message`Push a pre-packed .tgz instead of building the current project`,
+      }),
+    ),
+    release: optional(
+      option('--release', string({metavar: 'CHANNEL'}), {
+        description: message`Also release the build to this channel (e.g. beta, stable); omit to store without serving`,
       }),
     ),
     token: optional(
@@ -69,7 +74,7 @@ export const args = command(
       }),
     ),
   }),
-  {description: message`Upload a build to a registry`},
+  {description: message`Build, pack, and upload an app build to a registry`},
 )
 
 type Args = InferValue<typeof args>
@@ -85,13 +90,13 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
 
     let buildPath: string
     let input: PublishInput
-    if (config.build) {
+    if (config.tarball) {
       if (config.snapshot) {
         throw new Error(
-          '--snapshot has no effect with --build: the version is baked into the packed build. Pack with --snapshot instead.',
+          '--snapshot has no effect with --tarball: the version is baked into the packed build. Pack with --snapshot instead.',
         )
       }
-      buildPath = config.build
+      buildPath = config.tarball
       const [manifest, checksum, info] = await Promise.all([
         readManifestFromTarball(buildPath),
         sha256File(buildPath),
@@ -104,6 +109,8 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
         manifest,
         note: config.note,
         create: config.create,
+        // Absent --release stores the build without serving it to anyone.
+        channel: config.release,
       }
     } else {
       const artifact = await packProject({
@@ -122,28 +129,43 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
         manifest: artifact.manifest,
         note: config.note,
         create: config.create,
+        channel: config.release,
       }
     }
 
-    log(`Publishing ${buildPath} to ${registry}…`)
+    log(`Pushing ${buildPath} to ${registry}…`)
     await publishBuild(input, buildPath, token)
 
+    // The channel it was released to, or null when stored without serving. Named
+    // `channel` (not `released`) so the field means a channel name everywhere;
+    // `released` is only ever a build count, on `mikro ota release`.
+    const channel = config.release ?? null
     if (jsonOutput) {
-      agentResult('ota publish', {
+      agentResult('ota push', {
         registry,
         version: input.manifest.version,
         checksum: input.checksum,
         size: input.size,
+        channel,
       })
     } else {
       // Show the version: with --snapshot it is derived, so this is the only
-      // place the user sees what was actually published.
+      // place the user sees what was actually pushed.
+      if (channel !== null) {
+        // eslint-disable-next-line no-console
+        console.log(`Pushed ${input.manifest.version} and released to ${channel}`)
+      } else {
+        // eslint-disable-next-line no-console
+        console.log(
+          `Pushed ${input.manifest.version} (stored, not released; run 'mikro ota release ${input.manifest.version} <channel>')`,
+        )
+      }
       // eslint-disable-next-line no-console
-      console.log(`Published ${input.manifest.version} (${input.checksum}) to ${registry}`)
+      console.log(`  checksum  ${input.checksum}`)
     }
   } catch (err) {
     if (jsonOutput) {
-      agentError('ota publish', describeError(err))
+      agentError('ota push', describeError(err))
     } else {
       // The error object, not a string: Node renders the cause chain, which is
       // where a failed upload's actual reason lives.

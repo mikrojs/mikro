@@ -22,6 +22,27 @@ export interface BuildRecord {
   promotedAt?: string
 }
 
+/**
+ * A channel pointer: which build one named channel currently serves for one
+ * bytecode version of one app. Movable, unlike a build record, so a build
+ * proven on `beta` can be pointed to by `stable` without re-publishing.
+ *
+ * The default channel `main` is NOT stored here: its current build is the
+ * highest-`promotedAt` build (see `BuildRecord.promotedAt`), the pre-channels
+ * mechanism, so existing builds keep serving with no migration. Only named
+ * channels use this record.
+ */
+export interface ChannelRecord {
+  app: string
+  /** Channel name (never `main`, which is the promotedAt default). */
+  channel: string
+  bytecodeVersion: number
+  /** Checksum of the build this channel serves for this app + bytecode. The key
+   *  is unique, so there is exactly one record per channel and no ordering to
+   *  keep: a release overwrites it. */
+  checksum: string
+}
+
 export interface DeviceRecord {
   deviceId: string
   /** SHA-256 (lowercase hex) of the device credential; the plaintext is never stored. */
@@ -30,6 +51,10 @@ export interface DeviceRecord {
    *  and never inferred from what the device reports. Unset withholds every
    *  offer until the device is re-enrolled with one. */
   app?: string
+  /** Release channel this device follows. Set at enrollment, registry-side; the
+   *  device never knows it. Absent reads as `main`, so every device enrolled
+   *  before channels keeps its behavior with no migration. */
+  channel?: string
   name?: string
   /** Logical revision of `name`, bumped by every deliberate rename on either
    *  side, so renames can be ordered without a clock the device may not have.
@@ -86,6 +111,13 @@ export interface RegistryStorage {
   getBuild(checksum: string): Promise<BuildRecord | undefined>
   putBuild(record: BuildRecord): Promise<void>
   listBuilds(): Promise<BuildRecord[]>
+  /** Channel pointers for named channels (`main` is derived from `promotedAt`). */
+  getChannel(
+    app: string,
+    channel: string,
+    bytecodeVersion: number,
+  ): Promise<ChannelRecord | undefined>
+  putChannel(record: ChannelRecord): Promise<void>
   getDevice(deviceId: string): Promise<DeviceRecord | undefined>
   getDeviceByCredentialHash(hash: string): Promise<DeviceRecord | undefined>
   putDevice(record: DeviceRecord): Promise<void>

@@ -43,6 +43,11 @@ export const args = command(
         description: message`Name for the device (default: derived from its device id)`,
       }),
     ),
+    channel: optional(
+      option('--channel', string({metavar: 'CHANNEL'}), {
+        description: message`Update channel the device follows (e.g. beta, stable); default main`,
+      }),
+    ),
     reEnroll: optional(
       flag('--re-enroll', {
         description: message`Mint a fresh credential when the device is already enrolled (the old one stops working immediately)`,
@@ -143,7 +148,13 @@ export async function run(config: Args): Promise<void> {
         // be offered another app's build.
         const app = readProjectApp()
         const outcome = await enrollDevice(
-          {registry, deviceId, name, ...(app === undefined ? {} : {app})},
+          {
+            registry,
+            deviceId,
+            name,
+            ...(app === undefined ? {} : {app}),
+            ...(config.channel === undefined ? {} : {channel: config.channel}),
+          },
           token!,
         )
         if (outcome.status === 'already-enrolled') {
