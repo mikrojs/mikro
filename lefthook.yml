@@ -28,6 +28,12 @@ pre-commit:
       glob: '.github/{workflows,actions}/**/*.{yml,yaml}'
       run: pnpm lint:workflows
 
+    build-docs:
+      only:
+        - run: node scripts/is-agent.js
+      glob: 'docs/**'
+      run: pnpm build:docs
+
     # Agent: full project checks
     build-cpp:
       only:
