@@ -1,9 +1,17 @@
 import semver from 'semver'
 
-import type {BuildRecord, DeviceRecord, Registry, RegistryOptions, TokenRecord} from './types.js'
+import type {
+  BuildRecord,
+  ChannelRecord,
+  DeviceRecord,
+  Registry,
+  RegistryOptions,
+  TokenRecord,
+} from './types.js'
 import {
   bearerToken,
   CLIENT_IP_HEADER,
+  DEFAULT_CHANNEL,
   error,
   escapeHtml,
   html,
@@ -61,6 +69,10 @@ const MAX_LOGIN_BODY_BYTES = 64 * 1024
 const MAX_DEVICE_ID_LENGTH = 128
 const MAX_NAME_LENGTH = 64
 const MAX_APP_LENGTH = 64
+const MAX_CHANNEL_LENGTH = 64
+/** Channel names index a storage key and are shown to operators. Restricted so
+ *  a name cannot carry the key delimiter or control characters. */
+const CHANNEL_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/
 const MAX_VERSION_LENGTH = 64
 const MAX_REASON_LENGTH = 64
 const MAX_DETAIL_LENGTH = 256
@@ -215,6 +227,41 @@ export function createRegistry(options: RegistryOptions): Registry {
 
   // ── Publish ──────────────────────────────────────────────────────
 
+  /** A promotedAt strictly after every build already promoted for
+   *  `(app, bytecode)`, so `main`'s current build is a total order even when two
+   *  releases land in the same millisecond. reduce, not `Math.max(...spread)`:
+   *  the build history can grow past the call-stack limit, which would break
+   *  releasing permanently (nothing deletes builds). */
+  async function nextMainPromotedAt(app: string, bytecodeVersion: number): Promise<string> {
+    const builds = await storage.listBuilds()
+    return new Date(
+      builds.reduce((latest, b) => {
+        if (b.app !== app || b.bytecodeVersion !== bytecodeVersion) return latest
+        const at = Date.parse(b.promotedAt ?? b.createdAt) + 1
+        return Number.isFinite(at) && at > latest ? at : latest
+      }, Date.now()),
+    ).toISOString()
+  }
+
+  /** Point a channel at a build: the movable-pointer operation `push --release`
+   *  and `release` share. `main` is the promotedAt default, so it promotes the
+   *  build record; a named channel gets an explicit pointer, leaving the build
+   *  tag-less so it can be served on more than one channel. */
+  async function pointChannel(build: BuildRecord, channel: string): Promise<void> {
+    if (channel === DEFAULT_CHANNEL) {
+      const promotedAt = await nextMainPromotedAt(build.app, build.bytecodeVersion)
+      await storage.putBuild({...build, promotedAt})
+      return
+    }
+    const record: ChannelRecord = {
+      app: build.app,
+      channel,
+      bytecodeVersion: build.bytecodeVersion,
+      checksum: build.checksum,
+    }
+    await storage.putChannel(record)
+  }
+
   async function handlePublish(request: Request): Promise<Response> {
     const grant = await grantFor(request)
     if (grant === undefined) return error('Unauthorized', 401)
@@ -237,6 +284,9 @@ export function createRegistry(options: RegistryOptions): Registry {
     const firmwareVersion = text('firmwareVersion')
     const bytecodeVersion = parseInt(text('bytecodeVersion') ?? '', 10)
     const note = text('note')
+    // Optional: `push --release <channel>` sends it, a bare `push` does not.
+    // Absent stores the build without serving it on any channel.
+    const channel = text('channel')
     const file = form.get('build')
 
     if (!app || !version || !firmwareVersion) {
@@ -268,6 +318,14 @@ export function createRegistry(options: RegistryOptions): Registry {
     if (note !== undefined && note.length > MAX_NOTE_LENGTH) {
       return error(`note must be at most ${MAX_NOTE_LENGTH} characters`, 400)
     }
+    if (channel !== undefined) {
+      if (channel.length > MAX_CHANNEL_LENGTH) {
+        return error(`channel must be at most ${MAX_CHANNEL_LENGTH} characters`, 400)
+      }
+      if (!CHANNEL_RE.test(channel)) {
+        return error('channel must be alphanumeric with . _ - (e.g. beta, stable)', 400)
+      }
+    }
     if (!checksum || !CHECKSUM_RE.test(checksum)) return error('Invalid checksum', 400)
     if (!Number.isInteger(size) || size < 0) return error('Invalid size', 400)
     if (!Number.isInteger(bytecodeVersion)) return error('Invalid bytecodeVersion', 400)
@@ -287,22 +345,12 @@ export function createRegistry(options: RegistryOptions): Registry {
     if (owned !== undefined) {
       return error(`This build is already published under ${owned.app}`, 409)
     }
-    // Strictly after every build already published for this (app, bytecode),
-    // so promotion is a total order even when two publishes land in the same
-    // millisecond. A wall-clock timestamp alone leaves ties, and a tie is the
-    // one case where "the current build" has no answer.
-    // reduce, not Math.max(...spread): the argument list is the build history
-    // for this app, and a spread of it blows the call stack once that history
-    // is large enough, which would break publishing permanently rather than
-    // slowly (nothing deletes builds, so the count only grows).
-    const promotedAt = new Date(
-      builds.reduce((latest, b) => {
-        if (b.app !== app || b.bytecodeVersion !== bytecodeVersion) return latest
-        const at = Date.parse(b.promotedAt ?? b.createdAt) + 1
-        return Number.isFinite(at) && at > latest ? at : latest
-      }, Date.now()),
-    ).toISOString()
 
+    // Store the build without serving it. A build is only served once a channel
+    // points at it (a `channel` field here, or a later `release`), so publishing
+    // and releasing are separate: a bare `push` uploads and returns.
+    let record: BuildRecord
+    let created = false
     const existing = builds.find(
       (b) => b.app === app && b.version === version && b.bytecodeVersion === bytecodeVersion,
     )
@@ -314,7 +362,7 @@ export function createRegistry(options: RegistryOptions): Registry {
         )
       }
       // Re-store the bytes when the record outlived its blob (an index restored
-      // from backup, a half-finished migration). Re-publishing is the obvious
+      // from backup, a half-finished migration). Re-pushing is the obvious
       // response to downloads 404ing, so it must not be a silent no-op.
       if ((await storage.getBlob(checksum)) === undefined) {
         const bytes = new Uint8Array(await file.arrayBuffer())
@@ -323,34 +371,77 @@ export function createRegistry(options: RegistryOptions): Registry {
         }
         await storage.putBlob(checksum, bytes)
       }
-      // Idempotent in what it stores, but it still promotes: re-publishing an
-      // earlier release is how a fleet is rolled back.
-      await storage.putBuild({...existing, promotedAt})
-      return json({ok: true})
+      record = existing
+    } else {
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      if ((await sha256Hex(bytes)) !== checksum) {
+        return error('Uploaded build does not match the checksum field', 400)
+      }
+      if (bytes.byteLength !== size) {
+        return error('Uploaded build does not match the size field', 400)
+      }
+      await storage.putBlob(checksum, bytes)
+      record = {
+        checksum,
+        app,
+        version,
+        bytecodeVersion,
+        firmwareVersion,
+        size,
+        createdAt: new Date().toISOString(),
+      }
+      if (note !== undefined) record.note = note
+      // Persist the new build even when no channel is named, so `release` can
+      // point at it later. pointChannel re-writes it below when main is named.
+      if (channel !== DEFAULT_CHANNEL) await storage.putBuild(record)
+      created = true
     }
 
-    const bytes = new Uint8Array(await file.arrayBuffer())
-    if ((await sha256Hex(bytes)) !== checksum) {
-      return error('Uploaded build does not match the checksum field', 400)
-    }
-    if (bytes.byteLength !== size) {
-      return error('Uploaded build does not match the size field', 400)
-    }
+    // Serve it only when a channel is named. main promotes the build record; a
+    // named channel gets a pointer.
+    if (channel !== undefined) await pointChannel(record, channel)
 
-    await storage.putBlob(checksum, bytes)
-    const record: BuildRecord = {
-      checksum,
-      app,
-      version,
-      bytecodeVersion,
-      firmwareVersion,
-      size,
-      createdAt: new Date().toISOString(),
-      promotedAt,
+    return json({ok: true}, created ? 201 : 200)
+  }
+
+  // ── Release ──────────────────────────────────────────────────────
+
+  /** Point a channel at a build already in the registry: `mikro ota release
+   *  <version> <channel>`. Graduation (serve a proven build on another channel)
+   *  and rollback (serve an older one) are the same operation. */
+  async function handleRelease(request: Request): Promise<Response> {
+    const grant = await grantFor(request)
+    if (grant === undefined) return error('Unauthorized', 401)
+
+    let body: {app?: unknown; version?: unknown; channel?: unknown}
+    try {
+      body = (await request.json()) as typeof body
+    } catch {
+      return error('Expected a JSON body', 400)
     }
-    if (note !== undefined) record.note = note
-    await storage.putBuild(record)
-    return json({ok: true}, 201)
+    const requestedApp = typeof body.app === 'string' ? body.app.trim() : ''
+    const app = requestedApp !== '' ? requestedApp : (grant.app ?? '')
+    const version = typeof body.version === 'string' ? body.version.trim() : ''
+    const channel = typeof body.channel === 'string' ? body.channel.trim() : ''
+    if (app === '' || version === '' || channel === '') {
+      return error('app, version, and channel are required', 400)
+    }
+    if (grant.app !== undefined && app !== grant.app) {
+      return error(`This token may only release ${grant.app}`, 403)
+    }
+    if (channel.length > MAX_CHANNEL_LENGTH || !CHANNEL_RE.test(channel)) {
+      return error('channel must be alphanumeric with . _ - (e.g. beta, stable)', 400)
+    }
+    // One version can have a build per bytecode; point the channel at every one,
+    // so a fleet spanning firmware lines moves to the release together.
+    const matches = (await storage.listBuilds()).filter(
+      (b) => b.app === app && b.version === version,
+    )
+    if (matches.length === 0) {
+      return error(`No build ${app}@${version} to release`, 404)
+    }
+    for (const build of matches) await pointChannel(build, channel)
+    return json({ok: true, released: matches.length})
   }
 
   // ── Download ─────────────────────────────────────────────────────
@@ -475,7 +566,7 @@ export function createRegistry(options: RegistryOptions): Registry {
     const grant = await grantFor(request)
     if (grant === undefined) return error('Unauthorized', 401)
 
-    let body: {deviceId?: unknown; name?: unknown; app?: unknown}
+    let body: {deviceId?: unknown; name?: unknown; app?: unknown; channel?: unknown}
     try {
       body = (await request.json()) as typeof body
     } catch {
@@ -493,6 +584,15 @@ export function createRegistry(options: RegistryOptions): Registry {
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     if (name.length > MAX_NAME_LENGTH) {
       return error(`name must be at most ${MAX_NAME_LENGTH} characters`, 400)
+    }
+    const channel = typeof body.channel === 'string' ? body.channel.trim() : ''
+    if (channel !== '') {
+      if (channel.length > MAX_CHANNEL_LENGTH) {
+        return error(`channel must be at most ${MAX_CHANNEL_LENGTH} characters`, 400)
+      }
+      if (!CHANNEL_RE.test(channel)) {
+        return error('channel must be alphanumeric with . _ - (e.g. beta, stable)', 400)
+      }
     }
     // Deliberately a global lookup, unlike the other device routes: enrolling
     // a device that already exists must never overwrite it, whoever asks. The
@@ -518,6 +618,9 @@ export function createRegistry(options: RegistryOptions): Registry {
     const app = grant.app ?? (requestedApp === '' ? undefined : requestedApp)
     if (app !== undefined) device.app = app
     if (name !== '') device.name = name
+    // Absent channel reads as main, so only a named channel is stored: an
+    // explicit --channel main is the same as the default and leaves no field.
+    if (channel !== '' && channel !== DEFAULT_CHANNEL) device.channel = channel
     await storage.putDevice(device)
     // The credential appears exactly once, here; only its hash is stored.
     return json({device: deviceView(device), credential}, 201)
@@ -925,24 +1028,43 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
     return record.name === undefined ? [rev] : [rev, record.name]
   }
 
-  /** Pick the build to offer, or undefined. The app comes from the device
-   * record: a device bound to one app must not be able to pull another's build
-   * by reporting its checksum. */
+  /** The build a channel currently serves for `(app, bytecode)`, or undefined.
+   *  `main` is the highest-promotedAt build, the pre-channels default, so
+   *  existing builds keep serving with no migration; a build with no promotedAt
+   *  has been pushed but not released to main, so it is never main's current. A
+   *  named channel is its explicit pointer. */
+  async function currentBuild(
+    app: string,
+    channel: string,
+    bytecode: number,
+  ): Promise<BuildRecord | undefined> {
+    if (channel === DEFAULT_CHANNEL) {
+      // Most recently promoted wins, with the checksum breaking ties so two
+      // releases in the same millisecond do not pick a winner by whatever the
+      // engine's sort happens to do. Codepoint order, not `localeCompare`:
+      // these are machine strings, and locale collation gives an ISO
+      // timestamp's separators their own rules.
+      const cmp = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0)
+      return (await storage.listBuilds())
+        .filter(
+          (b) => b.app === app && b.bytecodeVersion === bytecode && b.promotedAt !== undefined,
+        )
+        .sort((a, b) => cmp(b.promotedAt!, a.promotedAt!) || cmp(a.checksum, b.checksum))[0]
+    }
+    const pointer = await storage.getChannel(app, channel, bytecode)
+    if (pointer === undefined) return undefined
+    return storage.getBuild(pointer.checksum)
+  }
+
+  /** Pick the build to offer, or undefined. The app and channel come from the
+   * device record: a device bound to one app must not be able to pull another's
+   * build by reporting its checksum, and the channel it follows is registry-side
+   * state the device never sends. */
   async function selectOffer(device: DeviceRecord): Promise<BuildRecord | undefined> {
     const {app, lastBytecode: bytecode, lastFirmware: firmware, lastFree: free} = device
     if (app === undefined || bytecode === undefined || firmware === undefined) return undefined
 
-    // Most recently promoted wins, with the checksum breaking ties so two
-    // builds promoted in the same millisecond do not pick a winner by whatever
-    // the engine's sort happens to do.
-    // Codepoint order, not `localeCompare`: these are machine strings, and
-    // locale collation gives punctuation like the separators in an ISO
-    // timestamp its own rules.
-    const cmp = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0)
-    const promoted = (b: BuildRecord) => b.promotedAt ?? b.createdAt
-    const current = (await storage.listBuilds())
-      .filter((b) => b.app === app && b.bytecodeVersion === bytecode)
-      .sort((a, b) => cmp(promoted(b), promoted(a)) || cmp(a.checksum, b.checksum))[0]
+    const current = await currentBuild(app, device.channel ?? DEFAULT_CHANNEL, bytecode)
     if (current === undefined) return undefined
     if (current.checksum === device.runningChecksum) return undefined
     // At or above the build's firmware, and within the same major. A floor
@@ -1171,6 +1293,7 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
     }
 
     if (path === '/api/v1/builds' && request.method === 'POST') return handlePublish(request)
+    if (path === '/api/v1/releases' && request.method === 'POST') return handleRelease(request)
 
     const download = /^\/api\/v1\/builds\/([0-9a-f]{64})\.tgz$/.exec(path)
     if (download && request.method === 'GET') return handleDownload(request, download[1]!)

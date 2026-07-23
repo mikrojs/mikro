@@ -33,6 +33,11 @@ async function publish(
   form.set('firmwareVersion', overrides.firmwareVersion ?? '0.15.0')
   form.set('bytecodeVersion', overrides.bytecodeVersion ?? '13')
   if (overrides.note !== undefined) form.set('note', overrides.note)
+  // Publish now serves nothing on its own; a `channel` field is what points a
+  // channel at the build. Default to `main` so the pre-channels tests keep
+  // getting an immediate offer; pass `channel: ''` for a bare store-only push.
+  const channel = overrides.channel ?? 'main'
+  if (channel !== '') form.set('channel', channel)
   form.set('build', new Blob([bytes], {type: 'application/gzip'}), 'app.tgz')
   const response = await registry.fetch(
     new Request(`${BASE}/api/v1/builds`, {
@@ -182,6 +187,206 @@ describe('publish', () => {
     )
     expect(download.status).toBe(200)
     expect(await download.text()).toBe('fake-tgz-bytes')
+  })
+})
+
+describe('release channels', () => {
+  /** `POST /api/v1/releases`: point a channel at a version already stored. */
+  function release(
+    registry: Registry,
+    body: {app?: string; version?: string; channel?: string},
+    token = TOKEN,
+  ): Promise<Response> {
+    return registry.fetch(
+      new Request(`${BASE}/api/v1/releases`, {
+        method: 'POST',
+        headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'},
+        body: JSON.stringify(body),
+      }),
+    )
+  }
+
+  /** Mint an app-scoped token through browser login, the way `grant scope`
+   *  does, so a scoped-token case exercises a real record. */
+  async function mintScopedToken(registry: Registry, app: string): Promise<string> {
+    const session = (await (
+      await registry.fetch(
+        new Request(`${BASE}/api/v1/auth/sessions`, {
+          method: 'POST',
+          headers: {'content-type': 'application/json'},
+          body: JSON.stringify({app}),
+        }),
+      )
+    ).json()) as {code: string; userCode: string}
+    const form = new FormData()
+    form.set('userCode', session.userCode)
+    form.set('secret', TOKEN)
+    await registry.fetch(new Request(`${BASE}/login`, {method: 'POST', body: form}))
+    const {token} = (await (
+      await registry.fetch(new Request(`${BASE}/api/v1/auth/sessions/${session.code}/token`))
+    ).json()) as {token: string}
+    return token
+  }
+
+  // Publish stores; a channel is what serves. A bare push uploads and returns,
+  // and a device following main is offered nothing until the build is released.
+  it('stores a bare push but offers it only once released to main', async () => {
+    const registry = makeRegistry()
+    const {checksum} = await publish(registry, {channel: ''})
+    const credential = await enroll(registry)
+    expect(await (await checkin(registry, credential)).json()).toBeNull()
+
+    const released = await release(registry, {app: 'sensor', version: '1.0.0', channel: 'main'})
+    expect(released.status).toBe(200)
+    expect(await released.json()).toEqual({ok: true, released: 1})
+
+    const offer = (await (await checkin(registry, credential)).json()) as {checksum: string}
+    expect(offer.checksum).toBe(checksum)
+  })
+
+  // The old publish-then-serve behavior, now opt-in with `channel: main`.
+  it('publishing straight to main serves immediately', async () => {
+    const registry = makeRegistry()
+    const {checksum} = await publish(registry, {channel: 'main'})
+    const credential = await enroll(registry)
+    const offer = (await (await checkin(registry, credential)).json()) as {checksum: string}
+    expect(offer.checksum).toBe(checksum)
+  })
+
+  // `push --release beta`: a named channel gets a pointer, and the build record
+  // stays tag-less, so a device on main is offered nothing.
+  it('serves a named-channel build only to devices on that channel', async () => {
+    const registry = makeRegistry()
+    const {checksum} = await publish(registry, {channel: 'beta'})
+    const betaCred = await enroll(registry, 'dev-beta', {app: 'sensor', channel: 'beta'})
+    const mainCred = await enroll(registry, 'dev-main', {app: 'sensor'})
+
+    const betaOffer = (await (await checkin(registry, betaCred)).json()) as {checksum: string}
+    expect(betaOffer.checksum).toBe(checksum)
+    expect(await (await checkin(registry, mainCred)).json()).toBeNull()
+  })
+
+  // Graduation: a build proven on beta becomes main's current with a release,
+  // no re-upload.
+  it('graduates a beta build to main with a release', async () => {
+    const registry = makeRegistry()
+    const {checksum} = await publish(registry, {channel: 'beta'})
+    const mainCred = await enroll(registry)
+    expect(await (await checkin(registry, mainCred)).json()).toBeNull()
+
+    const released = await release(registry, {app: 'sensor', version: '1.0.0', channel: 'main'})
+    expect(released.status).toBe(200)
+
+    const offer = (await (await checkin(registry, mainCred)).json()) as {checksum: string}
+    expect(offer.checksum).toBe(checksum)
+  })
+
+  // One version spans a build per bytecode; a single release points the channel
+  // at every one, so a fleet on different firmware lines moves together.
+  it('points every bytecode of a version at the channel in one release', async () => {
+    const registry = makeRegistry()
+    const b13 = await publish(registry, {channel: '', bytecodeVersion: '13'}, 'multi-bc13')
+    const b14 = await publish(registry, {channel: '', bytecodeVersion: '14'}, 'multi-bc14')
+
+    const released = await release(registry, {app: 'sensor', version: '1.0.0', channel: 'beta'})
+    expect(await released.json()).toEqual({ok: true, released: 2})
+
+    const cred13 = await enroll(registry, 'dev-13', {app: 'sensor', channel: 'beta'})
+    const cred14 = await enroll(registry, 'dev-14', {app: 'sensor', channel: 'beta'})
+    const offer13 = (await (await checkin(registry, cred13, {bytecode: 13})).json()) as {
+      checksum: string
+    }
+    const offer14 = (await (await checkin(registry, cred14, {bytecode: 14})).json()) as {
+      checksum: string
+    }
+    expect(offer13.checksum).toBe(b13.checksum)
+    expect(offer14.checksum).toBe(b14.checksum)
+  })
+
+  // Rollback and graduation are the same operation: releasing an older version
+  // to a channel makes it current again.
+  it('rolls a channel back by releasing an older version', async () => {
+    const registry = makeRegistry()
+    const v1 = await publish(registry, {channel: '', version: '1.0.0'}, 'roll-v1')
+    const v2 = await publish(registry, {channel: '', version: '2.0.0'}, 'roll-v2')
+
+    await release(registry, {app: 'sensor', version: '2.0.0', channel: 'beta'})
+    const credential = await enroll(registry, 'dev-beta', {app: 'sensor', channel: 'beta'})
+    expect(
+      ((await (await checkin(registry, credential)).json()) as {checksum: string}).checksum,
+    ).toBe(v2.checksum)
+
+    await release(registry, {app: 'sensor', version: '1.0.0', channel: 'beta'})
+    const offer = (await (
+      await checkin(registry, credential, {running: {checksum: v2.checksum, trial: false}})
+    ).json()) as {checksum: string}
+    expect(offer.checksum).toBe(v1.checksum)
+  })
+
+  // A named channel is stored on the device record; main (the default, and an
+  // explicit `main`) leaves no field, so pre-channels devices need no migration.
+  it('stores a named enroll channel and treats absent (and main) as main', async () => {
+    const storage = memoryStorage()
+    const registry = createRegistry({storage, token: TOKEN})
+    const {checksum} = await publish(registry, {channel: 'main'})
+    const betaCred = await enroll(registry, 'dev-beta', {app: 'sensor', channel: 'beta'})
+    const mainCred = await enroll(registry, 'dev-main', {app: 'sensor'})
+    await enroll(registry, 'dev-explicit', {app: 'sensor', channel: 'main'})
+
+    expect((await storage.getDevice('dev-beta'))!.channel).toBe('beta')
+    expect((await storage.getDevice('dev-main'))!.channel).toBeUndefined()
+    expect((await storage.getDevice('dev-explicit'))!.channel).toBeUndefined()
+
+    // The channel-absent device follows main and is offered the main build.
+    expect(
+      ((await (await checkin(registry, mainCred)).json()) as {checksum: string}).checksum,
+    ).toBe(checksum)
+    // The beta device follows beta, which nothing has been released to.
+    expect(await (await checkin(registry, betaCred)).json()).toBeNull()
+  })
+
+  it('rejects an invalid channel name on publish, release, and enroll', async () => {
+    const registry = makeRegistry()
+
+    expect((await publish(registry, {channel: 'has space'})).response.status).toBe(400)
+    expect((await publish(registry, {channel: 'c'.repeat(65)})).response.status).toBe(400)
+
+    // Channel validity is checked before the build lookup, so a stored build is
+    // not needed to reach it.
+    expect(
+      (await release(registry, {app: 'sensor', version: '1.0.0', channel: 'bad/slash'})).status,
+    ).toBe(400)
+    expect(
+      (await release(registry, {app: 'sensor', version: '1.0.0', channel: 'c'.repeat(65)})).status,
+    ).toBe(400)
+
+    const enrolled = await registry.fetch(
+      new Request(`${BASE}/api/v1/devices`, {
+        method: 'POST',
+        headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'},
+        body: JSON.stringify({deviceId: 'dev-x', app: 'sensor', channel: 'bad channel'}),
+      }),
+    )
+    expect(enrolled.status).toBe(400)
+  })
+
+  it('404s releasing a version that was never published', async () => {
+    const registry = makeRegistry()
+    await publish(registry, {channel: '', version: '1.0.0'})
+    const missing = await release(registry, {app: 'sensor', version: '9.9.9', channel: 'beta'})
+    expect(missing.status).toBe(404)
+  })
+
+  it('403s an app-scoped token releasing another app', async () => {
+    const registry = makeRegistry()
+    await publish(registry, {channel: '', app: 'display', version: '1.0.0'}, 'display-bytes')
+    const token = await mintScopedToken(registry, 'sensor')
+    const denied = await release(
+      registry,
+      {app: 'display', version: '1.0.0', channel: 'beta'},
+      token,
+    )
+    expect(denied.status).toBe(403)
   })
 })
 

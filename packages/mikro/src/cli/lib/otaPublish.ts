@@ -13,6 +13,8 @@ export interface PublishInput {
   note?: string
   /** Create the app on first publish instead of failing on an unknown slug. */
   create?: boolean
+  /** Channel to serve the build on. Absent = stored but served to nobody. */
+  channel?: string
 }
 
 /** A described HTTP request, kept separate from execution so request shaping is
@@ -33,6 +35,8 @@ export interface UploadRequestPlan {
     note?: string
     /** Truthy flag field; omitted from the form when absent. */
     create?: string
+    /** Channel to serve on; omitted from the form when absent (store-only). */
+    channel?: string
   }
 }
 
@@ -64,6 +68,7 @@ export function buildUploadRequest(input: PublishInput, token: string): UploadRe
       bytecodeVersion: String(input.manifest.bytecodeVersion),
       note: input.note,
       create: input.create === true ? '1' : undefined,
+      channel: input.channel,
     },
   }
 }
@@ -105,6 +110,7 @@ export async function publishBuild(
   form.set('bytecodeVersion', upload.fields.bytecodeVersion)
   if (upload.fields.note !== undefined) form.set('note', upload.fields.note)
   if (upload.fields.create !== undefined) form.set('create', upload.fields.create)
+  if (upload.fields.channel !== undefined) form.set('channel', upload.fields.channel)
   const bytes = await readFile(buildPath)
   form.set('build', new Blob([bytes], {type: 'application/gzip'}), basename(buildPath))
   await send(fetchImpl, upload.url, {
@@ -112,4 +118,52 @@ export async function publishBuild(
     headers: upload.headers,
     body: form,
   })
+}
+
+export interface ReleaseInput {
+  registry: string
+  app: string
+  version: string
+  channel: string
+}
+
+/** A described release request, kept separate from execution for testability. */
+export interface ReleaseRequestPlan {
+  url: string
+  method: 'POST'
+  headers: Record<string, string>
+  body: string
+}
+
+/** Build the release request (JSON: point a channel at a published build). */
+export function buildReleaseRequest(input: ReleaseInput, token: string): ReleaseRequestPlan {
+  return {
+    url: joinUrl(input.registry, `${API_PREFIX}/releases`),
+    method: 'POST',
+    headers: {...authHeaders(token), 'content-type': 'application/json'},
+    body: JSON.stringify({app: input.app, version: input.version, channel: input.channel}),
+  }
+}
+
+/** Point a channel at an already-published build. Returns how many stored builds
+ *  the channel was pointed at: one per bytecode version of `(app, version)`, not
+ *  a device count. */
+export async function releaseBuild(
+  input: ReleaseInput,
+  token: string,
+  fetchImpl: FetchLike = fetch as unknown as FetchLike,
+): Promise<{released: number}> {
+  const plan = buildReleaseRequest(input, token)
+  const res = await fetchImpl(plan.url, {
+    method: plan.method,
+    headers: plan.headers,
+    body: plan.body,
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    const detail = body ? `: ${body}` : ''
+    throw new Error(`Registry request to ${plan.url} failed with ${res.status}${detail}`)
+  }
+  const parsed = (JSON.parse(await res.text()) as {released?: unknown}).released
+  return {released: typeof parsed === 'number' ? parsed : 0}
 }

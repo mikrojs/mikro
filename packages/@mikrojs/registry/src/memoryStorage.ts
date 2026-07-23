@@ -1,9 +1,17 @@
-import type {BuildRecord, DeviceRecord, RegistryStorage, TokenRecord} from './types.js'
+import type {
+  BuildRecord,
+  ChannelRecord,
+  DeviceRecord,
+  RegistryStorage,
+  TokenRecord,
+} from './types.js'
+import {channelKey} from './util.js'
 
 /** In-memory storage: everything is lost on restart. For tests and demos. */
 export function memoryStorage(): RegistryStorage {
   const blobs = new Map<string, Uint8Array>()
   const builds = new Map<string, BuildRecord>()
+  const channels = new Map<string, ChannelRecord>()
   const devices = new Map<string, DeviceRecord>()
   const tokens = new Map<string, TokenRecord>()
 
@@ -22,6 +30,12 @@ export function memoryStorage(): RegistryStorage {
     },
     async listBuilds() {
       return [...builds.values()]
+    },
+    async getChannel(app, channel, bytecodeVersion) {
+      return channels.get(channelKey(app, channel, bytecodeVersion))
+    },
+    async putChannel(record) {
+      channels.set(channelKey(record.app, record.channel, record.bytecodeVersion), record)
     },
     async getDevice(deviceId) {
       return devices.get(deviceId)

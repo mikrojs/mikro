@@ -7,11 +7,13 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
 import type {OtaManifest} from '../ota.js'
 import {
+  buildReleaseRequest,
   buildUploadRequest,
   type FetchLike,
   joinUrl,
   publishBuild,
   type PublishInput,
+  releaseBuild,
 } from '../otaPublish.js'
 
 const manifest: OtaManifest = {
@@ -59,6 +61,12 @@ describe('buildUploadRequest', () => {
   it('sends create as a truthy flag field only when set', () => {
     expect(buildUploadRequest(input, 'k').fields.create).toBeUndefined()
     expect(buildUploadRequest({...input, create: true}, 'k').fields.create).toBe('1')
+  })
+
+  // Absent channel = the build is stored but served to nobody.
+  it('carries a channel only when set', () => {
+    expect(buildUploadRequest(input, 'k').fields.channel).toBeUndefined()
+    expect(buildUploadRequest({...input, channel: 'beta'}, 'k').fields.channel).toBe('beta')
   })
 })
 
@@ -119,6 +127,24 @@ describe('publishBuild', () => {
     expect(form.get('note')).toBe('fixed the sensor read')
   })
 
+  // A push without --release stores the build but must not serve it, so the
+  // channel field only reaches the wire when set.
+  it('includes the channel field only when set', async () => {
+    const stored: {calls: {url: string; init: RequestInit}[]; fetchImpl: FetchLike} = {
+      calls: [],
+      fetchImpl: vi.fn(async (url, init) => {
+        stored.calls.push({url, init})
+        return {ok: true, status: 200, text: async () => ''}
+      }),
+    }
+
+    await publishBuild(input, buildPath, 'secret-key', stored.fetchImpl)
+    expect((stored.calls[0]!.init.body as FormData).get('channel')).toBeNull()
+
+    await publishBuild({...input, channel: 'beta'}, buildPath, 'secret-key', stored.fetchImpl)
+    expect((stored.calls[1]!.init.body as FormData).get('channel')).toBe('beta')
+  })
+
   it('throws with the registry status and body on failure', async () => {
     const fetchImpl: FetchLike = vi.fn(async () => ({
       ok: false,
@@ -128,5 +154,52 @@ describe('publishBuild', () => {
     await expect(publishBuild(input, buildPath, 'bad-key', fetchImpl)).rejects.toThrow(
       /401.*unauthorized/,
     )
+  })
+})
+
+const releaseInput = {
+  registry: 'https://updates.example.com/',
+  app: 'my-app',
+  version: '1.2.0',
+  channel: 'beta',
+}
+
+describe('buildReleaseRequest', () => {
+  it('targets /releases with bearer auth and a JSON body', () => {
+    const plan = buildReleaseRequest(releaseInput, 'secret-key')
+    expect(plan.url).toBe('https://updates.example.com/api/v1/releases')
+    expect(plan.method).toBe('POST')
+    expect(plan.headers.authorization).toBe('Bearer secret-key')
+    expect(plan.headers['content-type']).toBe('application/json')
+    expect(JSON.parse(plan.body)).toEqual({app: 'my-app', version: '1.2.0', channel: 'beta'})
+  })
+})
+
+describe('releaseBuild', () => {
+  it('returns the released count on success', async () => {
+    const fetchImpl: FetchLike = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ok: true, released: 4}),
+    }))
+    expect(await releaseBuild(releaseInput, 't', fetchImpl)).toEqual({released: 4})
+  })
+
+  it('defaults released to 0 when the response omits it', async () => {
+    const fetchImpl: FetchLike = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ok: true}),
+    }))
+    expect(await releaseBuild(releaseInput, 't', fetchImpl)).toEqual({released: 0})
+  })
+
+  it('throws with the registry status and body on failure', async () => {
+    const fetchImpl: FetchLike = vi.fn(async () => ({
+      ok: false,
+      status: 404,
+      text: async () => 'no such build',
+    }))
+    await expect(releaseBuild(releaseInput, 't', fetchImpl)).rejects.toThrow(/404.*no such build/)
   })
 })

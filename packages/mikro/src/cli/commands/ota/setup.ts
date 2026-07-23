@@ -470,7 +470,7 @@ export async function run(config: Args): Promise<void> {
   chmodSync(filePath, 0o600)
 
   console.log(`Saved ${displayPath(filePath)}`)
-  console.log('mikro ota enroll and mikro ota publish will use it from here.')
+  console.log('mikro ota enroll and mikro ota push will use it from here.')
   /* eslint-enable no-console */
   process.exit(0)
 }

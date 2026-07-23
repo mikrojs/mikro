@@ -245,7 +245,7 @@ to your app, which the CLI saves. Otherwise setup falls back to a hidden token p
 file is plain `{"url": …, "token": …}` if you'd rather write it yourself, and
 `--registry`/`--token` flags override it.
 
-`mikro ota publish` and `mikro ota enroll` read it, so neither needs flags once it is set.
+`mikro ota push` and `mikro ota enroll` read it, so neither needs flags once it is set.
 The device learns the registry url at enrollment (below), never from env or a deploy.
 
 ## Enrolling devices
@@ -279,15 +279,35 @@ directly with `mikro ota enroll --credential <secret>`.
 # Create a build from the current project.
 mikro ota pack
 
-# Upload it to your registry.
-mikro ota publish
+# Build, pack, and upload it to your registry.
+mikro ota push
+
+# Upload and release it to the main channel in one step.
+mikro ota push --release main
 ```
 
 `mikro ota pack` builds your app to bytecode and packs it into a `.tgz` with a small manifest
 recording the firmware version and bytecode version it targets. You can use it on its own for
-a build artifact or a manual upload. `mikro ota publish` uploads the build to the registry
+a build artifact or a manual upload. `mikro ota push` uploads the build to the registry
 configured by `mikro ota setup` (`.mikro/registry.json`), authenticated with the token stored
 there. Pass `--registry` and `--token` to override them for a one-off.
+
+## Release channels {#release-channels}
+
+A channel is a movable pointer to a build, like a Docker tag or an npm dist-tag. A device is
+enrolled on one channel and is offered whatever build that channel currently points at. The
+device never knows which channel it is on; the mapping lives in the registry.
+
+Uploading a build and serving it are two steps. `mikro ota push` uploads a build but serves
+it to no one until a channel points at it. `mikro ota release <version> <channel>` moves a
+channel to an already-uploaded build, and `mikro ota push --release <channel>` does both at
+once.
+
+The default channel is `main`. A typical flow: enroll test devices on a `beta` channel with
+`mikro ota enroll --channel beta`, serve them with `mikro ota push --release beta`, and once a
+build is proven, graduate that exact build to everyone on `main` with `mikro ota release
+<version> main`. Rolling a channel back to an earlier build is the same command pointed at an
+older version.
 
 ## Limitations
 

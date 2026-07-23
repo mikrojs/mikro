@@ -115,10 +115,15 @@ pn mikro deploy    # build and deploy to device (establishes the rollback baseli
 
 The app code lives in `app/main.ts` (WiFi + LED heartbeat); all the update machinery is in
 `app/updates.ts`, ready to copy into your own app. To see an update land, change
-`BLINK_INTERVAL_MS` in `app/main.ts`, bump the version in `package.json`, and publish:
+`BLINK_INTERVAL_MS` in `app/main.ts`, bump the version in `package.json`, and push it,
+releasing to the `main` channel so enrolled devices are served it:
 
 ```sh
-pn mikro ota publish
+pn mikro ota push --release main
 ```
 
-Devices pick it up on their next check-in.
+`push` uploads the build; `--release main` points the `main` channel at it, which is the
+channel a device enrolls on by default. Without `--release` the build is uploaded but served
+to no one, which is what you want when staging a build for a `beta` channel first (release it
+later with `mikro ota release <version> <channel>`). Devices pick up a released build on their
+next check-in.

@@ -321,9 +321,9 @@ mikro env delete KEY
 
 ## mikro ota
 
-Pack and publish app builds for over-the-air updates, and enroll devices with an update registry. See the [OTA guide](/ota).
+Pack, push, and release app builds for over-the-air updates, and enroll devices with an update registry. See the [OTA guide](/ota).
 
-Which registry to use lives in `.mikro/registry.json` (project) or `~/.mikro/registry.json` (user), as `{"url": …, "token": …}`; `publish` and `enroll` read it so neither needs flags once it is set. Precedence: flags, then `MIKRO_OTA_TOKEN`, then the project file, then the user file.
+Which registry to use lives in `.mikro/registry.json` (project) or `~/.mikro/registry.json` (user), as `{"url": …, "token": …}`; `push`, `release`, and `enroll` read it so none need flags once it is set. Precedence: flags, then `MIKRO_OTA_TOKEN`, then the project file, then the user file.
 
 ### mikro ota setup
 
@@ -356,24 +356,42 @@ mikro ota pack
 
 See [Build options](#build-options) for details on `--no-minify`, `--minifier`, and other build flags.
 
-### mikro ota publish
+### mikro ota push
 
-Upload a build to your OTA registry. Without `--build`, the current project is packed first (same as `mikro ota pack`).
+Build, pack, and upload a build to your OTA registry. Without `--tarball`, the current project is built and packed first (same as `mikro ota pack`). By default the build is uploaded but not served to any device; pass `--release CHANNEL` to also point a channel at it (see [Release channels](/ota#release-channels)).
 
 ```sh
-mikro ota publish
+mikro ota push
 ```
 
-| Option           | Description                                                            |
-| ---------------- | ---------------------------------------------------------------------- |
-| `--registry URL` | Registry origin (default: `.mikro/registry.json`)                      |
-| `--build FILE`   | Publish an existing build instead of packing the current project       |
-| `--token TOKEN`  | Registry auth token (default: `MIKRO_OTA_TOKEN` env var)               |
-| `--note TEXT`    | Free-text note stored with the build (e.g. what changed)               |
-| `--create`       | Create the app on first publish instead of failing on an unknown app   |
-| `--snapshot`     | Derive a unique version so iteration needs no version bump (see below) |
+| Option              | Description                                                            |
+| ------------------- | ---------------------------------------------------------------------- |
+| `--registry URL`    | Registry origin (default: `.mikro/registry.json`)                      |
+| `--tarball FILE`    | Push a pre-packed `.tgz` instead of building                           |
+| `--release CHANNEL` | Also release the build to this channel (default: not served)           |
+| `--token TOKEN`     | Registry auth token (default: `MIKRO_OTA_TOKEN` env var)               |
+| `--note TEXT`       | Free-text note stored with the build (e.g. what changed)               |
+| `--create`          | Create the app on first push instead of failing on an unknown app      |
+| `--snapshot`        | Derive a unique version so iteration needs no version bump (see below) |
 
-A registry stores each `(app, version, bytecode)` build once, so re-publishing without bumping `package.json` fails. `--snapshot` sidesteps that during development by appending a semver prerelease to the version: the commit hash on a clean tree (`1.2.3-snapshot.g0a1b2c3d5e6`), the same plus a timestamp on a dirty tree (`1.2.3-snapshot.g0a1b2c3d5e6-dirty.20260723T003205Z`), or just a timestamp outside a git repo (`1.2.3-snapshot.20260723T003205Z`). A clean tree is idempotent: the same commit derives the same version, so re-publishing it is a no-op. With `--build`, pack with `--snapshot` instead; the version is fixed once a build is packed.
+See [Build options](#build-options) for details on `--no-minify`, `--loglevel`, and other build flags.
+
+A registry stores each `(app, version, bytecode)` build once, so re-pushing without bumping `package.json` fails. `--snapshot` sidesteps that during development by appending a semver prerelease to the version: the commit hash on a clean tree (`1.2.3-snapshot.g0a1b2c3d5e6`), the same plus a timestamp on a dirty tree (`1.2.3-snapshot.g0a1b2c3d5e6-dirty.20260723T003205Z`), or just a timestamp outside a git repo (`1.2.3-snapshot.20260723T003205Z`). A clean tree is idempotent: the same commit derives the same version, so re-pushing it is a no-op. With `--tarball`, pack with `--snapshot` instead; the version is fixed once a build is packed.
+
+### mikro ota release
+
+Point a channel at a build that is already on the registry. Uploading (`push`) and releasing are separate steps: `release` moves the channel pointer only, it uploads nothing. Use it to graduate a proven build to a wider channel (`mikro ota release 1.2.3 main`) or to roll a channel back to an earlier version. See [Release channels](/ota#release-channels).
+
+```sh
+mikro ota release <version> <channel>
+```
+
+| Option           | Description                                              |
+| ---------------- | -------------------------------------------------------- |
+| `VERSION`        | Version of an already-published build to serve           |
+| `CHANNEL`        | Channel to point at that build (e.g. `beta`, `main`)     |
+| `--registry URL` | Registry origin (default: `.mikro/registry.json`)        |
+| `--token TOKEN`  | Registry auth token (default: `MIKRO_OTA_TOKEN` env var) |
 
 ### mikro ota enroll
 
@@ -388,6 +406,7 @@ mikro ota enroll
 | `--registry URL`      | Registry origin (default: `.mikro/registry.json`)                                       |
 | `--token TOKEN`       | Registry API token (default: `MIKRO_OTA_TOKEN` env var)                                 |
 | `--name NAME`         | Display name stored with the device in the registry                                     |
+| `--channel CHANNEL`   | Release channel to enroll the device on (default: `main`)                               |
 | `--re-enroll`         | Mint a fresh credential when the device is already enrolled (the old one stops working) |
 | `--credential SECRET` | Write an externally minted credential to the device; the registry is not contacted      |
 | `-p, --port PORT`     | Serial port (auto-detected if omitted)                                                  |
@@ -571,7 +590,7 @@ mikro sim scaffold [--overwrite]
 
 ## Build options {#build-options}
 
-Commands that build your code (`dev`, `deploy`, `build`, `test`, `ota pack`, `ota publish`, and the `sim` equivalents) share these options:
+Commands that build your code (`dev`, `deploy`, `build`, `test`, `ota pack`, `ota push`, and the `sim` equivalents) share these options:
 
 - `--no-minify` disables minification. Useful for debugging; the output is larger but more readable in stack traces.
 - `--minifier MINIFIER` selects the minifier: `esbuild` (default), `terser`, or `swc`. Can also be set via [`build.minifier`](/config#buildminifier).
