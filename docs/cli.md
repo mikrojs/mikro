@@ -376,7 +376,7 @@ mikro ota push
 
 See [Build options](#build-options) for details on `--no-minify`, `--loglevel`, and other build flags.
 
-A registry stores each `(app, version, bytecode)` build once, so re-pushing without bumping `package.json` fails. `--snapshot` sidesteps that during development by appending a semver prerelease to the version: the commit hash on a clean tree (`1.2.3-snapshot.g0a1b2c3d5e6`), the same plus a timestamp on a dirty tree (`1.2.3-snapshot.g0a1b2c3d5e6-dirty.20260723T003205Z`), or just a timestamp outside a git repo (`1.2.3-snapshot.20260723T003205Z`). A clean tree is idempotent: the same commit derives the same version, so re-pushing it is a no-op. With `--tarball`, pack with `--snapshot` instead; the version is fixed once a build is packed.
+A registry stores each `(app, version, bytecode)` build once, so re-pushing without bumping `package.json` fails. `--snapshot` sidesteps that during development by appending the UTC build time to the version as a semver prerelease (`1.2.3-snapshot.20260723T003205Z`). Snapshot versions therefore sort in build order under semver, so listed or sorted versions read chronologically; which build a device installs is decided by checksum, not by version order. Every push mints a new version, including a re-push of the same commit; which commit a build came from is recorded separately, in the build's source fields. With `--tarball`, pack with `--snapshot` instead; the version is fixed once a build is packed.
 
 ### mikro ota release
 

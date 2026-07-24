@@ -231,8 +231,7 @@ export async function readManifestFromTarball(tarballPath: string): Promise<OtaM
   return manifest
 }
 
-/** A working tree's git state: the source of both the snapshot version and the
- *  manifest's source fields. */
+/** A working tree's git state, as recorded in a build manifest's source fields. */
 export interface GitSnapshotState {
   /** Full commit hash of HEAD, or null outside a git repo. */
   sha: string | null
@@ -253,10 +252,6 @@ function compactUtcTimestamp(now: Date): string {
   )
 }
 
-/** How much of the sha the snapshot version carries. Pinned rather than left to
- *  git's own abbreviation, which grows as the object database does. */
-const SHORT_SHA_LENGTH = 12
-
 /** Drop any `+build` metadata from a version. Appended prerelease identifiers
  *  must precede build metadata in semver order, so a stray `+…` on the base
  *  would make the derived string invalid. A `package.json` version never carries
@@ -270,50 +265,37 @@ function stripBuildMetadata(version: string): string {
  * Derive a unique OTA version for `--snapshot`, so dev iteration does not need a
  * manual `package.json` bump. The registry keys build immutability on
  * `(app, version, bytecodeVersion)`, so each iteration needs a distinct version.
+ * Form: `<base>-snapshot.<ts>`.
  *
  * Uniqueness rides in a semver **prerelease**, not build metadata: build
  * metadata is ignored in semver equality (`1.2.3+a` equals `1.2.3+b`), so a
  * conformant registry would collapse two snapshots into one. A prerelease is
  * always significant.
  *
- *   clean    `<base>-snapshot.g<sha>`             commit fully identifies it, so
- *                                                 re-publishing a commit is idempotent
- *   dirty    `<base>-snapshot.g<sha>-dirty.<ts>`  `g<sha>-dirty` is the `git describe`
- *                                                 idiom; the timestamp makes repeated
- *                                                 builds of an ephemeral tree distinct
- *   no git   `<base>-snapshot.<ts>`               no commit to name
+ * The timestamp is the whole prerelease, so snapshots sort in build order under
+ * semver: prerelease identifiers compare left to right, and a fixed-width `<ts>`
+ * orders chronologically as a string. Nothing in the update path relies on that
+ * (a device compares checksums, and a channel serves whatever build it points
+ * at, including an older one); it is so that listed or sorted snapshot versions
+ * read in build order. Which commit a build came from is not encoded here; the
+ * manifest records it (`commit`, `dirty`) and the registry stores it. Two builds
+ * within the same second collide.
  *
- * The `g` prefix keeps the sha identifier alphanumeric (an all-digit sha with a
- * leading zero would be an invalid numeric identifier). A base that already has
- * a prerelease is extended with `.`; a plain base opens one with `-`.
- *
- * The sha is abbreviated here rather than by git, at a pinned length, so "same
- * commit -> same version" stays stable: git's own abbreviation grows as the
- * object database does.
+ * A base that already has a prerelease is extended with `.`; a plain base opens
+ * one with `-`.
  */
-export function snapshotVersion(base: string, git: GitSnapshotState, now: Date): string {
+export function snapshotVersion(base: string, now: Date): string {
   const core = stripBuildMetadata(base)
-  const short = git.sha?.slice(0, SHORT_SHA_LENGTH)
-  let suffix: string
-  if (short === undefined) {
-    suffix = `snapshot.${compactUtcTimestamp(now)}`
-  } else if (git.dirty) {
-    suffix = `snapshot.g${short}-dirty.${compactUtcTimestamp(now)}`
-  } else {
-    suffix = `snapshot.g${short}`
-  }
+  const suffix = `snapshot.${compactUtcTimestamp(now)}`
   return core.includes('-') ? `${core}.${suffix}` : `${core}-${suffix}`
 }
 
 /**
  * Read the repository's git state: the full sha, as the manifest's durable
- * record of what a build came from (the way npm records `gitHead`), abbreviated
- * by `snapshotVersion` for the version string. Read once per pack so the two
- * cannot disagree about whether the tree was dirty.
+ * record of what a build came from (the way npm records `gitHead`).
  *
  * A failure (not a git repo, git absent) is the expected "no commit" case, not
- * an error: it resolves to no sha, routing `snapshotVersion` to its timestamp
- * fallback and leaving the manifest's source fields unset.
+ * an error: it resolves to no sha, leaving the manifest's source fields unset.
  */
 export async function resolveGitState(cwd: string): Promise<GitSnapshotState> {
   try {
