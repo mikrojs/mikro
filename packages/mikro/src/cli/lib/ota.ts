@@ -24,6 +24,24 @@ export interface OtaManifest {
   firmwareVersion: string
   /** QuickJS bytecode version the build was compiled for (byte 0 of a `.bjs`). */
   bytecodeVersion: number
+  /** Browsable https URL of the source repository (from the project's
+   * `package.json` `repository`), so the registry can link a build back to its
+   * source. Absent when `package.json` has no usable repository field. */
+  repository?: string
+  /** Path of the app within `repository` (from `package.json`'s
+   * `repository.directory`), so a workspace links to the app rather than the
+   * repo root. Only set alongside `repository`. */
+  directory?: string
+  /** Full commit SHA of HEAD at pack time, like npm's `gitHead`. In the manifest
+   * rather than read at push time because nothing else can recover it: a
+   * `push --tarball` from another machine has only these bytes, and reading the
+   * pusher's HEAD would name an unrelated commit. Absent outside a git repo. */
+  commit?: string
+  /** True when the repository had uncommitted changes at pack time. Says the
+   * build may not match `commit`, not that it does not: the check is
+   * repository-wide, so an edit to a file outside this app also sets it.
+   * Omitted (reads as false) for a clean tree. */
+  dirty?: boolean
 }
 
 export const MANIFEST_NAME = 'mikro.app.json'
@@ -153,6 +171,13 @@ async function walkSorted(root: string, rel = ''): Promise<string[]> {
  * Not covered: a filename's Unicode normalisation is whatever the filesystem
  * hands back, so a build packed on macOS (NFD) and on Linux (NFC) can still
  * differ. That needs a normalising step at file creation, not here.
+ *
+ * Reproducible from identical *input*, which since the manifest carries the
+ * source commit and dirty flag includes the git state: the same tree packed at
+ * two different commits hashes differently. Deliberate — the commit has to
+ * travel inside the artifact to survive a `pack` and `push --tarball` in
+ * separate CI stages — but it means re-pushing one version from a moved HEAD is
+ * a checksum conflict, not an idempotent no-op.
  */
 export async function createTarball(buildDir: string, outPath: string): Promise<void> {
   await pruneMacSidecars(buildDir)
@@ -192,19 +217,28 @@ export async function readManifestFromTarball(tarballPath: string): Promise<OtaM
       `${tarballPath} does not contain a valid ${MANIFEST_NAME} (packed with an older CLI? re-run 'mikro ota pack')`,
     )
   }
-  return {
+  const manifest: OtaManifest = {
     app: parsed.app,
     version: parsed.version,
     firmwareVersion: parsed.firmwareVersion,
     bytecodeVersion: parsed.bytecodeVersion,
   }
+  // Source fields are optional and only present on builds packed by a newer CLI.
+  if (typeof parsed.repository === 'string') manifest.repository = parsed.repository
+  if (typeof parsed.directory === 'string') manifest.directory = parsed.directory
+  if (typeof parsed.commit === 'string') manifest.commit = parsed.commit
+  if (parsed.dirty === true) manifest.dirty = true
+  return manifest
 }
 
-/** A working tree's git state, as used to derive a unique snapshot version. */
+/** A working tree's git state: the source of both the snapshot version and the
+ *  manifest's source fields. */
 export interface GitSnapshotState {
-  /** Short commit hash of HEAD, or null outside a git repo. */
+  /** Full commit hash of HEAD, or null outside a git repo. */
   sha: string | null
-  /** Whether the working tree has uncommitted changes. */
+  /** Whether the repository has uncommitted changes. Repository-wide, not
+   *  scoped to the packed project: in a workspace, an edit to a sibling package
+   *  counts, since it may well be a build input. */
   dirty: boolean
 }
 
@@ -218,6 +252,10 @@ function compactUtcTimestamp(now: Date): string {
     `T${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}Z`
   )
 }
+
+/** How much of the sha the snapshot version carries. Pinned rather than left to
+ *  git's own abbreviation, which grows as the object database does. */
+const SHORT_SHA_LENGTH = 12
 
 /** Drop any `+build` metadata from a version. Appended prerelease identifiers
  *  must precede build metadata in semver order, so a stray `+…` on the base
@@ -248,37 +286,119 @@ function stripBuildMetadata(version: string): string {
  * The `g` prefix keeps the sha identifier alphanumeric (an all-digit sha with a
  * leading zero would be an invalid numeric identifier). A base that already has
  * a prerelease is extended with `.`; a plain base opens one with `-`.
+ *
+ * The sha is abbreviated here rather than by git, at a pinned length, so "same
+ * commit -> same version" stays stable: git's own abbreviation grows as the
+ * object database does.
  */
 export function snapshotVersion(base: string, git: GitSnapshotState, now: Date): string {
   const core = stripBuildMetadata(base)
+  const short = git.sha?.slice(0, SHORT_SHA_LENGTH)
   let suffix: string
-  if (git.sha === null) {
+  if (short === undefined) {
     suffix = `snapshot.${compactUtcTimestamp(now)}`
   } else if (git.dirty) {
-    suffix = `snapshot.g${git.sha}-dirty.${compactUtcTimestamp(now)}`
+    suffix = `snapshot.g${short}-dirty.${compactUtcTimestamp(now)}`
   } else {
-    suffix = `snapshot.g${git.sha}`
+    suffix = `snapshot.g${short}`
   }
   return core.includes('-') ? `${core}.${suffix}` : `${core}-${suffix}`
 }
 
 /**
- * Read the working tree's git state for `snapshotVersion`. A failure (not a git
- * repo, git absent) is the expected "no commit" case, not an error: it resolves
- * to no sha, routing `snapshotVersion` to its timestamp fallback.
+ * Read the repository's git state: the full sha, as the manifest's durable
+ * record of what a build came from (the way npm records `gitHead`), abbreviated
+ * by `snapshotVersion` for the version string. Read once per pack so the two
+ * cannot disagree about whether the tree was dirty.
+ *
+ * A failure (not a git repo, git absent) is the expected "no commit" case, not
+ * an error: it resolves to no sha, routing `snapshotVersion` to its timestamp
+ * fallback and leaving the manifest's source fields unset.
  */
 export async function resolveGitState(cwd: string): Promise<GitSnapshotState> {
   try {
     const [{stdout: sha}, {stdout: status}] = await Promise.all([
-      // Pin the abbreviation length so "same commit -> same version" is stable
-      // over time; git's default length grows as the object database does.
-      execFileAsync('git', ['rev-parse', '--short=12', 'HEAD'], {cwd, encoding: 'utf-8'}),
+      execFileAsync('git', ['rev-parse', 'HEAD'], {cwd, encoding: 'utf-8'}),
       execFileAsync('git', ['status', '--porcelain'], {cwd, encoding: 'utf-8'}),
     ])
     return {sha: sha.trim() || null, dirty: status.trim().length > 0}
   } catch {
     return {sha: null, dirty: false}
   }
+}
+
+/**
+ * Normalise a `package.json` `repository` value into a browsable https URL, or
+ * `undefined` when it cannot be resolved to one. Covers the common cases npm's
+ * hosted-git-info handles, without the dependency: string or object form, host
+ * shorthands (`github:o/r`, a bare `o/r`), `git+`/`.git` decoration, and ssh/git
+ * remotes rewritten to https. The registry links back to the source with this,
+ * so an unparseable value is dropped rather than guessed at.
+ */
+export function normalizeRepositoryUrl(
+  repository: string | {url?: string} | undefined,
+): string | undefined {
+  const raw = typeof repository === 'string' ? repository : repository?.url
+  if (typeof raw !== 'string' || raw.trim().length === 0) return undefined
+  let s = raw.trim()
+
+  // Host shorthands: `github:o/r`, `gitlab:o/r`, `bitbucket:o/r`, or a bare
+  // `owner/repo` (npm resolves a bare shorthand to GitHub).
+  const hosts: Record<string, string> = {
+    github: 'github.com',
+    gitlab: 'gitlab.com',
+    bitbucket: 'bitbucket.org',
+  }
+  const shorthand = /^(github|gitlab|bitbucket):(.+)$/.exec(s)
+  if (shorthand) s = `https://${hosts[shorthand[1]!]}/${shorthand[2]}`
+  else if (/^[\w.-]+\/[\w.-]+$/.test(s)) s = `https://github.com/${s}`
+
+  s = s.replace(/^git\+/, '') // git+https://… → https://…
+
+  // scp-style ssh remote: git@github.com:o/r(.git) → https://github.com/o/r
+  const scp = /^[\w.-]+@([\w.-]+):(.+)$/.exec(s)
+  if (scp) s = `https://${scp[1]}/${scp[2]}`
+
+  s = s.replace(/^git:\/\//i, 'https://').replace(/^ssh:\/\/(?:[^@/]+@)?/i, 'https://')
+  // A `#committish` is npm dependency syntax, not part of a browsable url, and
+  // the commit is recorded separately anyway. Strip it before `.git`, which
+  // would otherwise stay glued to the fragment.
+  s = s.replace(/#.*$/, '')
+  s = s.replace(/\.git$/, '').replace(/\/+$/, '')
+
+  // Parse rather than regex-test the result: it normalises the scheme and host
+  // case, and it is the only way to drop userinfo. A tokenised remote
+  // (`https://x-access-token:<token>@github.com/…`) is a plausible thing to find
+  // in a CI checkout's package.json, and this url is uploaded to the registry
+  // and shown to whoever can read it.
+  const url = URL.parse(s)
+  if (url === null || (url.protocol !== 'https:' && url.protocol !== 'http:')) return undefined
+  url.username = ''
+  url.password = ''
+  return url.href.replace(/\/+$/, '')
+}
+
+/**
+ * Normalise `package.json`'s `repository.directory` (the app's path inside the
+ * repository) to a plain relative path, or `undefined` when it is absent or is
+ * not one. Leading `./` and stray slashes are trimmed, since a path anchored at
+ * the repo root is what was meant either way. A registry composes the result
+ * onto the repository URL, so anything that would escape or malform that link —
+ * a `..` segment, a Windows separator, a space — is dropped rather than fixed up.
+ */
+export function normalizeRepositoryDirectory(
+  repository: string | {directory?: string} | undefined,
+): string | undefined {
+  const raw = typeof repository === 'object' ? repository.directory : undefined
+  if (typeof raw !== 'string') return undefined
+  const path = raw
+    .trim()
+    .replace(/^\.\//, '')
+    .replace(/^\/+|\/+$/g, '')
+  if (path === '') return undefined
+  const segments = path.split('/')
+  if (segments.some((s) => s === '.' || s === '..' || !/^[\w.-]+$/.test(s))) return undefined
+  return path
 }
 
 /** SHA-256 of a file as lowercase hex. */

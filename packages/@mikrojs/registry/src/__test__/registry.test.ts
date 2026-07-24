@@ -33,6 +33,10 @@ async function publish(
   form.set('firmwareVersion', overrides.firmwareVersion ?? '0.15.0')
   form.set('bytecodeVersion', overrides.bytecodeVersion ?? '13')
   if (overrides.note !== undefined) form.set('note', overrides.note)
+  if (overrides.repository !== undefined) form.set('repository', overrides.repository)
+  if (overrides.directory !== undefined) form.set('directory', overrides.directory)
+  if (overrides.commit !== undefined) form.set('commit', overrides.commit)
+  if (overrides.dirty !== undefined) form.set('dirty', overrides.dirty)
   // Publish now serves nothing on its own; a `channel` field is what points a
   // channel at the build. Default to `main` so the pre-channels tests keep
   // getting an immediate offer; pass `channel: ''` for a bare store-only push.
@@ -187,6 +191,81 @@ describe('publish', () => {
     )
     expect(download.status).toBe(200)
     expect(await download.text()).toBe('fake-tgz-bytes')
+  })
+})
+
+describe('publish source fields', () => {
+  const repository = 'https://github.com/acme/sensor'
+  const commit = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2'
+
+  it('stores repository, directory, commit, and dirty on the build record', async () => {
+    const storage = memoryStorage()
+    const registry = createRegistry({storage, token: TOKEN})
+    const {checksum} = await publish(registry, {
+      repository,
+      directory: 'examples/sensor',
+      commit,
+      dirty: '1',
+    })
+    const record = await storage.getBuild(checksum)
+    expect(record?.repository).toBe(repository)
+    expect(record?.directory).toBe('examples/sensor')
+    expect(record?.commit).toBe(commit)
+    expect(record?.dirty).toBe(true)
+  })
+
+  it('leaves the fields unset when the publish omits them', async () => {
+    const storage = memoryStorage()
+    const registry = createRegistry({storage, token: TOKEN})
+    const {checksum} = await publish(registry)
+    const record = await storage.getBuild(checksum)
+    expect(record?.repository).toBeUndefined()
+    expect(record?.directory).toBeUndefined()
+    expect(record?.commit).toBeUndefined()
+    expect(record?.dirty).toBeUndefined()
+  })
+
+  it('400s a repository that is not an http(s) url', async () => {
+    const {response} = await publish(makeRegistry(), {repository: 'file:///etc/passwd'})
+    expect(response.status).toBe(400)
+  })
+
+  // The publisher's package.json can carry a tokenised remote; storing it would
+  // put the credential in front of everyone who can read the build.
+  it('400s a repository carrying credentials', async () => {
+    const {response} = await publish(makeRegistry(), {
+      repository: 'https://x-access-token:ghp_secret@github.com/acme/sensor',
+    })
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('credentials')
+  })
+
+  it('400s a commit that is not a hex sha', async () => {
+    const {response} = await publish(makeRegistry(), {commit: 'not a sha'})
+    expect(response.status).toBe(400)
+  })
+
+  it('400s a directory that escapes the repository', async () => {
+    for (const directory of ['../etc', 'packages/../../etc', '/abs/path', 'a b']) {
+      const {response} = await publish(makeRegistry(), {repository, directory})
+      expect(response.status, directory).toBe(400)
+    }
+  })
+
+  // Each is meaningless without its anchor: a path with no repository resolves
+  // nowhere, and a dirty flag with no commit differs from nothing.
+  it('400s directory without repository and dirty without commit', async () => {
+    expect((await publish(makeRegistry(), {directory: 'examples/sensor'})).response.status).toBe(
+      400,
+    )
+    expect((await publish(makeRegistry(), {dirty: '1'})).response.status).toBe(400)
+  })
+
+  it('reads dirty as a truthy flag, not mere presence', async () => {
+    const storage = memoryStorage()
+    const registry = createRegistry({storage, token: TOKEN})
+    const {checksum} = await publish(registry, {commit, dirty: 'false'})
+    expect((await storage.getBuild(checksum))?.dirty).toBeUndefined()
   })
 })
 

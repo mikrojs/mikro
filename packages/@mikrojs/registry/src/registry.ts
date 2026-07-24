@@ -77,6 +77,16 @@ const MAX_VERSION_LENGTH = 64
 const MAX_REASON_LENGTH = 64
 const MAX_DETAIL_LENGTH = 256
 const MAX_NOTE_LENGTH = 512
+const MAX_REPOSITORY_LENGTH = 512
+const MAX_DIRECTORY_LENGTH = 256
+/** A git commit SHA (short or full), the only shape `commit` may take: it is
+ *  stored verbatim and shown to operators, so restrict it like other indexed
+ *  fields rather than storing arbitrary text. */
+const COMMIT_RE = /^[0-9a-f]{7,64}$/
+/** A plain relative path: the app's location inside the repository. A registry
+ *  composes this onto the repository URL, so `..`, an absolute path, and
+ *  anything else that would escape or malform that link are all rejected. */
+const DIRECTORY_RE = /^[\w.-]+(?:\/[\w.-]+)*$/
 /** Retained failure reports per device, newest kept. */
 const MAX_FAILED_CHECKSUMS = 16
 /** Highest name revision a device may report. Rule 4b answers a tie with
@@ -276,6 +286,11 @@ export function createRegistry(options: RegistryOptions): Registry {
       const value = form.get(name)
       return typeof value === 'string' ? value : undefined
     }
+    /** A truthy flag field: present, and not an explicitly false-y value. */
+    const truthy = (name: string) => {
+      const value = text(name)
+      return value !== undefined && value !== '' && value !== '0' && value !== 'false'
+    }
 
     const app = text('app')
     const version = text('version')
@@ -287,6 +302,11 @@ export function createRegistry(options: RegistryOptions): Registry {
     // Optional: `push --release <channel>` sends it, a bare `push` does not.
     // Absent stores the build without serving it on any channel.
     const channel = text('channel')
+    // Optional source repository and commit from the build's manifest, for linking back.
+    const repository = text('repository')
+    const directory = text('directory')
+    const commit = text('commit')
+    const dirty = truthy('dirty')
     const file = form.get('build')
 
     if (!app || !version || !firmwareVersion) {
@@ -318,6 +338,40 @@ export function createRegistry(options: RegistryOptions): Registry {
     if (note !== undefined && note.length > MAX_NOTE_LENGTH) {
       return error(`note must be at most ${MAX_NOTE_LENGTH} characters`, 400)
     }
+    // These are stored verbatim and re-serialised, so cap and shape them like
+    // the other publish-token-writable fields. The CLI already normalises the
+    // repository to https; reject anything that is not an http(s) URL rather than
+    // storing an unusable link.
+    if (repository !== undefined) {
+      if (repository.length > MAX_REPOSITORY_LENGTH) {
+        return error(`repository must be at most ${MAX_REPOSITORY_LENGTH} characters`, 400)
+      }
+      const url = URL.parse(repository)
+      if (url === null || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
+        return error('repository must be an http(s) URL', 400)
+      }
+      // A tokenised remote (`https://x-access-token:<token>@…`) reaches here if a
+      // publisher's package.json carries one. Refuse it rather than storing a
+      // credential and rendering it to everyone who can read the build.
+      if (url.username !== '' || url.password !== '') {
+        return error('repository must not contain credentials', 400)
+      }
+    }
+    // A path with no repository to resolve it against links nowhere, and a dirty
+    // flag with no commit says "differs from" nothing.
+    if (directory !== undefined) {
+      if (repository === undefined) return error('directory requires repository', 400)
+      if (directory.length > MAX_DIRECTORY_LENGTH) {
+        return error(`directory must be at most ${MAX_DIRECTORY_LENGTH} characters`, 400)
+      }
+      if (!DIRECTORY_RE.test(directory) || directory.split('/').includes('..')) {
+        return error('directory must be a relative path inside the repository', 400)
+      }
+    }
+    if (commit !== undefined && !COMMIT_RE.test(commit)) {
+      return error('commit must be a hex git SHA', 400)
+    }
+    if (dirty && commit === undefined) return error('dirty requires commit', 400)
     if (channel !== undefined) {
       if (channel.length > MAX_CHANNEL_LENGTH) {
         return error(`channel must be at most ${MAX_CHANNEL_LENGTH} characters`, 400)
@@ -391,6 +445,10 @@ export function createRegistry(options: RegistryOptions): Registry {
         createdAt: new Date().toISOString(),
       }
       if (note !== undefined) record.note = note
+      if (repository !== undefined) record.repository = repository
+      if (directory !== undefined) record.directory = directory
+      if (commit !== undefined) record.commit = commit
+      if (dirty) record.dirty = true
       // Persist the new build even when no channel is named, so `release` can
       // point at it later. pointChannel re-writes it below when main is named.
       if (channel !== DEFAULT_CHANNEL) await storage.putBuild(record)

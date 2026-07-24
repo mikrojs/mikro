@@ -56,8 +56,25 @@ human page to browsers at the same url if you like; API clients ask for JSON.
 ### 1. The build artifact
 
 `mikro ota pack` produces a gzipped tar. Its root holds `mikro.app.json` plus the `app/` tree.
-The manifest is `{app, version, firmwareVersion, bytecodeVersion}`. The last two record what the
-build was compiled against; they are not a policy about who may run it.
+The manifest is `{app, version, firmwareVersion, bytecodeVersion}`, with optional source fields
+`{repository, directory, commit, dirty}`. The `firmwareVersion`/`bytecodeVersion` fields record
+what the build was compiled against; they are not a policy about who may run it. The source
+fields, when present, are captured at pack time (`repository` and `directory` from
+`package.json`, `commit` from HEAD, `dirty` when the repository had uncommitted changes) so a
+build carries a link back to its source; a registry may store and surface them, and MUST ignore
+them if it does not.
+
+They live inside the manifest, not merely on the upload, so that a build packed in one CI stage
+and pushed from another describes the source it was packed from rather than whatever project the
+pushing machine sits in. A `push --tarball` holds only these bytes, and for the commit there is
+no second chance: nothing else can recover it afterwards.
+
+The cost is that the checksum covers them, so the same app tree packed at two commits is two
+builds, and re-pushing one version from a moved HEAD is a checksum conflict rather than an
+idempotent no-op.
+
+`dirty` is repository-wide. It says the build _may_ not match `commit`, not that it does not: an
+uncommitted change to a file outside this app sets it too.
 
 The build's identity is the **SHA-256 of the `.tgz`, in lowercase hex**. `mikro ota pack`
 computes it, and the device firmware verifies it after downloading. Store it and serve it as the
@@ -78,10 +95,27 @@ offer's `checksum`. If it does not match, every download fails verification.
 | `note`            | string, optional | free-text note about the build (omitted when unset)                                                   |
 | `create`          | string, optional | truthy flag (`--create`): create an unknown app on first publish instead of rejecting it              |
 | `channel`         | string, optional | serve the stored build on this channel (`push --release <channel>`); absent stores it without serving |
+| `repository`      | string, optional | source repository URL (http(s), no credentials), from the build's `mikro.app.json`                    |
+| `directory`       | string, optional | app's path inside `repository` (relative, no `..`); only valid with `repository`                      |
+| `commit`          | string, optional | commit SHA the build was packed from (hex), from the build's `mikro.app.json`                         |
+| `dirty`           | string, optional | truthy flag: the repository was dirty at pack time; only valid with `commit`                          |
 | `build`           | file             | the `.tgz` (content-type `application/gzip`)                                                          |
 
 Auth is `Authorization: Bearer <token>`. The CLI never parses the token, so any token scheme
 works; `--token` and `MIKRO_OTA_TOKEN` are sent verbatim.
+
+All four are read back off the artifact, so a `--tarball` push sends exactly what the pack
+recorded. Each is independently optional: a project with a `repository` but no git repo publishes
+one without the other. A registry with an app-level record may prefer to keep `repository` and
+`directory` there, using the first publish that carries them as the seed, since they describe the
+app rather than the build.
+
+**The source fields are asserted by the publisher, not proven.** Nothing verifies them against
+the uploaded `.tgz`, so they attest to nothing on their own: anyone holding a publish token
+chooses them. Validate `repository` as an http(s) URL with no userinfo (a tokenised remote in a
+publisher's `package.json` would otherwise be stored and shown), reject a `directory` that is
+absolute or contains `..`, and render the link as untrusted outbound content
+(`rel="noopener noreferrer"`) rather than as a verified provenance claim.
 
 **Storing a build and serving it are separate steps.** A build is stored the moment it uploads,
 but it is offered to a device only once a **channel** points at it. A channel is a movable pointer
@@ -607,8 +641,9 @@ one build known to work on it.
 
 - **builds**: `checksum` (primary key), `app`, `version`, `bytecodeVersion`, `firmwareVersion`,
   `size`, `storageRef`, `createdAt`, `promotedAt` (the highest `promotedAt` per
-  `(app, bytecodeVersion)` is `main`'s current build). Records stay tag-less, so one build can be
-  served on more than one channel.
+  `(app, bytecodeVersion)` is `main`'s current build), and optional source fields `repository`,
+  `directory`, `commit`, `dirty` (see the publish table). Records stay tag-less, so one build can
+  be served on more than one channel.
 - **channels**: `(app, channel, bytecodeVersion)` (primary key), `checksum`. A movable pointer to a
   build; the key is unique, so a release overwrites it and there is nothing to order. `main` is not
   stored here; it is the highest-`promotedAt` build (see builds), so today's per-`(app,
