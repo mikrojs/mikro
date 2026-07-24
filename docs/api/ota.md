@@ -63,7 +63,7 @@ check-in response from the enrolled registry, so the registry is trusted to name
 build lives — its own host, a CDN or object store on another host, or a signed URL with the
 signature in its query. Integrity comes from the checksum, verified over the whole download
 before install, so a wrong or hostile host yields a failed install rather than a bad one. Send
-the credential only to the registry's own origin (the reference client checks this before
+the update key only to the registry's own origin (the reference client checks this before
 attaching it), so a build fetched elsewhere goes out as an unauthenticated request for what is,
 with the checksum, a public artifact.
 
@@ -130,9 +130,9 @@ Reinstalls the previous build immediately.
 bearer(): string | undefined
 ```
 
-The device's check-in credential, written to the system store by
+The device's check-in update key, written to the system store by
 [`mikro ota enroll`](/cli#mikro-ota-enroll), or `undefined` on an un-enrolled device. Send it
-as the `Authorization: Bearer` header on registry check-ins. Read-only: credentials are
+as the `Authorization: Bearer` header on registry check-ins. Read-only: update keys are
 provisioned over the cable and never delivered in-band, so a 401 response means re-enrolling
 at a workstation, not clearing state.
 
@@ -142,7 +142,7 @@ at a workstation, not clearing state.
 registry(): string | undefined
 ```
 
-The registry origin the device was enrolled against, written next to the credential by
+The registry origin the device was enrolled against, written next to the update key by
 [`mikro ota enroll`](/cli#mikro-ota-enroll), or `undefined` on an un-enrolled device. The
 check-in url is `${ota.registry()}/api/v1/checkin`.
 

@@ -143,7 +143,7 @@ ota.confirm()
 // are top-level in the check-in response, so the whole body goes to parseOffer,
 // which enforces the scheme, the .tgz, the checksum and size. It does not check
 // the download host: the registry names where the build lives, the checksum
-// vouches for the bytes, and the credential (below) goes only to the registry.
+// vouches for the bytes, and the update key (below) goes only to the registry.
 const offer = ota.parseOffer(body)
 
 // If an update is offered, apply it. The callback is your only transport code.
@@ -251,27 +251,27 @@ The device learns the registry url at enrollment (below), never from env or a de
 ## Enrolling devices
 
 A registry answers only authenticated check-ins, and every device authenticates with its
-own credential, minted by the registry when you enroll the device from your workstation:
+own update key, issued by the registry when you enroll the device from your workstation:
 
 ```sh
 mikro ota enroll
 ```
 
 The CLI reads the hardware id off the connected device, registers it with the registry, and
-writes the registry url and the returned credential to the device over the cable, as a pair.
-Credentials never travel over the network to the device: the registry returns the credential
+writes the registry url and the returned update key to the device over the cable, as a pair.
+Update keys never travel over the network to the device: the registry returns the update key
 exactly once, in its response to the enrollment request. On the device the pair lives in the system store (`mik.sys`), which
 deploys and `nvsStorage.clear()` never touch; the app reads it with
 [`ota.registry()`](/api/ota#ota-registry) and [`ota.bearer()`](/api/ota#ota-bearer). Enrolling
 also binds the device to the project's app, which is the only app it will ever be offered
 builds for.
 
-If a device's credential stops working (a 401 on check-in: it was re-minted, or the device
-was deleted), re-enroll at the workstation with `mikro ota enroll --re-enroll`, which mints
-a fresh credential and invalidates the old one immediately. The device treats only a 401
-this way; transient errors keep the normal check-in cadence. For registries that mint
-credentials through their own tooling instead of the enroll endpoint, write the secret
-directly with `mikro ota enroll --credential <secret>`.
+If a device's update key stops working (a 401 on check-in: it was rotated, or the device
+was deleted), re-enroll at the workstation with `mikro ota enroll --re-enroll`, which rotates
+the update key and invalidates the old one immediately. The device treats only a 401
+this way; transient errors keep the normal check-in cadence. For registries that issue
+update keys through their own tooling instead of the enroll endpoint, write the secret
+directly with `mikro ota enroll --update-key <secret>`.
 
 ## Building and publishing builds
 

@@ -308,7 +308,7 @@ describe('protocol', () => {
   // only other statement of the mapping is a comment in mik_config.cpp. Every
   // caller passes the string 'sys', and every test above the wire asserts
   // against a mock that takes the string, so a flipped mapping would send the
-  // device name and the OTA credential to mik.kv — the app store that deploy
+  // device name and the OTA update key to mik.kv — the app store that deploy
   // wipes — with nothing failing. These assert the byte itself.
   describe('kv command builders', () => {
     it('encodes the sys namespace as 1', () => {

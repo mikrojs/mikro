@@ -122,7 +122,7 @@ interface Attempts {
 
 /**
  * Create a registry as a portable fetch handler. Implements the required
- * contract (publish, build download with Range, enroll + re-mint, browser
+ * contract (publish, build download with Range, enroll + rotate, browser
  * login) and the advisory reference check-in protocol from
  * docs/registry-spec.md. No orgs, no config sync; the `create` publish field
  * is accepted and ignored (apps are created implicitly on first publish).
@@ -219,9 +219,9 @@ export function createRegistry(options: RegistryOptions): Registry {
 
   async function deviceIdFor(request: Request): Promise<string | undefined> {
     if (options.verifyDevice) return options.verifyDevice(request)
-    const credential = bearerToken(request)
-    if (credential === undefined) return undefined
-    const device = await storage.getDeviceByCredentialHash(await sha256Hex(credential))
+    const updateKey = bearerToken(request)
+    if (updateKey === undefined) return undefined
+    const device = await storage.getDeviceByUpdateKeyHash(await sha256Hex(updateKey))
     return device?.deviceId
   }
 
@@ -447,9 +447,9 @@ export function createRegistry(options: RegistryOptions): Registry {
   // ── Download ─────────────────────────────────────────────────────
 
   /**
-   * A device credential, not a token: only enrolled devices pull builds, and
+   * A device update key, not a token: only enrolled devices pull builds, and
    * only their own app's. A checksum is not a secret — it appears in publish
-   * output and CI logs — so without the credential anyone holding one reads the
+   * output and CI logs — so without the update key anyone holding one reads the
    * build, and without the app check any *one* enrolled device reads every
    * other app's on a shared
    * registry. This is the binding selectOffer enforces, applied to the transfer
@@ -523,10 +523,10 @@ export function createRegistry(options: RegistryOptions): Registry {
     })
   }
 
-  // ── Enroll + re-mint ─────────────────────────────────────────────
+  // ── Enroll + rotate ──────────────────────────────────────────────
 
   function deviceView(device: DeviceRecord): Record<string, unknown> {
-    const {credentialHash: _hash, ...view} = device
+    const {updateKeyHash: _hash, ...view} = device
     return view
   }
 
@@ -544,11 +544,11 @@ export function createRegistry(options: RegistryOptions): Registry {
    *  means the second write is computed from a record the first already
    *  replaced and its whole update is lost. Concretely: a check-in reads the
    *  device, awaits several more times, then writes back a record still
-   *  carrying the OLD credentialHash — silently undoing a re-mint that landed in
-   *  between, so a revoked (possibly leaked) credential starts working again and
+   *  carrying the OLD updateKeyHash — silently undoing a rotation that landed in
+   *  between, so a revoked (possibly leaked) update key starts working again and
    *  the operator's replacement does not. Enroll has its own version: two
    *  concurrent enrolls of one id both clear the 409 and both write, and the
-   *  loser's CLI walks away holding a credential the registry no longer accepts.
+   *  loser's CLI walks away holding an update key the registry no longer accepts.
    *
    *  Serializing keeps each read adjacent to its write without adding a
    *  compare-and-set to RegistryStorage. One queue for all devices rather than
@@ -603,13 +603,13 @@ export function createRegistry(options: RegistryOptions): Registry {
     // valid token and a guessed hardware id, and reveals only that the id is
     // in use.
     if (await storage.getDevice(deviceId)) {
-      return error('A device with this id is already enrolled. Re-mint its credential instead', 409)
+      return error('A device with this id is already enrolled. Rotate its update key instead', 409)
     }
 
-    const credential = `dvc_${randomSecret()}`
+    const updateKey = `duk_${randomSecret()}`
     const device: DeviceRecord = {
       deviceId,
-      credentialHash: await sha256Hex(credential),
+      updateKeyHash: await sha256Hex(updateKey),
       failedChecksums: [],
     }
     // Enrollment is the only place a binding is ever set: it is never inferred
@@ -622,19 +622,19 @@ export function createRegistry(options: RegistryOptions): Registry {
     // explicit --channel main is the same as the default and leaves no field.
     if (channel !== '' && channel !== DEFAULT_CHANNEL) device.channel = channel
     await storage.putDevice(device)
-    // The credential appears exactly once, here; only its hash is stored.
-    return json({device: deviceView(device), credential}, 201)
+    // The update key appears exactly once, here; only its hash is stored.
+    return json({device: deviceView(device), credential: updateKey}, 201)
   }
 
-  async function handleRemint(request: Request, deviceId: string): Promise<Response> {
+  async function handleRotateKey(request: Request, deviceId: string): Promise<Response> {
     const grant = await grantFor(request)
     if (grant === undefined) return error('Unauthorized', 401)
     const device = await deviceForGrant(grant, deviceId)
     if (device === undefined) return error('Unknown device', 404)
 
-    const credential = `dvc_${randomSecret()}`
-    await storage.putDevice({...device, credentialHash: await sha256Hex(credential)})
-    return json({credential})
+    const updateKey = `duk_${randomSecret()}`
+    await storage.putDevice({...device, updateKeyHash: await sha256Hex(updateKey)})
+    return json({credential: updateKey})
   }
 
   /** Clear a device's failure list, so a build that failed for a reason since
@@ -1313,12 +1313,12 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
       }
     }
 
-    const remint = /^\/api\/v1\/devices\/([^/]+)\/credential$/.exec(path)
-    if (remint && request.method === 'POST') {
-      const id = deviceIdFromPath(remint[1]!)
+    const rotate = /^\/api\/v1\/devices\/([^/]+)\/key$/.exec(path)
+    if (rotate && request.method === 'POST') {
+      const id = deviceIdFromPath(rotate[1]!)
       return id === undefined
         ? error('Unknown device', 404)
-        : serializeDeviceWrite(() => handleRemint(request, id))
+        : serializeDeviceWrite(() => handleRotateKey(request, id))
     }
 
     const failures = /^\/api\/v1\/devices\/([^/]+)\/failures$/.exec(path)

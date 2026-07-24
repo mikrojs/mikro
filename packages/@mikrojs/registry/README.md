@@ -40,7 +40,7 @@ whatever backend you already operate. See `examples/ota` in the repo (its
 
 Build downloads are capability URLs: the 256-bit checksum is the credential, and the
 endpoint takes no auth. A checksum recovered from a device's flash therefore grants
-access to that build indefinitely, including after the device's credential is re-minted.
+access to that build indefinitely, including after the device's update key is rotated.
 Serve builds behind your own auth if that matters for your app.
 
 ## Browser login

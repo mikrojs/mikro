@@ -321,7 +321,7 @@ export interface ReplSession {
 
   /** KV provisioning: write/delete a kv string value on the device.
    * `namespace: 'sys'` targets `mik.sys` (runtime/provisioning state, e.g.
-   * the registry device credential), which deploys never sync or clear;
+   * the registry device update key), which deploys never sync or clear;
    * `'kv'` targets the app data store. */
   kv: {
     set(key: string, value: string, namespace: KvNamespace): Promise<void>

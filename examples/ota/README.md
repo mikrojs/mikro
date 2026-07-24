@@ -15,7 +15,7 @@ and it hands itself to `withUpdates()` from `updates.ts`, which checks once at s
 1. Calls `ota.reconcile()` on boot to see what happened to any previous update (installed,
    or rolled back after a failed trial), and reports it on the next check-in.
 2. POSTs a check-in to the registry, including the build it is `running()` and its
-   firmware/bytecode versions. Check-ins authenticate with the device's credential
+   firmware/bytecode versions. Check-ins authenticate with the device's update key
    (`ota.bearer()`), provisioned over the cable with `mikro ota enroll`.
 3. If the registry returns an offer, downloads the `.tgz` and stages it with
    `ota.applyOffer()`, then restarts so the firmware installs the new build. The check-in
@@ -80,7 +80,7 @@ The registry url is deliberately not an env var: it is provisioned at enrollment
 
 The registry answers only authenticated check-ins, so enroll the device once from your
 workstation. The CLI reads the device's hardware id, registers it with the registry, and
-writes the registry url and the returned credential to the device as a pair:
+writes the registry url and the returned update key to the device as a pair:
 
 ```sh
 pn mikro ota enroll
@@ -88,8 +88,8 @@ pn mikro ota enroll
 
 Both land in the device's system store (`mik.sys`), which deploys and `nvsStorage.clear()`
 never touch; the app reads them with `ota.registry()` and `ota.bearer()`. If the registry
-ever answers a check-in with 401 (credential re-minted, device deleted), re-enroll with
-`mikro ota enroll --re-enroll`; credentials never travel over the network.
+ever answers a check-in with 401 (update key rotated, device deleted), re-enroll with
+`mikro ota enroll --re-enroll`; update keys never travel over the network.
 
 ### Local testing over http
 

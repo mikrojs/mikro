@@ -292,7 +292,7 @@ async function loginViaBrowser(
 ): Promise<string> {
   console.log('')
   // The device side warns about a plaintext registry on every boot. This flow
-  // carries more than a device credential does: the password typed into that
+  // carries more than a device update key does: the password typed into that
   // page mints publish and enroll tokens for the whole fleet, and both it and
   // the minted token cross the wire in the clear. Say so at the point it
   // happens rather than leaving it to the reader of a docs page.

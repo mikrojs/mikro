@@ -395,22 +395,22 @@ mikro ota release <version> <channel>
 
 ### mikro ota enroll
 
-Enroll the connected device with an update registry: reads the device's hardware id, registers it, and writes the registry url and the returned credential to the device's system store, where deploys never touch them. See [Enrolling devices](/ota#enrolling-devices).
+Enroll the connected device with an update registry: reads the device's hardware id, registers it, and writes the registry url and the returned update key to the device's system store, where deploys never touch them. See [Enrolling devices](/ota#enrolling-devices).
 
 ```sh
 mikro ota enroll
 ```
 
-| Option                | Description                                                                             |
-| --------------------- | --------------------------------------------------------------------------------------- |
-| `--registry URL`      | Registry origin (default: `.mikro/registry.json`)                                       |
-| `--token TOKEN`       | Registry API token (default: `MIKRO_OTA_TOKEN` env var)                                 |
-| `--name NAME`         | Display name stored with the device in the registry                                     |
-| `--channel CHANNEL`   | Release channel to enroll the device on (default: `main`)                               |
-| `--re-enroll`         | Mint a fresh credential when the device is already enrolled (the old one stops working) |
-| `--credential SECRET` | Write an externally minted credential to the device; the registry is not contacted      |
-| `-p, --port PORT`     | Serial port (auto-detected if omitted)                                                  |
-| `--json`              | Output as JSON                                                                          |
+| Option                | Description                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| `--registry URL`      | Registry origin (default: `.mikro/registry.json`)                                     |
+| `--token TOKEN`       | Registry API token (default: `MIKRO_OTA_TOKEN` env var)                               |
+| `--name NAME`         | Display name stored with the device in the registry                                   |
+| `--channel CHANNEL`   | Release channel to enroll the device on (default: `main`)                             |
+| `--re-enroll`         | Rotate the update key when the device is already enrolled (the old one stops working) |
+| `--update-key SECRET` | Write an externally issued update key to the device; the registry is not contacted    |
+| `-p, --port PORT`     | Serial port (auto-detected if omitted)                                                |
+| `--json`              | Output as JSON                                                                        |
 
 ## mikro clean
 

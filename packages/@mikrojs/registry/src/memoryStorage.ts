@@ -40,9 +40,9 @@ export function memoryStorage(): RegistryStorage {
     async getDevice(deviceId) {
       return devices.get(deviceId)
     },
-    async getDeviceByCredentialHash(hash) {
+    async getDeviceByUpdateKeyHash(hash) {
       for (const device of devices.values()) {
-        if (device.credentialHash === hash) return device
+        if (device.updateKeyHash === hash) return device
       }
       return undefined
     },

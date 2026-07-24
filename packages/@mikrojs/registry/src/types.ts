@@ -45,8 +45,8 @@ export interface ChannelRecord {
 
 export interface DeviceRecord {
   deviceId: string
-  /** SHA-256 (lowercase hex) of the device credential; the plaintext is never stored. */
-  credentialHash: string
+  /** SHA-256 (lowercase hex) of the device update key; the plaintext is never stored. */
+  updateKeyHash: string
   /** The only app this device may be offered builds for. Bound at enrollment
    *  and never inferred from what the device reports. Unset withholds every
    *  offer until the device is re-enrolled with one. */
@@ -119,7 +119,7 @@ export interface RegistryStorage {
   ): Promise<ChannelRecord | undefined>
   putChannel(record: ChannelRecord): Promise<void>
   getDevice(deviceId: string): Promise<DeviceRecord | undefined>
-  getDeviceByCredentialHash(hash: string): Promise<DeviceRecord | undefined>
+  getDeviceByUpdateKeyHash(hash: string): Promise<DeviceRecord | undefined>
   putDevice(record: DeviceRecord): Promise<void>
   listDevices(): Promise<DeviceRecord[]>
   getTokenByHash(hash: string): Promise<TokenRecord | undefined>
@@ -132,7 +132,7 @@ export interface RegistryOptions {
   storage: RegistryStorage
   /**
    * Admin token accepted (verbatim, as an opaque bearer) on publish,
-   * enroll, re-mint, and device listing. Provide this or `verifyAdmin`.
+   * enroll, rotate, and device listing. Provide this or `verifyAdmin`.
    * With `token` auth, the registry also serves the optional browser-login
    * flow (docs/registry-spec.md §5): approving with this secret at `/login`
    * mints a `tok_...` scoped to the requesting project's app.
@@ -143,8 +143,8 @@ export interface RegistryOptions {
   verifyAdmin?(request: Request): boolean | Promise<boolean>
   /**
    * Custom device auth for check-ins: resolve a request to a deviceId, or
-   * `undefined` for a 401. Default: bearer credential hashed and looked up
-   * via `storage.getDeviceByCredentialHash`.
+   * `undefined` for a 401. Default: bearer update key hashed and looked up
+   * via `storage.getDeviceByUpdateKeyHash`.
    */
   verifyDevice?(request: Request): string | undefined | Promise<string | undefined>
   /**
