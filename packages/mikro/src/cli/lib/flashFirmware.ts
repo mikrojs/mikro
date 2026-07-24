@@ -143,8 +143,10 @@ export async function resolveFlashPlan(opts: FlashPlanOptions): Promise<FlashPla
  * access. Used by the auto-reflash flow; the interactive `mikro flash`
  * command renders its own live progress and only shares `resolveFlashPlan`.
  */
-export async function flashFirmware(opts: FlashPlanOptions & {baudRate?: number}): Promise<void> {
-  const {port, baudRate = DEFAULT_FLASH_BAUD, onProgress} = opts
+export async function flashFirmware(
+  opts: FlashPlanOptions & {baudRate?: number; signal?: AbortSignal},
+): Promise<void> {
+  const {port, baudRate = DEFAULT_FLASH_BAUD, onProgress, signal} = opts
   const {esptoolPath, flasherArgs} = await resolveFlashPlan(opts)
 
   onProgress?.(`Flashing ${flasherArgs.chip} firmware…`)
@@ -159,6 +161,7 @@ export async function flashFirmware(opts: FlashPlanOptions & {baudRate?: number}
     files: flasherArgs.files,
   })
 
-  const final = await lastValueFrom(ospawn(esptoolPath, esptoolArgs))
+  const final = await lastValueFrom(ospawn(esptoolPath, esptoolArgs, {signal}))
+  if (signal?.aborted) throw new Error('Flashing aborted')
   if (final.error) throw final.error
 }

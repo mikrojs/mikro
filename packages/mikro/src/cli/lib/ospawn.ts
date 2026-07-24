@@ -75,6 +75,14 @@ export function ospawn(
       }
     }
 
+    // Forward an externally supplied signal to the internal controller so
+    // callers can kill the child (esptool) mid-run.
+    const external = options?.signal
+    if (external) {
+      if (external.aborted) abortController.abort()
+      else external.addEventListener('abort', () => abortController.abort())
+    }
+
     //console.log([command].concat(args || []).join(' '), options)
     const childProcess = spawn(command, args, {
       ...options,
