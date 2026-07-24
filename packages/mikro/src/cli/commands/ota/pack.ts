@@ -15,6 +15,9 @@ import {build} from '../../lib/build.js'
 import {describeError} from '../../lib/errorMessage.js'
 import {
   finalizeBuild,
+  normalizeRepositoryDirectory,
+  normalizeRepositoryUrl,
+  type OtaManifest,
   type PackArtifact,
   readBytecodeVersion,
   resolveFirmwareVersion,
@@ -61,19 +64,21 @@ export const args = command(
 
 type Args = InferValue<typeof args>
 
-async function readProjectVersion(projectRoot: string): Promise<string> {
-  const pkg = JSON.parse(await readFile(pathlib.join(projectRoot, 'package.json'), 'utf-8')) as {
-    version?: string
-  }
-  return typeof pkg.version === 'string' ? pkg.version : '0.0.0'
+/** The `package.json` fields a pack reads: the app's identity and its source. */
+interface ProjectPackageJson {
+  name?: string
+  version?: string
+  repository?: string | {url?: string; directory?: string}
+}
+
+async function readPackageJson(projectRoot: string): Promise<ProjectPackageJson> {
+  const raw = await readFile(pathlib.join(projectRoot, 'package.json'), 'utf-8')
+  return JSON.parse(raw) as ProjectPackageJson
 }
 
 /** The project name identifies the OTA app and is required (no default): the
  * registry scopes updates by app, so a build with no name can't be targeted. */
-async function readProjectName(projectRoot: string): Promise<string> {
-  const pkg = JSON.parse(await readFile(pathlib.join(projectRoot, 'package.json'), 'utf-8')) as {
-    name?: string
-  }
+function projectName(pkg: ProjectPackageJson): string {
   if (typeof pkg.name !== 'string' || pkg.name.length === 0) {
     throw new Error('Cannot publish: package.json has no "name" — it identifies the OTA app.')
   }
@@ -121,20 +126,37 @@ export async function packProject(options: {
     {defaultValue: undefined},
   )
 
-  const [app, firmwareVersion, bytecodeVersion, baseVersion] = await Promise.all([
-    readProjectName(projectRoot),
+  const [pkg, firmwareVersion, bytecodeVersion, git] = await Promise.all([
+    readPackageJson(projectRoot),
     resolveFirmwareVersion(projectRoot),
     readBytecodeVersion(buildDir),
-    readProjectVersion(projectRoot),
+    resolveGitState(projectRoot),
   ])
+  const app = projectName(pkg)
+  const baseVersion = typeof pkg.version === 'string' ? pkg.version : '0.0.0'
 
-  const version = options.snapshot
-    ? snapshotVersion(baseVersion, await resolveGitState(projectRoot), new Date())
-    : baseVersion
+  const version = options.snapshot ? snapshotVersion(baseVersion, git, new Date()) : baseVersion
+
+  // Where the build came from, baked in at pack so it survives a pack here and a
+  // push elsewhere: `push --tarball` reads all of this back from the manifest
+  // rather than inspecting whatever project the pushing machine sits in.
+  const manifest: OtaManifest = {app, version, firmwareVersion, bytecodeVersion}
+  const repository = normalizeRepositoryUrl(pkg.repository)
+  if (repository !== undefined) {
+    manifest.repository = repository
+    // Only alongside a repository: a path with nothing to resolve it against
+    // links nowhere.
+    const directory = normalizeRepositoryDirectory(pkg.repository)
+    if (directory !== undefined) manifest.directory = directory
+  }
+  if (git.sha !== null) {
+    manifest.commit = git.sha
+    if (git.dirty) manifest.dirty = true
+  }
 
   const outPath = options.out ?? pathlib.join(getMikroDir(), `app-${version}.tgz`)
   log('Packing…')
-  return finalizeBuild(buildDir, outPath, {app, version, firmwareVersion, bytecodeVersion})
+  return finalizeBuild(buildDir, outPath, manifest)
 }
 
 export async function run(config: Args, jsonFlag = false): Promise<void> {
@@ -160,6 +182,12 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
         version: artifact.manifest.version,
         firmwareVersion: artifact.manifest.firmwareVersion,
         bytecodeVersion: artifact.manifest.bytecodeVersion,
+        // The source the build was packed from, so a pipeline can record it
+        // without unpacking the artifact to read the manifest.
+        repository: artifact.manifest.repository,
+        directory: artifact.manifest.directory,
+        commit: artifact.manifest.commit,
+        dirty: artifact.manifest.dirty,
       })
     } else {
       // eslint-disable-next-line no-console

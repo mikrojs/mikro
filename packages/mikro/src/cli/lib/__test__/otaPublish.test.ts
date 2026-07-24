@@ -30,6 +30,19 @@ const input: PublishInput = {
   manifest,
 }
 
+/** A build packed from a repository: every source field rides in the manifest,
+ *  so a `--tarball` push reports the same ones. */
+const withSource: PublishInput = {
+  ...input,
+  manifest: {
+    ...manifest,
+    repository: 'https://github.com/acme/sensor',
+    directory: 'examples/sensor',
+    commit: 'a1b2c3d4e5f6',
+    dirty: true,
+  },
+}
+
 describe('joinUrl', () => {
   it('joins tolerating trailing/leading slashes', () => {
     expect(joinUrl('https://r.example.com', 'builds')).toBe('https://r.example.com/builds')
@@ -67,6 +80,33 @@ describe('buildUploadRequest', () => {
   it('carries a channel only when set', () => {
     expect(buildUploadRequest(input, 'k').fields.channel).toBeUndefined()
     expect(buildUploadRequest({...input, channel: 'beta'}, 'k').fields.channel).toBe('beta')
+  })
+
+  // Source fields ride on the manifest, so they are present whenever the build was
+  // packed from a repo/commit and omitted otherwise.
+  it('omits source fields when there are none', () => {
+    const {repository, directory, commit, dirty} = buildUploadRequest(input, 'k').fields
+    expect(repository).toBeUndefined()
+    expect(directory).toBeUndefined()
+    expect(commit).toBeUndefined()
+    expect(dirty).toBeUndefined()
+  })
+
+  // Every source field comes off the manifest, so a `--tarball` push (which has
+  // nothing but the artifact) sends exactly what the pack recorded.
+  it('carries repository, directory, and commit from the manifest, dirty as a flag', () => {
+    const {fields} = buildUploadRequest(withSource, 'k')
+    expect(fields.repository).toBe('https://github.com/acme/sensor')
+    expect(fields.directory).toBe('examples/sensor')
+    expect(fields.commit).toBe('a1b2c3d4e5f6')
+    expect(fields.dirty).toBe('1')
+  })
+
+  it('omits the dirty flag for a clean tree even with a commit', () => {
+    const clean: PublishInput = {...input, manifest: {...manifest, commit: 'a1b2c3d4e5f6'}}
+    const {fields} = buildUploadRequest(clean, 'k')
+    expect(fields.commit).toBe('a1b2c3d4e5f6')
+    expect(fields.dirty).toBeUndefined()
   })
 })
 
@@ -143,6 +183,22 @@ describe('publishBuild', () => {
 
     await publishBuild({...input, channel: 'beta'}, buildPath, 'secret-key', stored.fetchImpl)
     expect((stored.calls[1]!.init.body as FormData).get('channel')).toBe('beta')
+  })
+
+  it('sends source fields from the manifest', async () => {
+    const calls: {url: string; init: RequestInit}[] = []
+    const fetchImpl: FetchLike = vi.fn(async (url, init) => {
+      calls.push({url, init})
+      return {ok: true, status: 200, text: async () => ''}
+    })
+
+    await publishBuild(withSource, buildPath, 'secret-key', fetchImpl)
+
+    const form = calls[0]!.init.body as FormData
+    expect(form.get('repository')).toBe('https://github.com/acme/sensor')
+    expect(form.get('directory')).toBe('examples/sensor')
+    expect(form.get('commit')).toBe('a1b2c3d4e5f6')
+    expect(form.get('dirty')).toBe('1')
   })
 
   it('throws with the registry status and body on failure', async () => {

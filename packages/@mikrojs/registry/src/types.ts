@@ -10,6 +10,18 @@ export interface BuildRecord {
   firmwareVersion: string
   size: number
   note?: string
+  /** Browsable https URL of the source repository, for linking a build back to
+   *  its source. From the build's `mikro.app.json`. */
+  repository?: string
+  /** Path of the app within `repository`, so a workspace build links to the app
+   *  rather than the repo root. Only set alongside `repository`. */
+  directory?: string
+  /** Commit SHA the build was packed from, for linking to the exact commit.
+   *  From the build's `mikro.app.json`. */
+  commit?: string
+  /** True when the repository was dirty at pack time: the build may not match
+   *  `commit`. Repository-wide, so an edit outside this app also sets it. */
+  dirty?: boolean
   /** ISO timestamp of the first publish of this build. */
   createdAt: string
   /**

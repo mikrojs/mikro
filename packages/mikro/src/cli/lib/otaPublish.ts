@@ -37,6 +37,14 @@ export interface UploadRequestPlan {
     create?: string
     /** Channel to serve on; omitted from the form when absent (store-only). */
     channel?: string
+    /** Source repository URL (from the manifest); omitted when absent. */
+    repository?: string
+    /** Path of the app within the repository (from the manifest); omitted when absent. */
+    directory?: string
+    /** Commit SHA the build was packed from (from the manifest); omitted when absent. */
+    commit?: string
+    /** Truthy flag: the repository was dirty at pack time; omitted when clean. */
+    dirty?: string
   }
 }
 
@@ -69,6 +77,12 @@ export function buildUploadRequest(input: PublishInput, token: string): UploadRe
       note: input.note,
       create: input.create === true ? '1' : undefined,
       channel: input.channel,
+      // Where the build came from, all of it read back off the artifact, so a
+      // --tarball push reports the same source as the pack that produced it.
+      repository: input.manifest.repository,
+      directory: input.manifest.directory,
+      commit: input.manifest.commit,
+      dirty: input.manifest.dirty === true ? '1' : undefined,
     },
   }
 }
@@ -111,6 +125,10 @@ export async function publishBuild(
   if (upload.fields.note !== undefined) form.set('note', upload.fields.note)
   if (upload.fields.create !== undefined) form.set('create', upload.fields.create)
   if (upload.fields.channel !== undefined) form.set('channel', upload.fields.channel)
+  if (upload.fields.repository !== undefined) form.set('repository', upload.fields.repository)
+  if (upload.fields.directory !== undefined) form.set('directory', upload.fields.directory)
+  if (upload.fields.commit !== undefined) form.set('commit', upload.fields.commit)
+  if (upload.fields.dirty !== undefined) form.set('dirty', upload.fields.dirty)
   const bytes = await readFile(buildPath)
   form.set('build', new Blob([bytes], {type: 'application/gzip'}), basename(buildPath))
   await send(fetchImpl, upload.url, {

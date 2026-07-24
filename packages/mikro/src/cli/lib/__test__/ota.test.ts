@@ -14,6 +14,8 @@ import {
   finalizeBuild,
   type GitSnapshotState,
   MANIFEST_NAME,
+  normalizeRepositoryDirectory,
+  normalizeRepositoryUrl,
   pruneMacSidecars,
   readBytecodeVersion,
   readManifestFromTarball,
@@ -261,5 +263,138 @@ describe('finalizeBuild + readManifestFromTarball', () => {
     } finally {
       rmSync(out, {force: true})
     }
+  })
+
+  // Source fields are baked into the manifest so `push --tarball` reports the
+  // source the artifact was packed from, rather than inspecting the pusher's
+  // machine (whose HEAD and package.json may belong to another project entirely).
+  it('round-trips optional source fields', async () => {
+    const appDir = join(dir, 'app')
+    await mkdir(appDir, {recursive: true})
+    await writeFile(join(appDir, 'main.bjs'), Buffer.from([13, 1]))
+
+    const out = join(tmpdir(), `ota-prov-${Date.now()}.tgz`)
+    try {
+      await finalizeBuild(dir, out, {
+        app: 'my-app',
+        version: '1.2.0',
+        firmwareVersion: '0.15.0',
+        bytecodeVersion: 13,
+        repository: 'https://github.com/acme/sensor',
+        directory: 'examples/sensor',
+        commit: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+        dirty: true,
+      })
+      expect(await readManifestFromTarball(out)).toEqual({
+        app: 'my-app',
+        version: '1.2.0',
+        firmwareVersion: '0.15.0',
+        bytecodeVersion: 13,
+        repository: 'https://github.com/acme/sensor',
+        directory: 'examples/sensor',
+        commit: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+        dirty: true,
+      })
+    } finally {
+      rmSync(out, {force: true})
+    }
+  })
+})
+
+describe('normalizeRepositoryUrl', () => {
+  it('returns undefined for absent or empty values', () => {
+    expect(normalizeRepositoryUrl(undefined)).toBeUndefined()
+    expect(normalizeRepositoryUrl('')).toBeUndefined()
+    expect(normalizeRepositoryUrl({})).toBeUndefined()
+    expect(normalizeRepositoryUrl('   ')).toBeUndefined()
+  })
+
+  it('passes through and cleans an https url', () => {
+    expect(normalizeRepositoryUrl('https://github.com/acme/sensor')).toBe(
+      'https://github.com/acme/sensor',
+    )
+    expect(normalizeRepositoryUrl('https://github.com/acme/sensor.git')).toBe(
+      'https://github.com/acme/sensor',
+    )
+    expect(normalizeRepositoryUrl('https://github.com/acme/sensor/')).toBe(
+      'https://github.com/acme/sensor',
+    )
+  })
+
+  it('reads the url out of the object form', () => {
+    expect(normalizeRepositoryUrl({url: 'git+https://github.com/acme/sensor.git'})).toBe(
+      'https://github.com/acme/sensor',
+    )
+  })
+
+  it('expands host shorthands and bare owner/repo (github)', () => {
+    expect(normalizeRepositoryUrl('acme/sensor')).toBe('https://github.com/acme/sensor')
+    expect(normalizeRepositoryUrl('github:acme/sensor')).toBe('https://github.com/acme/sensor')
+    expect(normalizeRepositoryUrl('gitlab:acme/sensor')).toBe('https://gitlab.com/acme/sensor')
+    expect(normalizeRepositoryUrl('bitbucket:acme/sensor')).toBe(
+      'https://bitbucket.org/acme/sensor',
+    )
+  })
+
+  it('rewrites ssh and git remotes to https', () => {
+    expect(normalizeRepositoryUrl('git@github.com:acme/sensor.git')).toBe(
+      'https://github.com/acme/sensor',
+    )
+    expect(normalizeRepositoryUrl('git://github.com/acme/sensor.git')).toBe(
+      'https://github.com/acme/sensor',
+    )
+    expect(normalizeRepositoryUrl('ssh://git@github.com/acme/sensor.git')).toBe(
+      'https://github.com/acme/sensor',
+    )
+  })
+
+  it('drops values that cannot be resolved to an http(s) url', () => {
+    expect(normalizeRepositoryUrl('file:///local/path')).toBeUndefined()
+    expect(normalizeRepositoryUrl('javascript:alert(1)')).toBeUndefined()
+  })
+
+  // A CI checkout's package.json can carry a tokenised remote, and this url is
+  // uploaded to the registry and shown to anyone who can read the build.
+  it('strips credentials out of the url', () => {
+    expect(normalizeRepositoryUrl('https://x-access-token:ghp_secret@github.com/acme/sensor')).toBe(
+      'https://github.com/acme/sensor',
+    )
+    expect(normalizeRepositoryUrl('git+https://user:pw@github.com/acme/sensor.git')).toBe(
+      'https://github.com/acme/sensor',
+    )
+  })
+
+  it('accepts an uppercase scheme (schemes are case-insensitive)', () => {
+    expect(normalizeRepositoryUrl('HTTPS://GitHub.com/acme/sensor')).toBe(
+      'https://github.com/acme/sensor',
+    )
+  })
+
+  it('drops a #committish rather than gluing it to the path', () => {
+    expect(normalizeRepositoryUrl('git@github.com:acme/sensor.git#main')).toBe(
+      'https://github.com/acme/sensor',
+    )
+  })
+})
+
+describe('normalizeRepositoryDirectory', () => {
+  it('reads a relative path out of the object form only', () => {
+    expect(normalizeRepositoryDirectory({directory: 'examples/sensor'})).toBe('examples/sensor')
+    expect(normalizeRepositoryDirectory({directory: './packages/app/'})).toBe('packages/app')
+    // A leading slash is a stray anchor, not an escape: the repo root is where
+    // it resolves either way.
+    expect(normalizeRepositoryDirectory({directory: '/packages/app'})).toBe('packages/app')
+    expect(normalizeRepositoryDirectory('https://github.com/acme/sensor')).toBeUndefined()
+    expect(normalizeRepositoryDirectory({})).toBeUndefined()
+    expect(normalizeRepositoryDirectory({directory: '   '})).toBeUndefined()
+  })
+
+  // A registry composes this onto the repository url, so anything that would
+  // escape or malform the link is dropped rather than passed on.
+  it('drops paths that would escape or malform the link', () => {
+    expect(normalizeRepositoryDirectory({directory: '../secrets'})).toBeUndefined()
+    expect(normalizeRepositoryDirectory({directory: 'packages/../../etc'})).toBeUndefined()
+    expect(normalizeRepositoryDirectory({directory: 'packages\\app'})).toBeUndefined()
+    expect(normalizeRepositoryDirectory({directory: 'a b'})).toBeUndefined()
   })
 })
