@@ -62,10 +62,10 @@ interface OtaDeps {
   store: OtaStore
   /** Live app version from /app/package.json, or undefined if unreadable. */
   readAppVersion(): string | undefined
-  /** The check-in bearer: the device credential from the system store, or
+  /** The check-in bearer: the device update key from the system store, or
    *  undefined on an un-enrolled device. */
   bearer(): string | undefined
-  /** The registry url the credential was minted against, or undefined. */
+  /** The registry url the update key was issued against, or undefined. */
   registry(): string | undefined
 }
 
@@ -116,7 +116,7 @@ export function parseOffer(raw: unknown, opts?: {allowInsecure?: boolean}): Offe
   // name where the build lives — a CDN or object store on another host, a signed
   // url with its own query. Integrity is the checksum, verified over the whole
   // download before install, so a wrong host yields a failed install, never a
-  // bad one; and the credential is the caller's to confine (the reference client
+  // bad one; and the update key is the caller's to confine (the reference client
   // attaches it only when the url is same-origin with the registry).
   return {url: o.url, checksum: o.checksum, size: o.size}
 }

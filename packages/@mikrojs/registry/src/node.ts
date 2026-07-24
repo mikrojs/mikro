@@ -32,7 +32,7 @@ export function fileStorage(dir: string): RegistryStorage {
 
   /** Parsed indexes, keyed by path and invalidated by mtime. Every check-in
    *  reads devices.json before it can authenticate the caller, so without this
-   *  an anonymous request with a junk credential costs a full parse of the
+   *  an anonymous request with a junk update key costs a full parse of the
    *  fleet, synchronously, on the shared event loop. */
   const cache = new Map<string, {mtimeMs: number; index: Record<string, unknown>}>()
 
@@ -76,7 +76,7 @@ export function fileStorage(dir: string): RegistryStorage {
   }
   function writeIndex<T>(path: string, index: Record<string, T>): void {
     // Rewritten in full on every check-in, so a kill or a full disk mid-write
-    // must not truncate it: devices.json holds every credential hash, and
+    // must not truncate it: devices.json holds every update key hash, and
     // losing it unenrolls the fleet with no way back but physical access.
     const tmp = `${path}.tmp`
     try {
@@ -127,9 +127,9 @@ export function fileStorage(dir: string): RegistryStorage {
     async getDevice(deviceId) {
       return readIndex<DeviceRecord>(devicesPath)[deviceId]
     },
-    async getDeviceByCredentialHash(hash) {
+    async getDeviceByUpdateKeyHash(hash) {
       return Object.values(readIndex<DeviceRecord>(devicesPath)).find(
-        (d) => d.credentialHash === hash,
+        (d) => d.updateKeyHash === hash,
       )
     },
     async putDevice(record) {

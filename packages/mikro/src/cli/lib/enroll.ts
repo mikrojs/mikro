@@ -1,9 +1,9 @@
 import {type FetchLike, joinUrl} from './otaPublish.js'
 
-/** System-store (`mik.sys`) key holding the device credential (15-byte NVS cap). */
-export const CREDENTIAL_KV = 'ota.credential'
+/** System-store (`mik.sys`) key holding the device update key (15-byte NVS cap). */
+export const UPDATE_KEY_KV = 'ota.updateKey'
 
-/** System-store key holding the registry url the credential belongs to. */
+/** System-store key holding the registry url the update key belongs to. */
 export const REGISTRY_KV = 'ota.registry'
 
 const API_PREFIX = 'api/v1'
@@ -22,8 +22,8 @@ export interface EnrollInput {
 }
 
 export type EnrollOutcome =
-  | {status: 'enrolled'; credential: string}
-  /** The registry already knows this deviceId; re-mint instead. */
+  | {status: 'enrolled'; updateKey: string}
+  /** The registry already knows this deviceId; rotate instead. */
   | {status: 'already-enrolled'}
 
 export interface RequestPlan {
@@ -47,15 +47,12 @@ export function buildEnrollRequest(input: EnrollInput, token: string): RequestPl
   }
 }
 
-export function buildRemintRequest(
+export function buildRotateKeyRequest(
   input: Pick<EnrollInput, 'registry' | 'deviceId'>,
   token: string,
 ): RequestPlan {
   return {
-    url: joinUrl(
-      input.registry,
-      `${API_PREFIX}/devices/${encodeURIComponent(input.deviceId)}/credential`,
-    ),
+    url: joinUrl(input.registry, `${API_PREFIX}/devices/${encodeURIComponent(input.deviceId)}/key`),
     method: 'POST',
     headers: {authorization: `Bearer ${token}`},
   }
@@ -71,22 +68,22 @@ async function failWith(url: string, status: number, text: () => Promise<string>
   throw new Error(`Registry request to ${url} failed with ${status}${detail}${hint}`)
 }
 
-async function readCredential(url: string, res: {text(): Promise<string>}): Promise<string> {
+async function readUpdateKey(url: string, res: {text(): Promise<string>}): Promise<string> {
   const body = await res.text()
-  let credential: unknown
+  let updateKey: unknown
   try {
-    credential = (JSON.parse(body) as {credential?: unknown}).credential
+    updateKey = (JSON.parse(body) as {credential?: unknown}).credential
   } catch {
-    credential = undefined
+    updateKey = undefined
   }
-  if (typeof credential !== 'string' || credential.length === 0) {
-    throw new Error(`Registry response from ${url} has no credential`)
+  if (typeof updateKey !== 'string' || updateKey.length === 0) {
+    throw new Error(`Registry response from ${url} has no update key`)
   }
-  return credential
+  return updateKey
 }
 
 /**
- * Register the device with the registry and receive its credential (returned
+ * Register the device with the registry and receive its update key (returned
  * by the registry exactly once). A 409 is an expected outcome (the deviceId
  * is already enrolled) and is reported in the result, not thrown.
  */
@@ -103,18 +100,18 @@ export async function enrollDevice(
   })
   if (res.status === 409) return {status: 'already-enrolled'}
   if (!res.ok) await failWith(plan.url, res.status, () => res.text())
-  return {status: 'enrolled', credential: await readCredential(plan.url, res)}
+  return {status: 'enrolled', updateKey: await readUpdateKey(plan.url, res)}
 }
 
-/** Mint a fresh credential for an enrolled device; the old one stops
+/** Rotate the update key for an enrolled device; the old one stops
  * authenticating the moment this returns. */
-export async function remintCredential(
+export async function rotateUpdateKey(
   input: Pick<EnrollInput, 'registry' | 'deviceId'>,
   token: string,
   fetchImpl: FetchLike = fetch as unknown as FetchLike,
 ): Promise<string> {
-  const plan = buildRemintRequest(input, token)
+  const plan = buildRotateKeyRequest(input, token)
   const res = await fetchImpl(plan.url, {method: plan.method, headers: plan.headers})
   if (!res.ok) await failWith(plan.url, res.status, () => res.text())
-  return readCredential(plan.url, res)
+  return readUpdateKey(plan.url, res)
 }

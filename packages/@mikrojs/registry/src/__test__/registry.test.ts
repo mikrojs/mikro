@@ -173,7 +173,7 @@ describe('publish', () => {
     const bare = memoryStorage()
     await bare.putBuild((await storage.listBuilds())[0]!)
     const recovered = createRegistry({storage: bare, token: TOKEN})
-    // Downloads take a device credential, so the missing blob has to be probed
+    // Downloads take a device update key, so the missing blob has to be probed
     // as a device would; an anonymous request 401s before it reaches the blob.
     const auth = {authorization: `Bearer ${await enroll(recovered)}`}
     expect(
@@ -479,11 +479,11 @@ describe('bearer auth rate limiting', () => {
   })
 })
 
-describe('enroll + re-mint', () => {
-  it('mints a credential once and 409s on a second enroll', async () => {
+describe('enroll + rotate', () => {
+  it('issues an update key once and 409s on a second enroll', async () => {
     const registry = makeRegistry()
     const credential = await enroll(registry)
-    expect(credential).toMatch(/^dvc_/)
+    expect(credential).toMatch(/^duk_/)
     const again = await registry.fetch(
       new Request(`${BASE}/api/v1/devices`, {
         method: 'POST',
@@ -494,23 +494,23 @@ describe('enroll + re-mint', () => {
     expect(again.status).toBe(409)
   })
 
-  it('re-mint invalidates the old credential immediately', async () => {
+  it('rotation invalidates the old update key immediately', async () => {
     const registry = makeRegistry()
     const old = await enroll(registry)
-    const remint = await registry.fetch(
-      new Request(`${BASE}/api/v1/devices/dev-1/credential`, {
+    const rotate = await registry.fetch(
+      new Request(`${BASE}/api/v1/devices/dev-1/key`, {
         method: 'POST',
         headers: {authorization: `Bearer ${TOKEN}`},
       }),
     )
-    expect(remint.status).toBe(200)
-    const {credential: fresh} = (await remint.json()) as {credential: string}
+    expect(rotate.status).toBe(200)
+    const {credential: fresh} = (await rotate.json()) as {credential: string}
 
     expect((await checkin(registry, old)).status).toBe(401)
     expect((await checkin(registry, fresh)).status).toBe(200)
   })
 
-  it('never exposes the credential hash in device views', async () => {
+  it('never exposes the update key hash in device views', async () => {
     const registry = makeRegistry()
     await enroll(registry)
     const list = await registry.fetch(
@@ -518,14 +518,14 @@ describe('enroll + re-mint', () => {
     )
     const body = (await list.json()) as {devices: Record<string, unknown>[]}
     expect(body.devices[0]!.deviceId).toBe('dev-1')
-    expect(body.devices[0]!.credentialHash).toBeUndefined()
+    expect(body.devices[0]!.updateKeyHash).toBeUndefined()
   })
 })
 
 describe('check-in', () => {
-  it('401s without a known credential', async () => {
+  it('401s without a known update key', async () => {
     const registry = makeRegistry()
-    expect((await checkin(registry, 'dvc_unknown')).status).toBe(401)
+    expect((await checkin(registry, 'duk_unknown')).status).toBe(401)
   })
 
   it('offers the current build with a download url, then nothing once running it', async () => {
@@ -1307,19 +1307,19 @@ describe('grant scope', () => {
     expect(every).toHaveLength(2)
   })
 
-  it("cannot re-mint another app's device credential", async () => {
+  it("cannot rotate another app's device update key", async () => {
     const {registry, token} = await fleet()
-    const remint = await registry.fetch(
-      new Request(`${BASE}/api/v1/devices/dev-display/credential`, {
+    const rotate = await registry.fetch(
+      new Request(`${BASE}/api/v1/devices/dev-display/key`, {
         method: 'POST',
         headers: {authorization: `Bearer ${token}`},
       }),
     )
     // 404, not 403: a scoped token must not learn the device exists.
-    expect(remint.status).toBe(404)
+    expect(rotate.status).toBe(404)
 
     const own = await registry.fetch(
-      new Request(`${BASE}/api/v1/devices/dev-sensor/credential`, {
+      new Request(`${BASE}/api/v1/devices/dev-sensor/key`, {
         method: 'POST',
         headers: {authorization: `Bearer ${token}`},
       }),
@@ -1394,7 +1394,7 @@ describe('device app binding', () => {
     const credential = await enroll(registry, 'dev-1', {app: undefined})
 
     // But naming an app's build must not bind the device to that app, or any
-    // credential plus a known checksum is a way to pull another app's builds.
+    // update key plus a known checksum is a way to pull another app's builds.
     const response = await checkin(registry, credential, {
       running: {checksum: display.checksum, trial: false},
     })
@@ -1474,7 +1474,7 @@ describe('check-in validation', () => {
     // Reachable before any auth, and on a bare `{fetch}` export an unhandled
     // rejection rather than a response.
     const response = await registry.fetch(
-      new Request(`${BASE}/api/v1/devices/%/credential`, {
+      new Request(`${BASE}/api/v1/devices/%/key`, {
         method: 'POST',
         headers: {authorization: `Bearer ${TOKEN}`},
       }),
@@ -1588,7 +1588,7 @@ describe('failed checksums', () => {
 })
 
 describe('download', () => {
-  /** A download takes the device credential and is scoped to the device's own
+  /** A download takes the device update key and is scoped to the device's own
    *  app, so every case here enrolls a device bound to the app `publish`
    *  defaults to. */
   async function asDevice(registry: Registry): Promise<{authorization: string}> {
@@ -1667,15 +1667,15 @@ describe('download', () => {
 
   // A checksum is not a secret: it is printed by `mikro ota publish` and lands
   // in CI logs, so it cannot be the only thing guarding a download. Requiring
-  // the credential is also what makes de-enrolling a device stop it downloading.
-  it('requires a device credential, and 401s before disclosing whether a build exists', async () => {
+  // the update key is also what makes de-enrolling a device stop it downloading.
+  it('requires a device update key, and 401s before disclosing whether a build exists', async () => {
     const registry = makeRegistry()
     const {checksum} = await publish(registry)
 
     const anon = await registry.fetch(new Request(`${BASE}/api/v1/builds/${checksum}.tgz`))
     expect(anon.status).toBe(401)
 
-    // A publish token is not a device credential; the two must not substitute.
+    // A publish token is not a device update key; the two must not substitute.
     const wrongKind = await registry.fetch(
       new Request(`${BASE}/api/v1/builds/${checksum}.tgz`, {
         headers: {authorization: `Bearer ${TOKEN}`},
@@ -1759,24 +1759,24 @@ describe('concurrent device writes', () => {
     return out as unknown as RegistryStorage
   }
 
-  // Re-minting is how a leaked credential is revoked, so a write that quietly
-  // undoes it is a revocation failure: the leaked credential goes on working and
+  // Rotation is how a leaked update key is revoked, so a write that quietly
+  // undoes it is a revocation failure: the leaked update key goes on working and
   // the operator's replacement does not. A check-in reads the device, then
   // awaits several times before writing the record it read back.
-  it('a check-in racing a re-mint cannot revive the revoked credential', async () => {
+  it('a check-in racing a rotation cannot revive the revoked update key', async () => {
     const registry = createRegistry({storage: slow(memoryStorage()), token: TOKEN})
     const leaked = await enroll(registry, 'dev-1')
 
-    const [, reminted] = await Promise.all([
+    const [, rotated] = await Promise.all([
       checkin(registry, leaked),
       registry.fetch(
-        new Request(`${BASE}/api/v1/devices/dev-1/credential`, {
+        new Request(`${BASE}/api/v1/devices/dev-1/key`, {
           method: 'POST',
           headers: {authorization: `Bearer ${TOKEN}`},
         }),
       ),
     ])
-    const {credential: fresh} = (await reminted.json()) as {credential: string}
+    const {credential: fresh} = (await rotated.json()) as {credential: string}
 
     expect((await checkin(registry, leaked)).status).toBe(401)
     expect((await checkin(registry, fresh)).status).toBe(200)
@@ -2036,7 +2036,7 @@ describe('node adapter', () => {
 
       const small = await fetch(`${origin}/api/v1/checkin`, {
         method: 'POST',
-        headers: {authorization: 'Bearer dvc_nope', 'content-type': 'application/json'},
+        headers: {authorization: 'Bearer duk_nope', 'content-type': 'application/json'},
         body: JSON.stringify({deviceId: 'dev-1'}),
       })
       expect(small.status).toBe(401)
@@ -2103,13 +2103,13 @@ describe('node adapter', () => {
     expect(await storage.getDevice('constructor')).toBeUndefined()
     expect(await storage.getTokenByHash('__proto__')).toBeUndefined()
 
-    const remint = await registry.fetch(
-      new Request(`${BASE}/api/v1/devices/constructor/credential`, {
+    const rotate = await registry.fetch(
+      new Request(`${BASE}/api/v1/devices/constructor/key`, {
         method: 'POST',
         headers: {authorization: `Bearer ${TOKEN}`},
       }),
     )
-    expect(remint.status).toBe(404)
+    expect(rotate.status).toBe(404)
 
     // A device really named `constructor` stores and reads back as itself,
     // and does not pollute anything else.
@@ -2134,7 +2134,7 @@ describe('node adapter', () => {
     await checkin(registry, credential)
 
     // devices.json is rewritten in full on every check-in and holds every
-    // credential hash, so it is written to a temp file and renamed: a kill
+    // update key hash, so it is written to a temp file and renamed: a kill
     // mid-write must not truncate it into an unenrolled fleet.
     expect(readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([])
     expect(JSON.parse(readFileSync(join(dir, 'devices.json'), 'utf-8'))['dev-1'].app).toBe('sensor')
@@ -2148,18 +2148,18 @@ describe('node adapter', () => {
 
     const dir = mkdtempSync(join(tmpdir(), 'mikro-registry-'))
     const storage = fileStorage(dir)
-    await storage.putDevice({deviceId: 'dev-1', credentialHash: 'aa', failedChecksums: []})
-    expect((await storage.getDevice('dev-1'))!.credentialHash).toBe('aa')
+    await storage.putDevice({deviceId: 'dev-1', updateKeyHash: 'aa', failedChecksums: []})
+    expect((await storage.getDevice('dev-1'))!.updateKeyHash).toBe('aa')
 
     // Indexes are cached and invalidated by mtime, so an operator editing the
     // file must not be served a stale record.
     await new Promise((resolve) => setTimeout(resolve, 10))
     writeFileSync(
       join(dir, 'devices.json'),
-      JSON.stringify({'dev-1': {deviceId: 'dev-1', credentialHash: 'bb', failedChecksums: []}}),
+      JSON.stringify({'dev-1': {deviceId: 'dev-1', updateKeyHash: 'bb', failedChecksums: []}}),
     )
-    expect((await storage.getDevice('dev-1'))!.credentialHash).toBe('bb')
-    expect(await storage.getDeviceByCredentialHash('bb')).toBeDefined()
+    expect((await storage.getDevice('dev-1'))!.updateKeyHash).toBe('bb')
+    expect(await storage.getDeviceByUpdateKeyHash('bb')).toBeDefined()
   })
 })
 

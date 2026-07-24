@@ -20,7 +20,7 @@ import {
   version,
 } from 'mikro/sys'
 
-// Registry url + credential are provisioned as a pair by `mikro ota enroll`.
+// Registry url + update key are provisioned as a pair by `mikro ota enroll`.
 // A plaintext registry is accepted only on a private network, which is where
 // the development flow puts it (`registry/server.ts` serves on the LAN address
 // so devices can reach it). Beyond that the scheme is not a judgement call: on
@@ -33,7 +33,7 @@ const allowInsecure = isPrivateHttp(registryUrl)
 
 /** True when both urls share a scheme and authority. Deliberately literal: with
  *  no URL parser here, a spelled-out default port does not compare equal. Used
- *  to decide whether the credential may ride the download request. */
+ *  to decide whether the update key may ride the download request. */
 function sameOrigin(a: string, b: string | undefined): boolean {
   if (b === undefined) return false
   const origin = (url: string): string | undefined => {
@@ -155,8 +155,8 @@ export async function withUpdates(app: () => void | Promise<void>): Promise<void
  * registry confirm itself.
  */
 async function checkForUpdate(): Promise<{checkedIn: boolean; offer?: Offer}> {
-  // Check-ins authenticate with the device credential, provisioned over the
-  // cable by `mikro ota enroll`. Credentials never arrive over the network.
+  // Check-ins authenticate with the device update key, provisioned over the
+  // cable by `mikro ota enroll`. Update keys never arrive over the network.
   const bearer = ota.bearer()
   const named = deviceName()
   // Room to download and stage one build. Registries may use it to withhold an
@@ -200,11 +200,11 @@ async function checkForUpdate(): Promise<{checkedIn: boolean; offer?: Offer}> {
     return {checkedIn: false}
   }
   if (res.value.status === 401) {
-    // The credential no longer authenticates (re-minted, device deleted).
+    // The update key no longer authenticates (rotated, device deleted).
     // Only a 401 means this; transient failures keep the normal cadence.
     // There is no fallback secret: re-enroll over the cable.
     console.error(
-      'ota: registry rejected the credential; re-enroll with `mikro ota enroll --re-enroll`',
+      'ota: registry rejected the update key; re-enroll with `mikro ota enroll --re-enroll`',
     )
     return {checkedIn: false}
   }
@@ -264,14 +264,14 @@ async function stageUpdate(offer: Offer): Promise<boolean> {
       if (from >= offer.size) return ok()
       // Same-origin only. `offer.url` is whatever the registry named, and it may
       // legitimately point at another host (a CDN, an object store), so the
-      // credential goes out only when the download is on the registry's own
+      // update key goes out only when the download is on the registry's own
       // origin. A build fetched elsewhere is a public artifact the checksum
       // vouches for; a store that needs auth carries it in a signed url instead.
       const headers: Record<string, string> = {}
       if (from > 0) headers.range = `bytes=${from}-`
-      const credential = ota.bearer()
-      if (credential !== undefined && sameOrigin(offer.url, registryUrl)) {
-        headers.authorization = `Bearer ${credential}`
+      const updateKey = ota.bearer()
+      if (updateKey !== undefined && sameOrigin(offer.url, registryUrl)) {
+        headers.authorization = `Bearer ${updateKey}`
       }
       const res = await request(offer.url, {headers})
       if (!res.ok) return err(new Error('download failed', {cause: res.error}))

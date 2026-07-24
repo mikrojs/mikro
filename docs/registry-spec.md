@@ -34,7 +34,7 @@ publishing builds and enrolling devices.
 **Base URL and the `/api/v1` prefix.** The registry serves its API under `/api/v1`. Clients are
 configured with only the registry's origin: on the workstation through `.mikro/registry.json`
 (written by `mikro ota setup`) or `--registry`, and on the device through enrollment, where it
-is stored next to the credential. The clients add `/api/v1` themselves. Every endpoint path in
+is stored next to the update key. The clients add `/api/v1` themselves. Every endpoint path in
 this document is relative to `/api/v1`.
 
 **The identity document.** `GET` the base url (with `Accept: application/json`) returns a small
@@ -171,9 +171,9 @@ for free.
 **Authenticating the download.** The download callback is app code, so the device can attach
 whatever the URL needs. A registry may pick any of these:
 
-- **The device credential**, which is what the reference registry uses. The download takes the
-  same credential as the check-in and answers `401` before revealing whether a build exists, so
-  de-enrolling a device stops it downloading. The reference client sends the credential only when
+- **The device update key**, which is what the reference registry uses. The download takes the
+  same update key as the check-in and answers `401` before revealing whether a build exists, so
+  de-enrolling a device stops it downloading. The reference client sends the update key only when
   the URL is on the same origin as the registry it enrolled against, so a URL pointing elsewhere
   never receives it.
 - **A signed URL** issued at check-in: short-lived, with the signature in the query string.
@@ -191,12 +191,12 @@ alone would let any enrolled device fetch any other app's build using a checksum
 ### 4. The enroll endpoint (optional)
 
 `mikro ota enroll` uses this to set a device up from a workstation. The CLI reads the hardware id
-off the connected device, calls the registry, and writes the returned credential back to the
-device. A registry that mints credentials some other way can skip this endpoint; users then
-provision with `mikro ota enroll --credential <secret>`.
+off the connected device, calls the registry, and writes the returned update key back to the
+device. A registry that issues update keys some other way can skip this endpoint; users then
+provision with `mikro ota enroll --update-key <secret>`.
 
 `POST /devices`, JSON body `{deviceId, name?, app?, channel?}`, response `{device: {...},
-credential: string}`. The credential is returned exactly once, so store only a hash of it. Auth is
+credential: string}`. The update key is returned exactly once, so store only a hash of it. Auth is
 an opaque bearer token. Any tenancy (org, project) is resolved from the token, never from the URL
 path, so the CLI uses one path shape against every registry.
 
@@ -220,11 +220,11 @@ it checks in, and the registry offers whatever its channel points at. Only a cha
 (`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`, at most 64 characters).
 
 If the `deviceId` is already enrolled, respond `409`. The CLI then offers
-`POST /devices/:deviceId/credential` (through `--re-enroll`), which returns `{credential}`: a
-fresh credential that invalidates the old one the moment it is returned.
+`POST /devices/:deviceId/key` (through `--re-enroll`), which returns `{credential}`: a
+fresh update key that invalidates the old one the moment it is returned.
 
 Both this endpoint and `GET /devices` are scoped by the token, not just gated by it. An
-app-scoped token lists only its own app's devices, and re-minting the credential of a device in
+app-scoped token lists only its own app's devices, and rotating the update key of a device in
 another app returns `404`, not `403`, so the token cannot be used to find out that other apps'
 devices exist.
 
@@ -397,9 +397,9 @@ a server what to run is up to you. Reasons to write your own instead of adopting
   no second protocol to stand up.
 - **Push instead of poll.** This polls at startup. A backend that pushes over a live connection
   skips the check-in and calls `applyOffer` when it has something.
-- **A different auth model.** This uses a bearer credential minted at enrollment. Mutual TLS,
+- **A different auth model.** This uses a bearer update key issued at enrollment. Mutual TLS,
   signed JWTs, or a hardware security module would replace it. Enrollment (§4) is itself optional,
-  so a fleet can provision credentials its own way.
+  so a fleet can provision update keys its own way.
 - **Side-channel delivery.** Builds from an SD card, a UART gateway, or pinned into the app need no
   server at all. Get the bytes, and verify the checksum through `applyOffer`.
 
@@ -409,10 +409,10 @@ reference.
 
 ### `POST /checkin`
 
-Auth is `Authorization: Bearer <device credential>` (from `ota.bearer()`), minted at enrollment.
-**Credentials never travel in check-in responses.** A `401` means the credential no longer works
-(it was re-minted, or the device was deleted), and the device needs to be re-enrolled at a
-workstation. Devices treat only a `401` this way; a temporary error keeps the credential and the
+Auth is `Authorization: Bearer <device update key>` (from `ota.bearer()`), issued at enrollment.
+**Update keys never travel in check-in responses.** A `401` means the update key no longer works
+(it was rotated, or the device was deleted), and the device needs to be re-enrolled at a
+workstation. Devices treat only a `401` this way; a temporary error keeps the update key and the
 normal cadence. There is no fallback secret and no pending state.
 
 Request body (JSON):
@@ -439,7 +439,7 @@ requires `running.checksum` to match `^[0-9a-f]{64}$`; `running.version` and `fi
 most 64 characters; `bytecode` to be an integer; `lastInstall` to be exactly `{reason, detail?}`
 with `reason` at most 64 characters and `detail` at most 256, with unknown keys dropped; and
 `name` at most 64 characters. `deviceId` at enrollment is capped at 128 characters. A `400` is not
-a `401`, so the device keeps its credential and its normal cadence.
+a `401`, so the device keeps its update key and its normal cadence.
 
 `free` stops a registry offering a build the device has no room for. Without it, that failure
 shows up only once the download is under way and the staging write hits a full filesystem.
@@ -462,7 +462,7 @@ are added (the hosted registry uses it for device config sync).
 
 ### Identity
 
-The credential is the identity. Key device records by the hash of the credential, and treat the
+The update key is the identity. Key device records by the hash of the update key, and treat the
 self-reported `deviceId` as a label chosen at enrollment.
 
 The display name is editable from **both** ends: renamed in the registry, or over the cable with
@@ -613,7 +613,7 @@ one build known to work on it.
   build; the key is unique, so a release overwrites it and there is nothing to order. `main` is not
   stored here; it is the highest-`promotedAt` build (see builds), so today's per-`(app,
 bytecodeVersion)` current build is `main`'s pointer and needs no migration.
-- **devices**: `deviceId` (primary key), `credentialHash`, `app` (the binding, set at enrollment,
+- **devices**: `deviceId` (primary key), `updateKeyHash`, `app` (the binding, set at enrollment,
   nullable), `channel` (the release channel, set at enrollment, nullable, absent reads as `main`),
   `name` (nullable), `lastSeen`, `runningChecksum`, `runningVersion`, `trial`, `lastFirmware`,
   `lastBytecode`, `lastFree`, `lastInstall`, `failedChecksums` (bounded).

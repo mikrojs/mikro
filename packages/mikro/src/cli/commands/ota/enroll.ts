@@ -13,7 +13,7 @@ import {
   NAME_KV,
   validateDeviceName,
 } from '../../lib/deviceName.js'
-import {CREDENTIAL_KV, enrollDevice, REGISTRY_KV, remintCredential} from '../../lib/enroll.js'
+import {enrollDevice, REGISTRY_KV, rotateUpdateKey, UPDATE_KEY_KV} from '../../lib/enroll.js'
 import {describeError} from '../../lib/errorMessage.js'
 import {port} from '../../lib/portValueParser.js'
 import {readProjectApp} from '../../lib/projectApp.js'
@@ -50,12 +50,12 @@ export const args = command(
     ),
     reEnroll: optional(
       flag('--re-enroll', {
-        description: message`Mint a fresh credential when the device is already enrolled (the old one stops working immediately)`,
+        description: message`Rotate the update key when the device is already enrolled (the old one stops working immediately)`,
       }),
     ),
-    credential: optional(
-      option('--credential', string({metavar: 'SECRET'}), {
-        description: message`Write an externally minted credential to the device; the registry is not contacted`,
+    updateKey: optional(
+      option('--update-key', string({metavar: 'SECRET'}), {
+        description: message`Write an externally issued update key to the device; the registry is not contacted`,
       }),
     ),
     port: optional(
@@ -88,9 +88,9 @@ export async function run(config: Args): Promise<void> {
     process.exit(1)
   }
 
-  const providedCredential = config.credential?.trim()
-  if (providedCredential === '') {
-    fail('--credential must not be empty')
+  const providedUpdateKey = config.updateKey?.trim()
+  if (providedUpdateKey === '') {
+    fail('--update-key must not be empty')
   }
 
   // Validate before touching the device so a bad name fails without leaving a
@@ -103,10 +103,10 @@ export async function run(config: Args): Promise<void> {
   try {
     // Resolve the connection before opening the port so a missing url/token
     // fails fast. The url is needed in both flows: the device stores it next
-    // to the credential (the pair is what check-ins run against).
+    // to the update key (the pair is what check-ins run against).
     const connection = resolveRegistryConnection({registry: config.registry, token: config.token})
     const registry = requireRegistryUrl(connection)
-    const token = providedCredential === undefined ? requireRegistryToken(connection) : undefined
+    const token = providedUpdateKey === undefined ? requireRegistryToken(connection) : undefined
 
     const handles = await openSession({port: config.port, compat: 'enforce'})
     session = handles
@@ -140,10 +140,10 @@ export async function run(config: Args): Promise<void> {
         return fail('Could not derive a name for this device; pass --name')
       }
 
-      let credential = providedCredential
+      let updateKey = providedUpdateKey
       let reEnrolled = false
 
-      if (credential === undefined) {
+      if (updateKey === undefined) {
         // Sending the app binds the device to it at enrollment, so it can never
         // be offered another app's build.
         const app = readProjectApp()
@@ -161,21 +161,21 @@ export async function run(config: Args): Promise<void> {
           if (config.reEnroll !== true) {
             return fail(
               `Device ${deviceId} is already enrolled with this registry`,
-              'Pass --re-enroll to mint a fresh credential (the old one stops working immediately)',
+              'Pass --re-enroll to rotate the update key (the old one stops working immediately)',
             )
           }
-          credential = await remintCredential({registry, deviceId}, token!)
+          updateKey = await rotateUpdateKey({registry, deviceId}, token!)
           reEnrolled = true
         } else {
-          credential = outcome.credential
+          updateKey = outcome.updateKey
         }
       }
 
-      // Registry url + credential are provisioning state, written as a pair:
+      // Registry url + update key are provisioning state, written as a pair:
       // they live in the mik.sys store, which deploys and nvsStorage.clear()
       // never touch, and the app reads them via ota.registry()/ota.bearer().
       await handles.session.kv.set(REGISTRY_KV, registry, 'sys')
-      await handles.session.kv.set(CREDENTIAL_KV, credential, 'sys')
+      await handles.session.kv.set(UPDATE_KEY_KV, updateKey, 'sys')
 
       // Skipped when the device already carries this name, so re-enrolling
       // doesn't bump the revision and win a sync it shouldn't.
@@ -196,7 +196,7 @@ export async function run(config: Args): Promise<void> {
         name,
       })
 
-      const provisioned = providedCredential !== undefined
+      const provisioned = providedUpdateKey !== undefined
       if (jsonOutput) {
         agentResult('ota enroll', {
           deviceId,

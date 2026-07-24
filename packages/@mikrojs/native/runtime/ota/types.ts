@@ -133,12 +133,12 @@ export interface Ota {
   confirm(): void
   /** Reinstall the previous build immediately. */
   revert(): Result<void, OtaInstallError>
-  /** The check-in bearer: the device credential written at enrollment
+  /** The check-in bearer: the device update key written at enrollment
    *  (`mikro ota enroll`), or `undefined` on an un-enrolled device. Read-only:
-   *  credentials are provisioned over serial, never delivered in-band. */
+   *  update keys are provisioned over serial, never delivered in-band. */
   bearer(): string | undefined
   /** The registry url the device was enrolled against, written next to the
-   *  credential at enrollment, or `undefined` on an un-enrolled device. */
+   *  update key at enrollment, or `undefined` on an un-enrolled device. */
   registry(): string | undefined
 }
 

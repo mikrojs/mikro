@@ -44,9 +44,9 @@ const store: OtaStore = {
 }
 
 // Written as a pair to mik.sys by `mikro ota enroll`: the registry url and
-// the device credential that authenticates against it.
+// the device update key that authenticates against it.
 function bearer(): string | undefined {
-  const v = sysGet('ota.credential')
+  const v = sysGet('ota.updateKey')
   return typeof v === 'string' ? v : undefined
 }
 

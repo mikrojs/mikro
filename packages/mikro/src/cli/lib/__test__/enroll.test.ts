@@ -2,18 +2,18 @@ import {describe, expect, it, vi} from 'vitest'
 
 import {
   buildEnrollRequest,
-  buildRemintRequest,
-  CREDENTIAL_KV,
+  buildRotateKeyRequest,
   enrollDevice,
-  remintCredential,
+  rotateUpdateKey,
+  UPDATE_KEY_KV,
 } from '../enroll.js'
 import type {FetchLike} from '../otaPublish.js'
 
 const input = {registry: 'https://updates.example.com/', deviceId: '0wvfa7cccg'}
 
-describe('CREDENTIAL_KV', () => {
+describe('UPDATE_KEY_KV', () => {
   it('fits the 15-byte NVS key name limit', () => {
-    expect(Buffer.byteLength(CREDENTIAL_KV, 'utf-8')).toBeLessThanOrEqual(15)
+    expect(Buffer.byteLength(UPDATE_KEY_KV, 'utf-8')).toBeLessThanOrEqual(15)
   })
 })
 
@@ -51,10 +51,10 @@ describe('buildEnrollRequest', () => {
   })
 })
 
-describe('buildRemintRequest', () => {
-  it('targets the device credential path, url-encoding the id', () => {
-    const plan = buildRemintRequest({registry: input.registry, deviceId: 'a/b'}, 't')
-    expect(plan.url).toBe('https://updates.example.com/api/v1/devices/a%2Fb/credential')
+describe('buildRotateKeyRequest', () => {
+  it('targets the device update key path, url-encoding the id', () => {
+    const plan = buildRotateKeyRequest({registry: input.registry, deviceId: 'a/b'}, 't')
+    expect(plan.url).toBe('https://updates.example.com/api/v1/devices/a%2Fb/key')
     expect(plan.body).toBeUndefined()
   })
 })
@@ -84,13 +84,13 @@ function fetchReturning(status: number, body: unknown): FetchLike {
 }
 
 describe('enrollDevice', () => {
-  it('returns the credential on success', async () => {
+  it('returns the update key on success', async () => {
     const outcome = await enrollDevice(
       input,
       't',
-      fetchReturning(200, {device: {}, credential: 'dvc_abc.secret'}),
+      fetchReturning(200, {device: {}, credential: 'duk_abc.secret'}),
     )
-    expect(outcome).toEqual({status: 'enrolled', credential: 'dvc_abc.secret'})
+    expect(outcome).toEqual({status: 'enrolled', updateKey: 'duk_abc.secret'})
   })
 
   it('reports already-enrolled on 409 without throwing', async () => {
@@ -104,9 +104,9 @@ describe('enrollDevice', () => {
     )
   })
 
-  it('throws when the response has no credential', async () => {
+  it('throws when the response has no update key', async () => {
     await expect(enrollDevice(input, 't', fetchReturning(200, {device: {}}))).rejects.toThrow(
-      /no credential/,
+      /no update key/,
     )
   })
 
@@ -114,7 +114,7 @@ describe('enrollDevice', () => {
   // A token posted to the wrong host is a credential handed to a stranger, and
   // nothing about the returned outcome would show it.
   it('sends the built request unaltered: url, method, auth and body', async () => {
-    const {calls, fetchImpl} = recordingFetch(200, {credential: 'dvc_abc.secret'})
+    const {calls, fetchImpl} = recordingFetch(200, {credential: 'duk_abc.secret'})
     await enrollDevice({...input, name: 'kitchen', app: 'thermostat'}, 'tok_secret', fetchImpl)
 
     expect(calls).toHaveLength(1)
@@ -137,31 +137,31 @@ describe('enrollDevice', () => {
   })
 })
 
-describe('remintCredential', () => {
-  it('returns the fresh credential', async () => {
-    const credential = await remintCredential(
+describe('rotateUpdateKey', () => {
+  it('returns the fresh update key', async () => {
+    const updateKey = await rotateUpdateKey(
       input,
       't',
-      fetchReturning(200, {credential: 'dvc_new.secret'}),
+      fetchReturning(200, {credential: 'duk_new.secret'}),
     )
-    expect(credential).toBe('dvc_new.secret')
+    expect(updateKey).toBe('duk_new.secret')
   })
 
   it('throws on 404', async () => {
     await expect(
-      remintCredential(input, 't', fetchReturning(404, {error: 'Unknown device'})),
+      rotateUpdateKey(input, 't', fetchReturning(404, {error: 'Unknown device'})),
     ).rejects.toThrow(/404/)
   })
 
-  // Re-minting invalidates the old credential, so an unauthenticated request
+  // Rotation invalidates the old update key, so an unauthenticated request
   // that somehow succeeded would be a device-bricking hole. Assert the header
   // reaches the wire rather than only that the plan contains it.
-  it('sends bearer auth to the credential path', async () => {
-    const {calls, fetchImpl} = recordingFetch(200, {credential: 'dvc_new.secret'})
-    await remintCredential(input, 'tok_secret', fetchImpl)
+  it('sends bearer auth to the key path', async () => {
+    const {calls, fetchImpl} = recordingFetch(200, {credential: 'duk_new.secret'})
+    await rotateUpdateKey(input, 'tok_secret', fetchImpl)
 
     expect(calls).toHaveLength(1)
-    expect(calls[0]!.url).toBe('https://updates.example.com/api/v1/devices/0wvfa7cccg/credential')
+    expect(calls[0]!.url).toBe('https://updates.example.com/api/v1/devices/0wvfa7cccg/key')
     expect(calls[0]!.init.method).toBe('POST')
     expect((calls[0]!.init.headers as Record<string, string>).authorization).toBe(
       'Bearer tok_secret',
@@ -172,6 +172,6 @@ describe('remintCredential', () => {
     const fetchImpl: FetchLike = vi.fn(async () => {
       throw new Error('ETIMEDOUT')
     })
-    await expect(remintCredential(input, 't', fetchImpl)).rejects.toThrow(/ETIMEDOUT/)
+    await expect(rotateUpdateKey(input, 't', fetchImpl)).rejects.toThrow(/ETIMEDOUT/)
   })
 })
