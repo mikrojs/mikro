@@ -54,7 +54,7 @@ export const args = command(
     ),
     snapshot: optional(
       flag('--snapshot', {
-        description: message`Derive a unique version from git state (<version>-snapshot.g<sha>) so iteration doesn't need a package.json bump`,
+        description: message`Derive a unique version from the build time (<version>-snapshot.<ts>) so iteration doesn't need a package.json bump`,
       }),
     ),
     noMinify: optional(flag('--no-minify', {description: message`Skip minification`})),
