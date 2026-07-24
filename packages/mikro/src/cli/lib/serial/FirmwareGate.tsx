@@ -4,16 +4,11 @@ import spinners from 'cli-spinners'
 import figures from 'figures'
 import {Box, Text, useApp, useInput} from 'ink'
 import pkg from 'mikro/package.json' with {type: 'json'}
-import {type ReactNode, useEffect, useState} from 'react'
+import {type ReactNode, useEffect, useRef, useState} from 'react'
 import {firstValueFrom} from 'rxjs'
 
 import {flashFirmware} from '../flashFirmware.js'
-import {
-  detectPreferredPm,
-  installVersionCommand,
-  mikroCommand,
-  rerunCommand,
-} from '../pkgManager.js'
+import {detectPreferredPm, rerunCommand} from '../pkgManager.js'
 import {Spinner} from '../Spinner.js'
 import {openSession} from './openSession.js'
 
@@ -32,6 +27,7 @@ type GateState =
   | {status: 'flashing'; message: string}
   | {status: 'flashed'}
   | {status: 'flash_error'; message: string}
+  | {status: 'aborted'}
 
 export interface FirmwareGateProps {
   devicePath: string
@@ -64,6 +60,11 @@ export interface FirmwareGateProps {
 export function FirmwareGate(props: FirmwareGateProps) {
   const {devicePath, command, yes, children} = props
   const [state, setState] = useState<GateState>({status: 'probing'})
+  // Ctrl+C during a flash asks for confirmation before aborting, since killing
+  // esptool mid-write can leave the device unbootable. Kept out of GateState so
+  // toggling it doesn't restart the flash effect.
+  const [confirmAbort, setConfirmAbort] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   // Probe compatibility once on mount.
   useEffect(() => {
@@ -104,8 +105,11 @@ export function FirmwareGate(props: FirmwareGateProps) {
   useEffect(() => {
     if (state.status !== 'flashing') return
     let cancelled = false
+    const controller = new AbortController()
+    abortRef.current = controller
     flashFirmware({
       port: devicePath,
+      signal: controller.signal,
       onProgress: (message) => {
         if (!cancelled) setState({status: 'flashing', message})
       },
@@ -114,7 +118,9 @@ export function FirmwareGate(props: FirmwareGateProps) {
         if (!cancelled) setState({status: 'flashed'})
       },
       (err: unknown) => {
-        if (cancelled) return
+        // A user-confirmed abort transitions to 'aborted' itself; ignore the
+        // resulting flash rejection.
+        if (cancelled || controller.signal.aborted) return
         setState({status: 'flash_error', message: err instanceof Error ? err.message : String(err)})
       },
     )
@@ -125,11 +131,31 @@ export function FirmwareGate(props: FirmwareGateProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.status === 'flashing', devicePath])
 
+  // Ctrl+C while flashing: confirm first (aborting mid-write is dangerous),
+  // then abort esptool and exit. The flash keeps running under the prompt.
+  useInput(
+    (input, key) => {
+      const ctrlC = key.ctrl && (input === 'c' || input === 'q')
+      if (!confirmAbort) {
+        if (ctrlC) setConfirmAbort(true)
+        return
+      }
+      if (input.toLowerCase() === 'y') {
+        abortRef.current?.abort()
+        setState({status: 'aborted'})
+      } else if (input.toLowerCase() === 'n' || key.escape) {
+        setConfirmAbort(false)
+      }
+    },
+    {isActive: state.status === 'flashing'},
+  )
+
   // Terminal states exit the process as a side effect (not during render).
   // 'flashed' is handled by FlashedNotice: it prompts to re-run (or, with
   // `yes`, exits with a re-run hint like before).
   useEffect(() => {
     if (state.status === 'flash_error') process.exit(1)
+    if (state.status === 'aborted') process.exit(130)
   }, [state.status])
 
   if (state.status === 'ok') return <>{children(state.compat)}</>
@@ -148,10 +174,27 @@ export function FirmwareGate(props: FirmwareGateProps) {
 
   if (state.status === 'flashing') {
     return (
-      <Text>
-        <Spinner spinner={spinners.dots} /> {state.message}
-      </Text>
+      <Box flexDirection="column">
+        <Text>
+          <Spinner spinner={spinners.dots} /> {state.message}
+        </Text>
+        {confirmAbort && (
+          <>
+            <Text color="yellow">
+              {figures.warning} Aborting mid-flash can leave the device unbootable and require a
+              manual re-flash.
+            </Text>
+            <Text>
+              Abort anyway? <Text bold>(y/N)</Text>
+            </Text>
+          </>
+        )}
+      </Box>
     )
+  }
+
+  if (state.status === 'aborted') {
+    return <Text color="yellow">{figures.warning} Flashing aborted.</Text>
   }
 
   if (state.status === 'flashed') {
@@ -175,20 +218,16 @@ function ReflashPrompt(props: {
   onConfirm: (state: GateState) => void
 }) {
   const {deviceVersion, onConfirm} = props
-  const [pm, setPm] = useState<'npm' | 'pnpm' | 'yarn' | 'bun'>('npm')
-  useEffect(() => {
-    detectPreferredPm().then(setPm, () => {})
-  }, [])
 
   useInput((input, key) => {
-    if (key.ctrl && (input === 'c' || input === 'q')) {
-      process.exit(0)
-    }
     const ch = input.toLowerCase()
     if (ch === 'y') {
       onConfirm({status: 'flashing', message: 'Preparing firmware…'})
-    } else if (ch === 'n' || key.return) {
+    } else if (ch === 'n') {
       onConfirm({status: 'ok', compat: 'best-effort'})
+    } else if (ch === 'c' || key.return || key.escape || (key.ctrl && (ch === 'c' || ch === 'q'))) {
+      // Cancel: exit without touching the device.
+      process.exit(0)
     }
     // Any other key is ignored.
   })
@@ -200,18 +239,12 @@ function ReflashPrompt(props: {
         {figures.warning} Device is running mikrojs v{got}, which is not compatible with this CLI (v
         {cliVersion}).
       </Text>
-      <Text>
-        Flash CLI-matched firmware now? <Text bold>(y/N)</Text>
-      </Text>
-      <Text dimColor>
-        Choosing no continues anyway; commands may fail against mismatched firmware.
-      </Text>
-      <Text dimColor>
-        Or install a matching CLI instead:{' '}
-        {deviceVersion
-          ? installVersionCommand(pm, 'mikro', deviceVersion)
-          : mikroCommand(pm, 'flash')}
-      </Text>
+      <Box marginTop={1}>
+        <Text>
+          Would you like to flash firmware v{cliVersion} to the device?{' '}
+          <Text bold>(y)es / (n)o / (C)ancel</Text>
+        </Text>
+      </Box>
     </Box>
   )
 }
