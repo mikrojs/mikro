@@ -1,16 +1,21 @@
+import * as pathlib from 'node:path'
+
 import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import {flag, option} from '@optique/core/primitives'
 import {string} from '@optique/core/valueparser'
 import {path} from '@optique/run'
-import {stat} from 'fs/promises'
+import {rm, stat} from 'fs/promises'
 
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
+import {displayPath} from '../../lib/displayPath.js'
 import {describeError} from '../../lib/errorMessage.js'
+import {formatSize} from '../../lib/formatSize.js'
 import {readManifestFromTarball, sha256File} from '../../lib/ota.js'
 import {publishBuild, type PublishInput} from '../../lib/otaPublish.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../../lib/parseMinifier.js'
+import {getMikroDir} from '../../lib/projectRoot.js'
 import {
   requireRegistryToken,
   requireRegistryUrl,
@@ -79,10 +84,21 @@ export const args = command(
 
 type Args = InferValue<typeof args>
 
+/** Push's own packed build, inside the project's `.mikro/`. One fixed name, so
+ *  a failed push leaves at most one behind rather than one per attempt, and so
+ *  the retry command below can name a constant instead of the user's directory
+ *  layout: nothing in `.mikro/ota-push.tgz` ever needs shell quoting. */
+const SCRATCH_NAME = 'ota-push.tgz'
+const SCRATCH_RELATIVE = pathlib.join('.mikro', SCRATCH_NAME)
+
 export async function run(config: Args, jsonFlag = false): Promise<void> {
   const jsonOutput = jsonFlag || isAgentMode()
   // eslint-disable-next-line no-console
   const log = jsonOutput ? () => {} : (msg: string) => console.error(msg)
+  // The build this push packed for itself, if any. Nothing reads it back once
+  // the registry has it, so it is removed on success; on failure it stays, and
+  // the retry hint below points at it.
+  let packedPath: string | undefined
   try {
     const connection = resolveRegistryConnection({registry: config.registry, token: config.token})
     const registry = requireRegistryUrl(connection)
@@ -114,6 +130,8 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
       }
     } else {
       const artifact = await packProject({
+        // Scratch, not `mikro ota pack`'s deliverable in the working directory.
+        out: pathlib.join(getMikroDir(), SCRATCH_NAME),
         log,
         minify: !config.noMinify,
         minifier: parseMinifier(config.minifier),
@@ -122,6 +140,7 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
         snapshot: config.snapshot,
       })
       buildPath = artifact.outPath
+      packedPath = artifact.outPath
       input = {
         registry,
         checksum: artifact.checksum,
@@ -133,8 +152,18 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
       }
     }
 
-    log(`Pushing ${buildPath} to ${registry}…`)
+    log(`Pushing ${displayPath(buildPath)}…`)
     await publishBuild(input, buildPath, token)
+
+    if (packedPath !== undefined) {
+      const removing = packedPath
+      packedPath = undefined
+      // The upload already succeeded, so a file that refuses to be deleted is
+      // worth saying out loud but must not turn this into a failed push.
+      await rm(removing, {force: true}).catch((err: unknown) => {
+        log(`Could not remove ${displayPath(removing)}: ${describeError(err)}`)
+      })
+    }
 
     // The channel it was released to, or null when stored without serving. Named
     // `channel` (not `released`) so the field means a channel name everywhere;
@@ -151,26 +180,44 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
     } else {
       // Show the version: with --snapshot it is derived, so this is the only
       // place the user sees what was actually pushed.
-      if (channel !== null) {
-        // eslint-disable-next-line no-console
-        console.log(`Pushed ${input.manifest.version} and released to ${channel}`)
-      } else {
-        // eslint-disable-next-line no-console
-        console.log(
-          `Pushed ${input.manifest.version} (stored, not released; run 'mikro ota release ${input.manifest.version} <channel>')`,
-        )
-      }
+      const build = `${input.manifest.app}@${input.manifest.version}`
+      // eslint-disable-next-line no-console
+      console.log(channel === null ? `Pushed ${build}` : `Pushed ${build} to ${channel}`)
+      // eslint-disable-next-line no-console
+      console.log(`  registry  ${registry}`)
       // eslint-disable-next-line no-console
       console.log(`  checksum  ${input.checksum}`)
+      // eslint-disable-next-line no-console
+      console.log(`  size      ${formatSize(input.size)}`)
+      if (channel === null) {
+        // A stored build serves nobody until it is released, which is easy to
+        // miss when the push itself succeeded. Give the exact command.
+        // eslint-disable-next-line no-console
+        console.log(
+          `\nNot released yet. Run: mikro ota release ${input.manifest.version} <channel>`,
+        )
+      }
     }
   } catch (err) {
+    // The packed build outlives a failed push, so the retry that skips the
+    // rebuild is offered to both audiences, not just the human one.
+    // A push that packed anything ran from the project root (resolveEntry needs
+    // a package.json in the working directory), so the scratch build is always
+    // at this constant, relative path. The command naming it is both the record
+    // that the build survived and the way to reuse it.
+    const retry =
+      packedPath === undefined ? undefined : `mikro ota push --tarball ${SCRATCH_RELATIVE}`
     if (jsonOutput) {
-      agentError('ota push', describeError(err))
+      agentError('ota push', describeError(err), retry === undefined ? undefined : {fix: retry})
     } else {
       // The error object, not a string: Node renders the cause chain, which is
       // where a failed upload's actual reason lives.
       // eslint-disable-next-line no-console
       console.error('Error:', err)
+      if (retry !== undefined) {
+        // eslint-disable-next-line no-console
+        console.error(`\nThe packed build was kept. Retry without rebuilding: ${retry}`)
+      }
     }
     process.exit(1)
   }

@@ -1,3 +1,5 @@
+import * as pathlib from 'node:path'
+
 import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
@@ -15,10 +17,11 @@ import {loadEnvFiles, validateNvsKeys} from '../lib/deploy.js'
 import {formatDeployEvent} from '../lib/deployProgress.js'
 import {FirmwareIncompatibleError} from '../lib/firmwareCompat.js'
 import {flashFirmware} from '../lib/flashFirmware.js'
+import {formatSize} from '../lib/formatSize.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
 import {detectPreferredPm, rerunCommand} from '../lib/pkgManager.js'
 import {port} from '../lib/portValueParser.js'
-import {resolveProjectRoot} from '../lib/projectRoot.js'
+import {getMikroDir, resolveProjectRoot} from '../lib/projectRoot.js'
 import {getPredeployCommands, runHooks} from '../lib/runHooks.js'
 import {FirmwareGate} from '../lib/serial/FirmwareGate.js'
 import {InkReplConsole} from '../lib/serial/InkReplConsole.js'
@@ -135,6 +138,10 @@ export async function run(
   // through the OTA path so it also establishes the rollback baseline
   // (.ota-last-good.tgz). `mikro dev` keeps the per-file incremental path.
   const artifact = await packProject({
+    // Scratch on the way to the device, not a deliverable: it belongs in
+    // .mikro/, under one fixed name so repeated deploys do not pile up a
+    // tarball per version. Only `mikro ota pack` writes to the project root.
+    out: pathlib.join(getMikroDir(), 'deploy.tgz'),
     entry: config.entry,
     log,
     minify: !config.noMinify,
@@ -145,7 +152,7 @@ export async function run(
     // default ('debug') applies and every call is retained.
     logLevel: parseLogLevel(config.logLevel) ?? 'warn',
   })
-  log(`Packed build: ${artifact.size} bytes`)
+  log(`Packed build: ${formatSize(artifact.size)}`)
 
   // Load env vars
   const envVars = [

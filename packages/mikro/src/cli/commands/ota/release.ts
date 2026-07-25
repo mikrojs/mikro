@@ -60,6 +60,8 @@ export async function run(config: Args): Promise<void> {
     } else {
       // eslint-disable-next-line no-console
       console.log(`Released ${app}@${config.version} to ${config.channel}`)
+      // eslint-disable-next-line no-console
+      console.log(`  registry  ${registry}`)
     }
   } catch (err) {
     if (jsonOutput) {

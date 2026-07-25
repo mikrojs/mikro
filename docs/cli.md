@@ -351,7 +351,7 @@ mikro ota pack
 
 | Option             | Description                                                            |
 | ------------------ | ---------------------------------------------------------------------- |
-| `--out FILE`       | Output path for the build (default: `app-<version>.tgz`)               |
+| `--out FILE`       | Output path for the build (default: `./app-<version>.tgz`)             |
 | `--snapshot`       | Derive a unique version so iteration needs no version bump (see below) |
 | `--no-minify`      | Skip minification                                                      |
 | `--loglevel LEVEL` | Log level: `none`, `error`, `warn`, `info`, `debug`                    |
