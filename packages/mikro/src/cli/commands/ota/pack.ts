@@ -7,12 +7,14 @@ import {flag, option} from '@optique/core/primitives'
 import {string} from '@optique/core/valueparser'
 import {path} from '@optique/run'
 import {readFile} from 'fs/promises'
-import {lastValueFrom} from 'rxjs'
+import {lastValueFrom, tap} from 'rxjs'
 
 import type {LogLevel, Minifier, MinifyLevel} from '../../../_exports/index.js'
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
-import {build} from '../../lib/build.js'
+import {build, type BuildEvent} from '../../lib/build.js'
+import {displayPath} from '../../lib/displayPath.js'
 import {describeError} from '../../lib/errorMessage.js'
+import {formatSize} from '../../lib/formatSize.js'
 import {
   finalizeBuild,
   normalizeRepositoryDirectory,
@@ -34,7 +36,7 @@ export const args = command(
     subcommand: constant('pack' as const),
     out: optional(
       option('--out', path({metavar: 'FILE', allowCreate: true, type: 'file'}), {
-        description: message`Output path for the build (default: app-<version>.tgz)`,
+        description: message`Output path for the build (default: ./app-<version>.tgz)`,
       }),
     ),
     snapshot: optional(
@@ -85,9 +87,20 @@ function projectName(pkg: ProjectPackageJson): string {
   return pkg.name
 }
 
+/** The build settings, as one line: what actually shaped the bytecode, so a
+ *  surprising checksum or a stripped console call is traceable to a setting. */
+function describeBuildSettings(s: Extract<BuildEvent, {type: 'settings'}>): string {
+  const parts = [s.minify ? `minify ${s.minifier} ${s.minifyLevel}` : 'no minify']
+  parts.push(`loglevel ${s.logLevel}`)
+  if (s.bundle) parts.push('bundled')
+  return parts.join(', ')
+}
+
 /**
  * Build the current project to bytecode and pack it into an OTA `.tgz`.
- * Shared by `mikro ota pack` and `mikro ota push` (when no `--tarball` is given).
+ * Shared by `mikro ota pack`, `mikro ota push` (when no `--tarball` is given),
+ * and `mikro deploy`. Only `mikro ota pack` leaves the result in place: the
+ * others pass an `out` under `.mikro/` and treat it as scratch.
  */
 export async function packProject(options: {
   out?: string
@@ -108,7 +121,6 @@ export async function packProject(options: {
   const entry = resolveEntry(options.entry)
   const buildDir = pathlib.join(getMikroDir(), 'ota-build')
 
-  log('Building…')
   await lastValueFrom(
     build(entry, buildDir, {
       minify: options.minify ?? true,
@@ -122,7 +134,14 @@ export async function packProject(options: {
       // the one it is already running.
       logLevel: options.logLevel ?? 'warn',
       env: 'production',
-    }),
+    }).pipe(
+      // Report the settings the build resolved, not the flags passed in: a
+      // mikro.config.ts can set the minifier or level, and only the builder
+      // knows what won.
+      tap((event) => {
+        if (event.type === 'settings') log(`Building… (${describeBuildSettings(event)})`)
+      }),
+    ),
     {defaultValue: undefined},
   )
 
@@ -154,8 +173,13 @@ export async function packProject(options: {
     if (git.dirty) manifest.dirty = true
   }
 
-  const outPath = options.out ?? pathlib.join(getMikroDir(), `app-${version}.tgz`)
-  log('Packing…')
+  // Default to the working directory, like `npm pack`: this is the artifact the
+  // caller asked for, not tool state, and `.mikro/` is gitignored, so a build
+  // packed there is invisible to `ls` and easy to lose. `mikro ota push` passes
+  // its own `out` under `.mikro/`, where a scratch file belongs.
+  const outPath = options.out ?? pathlib.resolve(`app-${version}.tgz`)
+  // --snapshot is the one flag that shapes the pack rather than the build.
+  log(options.snapshot ? 'Packing… (snapshot)' : 'Packing…')
   return finalizeBuild(buildDir, outPath, manifest)
 }
 
@@ -190,16 +214,17 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
         dirty: artifact.manifest.dirty,
       })
     } else {
+      // Lead with the verb and what was packed, like every other ota command.
+      // The version is spelled out because with --snapshot it is derived, and
+      // --out hides it from the default app-<version>.tgz filename.
       // eslint-disable-next-line no-console
-      console.log(artifact.outPath)
-      // Show the version explicitly: with --snapshot it is derived, and --out
-      // hides it from the default app-<version>.tgz filename.
+      console.log(`Packed ${artifact.manifest.app}@${artifact.manifest.version}`)
       // eslint-disable-next-line no-console
-      console.log(`  version   ${artifact.manifest.version}`)
+      console.log(`  file      ${displayPath(artifact.outPath)}`)
       // eslint-disable-next-line no-console
       console.log(`  checksum  ${artifact.checksum}`)
       // eslint-disable-next-line no-console
-      console.log(`  size      ${artifact.size} bytes`)
+      console.log(`  size      ${formatSize(artifact.size)}`)
     }
   } catch (err) {
     if (jsonOutput) {

@@ -14,6 +14,7 @@ import {string} from '@optique/core/valueparser'
 import open from 'open'
 
 import {isAgentMode} from '../../lib/agent.js'
+import {displayPath} from '../../lib/displayPath.js'
 import {joinUrl} from '../../lib/otaPublish.js'
 import {readProjectApp} from '../../lib/projectApp.js'
 import {getMikroDir} from '../../lib/projectRoot.js'
@@ -72,14 +73,6 @@ async function ask(prompt: string, options?: {hidden?: boolean}): Promise<string
   } finally {
     rl.close()
   }
-}
-
-/** Project paths relative to cwd, home paths as ~/…, anything else as is. */
-function displayPath(path: string): string {
-  const relative = pathlib.relative(process.cwd(), path)
-  if (relative !== '' && !relative.startsWith('..')) return relative
-  const home = homedir()
-  return path.startsWith(home + pathlib.sep) ? `~${path.slice(home.length)}` : path
 }
 
 /**
@@ -536,8 +529,9 @@ export async function run(config: Args): Promise<void> {
   writeFileSync(filePath, `${JSON.stringify({url, token}, null, 2)}\n`, {mode: 0o600})
   chmodSync(filePath, 0o600)
 
-  console.log(`Saved ${displayPath(filePath)}`)
-  console.log('mikro ota enroll and mikro ota push will use it from here.')
+  console.log(`Configured ${url}`)
+  console.log(`  file      ${displayPath(filePath)}`)
+  console.log('\nmikro ota enroll and mikro ota push will use it from here.')
   /* eslint-enable no-console */
   process.exit(0)
 }

@@ -15,6 +15,7 @@ import {lastValueFrom} from 'rxjs'
 import type {LogLevel, Minifier, MinifyLevel} from '../../_exports/index.js'
 import {agentError, agentResult, isAgentMode} from '../lib/agent.js'
 import {build, type BuildEvent} from '../lib/build.js'
+import {formatSize} from '../lib/formatSize.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {resolveEntry} from '../lib/resolveEntry.js'
@@ -50,14 +51,6 @@ export const args = command(
     agent: optional(flag('--agent', {description: message`Output as JSON (agent mode)`})),
   }),
 )
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  const kb = bytes / 1024
-  if (kb < 1024) return `${kb.toFixed(1)} KB`
-  const mb = kb / 1024
-  return `${mb.toFixed(1)} MB`
-}
 
 export async function run(config: InferValue<typeof args>) {
   const entry = resolveEntry(config.entry)

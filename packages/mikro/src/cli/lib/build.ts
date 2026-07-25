@@ -126,6 +126,17 @@ export type BuildEvent =
   | {type: 'phase'; phase: string}
   | {type: 'file'; path: string; size: number}
   | {type: 'done'}
+  /** What this build actually resolved to, once mikro.config.ts has been read.
+   *  Emitted before any work, so a caller can report the settings that applied
+   *  rather than re-deriving them from its own flags and missing the config. */
+  | {
+      type: 'settings'
+      minify: boolean
+      minifier: Minifier
+      minifyLevel: MinifyLevel
+      logLevel: LogLevel
+      bundle: boolean
+    }
 
 function phase(name: string): Observable<BuildEvent> {
   return of({type: 'phase' as const, phase: name})
@@ -403,6 +414,14 @@ export function build(
       })
 
       return concat(
+        of<BuildEvent>({
+          type: 'settings',
+          minify: options.minify,
+          minifier,
+          minifyLevel,
+          logLevel,
+          bundle: shouldBundle,
+        }),
         phase(shouldBundle ? 'Bundling' : 'Tracing imports'),
         defer(() => rm(buildDir, {force: true, recursive: true})).pipe(ignoreElements()),
         writeFiles.pipe(ignoreElements()),

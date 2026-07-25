@@ -211,7 +211,9 @@ export async function run(config: Args): Promise<void> {
       } else {
         const verb = reEnrolled ? 'Re-enrolled' : provisioned ? 'Provisioned' : 'Enrolled'
         // eslint-disable-next-line no-console
-        console.log(`${verb} ${name} (${deviceId}) with ${registry}`)
+        console.log(`${verb} ${name} (${deviceId})`)
+        // eslint-disable-next-line no-console
+        console.log(`  registry  ${registry}`)
         // eslint-disable-next-line no-console
         console.log(`  port      ${handles.devicePath}`)
         // eslint-disable-next-line no-console
@@ -219,9 +221,7 @@ export async function run(config: Args): Promise<void> {
           `  chip      ${ready.chip ?? 'unknown'} (firmware ${ready.version ?? 'unknown'})`,
         )
         // eslint-disable-next-line no-console
-        console.log(`  name      ${name}`)
-        // eslint-disable-next-line no-console
-        console.log('The device authenticates with the registry on its next check-in.')
+        console.log('\nThe device authenticates with the registry on its next check-in.')
       }
     } finally {
       handles.close()
