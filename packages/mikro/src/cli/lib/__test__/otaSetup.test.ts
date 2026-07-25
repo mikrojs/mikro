@@ -135,7 +135,7 @@ describe('browserLoginPrompt', () => {
     // the gate is awaited, so keeping the prompt out of `lines` is what puts
     // the code on screen before anything can take focus.
     expect(text(prompt)).not.toContain('Press Enter')
-    expect(prompt.gate?.prompt).toContain('Press Enter to open it')
+    expect(prompt.gate?.prompt).toContain('Press Enter to open the page')
     expect(prompt.gate?.url).toBe('https://updates.test/login')
   })
 
