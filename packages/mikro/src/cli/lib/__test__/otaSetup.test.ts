@@ -5,7 +5,16 @@ import {join} from 'node:path'
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
-import {ensureFileIgnored, isRegistryResponse, startLoginSession} from '../../commands/ota/setup.js'
+import {
+  browserLoginPrompt,
+  canOpenBrowser,
+  ensureFileIgnored,
+  isRegistryResponse,
+  startLoginSession,
+} from '../../commands/ota/setup.js'
+
+const agent = vi.hoisted(() => ({mode: false}))
+vi.mock('../../lib/agent.js', () => ({isAgentMode: () => agent.mode}))
 
 const REGISTRY = 'http://192.168.1.20:4873'
 
@@ -111,6 +120,86 @@ describe('isRegistryResponse', () => {
 
   it('rejects a non-json response', async () => {
     expect(await isRegistryResponse(new Response('mikro-registry'))).toBe(false)
+  })
+})
+
+describe('browserLoginPrompt', () => {
+  const HTTPS = session({loginUrl: 'https://updates.test/login'})
+  const text = (prompt: {lines: string[]}) => prompt.lines.join('\n')
+
+  it('keeps the code out of the line that opens the browser', () => {
+    const prompt = browserLoginPrompt(HTTPS, 'blinky', true)
+    expect(text(prompt)).toContain('First copy your one-time code:')
+    expect(text(prompt)).toContain('BCDF-GHJK')
+    // Ordering here is structural, not textual: every line is printed before
+    // the gate is awaited, so keeping the prompt out of `lines` is what puts
+    // the code on screen before anything can take focus.
+    expect(text(prompt)).not.toContain('Press Enter')
+    expect(prompt.gate?.prompt).toContain('Press Enter to open it')
+    expect(prompt.gate?.url).toBe('https://updates.test/login')
+  })
+
+  // `open` can resolve without a browser appearing, in which case the catch in
+  // loginViaBrowser never fires; the printed url is all the operator has left.
+  it('prints the url even though pressing Enter would open it', () => {
+    const prompt = browserLoginPrompt(HTTPS, 'blinky', true)
+    expect(prompt.lines).toContain('  https://updates.test/login')
+  })
+
+  it('prints the code exactly as the registry sent it', () => {
+    const odd = session({loginUrl: 'https://updates.test/login', userCode: 'bcdfghjk'})
+    // Reformatting a value that is sent back would make a paste depend on the
+    // registry stripping characters we invented.
+    expect(text(browserLoginPrompt(odd, undefined, true))).toContain('bcdfghjk')
+    expect(text(browserLoginPrompt(odd, undefined, true))).not.toContain('BCDF')
+  })
+
+  it('never offers to open a browser without a tty', () => {
+    const prompt = browserLoginPrompt(HTTPS, 'blinky', false)
+    expect(prompt.gate).toBeUndefined()
+    expect(text(prompt)).toContain('Open this url in a browser to approve access for blinky:')
+    expect(text(prompt)).toContain('  https://updates.test/login')
+    expect(text(prompt)).toContain('Enter this when the page asks for a code:')
+    expect(text(prompt)).toContain('BCDF-GHJK')
+  })
+
+  it('leads with the plaintext warning in both modes', () => {
+    for (const interactive of [true, false]) {
+      const lines = browserLoginPrompt(session(), undefined, interactive).lines
+      expect(lines[1]).toContain('This registry is insecure')
+    }
+    expect(text(browserLoginPrompt(HTTPS, undefined, true))).not.toContain(
+      'This registry is insecure',
+    )
+  })
+
+  it('still gates on a registry that sends no user code', () => {
+    const bare = session({loginUrl: 'https://updates.test/login', userCode: undefined})
+    const prompt = browserLoginPrompt(bare, undefined, true)
+    expect(prompt.gate?.url).toBe('https://updates.test/login')
+    expect(text(prompt)).not.toContain('one-time code')
+  })
+})
+
+describe('canOpenBrowser', () => {
+  it('opens only for an interactive local terminal', () => {
+    expect(canOpenBrowser({}, true)).toBe(true)
+    expect(canOpenBrowser({}, undefined)).toBe(false)
+    expect(canOpenBrowser({}, false)).toBe(false)
+  })
+
+  it('refuses over ssh, where the browser would open on the far end', () => {
+    expect(canOpenBrowser({SSH_TTY: '/dev/pts/0'}, true)).toBe(false)
+    expect(canOpenBrowser({SSH_CONNECTION: '10.0.0.2 22 10.0.0.1 22'}, true)).toBe(false)
+  })
+
+  it('refuses in agent mode, where nobody presses anything', () => {
+    agent.mode = true
+    try {
+      expect(canOpenBrowser({}, true)).toBe(false)
+    } finally {
+      agent.mode = false
+    }
   })
 })
 

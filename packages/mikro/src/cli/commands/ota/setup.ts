@@ -11,7 +11,9 @@ import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import {flag, option} from '@optique/core/primitives'
 import {string} from '@optique/core/valueparser'
+import open from 'open'
 
+import {isAgentMode} from '../../lib/agent.js'
 import {joinUrl} from '../../lib/otaPublish.js'
 import {readProjectApp} from '../../lib/projectApp.js'
 import {getMikroDir} from '../../lib/projectRoot.js'
@@ -224,7 +226,7 @@ export async function startLoginSession(url: string, app: string | undefined): P
   }
   // The only login url we refuse is a downgrade: an https registry must not send
   // the operator to a plaintext http:// page to type the credential into (that
-  // credential mints publish and enroll tokens for the whole fleet). We do not
+  // credential issues publish and enroll tokens for the whole fleet). We do not
   // pin the login to the registry's origin. On https a split api/dashboard
   // deployment legitimately approves on another origin, and TLS authenticates
   // that the registry we chose named it. On http the response is unauthenticated
@@ -281,41 +283,106 @@ function codeBlock(code: string): string[] {
   return [`┌${rule}┐`, `│   ${bold(code)}   │`, `└${rule}┘`]
 }
 
+export interface BrowserLoginPrompt {
+  /** Printed before anything is opened or awaited. */
+  lines: string[]
+  /** Present only when the CLI should ask, then open. Absent = print and poll. */
+  gate?: {prompt: string; url: string}
+}
+
+/** What the login step shows, and whether it offers to open the browser.
+ *
+ *  Interactive follows `gh auth login`: the code comes first and the open is
+ *  gated, because opening a browser while the operator still has to read a code
+ *  off the terminal covers the terminal at exactly the wrong moment. Without a
+ *  tty there is nobody to press a key, so it prints the url and the code and
+ *  leaves the opening to whoever is watching. Exported for its tests. */
+export function browserLoginPrompt(
+  session: LoginSession,
+  app: string | undefined,
+  interactive: boolean,
+): BrowserLoginPrompt {
+  const lines: string[] = ['']
+  // The device side warns about a plaintext registry on every boot. This flow
+  // carries more than a device update key does: the password typed into that
+  // page issues publish and enroll tokens for the whole fleet, and both it and
+  // the token it returns cross the wire in the clear. Say so at the point it
+  // happens rather than leaving it to the reader of a docs page.
+  if (new URL(session.loginUrl).protocol === 'http:') {
+    lines.push(
+      '\x1b[33m!\x1b[0m This registry is insecure (http://). The password you enter and the ' +
+        'token you get back\n  are sent unencrypted over the network, allowing unauthorized ' +
+        'parties to easily access\n  and read them. Use https:// for anything but local ' +
+        'development.',
+      '',
+    )
+  }
+  // The page asks for the code. It is what stops someone else's login url from
+  // being approved by you: a link you did not start shows a code you never saw.
+  if (!interactive) {
+    lines.push(
+      `Open this url in a browser to approve access${app === undefined ? '' : ` for ${app}`}:`,
+      '',
+      `  ${session.loginUrl}`,
+    )
+    if (session.userCode !== undefined) {
+      lines.push('', 'Enter this when the page asks for a code:', '')
+      for (const line of codeBlock(session.userCode)) lines.push(`  ${line}`)
+    }
+    return {lines}
+  }
+  if (session.userCode !== undefined) {
+    lines.push('First copy your one-time code:', '')
+    for (const line of codeBlock(session.userCode)) lines.push(`  ${line}`)
+    lines.push('')
+  }
+  // The url gets a line of its own rather than living only in the prompt:
+  // `open` resolves on setups where no browser ever appears (a headless
+  // console, a missing xdg-open), so the catch below never fires and this is
+  // the only copyable record of where to approve.
+  // The app is not named here: the approval page states what approving grants,
+  // and only after the code is entered, which is where the spec deliberately
+  // puts that disclosure.
+  lines.push('Approve access at:', `  ${session.loginUrl}`, '')
+  return {
+    lines,
+    gate: {prompt: 'Press Enter to open it in your browser… ', url: session.loginUrl},
+  }
+}
+
+/** Whether pressing Enter here could plausibly open a browser the operator can
+ *  see. Over ssh `open` would launch one on the far end, and an agent or a pipe
+ *  has nobody to press anything. Params default to the real environment so
+ *  tests need not touch globals. */
+export function canOpenBrowser(
+  env: NodeJS.ProcessEnv = process.env,
+  isTty: boolean | undefined = process.stdin.isTTY,
+): boolean {
+  if (isTty !== true || isAgentMode()) return false
+  return env.SSH_CONNECTION === undefined && env.SSH_TTY === undefined
+}
+
 /* eslint-disable no-console -- interactive flow; console is its UI */
 
 /** Show the auth url, then poll until the login is approved in the browser
- *  and the registry hands over the minted token. */
+ *  and the registry hands over the token it issued. */
 async function loginViaBrowser(
   url: string,
   session: LoginSession,
   app: string | undefined,
 ): Promise<string> {
-  console.log('')
-  // The device side warns about a plaintext registry on every boot. This flow
-  // carries more than a device update key does: the password typed into that
-  // page mints publish and enroll tokens for the whole fleet, and both it and
-  // the minted token cross the wire in the clear. Say so at the point it
-  // happens rather than leaving it to the reader of a docs page.
-  if (new URL(session.loginUrl).protocol === 'http:') {
-    console.log(
-      '\x1b[33m!\x1b[0m This registry is http://, so the password you enter and the token it ' +
-        'mints travel unencrypted.\n  Anyone on this network can read them. Use https:// for ' +
-        'anything but local development.',
-    )
-    console.log('')
-  }
-  console.log(
-    `Open this url in a browser to approve access${app === undefined ? '' : ` for ${app}`}:`,
-  )
-  console.log('')
-  console.log(`  ${session.loginUrl}`)
-  if (session.userCode !== undefined) {
-    // The page asks for this. It is what stops someone else's login url from
-    // being approved by you: a link you did not start shows a code you never saw.
-    console.log('')
-    console.log('Enter this when the page asks for a code:')
-    console.log('')
-    for (const line of codeBlock(session.userCode)) console.log(`  ${line}`)
+  const prompt = browserLoginPrompt(session, app, canOpenBrowser())
+  for (const line of prompt.lines) console.log(line)
+  if (prompt.gate !== undefined) {
+    await ask(prompt.gate.prompt)
+    try {
+      await open(prompt.gate.url)
+    } catch (err) {
+      // Not fatal: the url is on screen and the session is still live, so the
+      // operator can open it themselves while the poll below keeps waiting.
+      console.log(`Failed to open browser: ${err instanceof Error ? err.message : String(err)}`)
+      console.log(`Open manually: ${prompt.gate.url}`)
+    }
   }
   console.log('')
   console.log('Waiting for approval… (Ctrl+C to abort)')
