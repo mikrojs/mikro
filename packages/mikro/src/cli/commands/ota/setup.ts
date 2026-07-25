@@ -336,10 +336,11 @@ export function browserLoginPrompt(
   // The app is not named here: the approval page states what approving grants,
   // and only after the code is entered, which is where the spec deliberately
   // puts that disclosure.
-  lines.push('Approve access at:', `  ${session.loginUrl}`, '')
+  lines.push('Approve access at:', `  ${session.loginUrl}`)
   return {
     lines,
-    gate: {prompt: 'Press Enter to open it in your browser… ', url: session.loginUrl},
+    // "the page", not "it": the waiting line sits between this and the url.
+    gate: {prompt: 'Press Enter to open the page in your browser… ', url: session.loginUrl},
   }
 }
 
@@ -357,8 +358,9 @@ export function canOpenBrowser(
 
 /* eslint-disable no-console -- interactive flow; console is its UI */
 
-/** Show the auth url, then poll until the login is approved in the browser
- *  and the registry hands over the token it issued. */
+/** Show the auth url and poll until the registry hands over the token it
+ *  issued. The offer to open a browser runs alongside that poll, never in
+ *  front of it: approving is what ends this, not answering a prompt. */
 async function loginViaBrowser(
   url: string,
   session: LoginSession,
@@ -366,20 +368,49 @@ async function loginViaBrowser(
 ): Promise<string> {
   const prompt = browserLoginPrompt(session, app, canOpenBrowser())
   for (const line of prompt.lines) console.log(line)
-  if (prompt.gate !== undefined) {
-    await ask(prompt.gate.prompt)
-    try {
-      await open(prompt.gate.url)
-    } catch (err) {
-      // Not fatal: the url is on screen and the session is still live, so the
-      // operator can open it themselves while the poll below keeps waiting.
-      console.log(`Failed to open browser: ${err instanceof Error ? err.message : String(err)}`)
-      console.log(`Open manually: ${prompt.gate.url}`)
-    }
-  }
   console.log('')
   console.log('Waiting for approval… (Ctrl+C to abort)')
 
+  // Poll from here, never after the prompt below. The url is on screen, so the
+  // operator may approve from a browser they opened themselves and never press
+  // anything; a login gated on a keypress would sit there long after the
+  // registry had a token waiting.
+  const token = pollForToken(url, session)
+  if (prompt.gate !== undefined) offerToOpen(prompt.gate, token)
+  return token
+}
+
+/** Ask whether to open the browser, without holding up the login. Retired the
+ *  moment `done` settles, so a token that arrives while the question is up does
+ *  not leave stdin keeping the process alive. */
+function offerToOpen(gate: {prompt: string; url: string}, done: Promise<unknown>): void {
+  const rl = createInterface({input: process.stdin, output: process.stdout, terminal: true})
+  const abort = new AbortController()
+  void done
+    .catch(() => {})
+    .finally(() => {
+      abort.abort()
+      rl.close()
+    })
+  void rl
+    .question(gate.prompt, {signal: abort.signal})
+    .then(async () => {
+      rl.close()
+      try {
+        await open(gate.url)
+      } catch (err) {
+        // Not fatal: the url is on screen and the poll is already running, so
+        // the operator can open it themselves and nothing is lost.
+        console.log(`Failed to open browser: ${err instanceof Error ? err.message : String(err)}`)
+        console.log(`Open manually: ${gate.url}`)
+      }
+    })
+    // The login finished (or failed) before anyone pressed anything.
+    .catch(() => {})
+}
+
+/** Poll until the registry hands over the token, or the session runs out. */
+async function pollForToken(url: string, session: LoginSession): Promise<string> {
   const deadline = Date.now() + session.expiresIn * 1000
   const interval = Math.max(1, session.interval ?? 3) * 1000
   while (Date.now() < deadline) {
