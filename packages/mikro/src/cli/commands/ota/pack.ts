@@ -39,7 +39,7 @@ export const args = command(
     ),
     snapshot: optional(
       flag('--snapshot', {
-        description: message`Derive a unique version from git state (<version>-snapshot.g<sha>) so iteration doesn't need a package.json bump`,
+        description: message`Derive a unique version from the build time (<version>-snapshot.<ts>) so iteration doesn't need a package.json bump`,
       }),
     ),
     noMinify: optional(flag('--no-minify', {description: message`Skip minification`})),
@@ -135,7 +135,7 @@ export async function packProject(options: {
   const app = projectName(pkg)
   const baseVersion = typeof pkg.version === 'string' ? pkg.version : '0.0.0'
 
-  const version = options.snapshot ? snapshotVersion(baseVersion, git, new Date()) : baseVersion
+  const version = options.snapshot ? snapshotVersion(baseVersion, new Date()) : baseVersion
 
   // Where the build came from, baked in at pack so it survives a pack here and a
   // push elsewhere: `push --tarball` reads all of this back from the manifest
