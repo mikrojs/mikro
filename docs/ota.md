@@ -236,17 +236,13 @@ On your workstation, point the CLI at your registry once:
 mikro ota setup
 ```
 
-It prompts for the registry url and writes url + token to `.mikro/registry.json`
-(project-level, gitignored with the rest of `.mikro`; `--user` writes
-`~/.mikro/registry.json` instead, set once per machine). For the token, registries that
-support browser login (the reference implementation does) show an approval url instead of
-asking you to paste anything: approve in the browser and the registry mints a token scoped
-to your app, which the CLI saves. Otherwise setup falls back to a hidden token prompt. The
-file is plain `{"url": …, "token": …}` if you'd rather write it yourself, and
-`--registry`/`--token` flags override it.
+It asks for your registry url, then shows a short code and opens the approval page in your
+browser. Type the code there and approve. On a remote machine it prints the link instead of
+opening it.
 
-`mikro ota push` and `mikro ota enroll` read it, so neither needs flags once it is set.
-The device learns the registry url at enrollment (below), never from env or a deploy.
+Setup saves a token that can publish this app and enroll its devices, kept out of git so
+it cannot be committed by accident. You only do this once: `mikro ota push` and
+`mikro ota enroll` use the saved url and token from then on.
 
 ## Enrolling devices
 

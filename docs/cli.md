@@ -327,7 +327,9 @@ Which registry to use lives in `.mikro/registry.json` (project) or `~/.mikro/reg
 
 ### mikro ota setup
 
-Configure which update registry to use and write it to `.mikro/registry.json`. Prompts for the registry url (checked for reachability), then obtains the token: registries that support browser login get an approval url to open (the CLI sends your project's app name so the registry can offer a token scoped to it, and waits for the exchange); other registries fall back to a hidden token prompt. Re-run it any time the registry moves or the token rotates; existing values are offered as defaults.
+Configure which update registry to use and write it to `.mikro/registry.json`. Prompts for the registry url (checked for reachability), then obtains the token: registries that support browser login print a one-time code and offer to open the approval page (press Enter, or open the url yourself), then wait for the exchange. The CLI sends your project's app name so the registry can offer a token scoped to it. Other registries fall back to a hidden token prompt. Re-run it any time the registry moves or the token rotates; existing values are offered as defaults.
+
+The browser is only opened from an interactive local terminal, since someone has to press Enter. Over ssh, in agent mode, or with stdin redirected, setup prints the url and the code and waits for you to approve from wherever your browser is.
 
 ```sh
 mikro ota setup
