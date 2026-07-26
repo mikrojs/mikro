@@ -449,7 +449,20 @@ Auth is `Authorization: Bearer <device update key>` (from `ota.bearer()`), issue
 workstation. Devices treat only a `401` this way; a temporary error keeps the update key and the
 normal cadence. There is no fallback secret and no pending state.
 
-Request body (JSON):
+The body is one map, encoded as JSON (`content-type: application/json`) or CBOR
+(`content-type: application/cbor`), and a registry answers a `200` in the encoding the request
+declared. A registry must accept both: the built-in device client (`mikro/ota/client`) speaks
+CBOR only, while older firmware and hand-rolled check-ins speak JSON. A registry that does not
+understand CBOR answers `415`, which the device reports as "upgrade the registry"; it never
+falls back to JSON. Error bodies may stay JSON regardless of the request encoding; devices act
+on the status code alone and do not parse them. In both encodings an optional field is omitted
+entirely, never sent as null/undefined: an absent `free` means "no figure to report".
+
+Because the client ships in firmware, the shape below is frozen per firmware release: a registry
+must keep accepting the check-ins of every firmware generation still in its fleet. Extend the
+wire by adding optional fields, never by renaming or repurposing existing ones.
+
+Request body:
 
 | Field          | Type                               | Meaning                                              |
 | -------------- | ---------------------------------- | ---------------------------------------------------- |

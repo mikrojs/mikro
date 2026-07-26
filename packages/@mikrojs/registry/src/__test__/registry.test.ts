@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto'
 
 import {describe, expect, it, vi} from 'vitest'
 
+import {decodeCbor, encodeCbor} from '../cbor.js'
 import {memoryStorage} from '../memoryStorage.js'
 import {createRegistry} from '../registry.js'
 import type {Registry, RegistryStorage} from '../types.js'
@@ -1484,6 +1485,90 @@ describe('device app binding', () => {
     await storage.putDevice({...(await storage.getDevice('dev-1'))!, app: 'sensor'})
     const offer = (await (await checkin(registry, credential)).json()) as {checksum: string}
     expect(offer.checksum).toBe(sensor.checksum)
+  })
+})
+
+describe('check-in over CBOR', () => {
+  function cborCheckin(
+    registry: Registry,
+    credential: string,
+    body: Record<string, unknown> = {},
+  ): Promise<Response> {
+    return registry.fetch(
+      new Request(`${BASE}/api/v1/checkin`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${credential}`,
+          'content-type': 'application/cbor',
+          accept: 'application/cbor',
+        },
+        body: encodeCbor({
+          deviceId: 'dev-1',
+          firmware: '0.15.0',
+          bytecode: 13,
+          running: {trial: false},
+          ...body,
+        }),
+      }),
+    )
+  }
+
+  it('answers a CBOR check-in in CBOR, with the same offer as the JSON wire', async () => {
+    const registry = makeRegistry()
+    const {checksum} = await publish(registry)
+    const credential = await enroll(registry)
+
+    const response = await cborCheckin(registry, credential)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('application/cbor')
+    const offer = decodeCbor(new Uint8Array(await response.arrayBuffer())) as {
+      checksum: string
+      url: string
+      size: number
+    }
+    expect(offer.checksum).toBe(checksum)
+    expect(offer.url).toBe(`${BASE}/api/v1/builds/${checksum}.tgz`)
+  })
+
+  it('answers null in CBOR when there is nothing to offer', async () => {
+    const registry = makeRegistry()
+    const credential = await enroll(registry)
+    const response = await cborCheckin(registry, credential)
+    expect(response.status).toBe(200)
+    expect(decodeCbor(new Uint8Array(await response.arrayBuffer()))).toBeNull()
+  })
+
+  it('stores CBOR-reported fields through the same validation as JSON', async () => {
+    const storage = memoryStorage()
+    const registry = createRegistry({storage, token: TOKEN})
+    const credential = await enroll(registry)
+    expect((await cborCheckin(registry, credential, {free: 12_345})).status).toBe(200)
+    expect((await storage.getDevice('dev-1'))!.lastFree).toBe(12_345)
+    expect((await cborCheckin(registry, credential, {free: -1})).status).toBe(400)
+  })
+
+  it('400s a body that does not decode as CBOR', async () => {
+    const registry = makeRegistry()
+    const credential = await enroll(registry)
+    const response = await registry.fetch(
+      new Request(`${BASE}/api/v1/checkin`, {
+        method: 'POST',
+        headers: {authorization: `Bearer ${credential}`, 'content-type': 'application/cbor'},
+        // 0xff is a break byte outside any indefinite-length item: never valid
+        // as a whole message. (An arbitrary string won't do here — plain ASCII
+        // often happens to parse as a CBOR text string.)
+        body: new Uint8Array([0xff]),
+      }),
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({error: 'Expected a CBOR body'})
+  })
+
+  it('leaves the JSON wire answering in JSON', async () => {
+    const registry = makeRegistry()
+    const credential = await enroll(registry)
+    const response = await checkin(registry, credential)
+    expect(response.headers.get('content-type')).toBe('application/json')
   })
 })
 

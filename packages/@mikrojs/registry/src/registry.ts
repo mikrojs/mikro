@@ -1,5 +1,6 @@
 import semver from 'semver'
 
+import {decodeCbor} from './cbor.js'
 import type {
   BuildRecord,
   ChannelRecord,
@@ -10,6 +11,7 @@ import type {
 } from './types.js'
 import {
   bearerToken,
+  cbor,
   CLIENT_IP_HEADER,
   DEFAULT_CHANNEL,
   error,
@@ -1157,11 +1159,19 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
     const device = await storage.getDevice(deviceId)
     if (device === undefined) return error('Unauthorized', 401)
 
+    // The wire is negotiated on the request's content-type and answered in
+    // kind: CBOR for the builtin device client, JSON for older firmware and
+    // hand-rolled check-ins (spec, "POST /checkin"). Error bodies stay JSON —
+    // devices act on the status alone and never parse them.
+    const isCbor = (request.headers.get('content-type') ?? '').includes('application/cbor')
+    const respond = isCbor ? cbor : json
     let body: CheckinBody
     try {
-      body = (await request.json()) as CheckinBody
+      body = isCbor
+        ? (decodeCbor(new Uint8Array(await request.arrayBuffer())) as CheckinBody)
+        : ((await request.json()) as CheckinBody)
     } catch {
-      return error('Expected a JSON body', 400)
+      return error(isCbor ? 'Expected a CBOR body' : 'Expected a JSON body', 400)
     }
 
     // Ground truth from the device, recorded on every check-in. Every field is
@@ -1319,9 +1329,9 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
 
     // A name to hand back still has to reach the device when there's no update,
     // and `parseOffer` reads a body with no offer fields as "no update".
-    if (offer === undefined) return json(respondName === undefined ? null : {name: respondName})
+    if (offer === undefined) return respond(respondName === undefined ? null : {name: respondName})
     const origin = options.baseUrl ?? new URL(request.url).origin
-    return json({
+    return respond({
       // What to fetch and how to verify it, and nothing the device would have to
       // re-decide with: `firmwareVersion` and `bytecodeVersion` selected this build
       // above and are not sent, because only the registry can act on them — it
