@@ -139,6 +139,7 @@ export default defineConfig({
           {text: 'kv', link: '/api/kv'},
           {text: 'fs', link: '/api/fs'},
           {text: 'ota', link: '/api/ota'},
+          {text: 'ota/client', link: '/api/ota-client'},
           {text: 'cbor', link: '/api/cbor'},
           {text: 'sys', link: '/api/sys'},
           {text: 'test', link: '/api/test'},

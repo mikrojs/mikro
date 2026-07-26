@@ -5,22 +5,54 @@ description: Update a device's app build remotely, over any transport, with auto
 
 # Over-the-air Updates
 
-The `mikro/ota` module installs a new app build that the application has downloaded, runs it
-under a trial, and reverts to the previous build if it fails. It updates the **app build**
-(the compiled JavaScript). The firmware binary itself is not updated over the air; it is
+OTA updates the **app build** (the compiled JavaScript) on a device remotely, with a trial
+install and automatic rollback. The firmware binary itself is not updated over the air; it is
 flashed over a cable.
 
-The module performs no network I/O. The application fetches the build bytes over a transport
-it chooses (cellular, WiFi, Bluetooth, a UART link, an SD card) and writes them in. The module
-covers verification, installation, the trial, rollback, and retry limits.
+Two modules divide the work:
+
+- [`mikro/ota/client`](/api/ota-client) is the built-in update client: it checks in with the
+  registry the device was enrolled against, downloads and stages an offered build, restarts to
+  install it, and confirms the trial. Most apps use it and write no update code beyond one
+  call.
+- [`mikro/ota`](/api/ota) is the policy layer underneath: verification, installation, the
+  trial, rollback, and retry limits. It performs no network I/O, so an app on a different
+  transport (cellular, Bluetooth, a UART link, an SD card) can drive it directly and replace
+  the whole wire.
+
+## The built-in client
+
+One call each, depending on the app's shape:
+
+```ts
+import * as ota from 'mikro/ota/client'
+
+// Always-on app: check in the background, restart when a build is staged.
+ota.watch({checkinIntervalMs: 30 * 60_000})
+
+// Wake-cycle app: one check per wake; the app restarts on 'staged'.
+const checked = await ota.check({trialBoots: 3})
+if (checked.status === 'staged') restart()
+```
+
+Connectivity stays the app's business: bring the network up before checking, or per round
+with watch mode's `beforeCheck` hook. The client is a no-op on an un-enrolled device;
+enrollment (below) is the opt-in. The [`ota/client` reference](/api/ota-client) covers the
+options, the result shape, and the one setting wake-cycle apps must know about
+([`trialBoots`](/api/ota-client#trialboots-on-a-wake-cycle)).
+
+The [ota example](https://github.com/mikrojs/mikro/tree/main/examples/ota) is the always-on
+flow end to end, registry included; the
+[ota-wake-cycle example](https://github.com/mikrojs/mikro/tree/main/examples/ota-wake-cycle)
+is the deep-sleep variant.
 
 ## How an update works
 
-1. The application asks a registry whether a newer build is available, over its own connection.
-   The registry is a service the application talks to; it is not part of the module.
-2. If a build is offered, the application streams the bytes into `mikro/ota`, which verifies
-   them against the offered checksum and size and stages the build.
-3. The application restarts. On the next boot the firmware installs the staged build and runs
+1. The device asks a registry whether a newer build is available. The registry is a service
+   the device talks to; it is not part of the runtime.
+2. If a build is offered, the bytes are streamed into `mikro/ota`, which verifies them
+   against the offered checksum and size and stages the build.
+3. The device restarts. On the next boot the firmware installs the staged build and runs
    it as a trial.
 
 ## The trial model
@@ -50,6 +82,12 @@ there idle. For a stronger check, install the build with `requireConfirm`: the t
 only if `ota.confirm()` is called before the trial window ends, and reverts otherwise. Call it
 after something the build can only pass when healthy, such as a successful registry check-in.
 
+The built-in client does exactly this: it installs with `requireConfirm` and confirms on
+the next completed check-in, unconditionally. The rest of this section is the reasoning
+behind that choice. If your app needs the confirm moved later than check-in, that is the
+part of the client you cannot reconfigure: drive this policy layer yourself instead
+(see [Writing your own client](#writing-your-own-client)).
+
 A natural place to call it is after a successful registry check-in: a completed check-in shows
 the network stack and the application's main path are working, a stronger signal than surviving
 a boot, and it reuses a request the application already makes:
@@ -74,9 +112,9 @@ case — but it does need the one above.
 
 Confirming at check-in proves the build boots and reaches the network. It does not prove the
 rest of the app works, and confirming ends the trial: a build that checks in and then **hangs**
-(an await that never settles, a wedged state machine) has already been confirmed, so it is not
+(an await that never settles, a stuck state machine) has already been confirmed, so it is not
 rolled back — a hang is not a crash, so nothing reboots and the firmware's automatic revert
-never fires. If your app can wedge in a way a reboot would not clear, confirm later — past a
+never fires. If your app can get stuck in a state a reboot would not clear, confirm later — past a
 point that only a working build reaches (a completed sensor read, a first job) — or drive a
 hardware watchdog the app must keep feeding. Check-in is the right place to confirm only when a
 stuck app always ends in a reboot.
@@ -108,10 +146,12 @@ it — the same path as any build that fails on a device, and one an operator ca
 
 A device's own versions are on `mikro/sys` as `version` and `firmware.bytecodeVersion`.
 
-## Writing the app side
+## Writing your own client {#writing-your-own-client}
 
-The application provides two things: a registry to query for updates, and a way to move bytes.
-A typical update cycle:
+Apps on the reference registry protocol don't need any of this: it is what
+[`mikro/ota/client`](/api/ota-client) does. Write your own when the wire is yours: a different
+transport, an existing fleet backend, push instead of poll. The application then provides two
+things: a registry to query for updates, and a way to move bytes. A typical update cycle:
 
 ```ts
 import {ota} from 'mikro/ota'
@@ -200,9 +240,11 @@ staged file, so resuming stays safe.
 
 ### Scheduling
 
-The module has no timer. When to check in and how to run the download are left to the
-application, which is what knows its constraints, such as a connectivity or maintenance
-window, the cost of the connection, or a limited power budget.
+The policy layer has no timer. When to check in and how to run the download are left to the
+caller, which is what knows its constraints, such as a connectivity or maintenance window,
+the cost of the connection, or a limited power budget. The built-in client's two modes are
+those decisions made for the common shapes: a jittered background cadence for always-on
+apps, one check per wake for sleeping ones.
 
 ## Relation to `mikro dev` and `mikro deploy`
 
