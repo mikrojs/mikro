@@ -207,10 +207,11 @@ async function computePlannedVersion(plan: Plan): Promise<string | null> {
     // release PR has already bumped). For other modes, append a suffix.
     useCurrent: plan.mode === 'release',
     // Match what create-release-pr.yml does: cap pre-major bumps so a
-    // `feat!:` on 0.x produces a 0.x.0 preview, not 1.0.0. Without this
-    // a PR preview would publish as 1.0.0-pr-N.* even though the eventual
-    // release will be 0.x.0.
+    // `feat!:` on 0.x produces a 0.x.0 preview, not 1.0.0, and a `feat:`
+    // a patch preview, not the next minor. Without this a PR preview would
+    // publish a version the eventual release will never reach.
     breakingIsMinorOn0x: true,
+    featIsPatchOn0x: true,
     currentVersion: readCanonicalVersion(),
     semverIncrement: recommendBump(getCommitsSince(findReleaseBase())),
     git: readGitInfo(),

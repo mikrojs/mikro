@@ -50,6 +50,72 @@ describe('computeBumpPure', () => {
     })
   })
 
+  test('featIsPatchOn0x caps minor→patch while on 0.x', () => {
+    expect(
+      computeBumpPure({
+        ...baseInputs,
+        mode: 'release',
+        semverIncrement: 'minor',
+        featIsPatchOn0x: true,
+      }),
+    ).toEqual({
+      version: '0.2.1',
+      npmTag: 'latest',
+      mode: 'release',
+    })
+  })
+
+  test('featIsPatchOn0x is a no-op once on 1.x or later', () => {
+    expect(
+      computeBumpPure({
+        ...baseInputs,
+        mode: 'release',
+        currentVersion: '1.4.2',
+        semverIncrement: 'minor',
+        featIsPatchOn0x: true,
+      }),
+    ).toEqual({
+      version: '1.5.0',
+      npmTag: 'latest',
+      mode: 'release',
+    })
+  })
+
+  test('feat cap alone never downgrades a breaking change', () => {
+    // The `cut_major: true` dispatch path: breaking cap dropped, feat cap
+    // still on. A recommended major must land 1.0.0.
+    expect(
+      computeBumpPure({
+        ...baseInputs,
+        mode: 'release',
+        semverIncrement: 'major',
+        featIsPatchOn0x: true,
+      }),
+    ).toEqual({
+      version: '1.0.0',
+      npmTag: 'latest',
+      mode: 'release',
+    })
+  })
+
+  test('both 0.x caps together: breaking lands minor, not patch', () => {
+    // The caps map from the recommended increment; they must not chain
+    // (major → minor → patch would swallow breaking changes entirely).
+    expect(
+      computeBumpPure({
+        ...baseInputs,
+        mode: 'release',
+        semverIncrement: 'major',
+        breakingIsMinorOn0x: true,
+        featIsPatchOn0x: true,
+      }),
+    ).toEqual({
+      version: '0.3.0',
+      npmTag: 'latest',
+      mode: 'release',
+    })
+  })
+
   test('breakingIsMinorOn0x is a no-op once on 1.x or later', () => {
     expect(
       computeBumpPure({
@@ -122,6 +188,25 @@ describe('computeBumpPure', () => {
       npmTag: 'pr-121',
       mode: 'pr-preview',
     })
+  })
+
+  test('0.x caps reach the canary and pr-preview branches too', () => {
+    // Previews must land on the version the eventual release will reach, so
+    // every mode that increments has to pass the caps through.
+    expect(computeBumpPure({...baseInputs, mode: 'canary', featIsPatchOn0x: true})).toMatchObject({
+      version: '0.2.1-canary.20260613094217+abc1234',
+    })
+    expect(
+      computeBumpPure({...baseInputs, mode: 'pr-preview', pr: 121, featIsPatchOn0x: true}),
+    ).toMatchObject({version: '0.2.1-pr-121.20260613094217+abc1234'})
+    expect(
+      computeBumpPure({
+        ...baseInputs,
+        mode: 'canary',
+        semverIncrement: 'major',
+        breakingIsMinorOn0x: true,
+      }),
+    ).toMatchObject({version: '0.3.0-canary.20260613094217+abc1234'})
   })
 
   test('successive prerelease builds sort monotonically under semver.compare', () => {

@@ -45,6 +45,7 @@ export function computeVersion({
   suffix,
   build,
   breakingIsMinorOn0x,
+  featIsPatchOn0x,
   noIncrement,
 }: {
   currentVersion: string
@@ -57,6 +58,7 @@ export function computeVersion({
   // prerelease version. Ignored by semver precedence.
   build?: string
   breakingIsMinorOn0x?: boolean
+  featIsPatchOn0x?: boolean
   // Base the version on `currentVersion` as-is, skipping the semver
   // increment. Used by release-preview: the rolling release PR has already
   // bumped package.json to the version about to ship, so a preview must
@@ -67,16 +69,25 @@ export function computeVersion({
   if (noIncrement) {
     base = currentVersion
   } else {
-    // Optional policy (analogous to release-please's `bump-minor-pre-major`,
-    // same default: off): when set, a recommended `major` bump from
-    // conventional-commits is downgraded to `minor` while the canonical
-    // version is on 0.x. Off by default so a `feat!:` commit produces 1.0.0
-    // from 0.x without ceremony; flip on if you want a safety net while
-    // pre-major. No-op once on 1.x or later.
-    const effectiveIncrement: ReleaseType =
-      semverIncrement === 'major' && breakingIsMinorOn0x && semver.major(currentVersion) === 0
-        ? 'minor'
-        : semverIncrement
+    // Optional pre-major policies (analogous to release-please's
+    // `bump-minor-pre-major` and `bump-patch-for-minor-pre-major`, same
+    // default: off). While the canonical version is on 0.x, a recommended
+    // `major` can be downgraded to `minor` and a recommended `minor` to
+    // `patch`. Each downgrade maps from the recommended increment, never
+    // chained: with both set, a breaking change lands minor, not patch.
+    // No-op once on 1.x or later.
+    //
+    // The 0.x minor affects more than release ergonomics: OTA gates build
+    // offers on `^build.firmwareVersion` (docs/registry-spec.md), so on 0.x a
+    // minor bump is the boundary past which existing builds stop being served.
+    // A breaking change must reach minor to move that boundary.
+    const preMajor = semver.major(currentVersion) === 0
+    let effectiveIncrement: ReleaseType = semverIncrement
+    if (preMajor && semverIncrement === 'major' && breakingIsMinorOn0x) {
+      effectiveIncrement = 'minor'
+    } else if (preMajor && semverIncrement === 'minor' && featIsPatchOn0x) {
+      effectiveIncrement = 'patch'
+    }
     const bumped = semver.inc(currentVersion, effectiveIncrement)
     if (!bumped) {
       throw new Error(`Failed to compute ${effectiveIncrement} version from ${currentVersion}`)

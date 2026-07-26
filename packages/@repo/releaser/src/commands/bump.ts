@@ -43,6 +43,11 @@ export const args = command(
         description: message`While on 0.x, treat breaking changes as minor (downgrade recommended major bumps). Off by default — a recommended major bump from 0.x will cut 1.0.0. No-op on 1.x and later.`,
       }),
     ),
+    featIsPatchOn0x: optional(
+      flag('--feat-is-patch-on-0x', {
+        description: message`While on 0.x, treat features as patch (downgrade recommended minor bumps). Off by default. No-op on 1.x and later.`,
+      }),
+    ),
     dryRun: optional(
       flag('--dry-run', {description: message`Print the new version without writing files`}),
     ),
@@ -66,6 +71,7 @@ export interface BumpInputs {
   pr?: number
   useCurrent?: boolean
   breakingIsMinorOn0x?: boolean
+  featIsPatchOn0x?: boolean
   currentVersion: string
   semverIncrement: ReleaseType
   git: {commitHash: string}
@@ -75,8 +81,17 @@ export interface BumpInputs {
 // Pure: derives the version + npm tag from explicit inputs. No I/O.
 // Exported for tests.
 export function computeBumpPure(inputs: BumpInputs): BumpResult {
-  const {mode, pr, useCurrent, breakingIsMinorOn0x, currentVersion, semverIncrement, git, now} =
-    inputs
+  const {
+    mode,
+    pr,
+    useCurrent,
+    breakingIsMinorOn0x,
+    featIsPatchOn0x,
+    currentVersion,
+    semverIncrement,
+    git,
+    now,
+  } = inputs
 
   if (useCurrent) {
     if (mode !== 'release') {
@@ -92,6 +107,7 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
       preid: undefined,
       suffix: undefined,
       breakingIsMinorOn0x,
+      featIsPatchOn0x,
     })
     return {version, npmTag: 'latest', mode}
   }
@@ -136,6 +152,7 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
         suffix: formatTimestamp(now),
         build: git.commitHash,
         breakingIsMinorOn0x,
+        featIsPatchOn0x,
       }),
       npmTag: 'canary',
       mode,
@@ -155,6 +172,7 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
       suffix: formatTimestamp(now),
       build: git.commitHash,
       breakingIsMinorOn0x,
+      featIsPatchOn0x,
     }),
     npmTag: preid,
     mode,
@@ -171,6 +189,7 @@ async function gather(opts: BumpArgs): Promise<BumpInputs> {
     pr: opts.pr,
     useCurrent,
     breakingIsMinorOn0x: opts.breakingIsMinorOn0x === true,
+    featIsPatchOn0x: opts.featIsPatchOn0x === true,
     currentVersion: readCanonicalVersion(),
     semverIncrement: useCurrent ? 'patch' : recommendBump(getCommitsSince(findReleaseBase())),
     git: useCurrent ? {commitHash: ''} : readGitInfo(),
