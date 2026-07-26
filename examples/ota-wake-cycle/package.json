@@ -1,0 +1,29 @@
+{
+  "name": "mikrojs-ota-wake-cycle",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Mikro.js over-the-air updates on a deep-sleep wake cycle",
+  "homepage": "https://github.com/mikrojs/mikro#readme",
+  "bugs": {
+    "url": "https://github.com/mikrojs/mikro/issues"
+  },
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "dev": "mikro dev app/main.ts"
+  },
+  "dependencies": {
+    "mikro": "workspace:*"
+  },
+  "mikro": {
+    "predeploy": [
+      "tsc --noEmit --pretty"
+    ]
+  }
+}

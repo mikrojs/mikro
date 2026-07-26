@@ -1,3 +1,5 @@
+import {encodeCbor} from './cbor.js'
+
 /** SHA-256 as lowercase hex via WebCrypto (portable across runtimes). */
 export async function sha256Hex(data: Uint8Array | string): Promise<string> {
   const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data
@@ -62,6 +64,13 @@ export function json(body: unknown, status = 200, headers: Record<string, string
   return new Response(JSON.stringify(body), {
     status,
     headers: {'content-type': 'application/json', ...headers},
+  })
+}
+
+export function cbor(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+  return new Response(encodeCbor(body), {
+    status,
+    headers: {'content-type': 'application/cbor', ...headers},
   })
 }
 

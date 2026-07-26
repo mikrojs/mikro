@@ -1,7 +1,8 @@
 # Over-the-air updates
 
-Checks a registry for a new app build on boot and installs it over WiFi, with the
-firmware handling the trial and automatic rollback.
+Checks a registry for new app builds in the background and installs them over WiFi, with
+the firmware handling the trial and automatic rollback. The companion
+[`ota-wake-cycle` example](../ota-wake-cycle) is the deep-sleep variant.
 
 ```sh
 pn create mikro -- --template ota
@@ -9,26 +10,27 @@ pn create mikro -- --template ota
 
 ## How it works
 
-The app runs inside the update cycle: `main.ts` is the app (WiFi plus an LED heartbeat),
-and it hands itself to `withUpdates()` from `updates.ts`, which checks once at startup:
+`main.ts` is the app (WiFi plus an LED heartbeat), and the whole update machinery is one
+call to `ota.watch()` from the built-in `mikro/ota/client`:
 
-1. Calls `ota.reconcile()` on boot to see what happened to any previous update (installed,
-   or rolled back after a failed trial), and reports it on the next check-in.
-2. POSTs a check-in to the registry, including the build it is `running()` and its
+1. On the first check it reconciles the previous boot's update (installed, or rolled back
+   after a failed trial) and reports it to the registry.
+2. It checks in on a jittered cadence, sending the build it is running and its
    firmware/bytecode versions. Check-ins authenticate with the device's update key
-   (`ota.bearer()`), provisioned over the cable with `mikro ota enroll`.
-3. If the registry returns an offer, downloads the `.tgz` and stages it with
-   `ota.applyOffer()`, then restarts so the firmware installs the new build. The check-in
-   runs before the app starts, so a pending update installs first; updates published later
-   are picked up at the next startup.
-4. A freshly installed build runs as a trial: if it survives a clean cycle it is kept; if it
-   crashes, the firmware reverts to the previous build. See the
+   (`ota.bearer()`), provisioned over the cable with `mikro ota enroll`, and retry sooner
+   after a failed check.
+3. If the registry returns an offer, the client streams the `.tgz` straight to flash
+   (resuming an interrupted transfer instead of starting over) and restarts so the
+   firmware installs the new build.
+4. A freshly installed build runs as a trial: the next completed check-in confirms it, and
+   a build that boots but cannot reach the registry is rolled back. See the
    [over-the-air updates guide](https://mikrojs.dev/ota).
 
-The download is the only transport code. This example range-fetches from
-`update.resumeOffset` and writes each chunk straight to flash, so a build never has to fit
-in RAM and an interrupted transfer resumes instead of starting over. Swap it for whatever
-link your device has.
+WiFi stays up for the life of this app, so `ota.watch()` needs no options beyond the demo
+cadence. A device that powers its radio down between checks brings the network up in the
+`beforeCheck` hook and takes it down in the teardown that hook returns. To speak your own
+wire instead of the built-in client, the policy layer underneath (`mikro/ota`) is still
+open; see the [registry spec](https://mikrojs.dev/registry-spec).
 
 ## The registry
 
@@ -93,12 +95,12 @@ ever answers a check-in with 401 (update key rotated, device deleted), re-enroll
 
 ### Local testing over http
 
-The device normally refuses plaintext downloads (`ota.parseOffer` accepts only `https`
-build urls). This example passes `{allowInsecure: true}` when the provisioned url is
-`http://` **on a private network** — `10.x`, `192.168.x`, `172.16–31.x`, `169.254.x`,
-loopback, or an `.local` name. That covers the development registry, which serves on your
-LAN address so devices can reach it, and pointing `.mikro/registry.json` at it is all local
-testing needs.
+The device normally refuses plaintext downloads (only `https` build urls are accepted).
+The built-in client makes one exception: a provisioned registry url that is `http://`
+**on a private network** (`10.x`, `192.168.x`, `172.16–31.x`, `169.254.x`, loopback, or
+an `.local` name). That covers the development registry, which serves on your LAN address
+so devices can reach it, and pointing `.mikro/registry.json` at it is all local testing
+needs.
 
 A plaintext registry on a public host stays refused, and `mikro ota setup` rejects one up
 front. The checksum in an offer is no protection over http: whoever can rewrite the url on
@@ -113,10 +115,9 @@ pn mikro deploy    # build and deploy to device (establishes the rollback baseli
 
 ## Publish an update
 
-The app code lives in `app/main.ts` (WiFi + LED heartbeat); all the update machinery is in
-`app/updates.ts`, ready to copy into your own app. To see an update land, change
-`BLINK_INTERVAL_MS` in `app/main.ts`, bump the version in `package.json`, and push it,
-releasing to the `main` channel so enrolled devices are served it:
+To see an update land, change `BLINK_INTERVAL_MS` in `app/main.ts`, bump the version in
+`package.json`, and push it, releasing to the `main` channel so enrolled devices are
+served it (the running device picks it up within a minute, on its next background check):
 
 ```sh
 pn mikro ota push --release main

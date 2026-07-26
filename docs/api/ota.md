@@ -14,8 +14,10 @@ automatically if it fails. The module does not download anything itself: your ap
 build bytes over its own connection and writes them in. `ota` is a named export, like every
 other module in the API.
 
-The [Over-the-air Updates guide](/ota) walks through a full update cycle. This page is the
-reference for each method and type.
+Most apps never call this module directly: the built-in
+[`mikro/ota/client`](/api/ota-client) drives it, wire included. This page is the reference
+for the policy layer underneath, for apps that bring their own transport. The
+[Over-the-air Updates guide](/ota) walks through a full update cycle.
 
 ## Methods
 
