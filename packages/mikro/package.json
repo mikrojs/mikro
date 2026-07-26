@@ -116,6 +116,10 @@
       "development": "./src/_exports/ota.ts",
       "import": "./dist/_exports/ota.js"
     },
+    "./ota/client": {
+      "development": "./src/_exports/ota/client.ts",
+      "import": "./dist/_exports/ota/client.js"
+    },
     "./package.json": "./package.json",
     "./pin": {
       "development": "./src/_exports/pin.ts",
@@ -193,6 +197,7 @@
       "./reader": "./dist/_exports/reader.js",
       "./neopixel": "./dist/_exports/neopixel.js",
       "./ota": "./dist/_exports/ota.js",
+      "./ota/client": "./dist/_exports/ota/client.js",
       "./observable": "./dist/_exports/observable.js",
       "./observable/operators": "./dist/_exports/observable/operators.js",
       "./i2c": "./dist/_exports/i2c.js",
