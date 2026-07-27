@@ -6,10 +6,11 @@ import spinners from 'cli-spinners'
 import figures from 'figures'
 import {Box, Text, useInput} from 'ink'
 import React, {useEffect, useMemo, useState} from 'react'
-import {defer, EMPTY, type Observable, of} from 'rxjs'
+import {defer, EMPTY, firstValueFrom, type Observable, of} from 'rxjs'
 import {catchError, map, startWith} from 'rxjs/operators'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
+import {customFirmwareOf} from '../lib/bundledFirmware.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
 import {type FlasherArgs, getWriteFlashMultiArgs} from '../lib/esptool.js'
 import {resolveFlashPlan} from '../lib/flashFirmware.js'
@@ -18,6 +19,7 @@ import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManage
 import {port} from '../lib/portValueParser.js'
 import {type PostFlashResult, runPostFlash} from '../lib/postFlash.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
+import {openSession} from '../lib/serial/openSession.js'
 import {Spinner} from '../lib/Spinner.js'
 import {TroubleshootingHint} from '../lib/troubleshooting.js'
 import {useObservable} from '../lib/useObservable.js'
@@ -71,6 +73,11 @@ export const args = command(
         description: message`Skip confirmation prompt`,
       }),
     ),
+    force: optional(
+      flag('--force', {
+        description: message`Flash the bundled firmware even if the device reports custom firmware`,
+      }),
+    ),
   }),
 )
 
@@ -82,6 +89,13 @@ type InitState =
   | {status: 'loading'; message: string}
   | {status: 'ready'; flasherArgs: FlasherArgs; esptoolPath: string}
   | {status: 'error'; error: Error}
+
+/** Probe handshake budget, mirroring FirmwareGate: a healthy device replies
+ *  to CMD_HELLO almost immediately. On timeout the flash proceeds — silent,
+ *  wedged, or unflashed devices are a primary use of `mikro flash`. */
+const PROBE_TIMEOUT_MS = 4000
+
+type ProbeState = {status: 'pending'} | {status: 'ok'} | {status: 'refused'; fw: string}
 
 export default function FlashCmd(props: Props) {
   const {
@@ -95,6 +109,7 @@ export default function FlashCmd(props: Props) {
       port,
       baud,
       yes,
+      force,
     },
   } = props
 
@@ -118,11 +133,49 @@ export default function FlashCmd(props: Props) {
 
   const devicePath = device?.path
 
+  // Flashing the bundled prebuilt over custom firmware silently reverts its
+  // sdkconfig and drops its native modules, so the bundled path probes the
+  // device identity first and refuses unless --force. Explicitly chosen
+  // artifacts (--build-dir, --from) skip the probe.
+  const needsProbe = !buildDir && !from && force !== true
+  const [probeState, setProbeState] = useState<ProbeState>(
+    needsProbe ? {status: 'pending'} : {status: 'ok'},
+  )
+
+  useEffect(() => {
+    if (!needsProbe || !devicePath) return
+    let cancelled = false
+    const handles = openSession({port: devicePath, compat: 'report'})
+    handles
+      .then(async (h) => {
+        try {
+          const ready = await firstValueFrom(h.session.awaitReady$(PROBE_TIMEOUT_MS))
+          if (cancelled) return
+          const fw = customFirmwareOf(ready)
+          setProbeState(fw === undefined ? {status: 'ok'} : {status: 'refused', fw})
+        } finally {
+          h.close()
+        }
+      })
+      .catch(() => {
+        // Timeout / disconnect / no reply: proceed. A device too broken to
+        // identify itself is exactly what `mikro flash` recovers.
+        if (!cancelled) setProbeState({status: 'ok'})
+      })
+    return () => {
+      cancelled = true
+      handles.then((h) => h.close()).catch(() => {})
+    }
+  }, [needsProbe, devicePath])
+
   useEffect(() => {
     if (deprecatedFlag) return
     if (mutuallyExclusive) return
     if (deviceDiscovery.status === 'loading') return
     if (!devicePath) return
+    // Wait for the probe to release the port: firmware resolution may open
+    // the serial port itself (chip auto-detection).
+    if (probeState.status !== 'ok') return
 
     async function init() {
       const plan = await resolveFlashPlan({
@@ -149,6 +202,7 @@ export default function FlashCmd(props: Props) {
     target,
     deviceDiscovery.status,
     devicePath,
+    probeState.status,
   ])
 
   if (deprecatedFlag) {
@@ -212,6 +266,21 @@ export default function FlashCmd(props: Props) {
     )
   }
 
+  if (probeState.status === 'refused') {
+    return (
+      <RenderAndExit exitCode={1}>
+        <Text color="red">
+          {figures.cross} Device is running custom firmware (&quot;{probeState.fw}&quot;). Flashing
+          the firmware bundled with this CLI would revert its sdkconfig and drop its native modules.
+        </Text>
+        <Text>
+          Re-run with <Text bold>--force</Text> to overwrite it, or flash your own build with{' '}
+          <Text bold>--build-dir</Text>.
+        </Text>
+      </RenderAndExit>
+    )
+  }
+
   if (!device) {
     if (devices.length === 0) {
       return (
@@ -240,6 +309,16 @@ export default function FlashCmd(props: Props) {
         onConfirm={() => setConfirmed(true)}
         onCancel={() => process.exit(0)}
       />
+    )
+  }
+
+  // Rendered after the confirmation so the user can confirm while the probe
+  // runs; on a silent device this otherwise reads as a 4s unexplained stall.
+  if (probeState.status === 'pending') {
+    return (
+      <Text>
+        <Spinner spinner={spinners.dots} /> Checking device firmware…
+      </Text>
     )
   }
 

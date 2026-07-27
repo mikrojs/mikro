@@ -40,6 +40,7 @@ import {
   timer,
 } from 'rxjs'
 
+import {customFirmwareOf} from './bundledFirmware.js'
 import {decodeDeviceName} from './deviceName.js'
 import {
   checkFirmwareCompat,
@@ -47,6 +48,7 @@ import {
   FirmwareIncompatibleError,
   formatAdvisory,
   formatBestEffortWarning,
+  formatCustomIncompatibleError,
   formatIncompatibleError,
 } from './firmwareCompat.js'
 import {detectPreferredPm} from './pkgManager.js'
@@ -100,6 +102,10 @@ export interface ReadyEvent {
   chip: string | null
   id: string | null
   version: string | null
+  /** Firmware identity: the package name of the firmware project the device
+   *  was built from. Absent on firmware predating identity reporting, which
+   *  callers treat as the stock build. */
+  fw?: string | undefined
   /** The device's own name, when one is set (mik.sys `name`). Absent means
    *  none is set and callers derive one from the device id. */
   name?: string | undefined
@@ -597,15 +603,21 @@ export function connectRepl(
       }
       const pm = await detectPreferredPm()
       if (compat.status === 'incompatible') {
+        // A device reporting a custom firmware identity gets the rebuild
+        // message instead of the advice to flash the bundled firmware, and
+        // catch sites that auto-reflash read `customFw` off the error to refuse.
+        const customFw = customFirmwareOf(event)
+        const incompatible =
+          customFw !== undefined
+            ? formatCustomIncompatibleError(compat, customFw, pm)
+            : formatIncompatibleError(compat, pm)
         if (compatPolicy === 'enforce') {
-          throw new FirmwareIncompatibleError(formatIncompatibleError(compat, pm))
+          throw new FirmwareIncompatibleError(incompatible, customFw)
         }
         // best-effort: warn once and proceed. report: stay silent (the
         // caller renders its own UI from the attached advisory).
         const message =
-          compatPolicy === 'best-effort'
-            ? formatBestEffortWarning(compat, pm)
-            : formatIncompatibleError(compat, pm)
+          compatPolicy === 'best-effort' ? formatBestEffortWarning(compat, pm) : incompatible
         if (compatPolicy === 'best-effort' && !advisoryShown) {
           advisoryShown = true
           process.stderr.write(message + '\n')
@@ -1172,6 +1184,7 @@ function frameToEvent(frame: Frame): ReplEvent | null {
       let chip: string | null = null
       let id: string | null = null
       let version: string | null = null
+      let fw: string | undefined
       let name: string | undefined
       let nameRev: number | undefined
       let nameCorrupt: boolean | undefined
@@ -1180,11 +1193,13 @@ function frameToEvent(frame: Frame): ReplEvent | null {
           chip?: string
           id?: string
           v?: string
+          fw?: string
           name?: string
         }
         chip = info.chip ?? null
         id = info.id ?? null
         version = info.v ?? null
+        fw = typeof info.fw === 'string' ? info.fw : undefined
         // The device reports name and revision as one JSON `[rev, name?]` pair,
         // so they can never arrive out of step.
         const state = decodeDeviceName(info.name)
@@ -1194,7 +1209,7 @@ function frameToEvent(frame: Frame): ReplEvent | null {
       } catch {
         // ignore
       }
-      return {type: 'ready', chip, id, version, name, nameRev, nameCorrupt}
+      return {type: 'ready', chip, id, version, fw, name, nameRev, nameCorrupt}
     }
     case 'log':
     case 'warn':

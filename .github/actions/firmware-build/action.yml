@@ -94,11 +94,20 @@ runs:
         . $IDF_PATH/export.sh
         idf.py size
 
+    # Record the firmware identity (the project the binary was built from) so
+    # the CLI can tell its bundled prebuilt from a custom build when deciding
+    # whether an auto-reflash is safe. Must match the MIK_FW_NAME the binary
+    # reports in MSG_READY, so both come from the same package.json.
+    - shell: bash
+      run: |
+        node -e "const {name} = require('./esp32/package.json'); require('node:fs').writeFileSync('esp32/build/firmware.json', JSON.stringify({name}) + '\n')"
+
     - if: inputs.pack-format == 'unpacked'
       shell: bash
       run: |
         mkdir -p firmware-out/bootloader firmware-out/partition_table
         cp esp32/build/flasher_args.json firmware-out/
+        cp esp32/build/firmware.json firmware-out/
         cp esp32/build/bootloader/bootloader.bin firmware-out/bootloader/
         cp esp32/build/partition_table/partition-table.bin firmware-out/partition_table/
         cp esp32/build/mikrojs.bin firmware-out/
@@ -112,6 +121,7 @@ runs:
         mkdir -p ../../firmware-out
         tar czf "../../firmware-out/${ARTIFACT_NAME}.tar.gz" \
           flasher_args.json \
+          firmware.json \
           bootloader/bootloader.bin \
           partition_table/partition-table.bin \
           mikrojs.bin

@@ -703,12 +703,15 @@ describe('session', () => {
     /** In-range but not equal: next patch of the CLI's own version. */
     const NEWER_IN_RANGE = inc(CLI_VERSION, 'patch')!
 
-    function awaitReadyWith(version: string, compat?: ConnectReplOptions['compat']) {
+    function awaitReadyWith(version: string, compat?: ConnectReplOptions['compat'], fw?: string) {
       const {transport, sendFrame} = createMockTransport()
       const session = connectRepl(transport, compat ? {compat} : undefined)
       session.messages$.subscribe(() => {})
       const ready = firstValueFrom(session.awaitReady$(1000))
-      sendFrame(MSG_READY, Buffer.from(encodeCbor({chip: 'test', id: '0', v: version})))
+      sendFrame(
+        MSG_READY,
+        Buffer.from(encodeCbor({chip: 'test', id: '0', v: version, ...(fw ? {fw} : {})})),
+      )
       return ready
     }
 
@@ -716,6 +719,33 @@ describe('session', () => {
       await expect(awaitReadyWith(INCOMPATIBLE_VERSION)).rejects.toBeInstanceOf(
         FirmwareIncompatibleError,
       )
+    })
+
+    it('decodes the fw identity into the ready event', async () => {
+      const ready = await awaitReadyWith(CLI_VERSION, undefined, 'acme-sensor-fw')
+      expect(ready.fw).to.equal('acme-sensor-fw')
+    })
+
+    it('marks the error with customFw when the device reports custom firmware', async () => {
+      // No prebuilt exists for chip 'test', so any reported identity is
+      // custom. The message must carry the rebuild hint, not the default
+      // "flash to update device" advice.
+      const err: unknown = await awaitReadyWith(INCOMPATIBLE_VERSION, undefined, 'acme-sensor-fw')
+        .then(() => null)
+        .catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(FirmwareIncompatibleError)
+      const incompat = err as FirmwareIncompatibleError
+      expect(incompat.customFw).to.equal('acme-sensor-fw')
+      expect(incompat.message).to.contain('custom firmware ("acme-sensor-fw")')
+      expect(incompat.message).not.to.contain('to update device')
+    })
+
+    it('leaves customFw unset when the device reports no identity', async () => {
+      const err: unknown = await awaitReadyWith(INCOMPATIBLE_VERSION)
+        .then(() => null)
+        .catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(FirmwareIncompatibleError)
+      expect((err as FirmwareIncompatibleError).customFw).toBeUndefined()
     })
 
     it("'report' resolves silently and attaches the incompatible advisory", async () => {

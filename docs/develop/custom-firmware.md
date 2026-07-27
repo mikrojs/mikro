@@ -119,6 +119,14 @@ idf.py build flash monitor
 
 Run `idf.py` from the firmware project directory (the one containing `CMakeLists.txt`). Running it from a parent directory, such as a workspace root, fails with "CMakeLists.txt not found in project directory".
 
+## Version mismatches and the bundled firmware
+
+No configuration is needed to protect a custom build. Firmware built through `project.cmake` reports your firmware project's package.json `name` as its identity when the CLI connects. On a version mismatch between the CLI and the device, the CLI only flashes the firmware bundled with it over a device whose identity matches that bundled build. A device reporting anything else gets an error pointing at rebuilding your own firmware (`idf.py flash`, or `mikro flash --build-dir <your-firmware-build>`) instead of silently reverting your sdkconfig overrides, native modules, and boards.
+
+Plain `mikro flash` refuses for the same reason: it probes the device first, and errors when the device reports custom firmware. To deliberately replace a custom build with the bundled firmware (for example, to hand the device back to a plain app project), run `mikro flash --force`. Flashing a chosen artifact with `--build-dir` or `--from` never probes, and a device too broken to answer the probe is flashed as before, so recovery keeps working.
+
+One caveat: devices running custom firmware built with an older `@mikrojs/firmware` (before identity reporting) report no identity and are treated as running the bundled firmware. Rebuild and reflash once with a current version to get the protection.
+
 ::: warning Approve the qjsc build script (pnpm)
 The firmware build needs `qjsc`, the QuickJS bytecode compiler, which is built by the postinstall script of `@mikrojs/quickjs`. pnpm does not run dependency build scripts unless they are approved, and the skipped script surfaces later as "qjsc not found" during `idf.py build`. Run `pnpm approve-builds`, select `@mikrojs/quickjs`, and install again. Note that `pnpm rebuild @mikrojs/quickjs` does not fix this when the package is only a transitive dependency.
 :::
@@ -132,6 +140,7 @@ When you run `idf.py build`, the `project.cmake` included in your `CMakeLists.tx
 3. Scans your `package.json` dependencies for board/driver packages (via their `cmake.js` exports)
 4. Sets `EXTRA_COMPONENT_DIRS` to include all discovered components
 5. Configures sdkconfig defaults and partition table from the firmware package (overridable with local files)
+6. Embeds your project's `package.json` name as the firmware identity the device reports to the CLI
 
 If your project has no `main/` directory, the firmware package provides a default one that calls `MIK_Main()`.
 
