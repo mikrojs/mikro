@@ -32,9 +32,11 @@ static bool repl_protocol_mode = false;
 static bool repl_paused = false;
 static bool repl_async_skipped = false;  /* set when eval bails on paused async */
 static MIKReplTransport* repl_transport = nullptr;
-/* Sized to hold the base map plus the longest `[rev, name]` pair the platform
- * name setter accepts, so a named device never has to drop its name. */
-static uint8_t ready_buf[256];
+/* Sized to hold the base map plus a maximum-length npm package name as the
+ * `fw` identity (214 chars), with room to spare for a typical `[rev, name]`
+ * pair. A max-length identity combined with a near-max device name can still
+ * exceed this; refresh_ready then drops the name (never the identity). */
+static uint8_t ready_buf[384];
 static size_t ready_len = 0;
 
 /* Transient flag: set by MIK_ProtocolExit to break the current ServeLoop
@@ -879,7 +881,12 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
 /* ── Protocol-mode REPL ──────────────────────────────────────────── */
 
 /* Fills ready_buf/ready_len with CBOR device info:
- * {"chip": tstr, "id": tstr, "v": tstr, "name": tstr (only when named)}.
+ * {"chip": tstr, "id": tstr, "v": tstr, "fw": tstr (when built with
+ * MIK_FW_NAME), "name": tstr (only when named)}.
+ * `fw` is the firmware identity (the firmware project's package name). The
+ * host only auto-flashes its bundled prebuilt over a device whose identity
+ * matches that prebuilt; omitting it reads as firmware predating identity
+ * reporting, which the host treats as its own bundled firmware.
  * `name` carries the raw `[rev, name]` pair from mik.sys, so the host reads the
  * name and its revision together and can never see them out of step. Omitted
  * entirely when the device has never been named, which the host reads as
@@ -896,16 +903,20 @@ static void refresh_ready(MIKReplTransport* transport);
 /* Encodes the MSG_READY map into buf, or measures it when buf is null. Returns
  * the length the encoding needs, which exceeds cap when it did not fit. */
 static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const char* id,
-                           const char* version, const char* name) {
+                           const char* version, const char* fw, const char* name) {
     nanocbor_encoder_t enc;
     nanocbor_encoder_init(&enc, buf, cap);
-    nanocbor_fmt_map(&enc, name ? 4 : 3);
+    nanocbor_fmt_map(&enc, 3 + (fw ? 1 : 0) + (name ? 1 : 0));
     nanocbor_put_tstr(&enc, "chip");
     nanocbor_put_tstr(&enc, chip);
     nanocbor_put_tstr(&enc, "id");
     nanocbor_put_tstr(&enc, id);
     nanocbor_put_tstr(&enc, "v");
     nanocbor_put_tstr(&enc, version);
+    if (fw) {
+        nanocbor_put_tstr(&enc, "fw");
+        nanocbor_put_tstr(&enc, fw);
+    }
     if (name) {
         nanocbor_put_tstr(&enc, "name");
         nanocbor_put_tstr(&enc, name);
@@ -923,17 +934,28 @@ static void refresh_ready(MIKReplTransport* transport) {
 #else
         "0.0.0-dev";
 #endif
+    const char* fw =
+#ifdef MIK_FW_NAME
+        MIK_FW_NAME;
+#else
+        nullptr;
+#endif
     const char* name =
         MIK_GetPlatform()->get_device_name ? MIK_GetPlatform()->get_device_name() : nullptr;
     /* Measured against a null buffer first. nanocbor stops writing at the buffer
      * end but still reports the length it would have needed, so ready_len must
      * come from a run that actually fit: sending the measured length would read
      * past ready_buf. Drop `name` rather than truncate it, since a partial pair
-     * decodes as a different name at the host. */
-    if (name && encode_ready(nullptr, 0, chip, id, version, name) > sizeof(ready_buf)) {
+     * decodes as a different name at the host. `name` goes before `fw`: a
+     * dropped `fw` reads as the host's own bundled firmware, re-enabling the
+     * auto-reflash the identity exists to prevent. */
+    if (name && encode_ready(nullptr, 0, chip, id, version, fw, name) > sizeof(ready_buf)) {
         name = nullptr;
     }
-    ready_len = encode_ready(ready_buf, sizeof(ready_buf), chip, id, version, name);
+    if (fw && encode_ready(nullptr, 0, chip, id, version, fw, name) > sizeof(ready_buf)) {
+        fw = nullptr;
+    }
+    ready_len = encode_ready(ready_buf, sizeof(ready_buf), chip, id, version, fw, name);
     if (ready_len > sizeof(ready_buf)) ready_len = 0;
 }
 

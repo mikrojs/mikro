@@ -5,6 +5,7 @@ import {
   checkFirmwareCompat,
   formatAdvisory,
   formatBestEffortWarning,
+  formatCustomIncompatibleError,
   formatIncompatibleError,
 } from '../firmwareCompat.js'
 
@@ -124,6 +125,17 @@ describe('formatIncompatibleError', () => {
     const msg = formatIncompatibleError(result, 'npm')
     expect(msg).to.contain('vunknown')
     expect(msg).to.contain('npx mikro flash')
+  })
+})
+
+describe('formatCustomIncompatibleError', () => {
+  it('names the custom firmware and advises rebuilding instead of the stock flash', () => {
+    const result = checkFirmwareCompat('99.0.0')
+    const msg = formatCustomIncompatibleError(result, 'acme-sensor-fw', 'pnpm')
+    expect(msg).to.contain('v99.0.0')
+    expect(msg).to.contain('"acme-sensor-fw"')
+    expect(msg).to.contain('pnpm mikro flash --build-dir')
+    expect(msg).not.to.contain('to update device')
   })
 })
 

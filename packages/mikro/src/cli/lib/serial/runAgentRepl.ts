@@ -88,6 +88,15 @@ export async function runAgentRepl<T extends {port?: string; recover?: boolean; 
     // afterward rather than reconnect (the device re-enumerates on reset).
     if (err instanceof FirmwareIncompatibleError && config.yes === true) {
       dispose()
+      // Never flash the bundled build over a device reporting custom firmware,
+      // even with --yes: that silently reverts its sdkconfig and drops its
+      // native modules. The error message already carries the rebuild hint.
+      if (err.customFw !== undefined) {
+        agentError(hooks.command, err.message, {
+          fix: 'Rebuild your firmware project and flash it (idf.py flash or mikro flash --build-dir)',
+        })
+        process.exit(1)
+      }
       agentEmit({
         type: 'raw',
         text: 'Device firmware incompatible; flashing CLI-matched firmware…\n',

@@ -102,12 +102,37 @@ export function formatAdvisory(result: FirmwareCompatResult, pm: PkgManager): st
  */
 export class FirmwareIncompatibleError extends Error {
   override name = 'FirmwareIncompatibleError'
+  /** The device's reported firmware identity when it is not the firmware
+   *  bundled with this CLI. Undefined means the bundled firmware, or firmware
+   *  too old to report an identity. Catch sites that auto-reflash must refuse
+   *  when this is set: flashing the bundled build over custom firmware
+   *  silently reverts its sdkconfig and drops its native modules. */
+  readonly customFw: string | undefined
+  constructor(message: string, customFw?: string) {
+    super(message)
+    this.customFw = customFw
+  }
 }
 
 /** Format the hard incompatibility error (status === 'incompatible'). */
 export function formatIncompatibleError(result: FirmwareCompatResult, pm: PkgManager): string {
   const got = result.deviceVersion ?? 'unknown'
   return `Device is running mikrojs v${got}, which is not compatible with this CLI (v${result.cliVersion}). Run ${mikroCommand(pm, 'flash')} to update device.`
+}
+
+/** Format the hard incompatibility error when the device reports a firmware
+ *  identity other than the CLI's bundled build. Never advises flashing it. */
+export function formatCustomIncompatibleError(
+  result: FirmwareCompatResult,
+  fw: string,
+  pm: PkgManager,
+): string {
+  const got = result.deviceVersion ?? 'unknown'
+  return [
+    `Device is running mikrojs v${got}, which is not compatible with this CLI (v${result.cliVersion}).`,
+    `The device reports custom firmware ("${fw}"), so the CLI will not flash its bundled firmware over it.`,
+    `Rebuild and flash your firmware instead (idf.py flash, or ${mikroCommand(pm, 'flash --build-dir <your-firmware-build>')}).`,
+  ].join(' ')
 }
 
 /**

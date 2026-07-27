@@ -16,6 +16,7 @@ const prebuildsDir = join(pkgDir, 'prebuilds')
 const {chips} = JSON.parse(readFileSync(join(pkgDir, 'chips.json'), 'utf8'))
 const required = [
   'flasher_args.json',
+  'firmware.json',
   'bootloader/bootloader.bin',
   'partition_table/partition-table.bin',
   'mikrojs.bin',

@@ -12,6 +12,7 @@
  *   quickjs          — path to quickjs.cmake
  *   native           — JSON with native package paths
  *   version          — firmware package version
+ *   projectName <dir> — package.json name of the consuming project (empty if none)
  *   discover <dir>   — discover board/driver components from project dir
  */
 import {componentDir, projectCmakePath} from './cmake.js'
@@ -44,6 +45,15 @@ if (query === 'componentDir') {
 } else if (query === 'version') {
   const {default: pkg} = await import('./package.json', {with: {type: 'json'}})
   process.stdout.write(pkg.version)
+} else if (query === 'projectName') {
+  const {readFileSync} = await import('node:fs')
+  const {join} = await import('node:path')
+  try {
+    const pkg = JSON.parse(readFileSync(join(process.argv[3], 'package.json'), 'utf8'))
+    if (typeof pkg.name === 'string') process.stdout.write(pkg.name)
+  } catch {
+    // No package.json (e.g. on-device test apps): no identity, empty output.
+  }
 } else if (query === 'discover') {
   const projectDir = process.argv[3]
   const {discover} = await import('./discover.js')

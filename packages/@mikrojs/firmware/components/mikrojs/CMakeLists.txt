@@ -134,6 +134,26 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"mikro\""
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_LIST_DIR}/../../package.json")
 
+# Firmware identity: the consuming project's package.json name, reported in
+# MSG_READY as `fw`. The CLI only auto-flashes its bundled prebuilt over a
+# device whose identity matches the prebuilt's own recorded name, so custom
+# firmware is protected from the auto-reflash without any project marker.
+# Absent (no package.json, e.g. on-device test apps) the field is omitted.
+execute_process(
+    COMMAND node ${_MIK_RESOLVE} projectName ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE _MIK_FW_NAME
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+# STREQUAL, not if(_MIK_FW_NAME): a project named "0", "off", or "false"
+# would read as a false constant and silently lose its identity.
+if(NOT _MIK_FW_NAME STREQUAL "")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_NAME=\"${_MIK_FW_NAME}\"")
+endif()
+if(EXISTS "${CMAKE_SOURCE_DIR}/package.json")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/package.json")
+endif()
+
 # UTC build timestamp. `string(TIMESTAMP ... UTC)` honors SOURCE_DATE_EPOCH
 # when set. Refreshes on re-configure only (idf.py triggers this on each
 # build via its own reconfigure step, so in practice it's close to

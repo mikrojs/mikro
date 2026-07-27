@@ -217,6 +217,10 @@ export async function run(
     // passed; otherwise rethrow and let the caller surface the error.
     if (err instanceof FirmwareIncompatibleError && config.yes === true) {
       handles.close()
+      // Never flash the bundled build over a device reporting custom firmware,
+      // even with --yes: that silently reverts its sdkconfig and drops its
+      // native modules. The error message already carries the rebuild hint.
+      if (err.customFw !== undefined) throw err
       log('Device firmware is incompatible with this CLI. Flashing CLI-matched firmware…')
       await flashFirmware({port: devicePath, onProgress: (m) => log(m)})
       const pm = await detectPreferredPm()

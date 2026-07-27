@@ -7,6 +7,7 @@ import pkg from 'mikro/package.json' with {type: 'json'}
 import {type ReactNode, useEffect, useRef, useState} from 'react'
 import {firstValueFrom} from 'rxjs'
 
+import {customFirmwareOf} from '../bundledFirmware.js'
 import {flashFirmware} from '../flashFirmware.js'
 import {detectPreferredPm, rerunCommand} from '../pkgManager.js'
 import {Spinner} from '../Spinner.js'
@@ -28,6 +29,8 @@ type GateState =
   | {status: 'flashed'}
   | {status: 'flash_error'; message: string}
   | {status: 'aborted'}
+  /** The device reports custom firmware; the bundled reflash is refused. */
+  | {status: 'refused'; message: string}
 
 export interface FirmwareGateProps {
   devicePath: string
@@ -77,6 +80,14 @@ export function FirmwareGate(props: FirmwareGateProps) {
           const ready = await firstValueFrom(h.session.awaitReady$(PROBE_TIMEOUT_MS))
           if (cancelled) return
           if (ready.advisory?.kind === 'incompatible') {
+            // Never flash the bundled build over a device reporting custom
+            // firmware, not even with --yes: that silently reverts its
+            // sdkconfig and drops its native modules. The advisory message
+            // already carries the rebuild hint.
+            if (customFirmwareOf(ready) !== undefined) {
+              setState({status: 'refused', message: ready.advisory.message})
+              return
+            }
             setState(
               yes
                 ? {status: 'flashing', message: 'Preparing firmware…'}
@@ -155,6 +166,7 @@ export function FirmwareGate(props: FirmwareGateProps) {
   // `yes`, exits with a re-run hint like before).
   useEffect(() => {
     if (state.status === 'flash_error') process.exit(1)
+    if (state.status === 'refused') process.exit(1)
     if (state.status === 'aborted') process.exit(130)
   }, [state.status])
 
@@ -205,6 +217,14 @@ export function FirmwareGate(props: FirmwareGateProps) {
     return (
       <Text color="red">
         {figures.cross} Flashing failed: {state.message}
+      </Text>
+    )
+  }
+
+  if (state.status === 'refused') {
+    return (
+      <Text color="yellow">
+        {figures.warning} {state.message}
       </Text>
     )
   }

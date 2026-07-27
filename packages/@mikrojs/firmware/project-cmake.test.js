@@ -38,6 +38,22 @@ test('discovery is empty for projects without a package.json', () => {
   expect(discover(emptyDir)).toEqual({components: '', sdkconfigs: ''})
 })
 
+test('projectName resolves the consuming project package.json name', () => {
+  const resolve = join(import.meta.dirname, 'resolve.js')
+  const dir = join(fixtureDir, 'named-project')
+  mkdirSync(dir)
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({name: 'acme-sensor-fw'}))
+  expect(execFileSync('node', [resolve, 'projectName', dir], {encoding: 'utf8'})).toBe(
+    'acme-sensor-fw',
+  )
+
+  // No package.json (on-device test apps): empty output, so CMake defines
+  // no MIK_FW_NAME and the device omits the fw identity.
+  const emptyDir = join(fixtureDir, 'unnamed-project')
+  mkdirSync(emptyDir)
+  expect(execFileSync('node', [resolve, 'projectName', emptyDir], {encoding: 'utf8'})).toBe('')
+})
+
 test.skipIf(!hasCmake())(
   'driver components from the consuming project land in EXTRA_COMPONENT_DIRS',
   () => {

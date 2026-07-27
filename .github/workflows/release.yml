@@ -259,7 +259,7 @@ jobs:
           cd packages/@mikrojs/firmware
           missing=0
           for chip in $(jq -r '.chips[]' chips.json); do
-            for f in flasher_args.json bootloader/bootloader.bin partition_table/partition-table.bin mikrojs.bin; do
+            for f in flasher_args.json firmware.json bootloader/bootloader.bin partition_table/partition-table.bin mikrojs.bin; do
               if [ ! -f "prebuilds/$chip/$f" ]; then
                 echo "Missing: prebuilds/$chip/$f"
                 missing=1
