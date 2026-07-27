@@ -121,7 +121,9 @@ Run `idf.py` from the firmware project directory (the one containing `CMakeLists
 
 ## Version mismatches and the bundled firmware
 
-No configuration is needed to protect a custom build. Firmware built through `project.cmake` reports your firmware project's package.json `name` as its identity when the CLI connects. On a version mismatch between the CLI and the device, the CLI only flashes the firmware bundled with it over a device whose identity matches that bundled build. A device reporting anything else gets an error pointing at rebuilding your own firmware (`idf.py flash`, or `mikro flash --build-dir <your-firmware-build>`) instead of silently reverting your sdkconfig overrides, native modules, and boards. The explicit `mikro flash` command is unaffected.
+No configuration is needed to protect a custom build. Firmware built through `project.cmake` reports your firmware project's package.json `name` as its identity when the CLI connects. On a version mismatch between the CLI and the device, the CLI only flashes the firmware bundled with it over a device whose identity matches that bundled build. A device reporting anything else gets an error pointing at rebuilding your own firmware (`idf.py flash`, or `mikro flash --build-dir <your-firmware-build>`) instead of silently reverting your sdkconfig overrides, native modules, and boards.
+
+Plain `mikro flash` refuses for the same reason: it probes the device first, and errors when the device reports custom firmware. To deliberately replace a custom build with the bundled firmware (for example, to hand the device back to a plain app project), run `mikro flash --force`. Flashing a chosen artifact with `--build-dir` or `--from` never probes, and a device too broken to answer the probe is flashed as before, so recovery keeps working.
 
 One caveat: devices running custom firmware built with an older `@mikrojs/firmware` (before identity reporting) report no identity and are treated as running the bundled firmware. Rebuild and reflash once with a current version to get the protection.
 
