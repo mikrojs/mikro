@@ -254,12 +254,16 @@ The three differ only in how the bytes arrive.
 | Command        | When                | How it sends            | Rollback target |
 | -------------- | ------------------- | ----------------------- | --------------- |
 | `mikro dev`    | development         | incrementally, per file | not affected    |
-| `mikro deploy` | release, over cable | the whole build         | sets it         |
+| `mikro deploy` | release, over cable | the whole build         | clears it       |
 | OTA            | remote              | the whole build, by you | reverts to it   |
 
-Deploying over a cable with `mikro deploy` leaves a known-good build on the device, which is
-what gives the first OTA something to revert to. `mikro dev` stays incremental for a fast edit
-loop and does not change the rollback target.
+`mikro deploy` stages the build over the cable and the device installs it at the next boot,
+before the app loads, so the install cannot fail against a heap the running app has
+fragmented. For OTA state a cable deploy acts like a reflash: the deployed build comes up as
+the known-good build with no rollback target, and the first OTA update after it has nothing
+to revert to. Once an update survives its trial, that build becomes the rollback target for
+the next one. `mikro dev` stays incremental for a fast edit loop and does not change the
+rollback target.
 
 ## The registry
 
@@ -353,7 +357,8 @@ Rolling a channel back to an earlier build is the same command pointed at an old
   device's storage. On a board with the default 1 MB app filesystem this puts a practical
   ceiling on app size for OTA; a larger app wants a larger filesystem partition, and
   `mikro ota pack` reports when a build is too large to install safely.
-- A device whose app was only ever pushed with `mikro dev`, never `mikro deploy`, has no
-  rollback target for its first OTA. If that first update fails, the device falls back to its
-  recovery REPL, from which you re-deploy over a cable. Running `mikro deploy` once avoids
-  this.
+- A device's first OTA update has no rollback target: neither `mikro dev` nor `mikro deploy`
+  sets one (a cable deploy clears it). If that first update fails its trial, the device keeps
+  the new build and reports the failure at its next check-in; a build that crash-loops is
+  caught by the recovery REPL, from which you re-deploy over a cable. Once an update survives
+  its trial, later updates revert to the last surviving build.

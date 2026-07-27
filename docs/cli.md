@@ -35,6 +35,8 @@ To run on the host simulator instead of a device, use [`mikro sim dev`](#mikro-s
 
 One-shot deploy to a connected device. This is treated as a production deployment: `MIKRO_ENV` is set to `"production"` and `--loglevel` defaults to `warn` (stripping `console.debug`, `console.log`, and `console.info` calls from the build).
 
+The build is staged over the cable and installed at the next boot, before the app loads, so a deploy succeeds even when the running app has fragmented the device's heap. The deploy restarts the device, waits for it to come back, and reports the install outcome; on failure the previous app keeps running.
+
 ```sh
 mikro deploy [ENTRY]
 ```
@@ -47,7 +49,7 @@ mikro deploy [ENTRY]
 | `--no-auto-env`    | Skip auto-loading of `.env` and `.env.production`                                                                |
 | `--console`        | Attach console after deploy and restart device                                                                   |
 | `--recover`        | Reset into safe mode before deploying. See [Troubleshooting](/troubleshooting#recovering-a-crash-looping-device) |
-| `--no-restart`     | Do not restart device after deploy                                                                               |
+| `--no-restart`     | Stage the build without restarting; it installs at the next device boot                                          |
 | `--no-minify`      | Skip minification                                                                                                |
 | `--loglevel LEVEL` | Log level: `none`, `error`, `warn`, `info`, `debug`. Default: `warn`                                             |
 | `--json`           | Output as JSON                                                                                                   |

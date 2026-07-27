@@ -16,9 +16,11 @@ import {
   CMD_DEPLOY_CHECKSUM,
   CMD_DEPLOY_PUT,
   CMD_DEPLOY_PUT_CHUNK,
+  CMD_DEPLOY_RESULT,
   CMD_DIRECTIVE,
   CMD_EVAL,
   CMD_EXIT,
+  CMD_HELLO,
   CMD_RESTART,
   CMD_RUNTIME_PAUSE,
   CMD_RUNTIME_RESUME,
@@ -394,7 +396,7 @@ describe('session', () => {
       session.close()
     })
 
-    it('deployBuild streams the tgz then adopts it', async () => {
+    it('deployBuild streams the tgz then stages it', async () => {
       const dir = await mkdtemp(pathlib.join(tmpdir(), 'mikro-build-'))
       const tgzPath = pathlib.join(dir, 'app.tgz')
       await writeFile(tgzPath, Buffer.from('fake-tgz-bytes'))
@@ -446,7 +448,61 @@ describe('session', () => {
       }
     })
 
-    it('deployBuild with restart:true sends RESTART, not RESUME', async () => {
+    /** Encode a CMD_DEPLOY_RESULT reply the way the firmware does:
+     *  u8 status | u16le len + bytes for checksum, reason, detail. */
+    function deployResultPayload(
+      status: number,
+      checksum: string,
+      reason = '',
+      detail = '',
+    ): Buffer {
+      const fields = [checksum, reason, detail].map((s) => Buffer.from(s, 'utf-8'))
+      const payload = Buffer.alloc(1 + fields.reduce((n, f) => n + 2 + f.length, 0))
+      payload[0] = status
+      let offset = 1
+      for (const f of fields) {
+        payload.writeUInt16LE(f.length, offset)
+        offset += 2
+        f.copy(payload, offset)
+        offset += f.length
+      }
+      return payload
+    }
+
+    /** Drive the mock device through a deployBuild restart: OK every command,
+     *  answer CMD_DEPLOY_RESULT with `result`, come back with a fresh READY
+     *  once the post-restart blackout (1s) has passed, and never answer
+     *  CMD_RESTART or CMD_HELLO with a stray OK (a stray OK would be consumed
+     *  as the result read's reply). Returns a stop function. */
+    function autoRespondWithRestart(
+      written: Uint8Array[],
+      sendFrame: (type: number, payload?: string | Buffer) => void,
+      result: Buffer,
+    ): () => void {
+      let lastSeen = 0
+      let restartAt: number | null = null
+      let readySent = false
+      const interval = setInterval(() => {
+        while (lastSeen < written.length) {
+          const type = parseWrittenType(written[lastSeen]!)
+          if (type === CMD_RESTART) {
+            restartAt = Date.now()
+          } else if (type === CMD_DEPLOY_RESULT) {
+            sendFrame(MSG_OK, result)
+          } else if (type !== CMD_HELLO) {
+            sendFrame(MSG_OK)
+          }
+          lastSeen++
+        }
+        if (restartAt !== null && !readySent && Date.now() - restartAt > 1100) {
+          readySent = true
+          sendReady(sendFrame)
+        }
+      }, 25)
+      return () => clearInterval(interval)
+    }
+
+    it('deployBuild with restart:true restarts, then reads the install result', async () => {
       const dir = await mkdtemp(pathlib.join(tmpdir(), 'mikro-build-'))
       const tgzPath = pathlib.join(dir, 'app.tgz')
       await writeFile(tgzPath, Buffer.from('fake-tgz-bytes'))
@@ -458,20 +514,22 @@ describe('session', () => {
 
         sendReady(sendFrame)
 
-        let lastSeen = 0
-        const autoRespond = setInterval(() => {
-          while (lastSeen < written.length) {
-            if (parseWrittenType(written[lastSeen]!) !== CMD_RESTART) sendFrame(MSG_OK)
-            lastSeen++
-          }
-        }, 5)
+        const stop = autoRespondWithRestart(
+          written,
+          sendFrame,
+          deployResultPayload(1, 'b'.repeat(64)),
+        )
 
-        await lastValueFrom(session.deployBuild(tgzPath, 'b'.repeat(64), {restart: true}))
+        const last = await lastValueFrom(
+          session.deployBuild(tgzPath, 'b'.repeat(64), {restart: true}),
+        )
 
-        clearInterval(autoRespond)
+        stop()
+        expect(last.type).to.equal('complete')
         const types = written.map(parseWrittenType)
         expect(types).to.not.include(CMD_RUNTIME_RESUME)
-        expect(types[types.length - 1]).to.equal(CMD_RESTART)
+        expect(types).to.include(CMD_RESTART)
+        expect(types[types.length - 1]).to.equal(CMD_DEPLOY_RESULT)
 
         session.close()
       } finally {
@@ -479,7 +537,7 @@ describe('session', () => {
       }
     })
 
-    it('deployBuild rejects on MSG_ERR from adopt', async () => {
+    it('deployBuild rejects when the boot install failed', async () => {
       const dir = await mkdtemp(pathlib.join(tmpdir(), 'mikro-build-'))
       const tgzPath = pathlib.join(dir, 'app.tgz')
       await writeFile(tgzPath, Buffer.from('fake-tgz-bytes'))
@@ -491,7 +549,39 @@ describe('session', () => {
 
         sendReady(sendFrame)
 
-        // OK for pause/put/chunk; ERR for the BUILD adopt; OK for the
+        const stop = autoRespondWithRestart(
+          written,
+          sendFrame,
+          deployResultPayload(2, 'c'.repeat(64), 'install-failed', 'unpack build'),
+        )
+
+        await expect(
+          lastValueFrom(session.deployBuild(tgzPath, 'c'.repeat(64), {restart: true})),
+        ).rejects.toThrow('install failed: install-failed (unpack build)')
+
+        stop()
+        // The device rebooted, so the finally block must not send RESUME.
+        expect(written.map(parseWrittenType)).to.not.include(CMD_RUNTIME_RESUME)
+
+        session.close()
+      } finally {
+        await rm(dir, {recursive: true, force: true})
+      }
+    })
+
+    it('deployBuild rejects on MSG_ERR from the stage step', async () => {
+      const dir = await mkdtemp(pathlib.join(tmpdir(), 'mikro-build-'))
+      const tgzPath = pathlib.join(dir, 'app.tgz')
+      await writeFile(tgzPath, Buffer.from('fake-tgz-bytes'))
+
+      try {
+        const {transport, written, sendFrame} = createMockTransport()
+        const session = connectRepl(transport)
+        session.messages$.subscribe(() => {})
+
+        sendReady(sendFrame)
+
+        // OK for pause/put/chunk; ERR for the BUILD stage; OK for the
         // resume issued by the finally block.
         let lastSeen = 0
         const autoRespond = setInterval(() => {

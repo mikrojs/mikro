@@ -63,6 +63,7 @@ import {
   buildDeployKeepCommand,
   buildDeployPutChunkCommand,
   buildDeployPutCommand,
+  buildDeployResultCommand,
   buildDirectiveCommand,
   buildEvalCommand,
   buildExitCommand,
@@ -80,6 +81,7 @@ import {
   frameToMessage,
   type KvNamespace,
   parseCompletions,
+  parseDeployResultPayload,
 } from './protocol.js'
 import type {Transport} from './transport.js'
 import {TROUBLESHOOTING_URL} from './troubleshooting.js'
@@ -251,6 +253,9 @@ export type DeployEvent =
   | {type: 'uploading'; file: string; index: number; total: number}
   | {type: 'env_changed'; changed: string[]; removed: string[]}
   | {type: 'restarting'}
+  /** Build-deploy only: the device is rebooting and installing the staged
+   *  build; covers the install boot plus the restart into the new app. */
+  | {type: 'installing'}
   | {type: 'complete'; deployed: boolean; stats: {put: number; kept: number}}
 
 // ── Config types ───────────────────────────────────────────────────
@@ -297,9 +302,14 @@ export interface ReplSession {
   deploy(options: DeployOptions): Observable<DeployEvent>
 
   /** Deploy a packed `.tgz` build through the OTA install path. Streams the
-   *  build, adopts it as the live app and rollback baseline
-   *  (`.ota-last-good.tgz`), then restarts. Used by `mikro deploy`; `mikro dev`
-   *  keeps the per-file {@link deploy} path. Emits the same DeployEvent
+   *  build, stages it for install at the next boot (verified now, installed
+   *  on a clean heap by the boot reconcile), then restarts and reads the
+   *  install outcome back. Errors with `install failed: <reason> (<detail>)`
+   *  when the boot install fails; the previous app keeps running. With
+   *  `restart: false` the build stays staged and installs at whatever the
+   *  next boot is. `timeout` bounds the initial connect handshake only; the
+   *  post-restart install window is fixed. Used by `mikro deploy`; `mikro
+   *  dev` keeps the per-file {@link deploy} path. Emits the same DeployEvent
    *  progress contract. */
   deployBuild(
     tgzPath: string,
@@ -369,6 +379,12 @@ function buildChecksumsManifest(hashes: Map<string, Buffer>): Buffer {
  * device. Callers can override via `DeployOptions.timeout`. */
 const READY_TIMEOUT_MS = 10_000
 const RESPONSE_TIMEOUT_MS = 30_000
+/** Window for MSG_READY after a build deploy's restart. The install boot
+ * emits no READY at all (the reconcile runs before the REPL starts), so this
+ * one wait spans reboot + gunzip/untar of the whole build to flash + the
+ * restart into the installed app. Flash writes on littlefs can be slow for
+ * large builds, hence the wide margin over READY_TIMEOUT_MS. */
+const INSTALL_READY_TIMEOUT_MS = 60_000
 /** How often awaitReady$ re-sends CMD_HELLO while waiting for MSG_READY.
  * The device replies immediately, so a single HELLO normally suffices.
  * Polling exists to cover (a) the post-restart window where the transport
@@ -859,9 +875,13 @@ export function connectRepl(
   // ── Build deploy (OTA install path) ───────────────────────────
 
   /** Deploy a packed `.tgz` build. Mirrors {@link deploy}'s lifecycle (pause,
-   *  env diff, restart/resume) but installs a single build through the OTA
-   *  adopt path instead of streaming per-file PUT/KEEP, so the deploy becomes
-   *  the OTA rollback baseline. Does not touch {@link deploy}. */
+   *  env diff, restart/resume) but streams a single build and stages it for
+   *  install at the next boot instead of per-file PUT/KEEP. The device
+   *  verifies the checksum at stage time; the install itself runs from the
+   *  boot reconcile on a clean heap, so it succeeds even when the running app
+   *  has fragmented the heap. After the restart this reads the install
+   *  outcome back via CMD_DEPLOY_RESULT and throws on failure. Does not touch
+   *  {@link deploy}. */
   function deployBuild(
     tgzPath: string,
     checksum: string,
@@ -879,7 +899,7 @@ export function connectRepl(
   async function* deployBuildAfterReady(
     tgzPath: string,
     checksum: string,
-    options: {envVars?: EnvVar[]; restart?: boolean},
+    options: {envVars?: EnvVar[]; restart?: boolean; timeout?: number},
   ): AsyncGenerator<DeployEvent> {
     const {envVars = [], restart: shouldRestart = true} = options
     const data = await readFile(tgzPath)
@@ -927,7 +947,9 @@ export function connectRepl(
         yield {type: 'env_changed', changed: envChanged, removed: envRemoved}
       }
 
-      // Stream the .tgz as a single staged file, then adopt it.
+      // Stream the .tgz as a single staged file, then verify + stage it for
+      // install at the next boot. A checksum mismatch surfaces here, on the
+      // wire; install failures surface after the restart below.
       yield {type: 'uploading', file: BUILD_DEPLOY_NAME, index: 0, total: 1}
       await streamPutFile(BUILD_DEPLOY_NAME, data)
       await sendExpectOk(buildDeployBuildCommand(checksum), 'deploy build')
@@ -938,6 +960,41 @@ export function connectRepl(
         lastRestartAt = Date.now()
         await transport.write(buildRestartCommand())
         didRestart = true
+
+        // The boot reconcile installs the staged build, then restarts again
+        // into the installed app; the first READY arrives after that second
+        // boot. Read the recorded outcome back so a failed install fails the
+        // deploy instead of silently leaving the old app running.
+        // Deliberately not options.timeout: that bounds the initial connect
+        // handshake, and a caller shortening it must not silently shrink the
+        // install window (reboot + unpack-to-flash of the whole build).
+        yield {type: 'installing'}
+        await firstValueFrom(awaitReady$(INSTALL_READY_TIMEOUT_MS))
+        let payload: Buffer | null = null
+        try {
+          payload = await sendExpectOk(
+            buildDeployResultCommand(),
+            'deploy result',
+            JS_YIELD_TIMEOUT_MS,
+          )
+        } catch (err) {
+          // Firmware predating CMD_DEPLOY_RESULT installed synchronously
+          // before the restart and ignores unknown commands (no reply). The
+          // device just answered READY, so a timeout here means old firmware,
+          // not a wedge: fall back to the old report-success behavior.
+          if (!(err instanceof DeviceTimeoutError)) throw err
+        }
+        if (payload !== null) {
+          const result = parseDeployResultPayload(payload)
+          if (result.status === 'fail') {
+            throw new Error(
+              `install failed: ${result.reason}${result.detail ? ` (${result.detail})` : ''}`,
+            )
+          }
+          if (result.status === 'none') {
+            throw new Error('install failed: device recorded no install outcome')
+          }
+        }
       }
 
       yield {type: 'complete', deployed: true, stats: {put: 1, kept: 0}}

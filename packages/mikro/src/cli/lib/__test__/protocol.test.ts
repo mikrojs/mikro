@@ -14,6 +14,7 @@ import {
   buildDeployKeepCommand,
   buildDeployPutChunkCommand,
   buildDeployPutCommand,
+  buildDeployResultCommand,
   buildDirectiveCommand,
   buildEvalCommand,
   buildExitCommand,
@@ -33,6 +34,7 @@ import {
   CMD_DEPLOY_KEEP,
   CMD_DEPLOY_PUT,
   CMD_DEPLOY_PUT_CHUNK,
+  CMD_DEPLOY_RESULT,
   CMD_DIRECTIVE,
   CMD_EVAL,
   CMD_EXIT,
@@ -56,6 +58,7 @@ import {
   MSG_RESULT,
   MSG_WARN,
   parseCompletions,
+  parseDeployResultPayload,
   parseFrame,
 } from '../protocol.js'
 
@@ -277,6 +280,55 @@ describe('protocol', () => {
       const nameLen = payload.readUInt16LE(0)
       expect(payload.subarray(2, 2 + nameLen).toString('utf-8')).to.equal('/app/main.js')
       expect(Buffer.compare(payload.subarray(2 + nameLen, 2 + nameLen + 32), hash)).to.equal(0)
+    })
+
+    it('buildDeployResultCommand', () => {
+      const frame = buildDeployResultCommand()
+      expect(parseFrame(frame)!.frame.type).to.equal(CMD_DEPLOY_RESULT)
+    })
+  })
+
+  describe('parseDeployResultPayload', () => {
+    /** Encode the device-side reply: u8 status | 3x (u16le len | bytes). */
+    function encodeResult(status: number, checksum: string, reason: string, detail: string) {
+      const fields = [checksum, reason, detail].map((s) => Buffer.from(s, 'utf-8'))
+      const payload = Buffer.alloc(1 + fields.reduce((n, f) => n + 2 + f.length, 0))
+      payload[0] = status
+      let offset = 1
+      for (const f of fields) {
+        payload.writeUInt16LE(f.length, offset)
+        offset += 2
+        f.copy(payload, offset)
+        offset += f.length
+      }
+      return payload
+    }
+
+    it('parses an ok result', () => {
+      const chk = 'a'.repeat(64)
+      expect(parseDeployResultPayload(encodeResult(1, chk, '', ''))).to.deep.equal({
+        status: 'ok',
+        checksum: chk,
+      })
+    })
+
+    it('parses a fail result', () => {
+      expect(
+        parseDeployResultPayload(encodeResult(2, 'b'.repeat(64), 'install-failed', 'oom')),
+      ).to.deep.equal({
+        status: 'fail',
+        checksum: 'b'.repeat(64),
+        reason: 'install-failed',
+        detail: 'oom',
+      })
+    })
+
+    it('parses a none result', () => {
+      expect(parseDeployResultPayload(encodeResult(0, '', '', ''))).to.deep.equal({status: 'none'})
+    })
+
+    it('treats an empty payload as none', () => {
+      expect(parseDeployResultPayload(Buffer.alloc(0))).to.deep.equal({status: 'none'})
     })
   })
 
