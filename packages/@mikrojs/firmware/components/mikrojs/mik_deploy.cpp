@@ -20,7 +20,7 @@ static const char* DEPLOY_TMP = "/appfs/.deploy-tmp";
 static const char* APP_DIR = "/appfs/app";
 static const char* CHECKSUMS_PATH = "/appfs/app/.checksums";
 /* Where DEPLOY_PUT("/.build.tgz", ...) streams the OTA build (DEPLOY_TMP +
- * "/.build.tgz"). Adopted by MIK_CMD_DEPLOY_BUILD. */
+ * "/.build.tgz"). Staged for boot install by MIK_CMD_DEPLOY_BUILD. */
 static const char* BUILD_TGZ_PATH = "/appfs/.deploy-tmp/.build.tgz";
 
 /* ── Checksums manifest ─────────────────────────────────────────── */
@@ -550,9 +550,12 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
         }
 
         case MIK_CMD_DEPLOY_BUILD: {
-            /* Adopt a streamed .tgz as the live app via the OTA install path,
-             * establishing the rollback baseline. The build was streamed via
-             * PUT("/.build.tgz") + chunks into BUILD_TGZ_PATH.
+            /* Stage a streamed .tgz for install at the next boot. The install
+             * runs from the boot reconcile on a clean heap; installing here
+             * with the app live needs a 32 KB contiguous inflate window a
+             * fragmented heap cannot provide. The checksum is verified now so
+             * a corrupt upload still fails synchronously. The build was
+             * streamed via PUT("/.build.tgz") + chunks into BUILD_TGZ_PATH.
              * Payload: u16le checksum_len | checksum. */
             if (payload_len < 2) {
                 mik__proto_drain(transport, payload_len);
@@ -576,14 +579,14 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
             uint32_t consumed = 2 + (uint32_t)chk_len;
             if (payload_len > consumed) mik__proto_drain(transport, payload_len - consumed);
 
-            /* Flush the staged .tgz to disk before adopt reads it back. */
+            /* Flush the staged .tgz to disk before staging verifies it. */
             put_close_and_clear();
 
             const char* err = nullptr;
-            if (mik__ota_adopt_build(BUILD_TGZ_PATH, checksum, &err)) {
+            if (mik__ota_stage_adopt(BUILD_TGZ_PATH, checksum, &err)) {
                 mik__proto_send_ok(transport);
             } else {
-                mik__proto_send_err(transport, err ? err : "build install failed");
+                mik__proto_send_err(transport, err ? err : "build stage failed");
             }
             deploy_cleanup();
             return true;

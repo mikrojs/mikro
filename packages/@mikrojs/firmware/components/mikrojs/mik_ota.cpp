@@ -696,6 +696,7 @@ constexpr const char* kKeyTrialLeft = "trialLeft"; // u8
 constexpr const char* kKeyTrialN = "trialN";      // u8: trial budget for a pending install
 constexpr const char* kKeyConfirm = "confirm";    // u8: trial requires markValid() to promote
 constexpr const char* kKeyPending = "pending";    // u8: 1 = .ota-pending.tgz awaits clean-heap install
+constexpr const char* kKeyPendMode = "pendMode";  // u8: how to install the pending build (see below)
 constexpr const char* kKeyInstLeft = "instLeft";  // u8: install-attempt budget
 constexpr const char* kKeyPromLeft = "promLeft";  // u8: promote-attempt budget
 constexpr const char* kKeyRbLeft = "rbLeft";      // u8: rollback-attempt budget
@@ -712,9 +713,22 @@ constexpr const char* kKeyOInst = "oInst";        // str: checksum just installe
 constexpr const char* kKeyORevert = "oRevert";    // u8
 constexpr const char* kKeyORsn = "oRsn";          // str: diagnostic reason
 constexpr const char* kKeyODetail = "oDetail";    // str: diagnostic detail
+// Adopt-install outcome, read once by MIK_CMD_DEPLOY_RESULT and then cleared.
+// Separate from the reconcile record above: that one reaches the registry as
+// `lastInstall` and would blacklist a checksum the developer is re-pushing.
+constexpr const char* kKeyDRes = "dRes";          // u8: 1 ok, 2 fail
+constexpr const char* kKeyDChk = "dChk";          // str: staged checksum
+constexpr const char* kKeyDRsn = "dRsn";          // str: failure reason
+constexpr const char* kKeyDDetail = "dDetail";    // str: failure detail
 
 constexpr uint8_t kStateGood = 0;
 constexpr uint8_t kStateTrial = 1;
+// kKeyPendMode values. Trial is the OTA path (trialBoots, rollback, abandon
+// policy); adopt is the cable-deploy path (straight to GOOD, no trial, no
+// rollback baseline, one install attempt). Absent defaults to trial so a
+// pending build staged by older firmware keeps its semantics.
+constexpr uint8_t kPendModeTrial = 0;
+constexpr uint8_t kPendModeAdopt = 1;
 constexpr uint8_t kInstallBudget = 3;  // boot install attempts before abandoning a pending build
 // Boot attempts to make a survived trial the revert target before giving up on
 // the revert target rather than on the device: a trial that cannot promote and
@@ -865,37 +879,6 @@ bool nvs_str(nvs_handle_t h, const char* key, char* buf, size_t cap) {
         return false;
     }
     return buf[0] != 0;
-}
-
-// Copy src to dst (truncating dst). Used to move the staged build to the
-// rollback slot before install_build rmtrees the staging tree it lives under.
-bool copy_file(const char* src, const char* dst) {
-    FILE* in = fopen(src, "rb");
-    if (!in) return false;
-    FILE* out = fopen(dst, "wb");
-    if (!out) {
-        fclose(in);
-        return false;
-    }
-    unsigned char* buf = (unsigned char*)malloc(kChunk);
-    if (!buf) {
-        fclose(in);
-        fclose(out);
-        return false;
-    }
-    bool ok = true;
-    size_t n;
-    while ((n = fread(buf, 1, kChunk, in)) > 0) {
-        if (fwrite(buf, 1, n, out) != n) {
-            ok = false;
-            break;
-        }
-    }
-    if (ok && ferror(in)) ok = false;
-    free(buf);
-    if (fclose(out) != 0) ok = false;
-    fclose(in);
-    return ok;
 }
 
 // ── install (gunzip -> untar -> atomic swap) ─────────────────────────────────
@@ -1197,6 +1180,9 @@ JSValue js_stage_finish(JSContext* ctx, JSValueConst, int argc, JSValueConst* ar
     nvs_erase_key(h, kKeyStgChk);
     nvs_erase_key(h, kKeyStgSize);
     nvs_set_str(h, kKeyPendChk, want_chk);
+    // Explicit even though trial is the default: a leftover adopt marker from
+    // an earlier cable deploy must not turn this OTA build into an adopt.
+    nvs_set_u8(h, kKeyPendMode, kPendModeTrial);
     nvs_set_u8(h, kKeyTrialN, (uint8_t)trial_boots);
     nvs_set_u8(h, kKeyConfirm, require_confirm ? 1 : 0);
 
@@ -1477,21 +1463,37 @@ bool attempt_rollback(nvs_handle_t h, const char* reason, const char* detail) {
     return true;
 }
 
+// Resolve a failed adopt install: drop the pending build, record the outcome
+// for MIK_CMD_DEPLOY_RESULT, and leave the previous /app running. No rollback
+// and no retry -- the developer is on the serial cable and re-pushes. Never
+// touches the reconcile record (oRsn/oDetail), which reaches the registry.
+void adopt_fail(nvs_handle_t h, const char* chk, const char* reason, const char* detail) {
+    nvs_set_u8(h, kKeyPending, 0);
+    nvs_erase_key(h, kKeyPendChk);
+    nvs_erase_key(h, kKeyPendMode);
+    nvs_erase_key(h, kKeyInstLeft);
+    unlink(kPending);
+    nvs_set_u8(h, kKeyDRes, 2);
+    nvs_set_str(h, kKeyDChk, chk);
+    nvs_set_str(h, kKeyDRsn, reason);
+    nvs_set_str(h, kKeyDDetail, detail);
+    nvs_commit(h);
+}
+
 }  // namespace
 
-// Adopt a streamed .tgz as the live app with NO trial (the deploy / baseline
-// path, distinct from an OTA download which runs a trial). Verifies the build
-// against `checksum`, copies it to the rollback slot first so it survives the
-// commit (install_build rmtrees the staging tree the source lives under),
-// installs it, then records it as the running good build. NOT JS-exposed —
-// called from the serial DEPLOY_BUILD handler.
-bool mik__ota_adopt_build(const char* tgz_path, const char* checksum, const char** err) {
+// Stage a streamed .tgz for adopt install at the next boot (the cable-deploy
+// path, distinct from an OTA download which runs a trial). The install itself
+// runs from mik__ota_boot_reconcile() on a clean heap: doing it here, with the
+// app live, needs a 32 KB contiguous inflate window a fragmented heap cannot
+// provide. Verification stays synchronous so a corrupt upload still fails over
+// serial; empty checksum skips the check. NOT JS-exposed — called from the
+// serial DEPLOY_BUILD handler.
+bool mik__ota_stage_adopt(const char* tgz_path, const char* checksum, const char** err) {
     if (!path_exists(tgz_path)) {
         *err = "build not staged";
         return false;
     }
-    // Verify SHA-256 before install so a corrupt upload can't become the
-    // rollback baseline. Empty checksum skips the check.
     if (checksum && checksum[0]) {
         char got[65];
         if (!sha256_file(tgz_path, got)) {
@@ -1503,41 +1505,72 @@ bool mik__ota_adopt_build(const char* tgz_path, const char* checksum, const char
             return false;
         }
     }
-    // Install from a copy outside the staging tree: install_build commits by
-    // rmtree-ing that tree, and the staged .tgz lives under it. Promote the copy
-    // to the rollback slot only once the install succeeded -- overwriting
-    // kLastGood up front would, on a failed install, leave the revert target
-    // naming a build that is not installed and never was, so a later revert()
-    // would roll *forward* onto it while reporting the old checksum.
-    unlink(kLastGoodTmp);
-    if (!copy_file(tgz_path, kLastGoodTmp)) {
-        *err = "stage rollback baseline";
-        return false;
-    }
-    OtaErr kind = OtaErr::kTransient;
-    if (!install_build(kLastGoodTmp, err, &kind)) {
-        unlink(kLastGoodTmp);
-        return false;
-    }
-    unlink(kLastGood);
-    if (rename(kLastGoodTmp, kLastGood) != 0) {
-        // Installed and live, but with no revert target until the next adopt or
-        // promote. Not worth failing the deploy over.
-        unlink(kLastGoodTmp);
-    }
     nvs_handle_t h;
-    if (nvs_open(kNs, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_set_str(h, kKeyInstChk, checksum ? checksum : "");
+    if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) {
+        *err = "nvs open failed";
+        return false;
+    }
+    // Move the .tgz out of the deploy tmp tree before acking: MIK_DeployRecover
+    // cleans that tree at boot, before the reconcile would read it. Rename
+    // before anything else mutates: a failed rename (e.g. littlefs metadata
+    // ENOSPC) must error back over serial having left trial state untouched.
+    unlink(kPending);
+    if (rename(tgz_path, kPending) != 0) {
+        nvs_close(h);
+        *err = "stage pending build";
+        return false;
+    }
+    // A cable deploy supersedes an in-flight trial. Resolve it to GOOD now,
+    // while the trial's checksum is still in pendChk (overwritten below): the
+    // trial build is what /app holds, so it becomes the installed build, the
+    // same accounting the reflash guard does. Without this, the next boot's
+    // trial verdict would roll back or promote against the pending slot this
+    // deploy just replaced.
+    if (nvs_u8(h, kKeyState, kStateGood) == kStateTrial) {
+        char trial_chk[96];
+        if (nvs_str(h, kKeyPendChk, trial_chk, sizeof(trial_chk))) {
+            nvs_set_str(h, kKeyInstChk, trial_chk);
+        }
         nvs_set_u8(h, kKeyState, kStateGood);
         nvs_set_u8(h, kKeyTrialLeft, 0);
-        nvs_set_u8(h, kKeyPending, 0);
+        nvs_erase_key(h, kKeyPromLeft);
+        nvs_erase_key(h, kKeyRbLeft);
+        nvs_erase_key(h, kKeyNeutLeft);
         clear_trial_failure(h);
-        unlink(kPending);
-        nvs_erase_key(h, kKeyPendChk);
-        nvs_commit(h);
-        nvs_close(h);
     }
+    nvs_set_str(h, kKeyPendChk, checksum ? checksum : "");
+    nvs_set_u8(h, kKeyPendMode, kPendModeAdopt);
+    nvs_set_u8(h, kKeyPending, 1);
+    nvs_set_u8(h, kKeyInstLeft, 1);  // one attempt: the developer is on the cable
+    // Drop any unread outcome from an earlier adopt (e.g. a --no-restart deploy
+    // that installed at a natural boot), so the post-restart result read can
+    // only ever see this deploy's outcome.
+    nvs_erase_key(h, kKeyDRes);
+    nvs_erase_key(h, kKeyDChk);
+    nvs_erase_key(h, kKeyDRsn);
+    nvs_erase_key(h, kKeyDDetail);
+    nvs_commit(h);
+    nvs_close(h);
     return true;
+}
+
+// Read and clear the adopt-install outcome for MIK_CMD_DEPLOY_RESULT.
+void mik__ota_take_deploy_result(MIKDeployResult* out) {
+    memset(out, 0, sizeof(*out));
+    nvs_handle_t h;
+    if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) return;
+    out->status = nvs_u8(h, kKeyDRes, 0);
+    nvs_str(h, kKeyDChk, out->checksum, sizeof(out->checksum));
+    nvs_str(h, kKeyDRsn, out->reason, sizeof(out->reason));
+    nvs_str(h, kKeyDDetail, out->detail, sizeof(out->detail));
+    if (out->status != 0) {
+        nvs_erase_key(h, kKeyDRes);
+        nvs_erase_key(h, kKeyDChk);
+        nvs_erase_key(h, kKeyDRsn);
+        nvs_erase_key(h, kKeyDDetail);
+        nvs_commit(h);
+    }
+    nvs_close(h);
 }
 
 // True while an unconfirmed OTA trial is the running build.
@@ -1564,15 +1597,16 @@ void mik__ota_note_trial_failure(const char* detail) {
 }
 
 // Boot reconcile: NOT JS-exposed. Called from MIK_Main() before the JS app
-// loads, after MIK_DeployRecover(). Runs the reflash guard, the trial verdict,
-// and a deferred install in that order.
+// loads, after MIK_DeployRecover(). Runs the reflash guard, an adopt install
+// (cable deploy), the trial verdict, and a deferred trial install in that
+// order.
 void mik__ota_boot_reconcile(void) {
     nvs_handle_t h;
     if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) return;
 
-    // An adopt that died between copying its install source and promoting it to
-    // the rollback slot leaves this behind. It is never valid across a boot, and
-    // it is a whole build's worth of flash.
+    // Legacy leftover: firmware that installed cable deploys synchronously
+    // staged its install source here and could die before promoting it. Never
+    // valid across a boot, and a whole build's worth of flash.
     unlink(kLastGoodTmp);
 
     // 1. Reflash guard. An out-of-band `idf.py flash` swaps the firmware without
@@ -1602,6 +1636,7 @@ void mik__ota_boot_reconcile(void) {
             }
         }
         nvs_erase_key(h, kKeyPendChk);
+        nvs_erase_key(h, kKeyPendMode);
         nvs_set_u8(h, kKeyState, kStateGood);
         nvs_set_u8(h, kKeyTrialLeft, 0);
         nvs_set_u8(h, kKeyPending, 0);
@@ -1613,7 +1648,65 @@ void mik__ota_boot_reconcile(void) {
         nvs_commit(h);
     }
 
-    // 2. Trial verdict. Evaluate why we just reset while a trial was in flight.
+    // 2. Adopt install: a cable deploy staged by MIK_CMD_DEPLOY_BUILD. No
+    //    trial, no rollback baseline, one attempt (charged before the attempt,
+    //    same crash reasoning as the deferred install below). Runs before the
+    //    trial verdict as a backstop: stage_adopt resolves an in-flight trial
+    //    at stage time, but stale trial state must never roll back or promote
+    //    against the pending slot the deploy overwrote.
+    if (nvs_u8(h, kKeyPending, 0) == 1 &&
+        nvs_u8(h, kKeyPendMode, kPendModeTrial) == kPendModeAdopt) {
+        char chk[96] = {0};
+        nvs_str(h, kKeyPendChk, chk, sizeof(chk));
+        if (!path_exists(kPending)) {
+            adopt_fail(h, chk, "install-failed", "staged build missing");
+            nvs_close(h);
+            return;
+        }
+        uint8_t left = nvs_u8(h, kKeyInstLeft, 1);
+        if (left == 0) {
+            // The charged attempt never came back: the install panicked.
+            adopt_fail(h, chk, "install-failed", "install did not complete (device restarted)");
+            nvs_close(h);
+            return;
+        }
+        nvs_set_u8(h, kKeyInstLeft, (uint8_t)(left - 1));
+        nvs_commit(h);
+
+        const char* err = nullptr;
+        OtaErr kind = OtaErr::kTransient;
+        if (!install_build(kPending, &err, &kind)) {
+            adopt_fail(h, chk, kind == OtaErr::kCorrupt ? "install-corrupt" : "install-failed",
+                       err != nullptr ? err : "install failed");
+            nvs_close(h);
+            return;
+        }
+        // Installed. A cable deploy resets the OTA safety story like a reflash
+        // does: nothing to roll back to until the next OTA trial promotes.
+        unlink(kPending);
+        unlink(kLastGood);
+        nvs_set_str(h, kKeyInstChk, chk);
+        nvs_set_u8(h, kKeyState, kStateGood);
+        nvs_set_u8(h, kKeyTrialLeft, 0);
+        nvs_set_u8(h, kKeyPending, 0);
+        nvs_erase_key(h, kKeyPendChk);
+        nvs_erase_key(h, kKeyPendMode);
+        nvs_erase_key(h, kKeyInstLeft);
+        nvs_erase_key(h, kKeyPromLeft);
+        nvs_erase_key(h, kKeyRbLeft);
+        nvs_erase_key(h, kKeyNeutLeft);
+        clear_trial_failure(h);
+        nvs_set_u8(h, kKeyDRes, 1);
+        nvs_set_str(h, kKeyDChk, chk);
+        nvs_erase_key(h, kKeyDRsn);
+        nvs_erase_key(h, kKeyDDetail);
+        nvs_commit(h);
+        nvs_close(h);
+        esp_restart();  // boot into the deployed app on a clean heap
+        return;
+    }
+
+    // 3. Trial verdict. Evaluate why we just reset while a trial was in flight.
     if (nvs_u8(h, kKeyState, kStateGood) == kStateTrial) {
         esp_reset_reason_t reason = esp_reset_reason();
         TrialVerdict verdict = classify_reset(reason);
@@ -1715,8 +1808,10 @@ void mik__ota_boot_reconcile(void) {
         // kNeutral: don't penalize — leave the trial untouched and proceed.
     }
 
-    // 3. Deferred install. A build verified by stageFinish(installNow=false) is
-    //    installed here, on a clean heap, then we restart into its trial.
+    // 4. Deferred trial install. A build verified by stageFinish(installNow=
+    //    false) is installed here, on a clean heap, then we restart into its
+    //    trial. (An adopt-mode pending build never reaches this: step 2
+    //    returns.)
     if (nvs_u8(h, kKeyPending, 0) == 1 && nvs_u8(h, kKeyState, kStateGood) == kStateGood) {
         if (!path_exists(kPending)) {
             nvs_set_u8(h, kKeyPending, 0);

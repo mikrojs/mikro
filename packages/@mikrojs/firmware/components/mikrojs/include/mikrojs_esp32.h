@@ -25,13 +25,28 @@ void MIK_DeployRecover(void);
  * (may esp_restart). Call right after MIK_DeployRecover(). */
 void mik__ota_boot_reconcile(void);
 
-/* Adopt a streamed .tgz as the live app with no trial, recording it as the OTA
- * rollback baseline (.ota-last-good.tgz). Backs MIK_CMD_DEPLOY_BUILD: a deploy
- * (not an OTA download) becomes the known-good build. Verifies the build
- * against `checksum` (lowercase hex, may be empty to skip), installs it, sets
- * state GOOD with no trial, and clears any pending build. Returns false with
+/* Stage a streamed .tgz for install at the next boot with adopt semantics:
+ * no trial, no rollback baseline, one install attempt. Backs
+ * MIK_CMD_DEPLOY_BUILD. Verifies the build against `checksum` (lowercase hex,
+ * may be empty to skip) so a corrupt upload still fails synchronously over
+ * serial, then arms the boot reconcile's adopt install. Returns false with
  * *err pointing at a static reason string on failure. */
-bool mik__ota_adopt_build(const char* tgz_path, const char* checksum, const char** err);
+bool mik__ota_stage_adopt(const char* tgz_path, const char* checksum, const char** err);
+
+/* Outcome of the last adopt-mode boot install, for MIK_CMD_DEPLOY_RESULT.
+ * Kept separate from the reconcile record on purpose: that record reaches the
+ * registry as `lastInstall` and would blacklist a checksum a developer is
+ * about to legitimately re-push over the cable. */
+typedef struct MIKDeployResult {
+    uint8_t status; /* 0 none, 1 ok, 2 fail */
+    char checksum[96];
+    char reason[32];
+    char detail[160];
+} MIKDeployResult;
+
+/* Read and clear the recorded adopt-install outcome (mik_ota.cpp). status 0
+ * with empty strings when nothing is recorded. */
+void mik__ota_take_deploy_result(MIKDeployResult* out);
 
 /* True while the running build is an unconfirmed OTA trial (mik_ota.cpp). Lets
  * the boot path treat a JS-level fatal during a trial as a failed trial. */

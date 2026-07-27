@@ -21,6 +21,8 @@ export function formatDeployEvent(event: DeployEvent): string | null {
     }
     case 'restarting':
       return 'Restarting device…'
+    case 'installing':
+      return 'Installing…'
     case 'complete':
       // Keep this command-neutral: a "press Ctrl+R" hint only makes sense
       // for the interactive dev REPL — `mikro test`, `mikro deploy`, and

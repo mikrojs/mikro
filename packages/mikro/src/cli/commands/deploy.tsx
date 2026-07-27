@@ -56,7 +56,7 @@ export const args = command(
     ),
     noRestart: optional(
       flag('--no-restart', {
-        description: message`Do not restart device after deploy`,
+        description: message`Stage the build without restarting; it installs at the next device boot`,
       }),
     ),
     recover: optional(
@@ -134,9 +134,9 @@ export async function run(
     }
   }
 
-  // Build + pack into an OTA build. A deploy installs the whole `.tgz`
-  // through the OTA path so it also establishes the rollback baseline
-  // (.ota-last-good.tgz). `mikro dev` keeps the per-file incremental path.
+  // Build + pack into an OTA build. A deploy stages the whole `.tgz` on the
+  // device; the boot reconcile installs it on a clean heap after the restart
+  // below. `mikro dev` keeps the per-file incremental path.
   const artifact = await packProject({
     // Scratch on the way to the device, not a deliverable: it belongs in
     // .mikro/, under one fixed name so repeated deploys do not pile up a
@@ -233,6 +233,9 @@ export async function run(
       'deploy',
       {
         device: devicePath,
+        // With --no-restart the build is only staged; it installs at the
+        // next device boot, whenever that is.
+        staged: !doRestart,
         build: {
           path: artifact.outPath,
           checksum: artifact.checksum,
@@ -245,8 +248,10 @@ export async function run(
         {command: `mikro env list -p ${devicePath}`, description: 'List device env vars'},
       ],
     )
-  } else {
+  } else if (doRestart) {
     log(`Deployed build (${artifact.size} bytes) to ${devicePath}`)
+  } else {
+    log(`Staged build (${artifact.size} bytes) on ${devicePath}; installs at the next device boot`)
   }
 
   if (config.console) {

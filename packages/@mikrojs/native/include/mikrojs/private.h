@@ -340,11 +340,17 @@ void mik__repl_set_paused(bool paused);
  * log.txt, and replies MIK_MSG_OK. No-op (still OK) when file logging
  * is disabled. */
 #define MIK_CMD_LOG_RESET 0x2C
-/* Adopt a streamed .tgz build as the live app via the OTA install path,
- * establishing the rollback baseline (.ota-last-good.tgz). The build must
- * already be staged via DEPLOY_PUT("/.build.tgz", size) + PUT_CHUNK frames.
+/* Stage a streamed .tgz build for install at the next boot. The build must
+ * already be staged via DEPLOY_PUT("/.build.tgz", size) + PUT_CHUNK frames;
+ * the device verifies its SHA-256 now and the boot reconcile installs it on
+ * a clean heap (adopt mode: comes up GOOD, no trial, no rollback baseline).
  * Payload: u16le checksum_len | checksum bytes. */
 #define MIK_CMD_DEPLOY_BUILD 0x2D
+/* Report and clear the outcome of the last adopt-mode boot install. No
+ * payload. Reply is MIK_MSG_OK with:
+ *   u8 status (0 none | 1 ok | 2 fail) | u16le chk_len | chk
+ *   | u16le reason_len | reason | u16le detail_len | detail. */
+#define MIK_CMD_DEPLOY_RESULT 0x2E
 
 #define MIK_CMD_CONFIG_LIST 0x40
 #define MIK_CMD_CONFIG_SET 0x41

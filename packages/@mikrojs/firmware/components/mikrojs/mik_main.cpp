@@ -198,10 +198,33 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
         return true;
     }
 
-    /* Deploy commands (0x20-0x27) plus the build-install command (0x2D) */
+    /* Deploy commands (0x20-0x27) plus the build-stage command (0x2D) */
     if ((cmd_type >= MIK_CMD_DEPLOY_PUT && cmd_type <= MIK_CMD_DEPLOY_CHECKSUM) ||
         cmd_type == MIK_CMD_DEPLOY_BUILD) {
         return mik__handle_deploy_command(transport, cmd_type, payload_len);
+    }
+
+    /* Install outcome (0x2E): report + clear the result of the last staged
+     * build install. Handled here, not in the deploy handler: it is a
+     * standalone read after the post-deploy reboot and must not start a
+     * deploy session (pause the runtime, clear the staging dir). */
+    if (cmd_type == MIK_CMD_DEPLOY_RESULT) {
+        mik__proto_drain(transport, payload_len);
+        MIKDeployResult res;
+        mik__ota_take_deploy_result(&res);
+        uint8_t buf[1 + 3 * 2 + sizeof(res.checksum) + sizeof(res.reason) + sizeof(res.detail)];
+        size_t n = 0;
+        buf[n++] = res.status;
+        const char* fields[] = {res.checksum, res.reason, res.detail};
+        for (const char* s : fields) {
+            size_t len = strlen(s);
+            buf[n++] = (uint8_t)(len & 0xFF);
+            buf[n++] = (uint8_t)((len >> 8) & 0xFF);
+            memcpy(buf + n, s, len);
+            n += len;
+        }
+        mik__proto_send(transport, MIK_MSG_OK, buf, n);
+        return true;
     }
 
     /* File pull (0x2B) */

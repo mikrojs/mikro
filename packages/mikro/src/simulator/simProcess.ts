@@ -47,6 +47,7 @@ import {
   CMD_DEPLOY_KEEP,
   CMD_DEPLOY_PUT,
   CMD_DEPLOY_PUT_CHUNK,
+  CMD_DEPLOY_RESULT,
   CMD_DIRECTIVE,
   CMD_EVAL,
   CMD_EXIT,
@@ -686,12 +687,36 @@ function handleDeployAbort(): void {
   sendOk()
 }
 
-/** Adopt a streamed `.tgz` as the live app (mirrors the firmware
- * MIK_CMD_DEPLOY_BUILD / mik__ota_adopt_build path). The build was streamed
- * via PUT("/.build.tgz") + chunks into <stagingDir>/.build.tgz; here we
- * verify its checksum, unpack it, and swap its `app/` member into the live app
- * dir. The sim has no persistent OTA rollback state, so this just installs.
- * Payload: u16le checksum_len | checksum. */
+/** Outcome of the last CMD_DEPLOY_BUILD install, replayed by
+ * CMD_DEPLOY_RESULT after the restart. On real firmware the install runs at
+ * the next boot and records its outcome to NVS; the sim installs synchronously
+ * but keeps the same read-once contract so the CLI flow is identical. The sim
+ * process survives CMD_RESTART (in-process reboot), so memory is enough. */
+let lastDeployResult: {status: number; checksum: string; reason: string; detail: string} | null =
+  null
+
+function handleDeployResult(): void {
+  const res = lastDeployResult ?? {status: 0, checksum: '', reason: '', detail: ''}
+  lastDeployResult = null
+  const fields = [res.checksum, res.reason, res.detail].map((s) => Buffer.from(s, 'utf-8'))
+  const payload = Buffer.alloc(1 + fields.reduce((n, f) => n + 2 + f.length, 0))
+  payload[0] = res.status
+  let offset = 1
+  for (const f of fields) {
+    payload.writeUInt16LE(f.length, offset)
+    offset += 2
+    f.copy(payload, offset)
+    offset += f.length
+  }
+  send(MSG_OK, payload)
+}
+
+/** Install a streamed `.tgz` as the live app (mirrors the firmware
+ * MIK_CMD_DEPLOY_BUILD path, which stages for a boot-time install; the sim
+ * has no boot to defer to, so it installs synchronously). The build was
+ * streamed via PUT("/.build.tgz") + chunks into <stagingDir>/.build.tgz; here
+ * we verify its checksum, unpack it, and swap its `app/` member into the live
+ * app dir. Payload: u16le checksum_len | checksum. */
 function handleDeployBuild(payload: Buffer): void {
   clearPut()
   if (payload.length < 2) {
@@ -739,6 +764,7 @@ function handleDeployBuild(payload: Buffer): void {
   renameSync(stagedApp, appDir)
   rmSync(stagingDir, {force: true, recursive: true})
   rmSync(oldDir, {force: true, recursive: true})
+  lastDeployResult = {status: 1, checksum, reason: '', detail: ''}
   sendOk()
 }
 
@@ -1168,6 +1194,9 @@ async function handleFrame(frame: Frame): Promise<void> {
       break
     case CMD_DEPLOY_BUILD:
       handleDeployBuild(payload)
+      break
+    case CMD_DEPLOY_RESULT:
+      handleDeployResult()
       break
   }
 }

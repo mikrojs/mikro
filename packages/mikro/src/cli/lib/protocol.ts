@@ -76,11 +76,17 @@ export const CMD_FS_GET = 0x2b
  *  log.txt, and replies MSG_OK. No-op (still OK) when file logging is
  *  disabled. */
 export const CMD_LOG_RESET = 0x2c
-/** Adopt a streamed `.tgz` build as the live app via the OTA install path,
- *  establishing the rollback baseline (`.ota-last-good.tgz`). The build must
- *  already be staged via CMD_DEPLOY_PUT('/.build.tgz', size) +
+/** Stage a streamed `.tgz` build for install at the next boot. The device
+ *  verifies the SHA-256 now (so a corrupt upload fails synchronously) and the
+ *  boot reconcile installs it on a clean heap: no trial, no rollback baseline.
+ *  The build must already be staged via CMD_DEPLOY_PUT('/.build.tgz', size) +
  *  CMD_DEPLOY_PUT_CHUNK frames. Payload: u16le checksum_len | checksum. */
 export const CMD_DEPLOY_BUILD = 0x2d
+/** Report and clear the outcome of the last CMD_DEPLOY_BUILD boot install.
+ *  No payload. Reply is MSG_OK with: u8 status (0 none | 1 ok | 2 fail)
+ *  | u16le chk_len | chk | u16le reason_len | reason
+ *  | u16le detail_len | detail. */
+export const CMD_DEPLOY_RESULT = 0x2e
 
 export const CMD_CONFIG_LIST = 0x40
 export const CMD_CONFIG_SET = 0x41
@@ -255,13 +261,47 @@ export function buildDeployChecksumCommand(filename: string, hash: Buffer): Buff
 
 /** Build DEPLOY_BUILD payload: u16le checksum_len | checksum (lowercase hex).
  *  The `.tgz` itself is streamed beforehand via CMD_DEPLOY_PUT('/.build.tgz')
- *  + CMD_DEPLOY_PUT_CHUNK frames; this command adopts it as the live app. */
+ *  + CMD_DEPLOY_PUT_CHUNK frames; this command verifies and stages it for
+ *  install at the next boot. */
 export function buildDeployBuildCommand(checksum: string): Buffer {
   const chkBytes = Buffer.from(checksum, 'utf-8')
   const payload = Buffer.alloc(2 + chkBytes.length)
   payload.writeUInt16LE(chkBytes.length, 0)
   chkBytes.copy(payload, 2)
   return buildFrame(CMD_DEPLOY_BUILD, payload)
+}
+
+/** Build CMD_DEPLOY_RESULT (no payload). */
+export function buildDeployResultCommand(): Buffer {
+  return buildFrame(CMD_DEPLOY_RESULT)
+}
+
+/** Outcome of a staged build's boot install, as reported by
+ *  CMD_DEPLOY_RESULT. `none` means the device has no outcome recorded. */
+export type DeployInstallResult =
+  | {status: 'none'}
+  | {status: 'ok'; checksum: string}
+  | {status: 'fail'; checksum: string; reason: string; detail: string}
+
+/** Parse the CMD_DEPLOY_RESULT reply payload: u8 status | u16le chk_len | chk
+ *  | u16le reason_len | reason | u16le detail_len | detail. */
+export function parseDeployResultPayload(payload: Buffer): DeployInstallResult {
+  const status = payload.length > 0 ? payload[0] : 0
+  let offset = 1
+  const readString = (): string => {
+    if (offset + 2 > payload.length) return ''
+    const len = payload.readUInt16LE(offset)
+    offset += 2
+    const s = payload.subarray(offset, offset + len).toString('utf-8')
+    offset += len
+    return s
+  }
+  const checksum = readString()
+  const reason = readString()
+  const detail = readString()
+  if (status === 1) return {status: 'ok', checksum}
+  if (status === 2) return {status: 'fail', checksum, reason, detail}
+  return {status: 'none'}
 }
 
 // ── Config command builders ────────────────────────────────────────
