@@ -81,15 +81,57 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/sdkconfig.defaults.${IDF_TARGET}")
     list(APPEND _SDKCONFIG_LIST "${CMAKE_SOURCE_DIR}/sdkconfig.defaults.${IDF_TARGET}")
 endif()
 
-# Partition table: generate a sdkconfig fragment with the absolute path
+# Partition table: copy the source csv into the build dir and point the
+# config at it, project-relative when possible (ESP-IDF resolves a relative
+# value against the project dir). Writing the resolved package path directly
+# would freeze an absolute node_modules/store path into sdkconfig — sdkconfig
+# wins over defaults files, so every @mikrojs/firmware upgrade would then
+# break the build with a missing-partitions.csv error pointing at a version
+# that is no longer installed.
 if(EXISTS "${CMAKE_SOURCE_DIR}/partitions.csv")
-    set(_PARTITION_CSV "${CMAKE_SOURCE_DIR}/partitions.csv")
+    set(_PARTITION_SRC "${CMAKE_SOURCE_DIR}/partitions.csv")
 else()
-    set(_PARTITION_CSV "${_MIK_CONFIG_DIR}/partitions.csv")
+    set(_PARTITION_SRC "${_MIK_CONFIG_DIR}/partitions.csv")
 endif()
-set(_PARTITION_FRAGMENT "${CMAKE_SOURCE_DIR}/build/sdkconfig.partitions")
+configure_file("${_PARTITION_SRC}" "${CMAKE_BINARY_DIR}/partitions.csv" COPYONLY)
+file(RELATIVE_PATH _PARTITION_CSV "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/partitions.csv")
+if(_PARTITION_CSV MATCHES "^\\.\\.")
+    # Build dir outside the project (idf.py -B): absolute path, still stable
+    # across package upgrades, and the heal below re-points it if it moves.
+    set(_PARTITION_CSV "${CMAKE_BINARY_DIR}/partitions.csv")
+endif()
+set(_PARTITION_FRAGMENT "${CMAKE_BINARY_DIR}/sdkconfig.partitions")
 file(WRITE "${_PARTITION_FRAGMENT}" "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"${_PARTITION_CSV}\"\n")
 list(APPEND _SDKCONFIG_LIST "${_PARTITION_FRAGMENT}")
+
+# Heal an sdkconfig whose frozen path points outside the project: a stale
+# resolved package path, or a build dir that moved. Must fire even when the
+# frozen file still exists — an older package version often is still in the
+# store, and its old partition table would be built silently. Paths inside
+# the project are deliberate menuconfig overrides and are left alone.
+if(EXISTS "${CMAKE_SOURCE_DIR}/sdkconfig")
+    file(READ "${CMAKE_SOURCE_DIR}/sdkconfig" _SDKCONFIG_CONTENT)
+    string(REGEX MATCH "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"([^\"]*)\"" _PARTITION_MATCH "${_SDKCONFIG_CONTENT}")
+    if(_PARTITION_MATCH AND NOT CMAKE_MATCH_1 STREQUAL "${_PARTITION_CSV}")
+        set(_PARTITION_FROZEN "${CMAKE_MATCH_1}")
+        get_filename_component(_PARTITION_FROZEN_ABS "${_PARTITION_FROZEN}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+        string(FIND "${_PARTITION_FROZEN_ABS}" "${CMAKE_SOURCE_DIR}/" _PARTITION_INSIDE)
+        if(NOT _PARTITION_INSIDE EQUAL 0)
+            string(REGEX REPLACE "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"[^\"]*\""
+                   "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"${_PARTITION_CSV}\""
+                   _SDKCONFIG_CONTENT "${_SDKCONFIG_CONTENT}")
+            # The derived twin should be recomputed by kconfgen, but rewrite it
+            # too: if it kept the saved value the build breaks the same way.
+            string(REGEX REPLACE "CONFIG_PARTITION_TABLE_FILENAME=\"[^\"]*\""
+                   "CONFIG_PARTITION_TABLE_FILENAME=\"${_PARTITION_CSV}\""
+                   _SDKCONFIG_CONTENT "${_SDKCONFIG_CONTENT}")
+            file(WRITE "${CMAKE_SOURCE_DIR}/sdkconfig" "${_SDKCONFIG_CONTENT}")
+            message(WARNING
+                "mikrojs: sdkconfig CONFIG_PARTITION_TABLE_CUSTOM_FILENAME pointed outside "
+                "the project (\"${_PARTITION_FROZEN}\"); repointed at \"${_PARTITION_CSV}\"")
+        endif()
+    endif()
+endif()
 
 if(_BOARD_JSON)
     string(JSON _BOARD_COMPONENT_DIRS GET "${_BOARD_JSON}" "components")

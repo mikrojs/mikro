@@ -1,7 +1,7 @@
 import {execFileSync} from 'node:child_process'
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs'
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
-import {join} from 'node:path'
+import {isAbsolute, join} from 'node:path'
 
 import {afterAll, expect, test} from 'vitest'
 
@@ -103,6 +103,90 @@ test.skipIf(!hasCmake())(
     // Suffix match: the tmpdir prefix can differ between the fixture path and
     // require()'s symlink-resolved __dirname on macOS (/var vs /private/var)
     expect(line).toContain(join('node_modules', 'fake-driver', 'component'))
+  },
+  30_000,
+)
+
+/* Partition table path healing. An sdkconfig created before the
+ * build/partitions.csv indirection (or by an older @mikrojs/firmware) froze
+ * an absolute store path into CONFIG_PARTITION_TABLE_CUSTOM_FILENAME;
+ * sdkconfig wins over defaults fragments, so upgrades broke the build. */
+
+function makePartitionFixture(name) {
+  const dir = join(fixtureDir, name)
+  mkdirSync(dir)
+  writeFileSync(
+    join(dir, 'CMakeLists.txt'),
+    [
+      'cmake_minimum_required(VERSION 3.22)',
+      'set(IDF_VERSION_MAJOR 6)',
+      'set(IDF_VERSION_MINOR 0)',
+      'set(IDF_VERSION_PATCH 1)',
+      'set(IDF_TARGET esp32s3)',
+      'project(fixture NONE)',
+      `include("${projectCmake}")`,
+      '',
+    ].join('\n'),
+  )
+  return dir
+}
+
+test.skipIf(!hasCmake())(
+  'sdkconfig frozen to a path outside the project is repointed, even when that path exists',
+  () => {
+    const dir = makePartitionFixture('heal-stale')
+    // The firmware package's own partitions.csv: a realistic frozen store
+    // path that still exists on disk, like an older version kept in the store
+    const stale = join(import.meta.dirname, 'partitions.csv')
+    writeFileSync(
+      join(dir, 'sdkconfig'),
+      [
+        `CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="${stale}"`,
+        `CONFIG_PARTITION_TABLE_FILENAME="${stale}"`,
+        '',
+      ].join('\n'),
+    )
+
+    execFileSync('cmake', ['-S', dir, '-B', join(dir, 'build')], {encoding: 'utf8'})
+
+    const sdkconfig = readFileSync(join(dir, 'sdkconfig'), 'utf8')
+    expect(sdkconfig).toContain('CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="build/partitions.csv"')
+    // The derived twin must not keep quoting the stale path either
+    expect(sdkconfig).toContain('CONFIG_PARTITION_TABLE_FILENAME="build/partitions.csv"')
+    expect(sdkconfig).not.toContain(stale)
+    expect(existsSync(join(dir, 'build', 'partitions.csv'))).toBe(true)
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  'sdkconfig pointing at a file inside the project (menuconfig override) is left alone',
+  () => {
+    const dir = makePartitionFixture('heal-override')
+    const before = 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="my-partitions.csv"\n'
+    writeFileSync(join(dir, 'sdkconfig'), before)
+
+    execFileSync('cmake', ['-S', dir, '-B', join(dir, 'build')], {encoding: 'utf8'})
+
+    expect(readFileSync(join(dir, 'sdkconfig'), 'utf8')).toBe(before)
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  'a build dir outside the project gets an absolute path and no stray build/ in the source tree',
+  () => {
+    const dir = makePartitionFixture('external-build-src')
+    const buildDir = join(fixtureDir, 'external-build-bin')
+
+    execFileSync('cmake', ['-S', dir, '-B', buildDir], {encoding: 'utf8'})
+
+    const fragment = readFileSync(join(buildDir, 'sdkconfig.partitions'), 'utf8')
+    const value = fragment.match(/CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="([^"]*)"/)?.[1]
+    expect(value).toBeDefined()
+    expect(isAbsolute(value)).toBe(true)
+    expect(existsSync(value)).toBe(true)
+    expect(existsSync(join(dir, 'build'))).toBe(false)
   },
   30_000,
 )
