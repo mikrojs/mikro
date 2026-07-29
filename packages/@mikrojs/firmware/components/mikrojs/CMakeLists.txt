@@ -117,6 +117,13 @@ target_compile_options(${COMPONENT_LIB} PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-fpermi
 # own C/C++ can be bitten by aliasing UB during optimization.
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-implicit-fallthrough -Wno-maybe-uninitialized -Wno-missing-field-initializers -fno-strict-aliasing)
 
+# NDEBUG for the QuickJS sources only: without it quickjs.c enables
+# ENABLE_DUMPS, which adds a list_head (+8 bytes) to every JSString, links
+# each string into rt->string_list, and keeps assert() live in the
+# interpreter. ESP-IDF keeps assertions enabled globally, so NDEBUG is not
+# set project-wide; scoping it here leaves IDF and mikrojs asserts intact.
+set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES COMPILE_DEFINITIONS NDEBUG)
+
 # ── Board and version metadata ──────────────────────────────────────
 execute_process(
     COMMAND node ${_MIK_RESOLVE} version
