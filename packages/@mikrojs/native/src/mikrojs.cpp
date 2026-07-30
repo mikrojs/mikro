@@ -850,6 +850,17 @@ int mik__load_file(JSContext* ctx, DynBuf* dbuf, const char* filename) {
         return -1;
     }
 
+    /* Reserve the exact file size up front: DynBuf grows 1.5x from zero, so
+     * letting it grow incrementally peaks at ~2.5x the file size mid-copy.
+     * +4 covers the NUL/wrapper suffix callers append after loading. */
+    struct stat st;
+    if (fstat(fd, &st) == 0 && st.st_size > 0) {
+        if (dbuf_claim(dbuf, (size_t)st.st_size + 4)) {
+            close(fd);
+            return -1;
+        }
+    }
+
     uint8_t buf[512];
     ssize_t n;
     while ((n = read(fd, buf, sizeof(buf))) > 0) {

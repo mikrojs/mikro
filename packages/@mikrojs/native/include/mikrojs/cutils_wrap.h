@@ -36,6 +36,7 @@ typedef struct DynBuf {
 
 /* Wrapper functions defined in cutils_compat.c */
 int mik__dbuf_put(DynBuf *s, const void *data, size_t len);
+int mik__dbuf_claim(DynBuf *s, size_t len);
 int mik__dbuf_putc(DynBuf *s, uint8_t val);
 int mik__dbuf_putstr(DynBuf *s, const char *str);
 void mik__dbuf_free(DynBuf *s);
@@ -46,6 +47,7 @@ char *mik__js_pstrcat(char *buf, int buf_size, const char *s);
 
 /* Map original names to wrapper names */
 #define dbuf_put mik__dbuf_put
+#define dbuf_claim mik__dbuf_claim
 #define dbuf_putc mik__dbuf_putc
 #define dbuf_putstr mik__dbuf_putstr
 #define dbuf_free mik__dbuf_free
