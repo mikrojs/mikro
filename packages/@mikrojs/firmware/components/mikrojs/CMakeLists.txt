@@ -122,7 +122,11 @@ target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-implicit-fallthrough -Wno-m
 # each string into rt->string_list, and keeps assert() live in the
 # interpreter. ESP-IDF keeps assertions enabled globally, so NDEBUG is not
 # set project-wide; scoping it here leaves IDF and mikrojs asserts intact.
-set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES COMPILE_DEFINITIONS NDEBUG)
+# -Wno-unused-but-set-variable: several quickjs.c variables are only read
+# inside assert(), which NDEBUG compiles away.
+set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES
+    COMPILE_DEFINITIONS NDEBUG
+    COMPILE_OPTIONS "-Wno-unused-but-set-variable")
 
 # ── Board and version metadata ──────────────────────────────────────
 execute_process(
