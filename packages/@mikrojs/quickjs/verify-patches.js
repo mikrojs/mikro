@@ -9,7 +9,9 @@
  * makes @mikrojs/native fail to compile in every consumer. Run after
  * apply-patches.js and before publishing.
  */
-import {readdirSync, readFileSync} from 'node:fs'
+import {execFileSync} from 'node:child_process'
+import {copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync} from 'node:fs'
+import {tmpdir} from 'node:os'
 import {dirname, join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 
@@ -50,4 +52,47 @@ if (missing.length) {
   process.exit(1)
 }
 
-console.log(`verify-patches: OK — ${wanted.size} patched symbol(s) present in quickjs.h`)
+// The symbol grep only sees patches that add JS_EXTERN declarations; a
+// behavior-only patch (e.g. 0003, which changes GC internals) would be
+// invisible to it. Prove every patch is applied by reverse-applying the
+// whole series, in reverse order, on a scratch copy of the patched files.
+// Reversing in order handles stacked patches (a later patch may rewrite
+// code an earlier one added), which per-patch reverse *checks* cannot.
+const patchFiles = readdirSync(patchesDir)
+  .filter((name) => name.endsWith('.patch'))
+  .sort()
+const touched = new Set()
+for (const f of patchFiles) {
+  for (const line of readFileSync(join(patchesDir, f), 'utf8').split('\n')) {
+    const m = line.match(/^--- a\/(.+)$/)
+    if (m) touched.add(m[1])
+  }
+}
+const scratch = mkdtempSync(join(tmpdir(), 'verify-patches-'))
+try {
+  for (const rel of touched) {
+    mkdirSync(dirname(join(scratch, rel)), {recursive: true})
+    copyFileSync(join(__dirname, 'deps', 'quickjs', rel), join(scratch, rel))
+  }
+  for (const f of [...patchFiles].reverse()) {
+    try {
+      execFileSync('git', ['apply', '--reverse', join(patchesDir, f)], {
+        cwd: scratch,
+        stdio: 'pipe',
+      })
+    } catch {
+      console.error(
+        `verify-patches: patch ${f} is not applied in the packed sources.\n` +
+          'Run `node packages/@mikrojs/quickjs/apply-patches.js` before publishing.',
+      )
+      process.exit(1)
+    }
+  }
+} finally {
+  rmSync(scratch, {recursive: true, force: true})
+}
+
+console.log(
+  `verify-patches: OK — ${wanted.size} patched symbol(s) present, ` +
+    `${patchFiles.length} patch(es) verified applied`,
+)

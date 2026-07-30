@@ -171,6 +171,71 @@ TEST_CASE("Cycle GC fires before a mem_limit below the QuickJS default threshold
     MIK_FreeRuntime(rt);
 }
 
+TEST_CASE("Cycle GC keeps firing when the threshold re-arm would exceed mem_limit" *
+          doctest::test_suite("oom")) {
+    /* After every pass QuickJS re-arms the GC threshold to 1.5x the live
+     * size with no upper bound. With live data at ~3/4 of mem_limit, the
+     * first mid-job GC would re-arm past the limit, and the rest of that
+     * same job then allocates cyclic garbage straight into the hard limit:
+     * the per-job re-clamp in mik__execute_jobs never runs inside a job.
+     * This pins the in-engine cap (quickjs patch 0003): the ballast holds
+     * live size at ~3/4 of the limit, then one synchronous eval leaks
+     * ~480 KB of cycles that only survive if the collector keeps firing.
+     * Unlike the storm test above, nothing here yields between leaks, so
+     * the between-jobs clamp cannot mask a missing cap. */
+    size_t base_size = 0;
+    {
+        MIKRunOptions probe_options;
+        MIK_DefaultOptions(&probe_options);
+        MIKRuntime* probe = MIK_NewRuntimeOptions(&probe_options);
+        REQUIRE(probe != nullptr);
+        JSMemoryUsage usage;
+        JS_ComputeMemoryUsage(JS_GetRuntime(MIK_GetJSContext(probe)), &usage);
+        base_size = (size_t)usage.malloc_size;
+        MIK_FreeRuntime(probe);
+    }
+
+    MIKRunOptions options;
+    MIK_DefaultOptions(&options);
+    options.mem_limit = (int)(base_size + 200 * 1024);
+    MIKRuntime* rt = MIK_NewRuntimeOptions(&options);
+    REQUIRE(rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    OOMRecorder recorder;
+    MIK_SetOOMHandler(rt, record_oom, &recorder);
+
+    /* Ballast ~140 KB over base puts live size around 3/4 of the limit:
+     * an uncapped re-arm (1.5x live) lands above the limit for any base
+     * size, while the cap (limit - limit/8) stays above live so the
+     * collector still has room to operate. All in ONE eval. */
+    const char* src =
+        "globalThis.live = Array.from({length: 140}, () => new ArrayBuffer(1024));\n"
+        "for (let i = 0; i < 400; i++) {\n"
+        "  const a = { buf: new ArrayBuffer(1024) };\n"
+        "  const b = { a };\n"
+        "  a.b = b;\n"
+        "}\n"
+        "globalThis.leakDone = true;\n";
+    JSValue result = JS_Eval(ctx, src, strlen(src), "main.js", JS_EVAL_TYPE_GLOBAL);
+    CHECK_MESSAGE(!JS_IsException(result), "Expected the leaking job to finish without OOM");
+    JS_FreeValue(ctx, result);
+    if (JS_HasException(ctx)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    }
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue done = JS_GetPropertyStr(ctx, global, "leakDone");
+    CHECK_MESSAGE(JS_ToBool(ctx, done) == 1,
+                  "Expected cyclic garbage to be collected before the memory limit");
+    JS_FreeValue(ctx, done);
+    JS_FreeValue(ctx, global);
+    CHECK_MESSAGE(recorder.events.empty(), "Expected no OOM events");
+    CHECK_MESSAGE(!MIK_ConsumeOOMFlag(rt), "Expected OOM flag to be clear");
+
+    MIK_FreeRuntime(rt);
+}
+
 TEST_CASE("Cycle GC keeps firing within a single long job storm" * doctest::test_suite("oom")) {
     /* QuickJS raises the GC threshold to 1.5x live size after every GC
      * pass. With live data >= ~2/3 of mem_limit (the norm on esp32c3),

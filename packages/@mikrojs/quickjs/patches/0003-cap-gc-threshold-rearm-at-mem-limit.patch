@@ -1,0 +1,18 @@
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -1598,6 +1598,15 @@
+         JS_RunGC(rt);
+         rt->malloc_gc_threshold = rt->malloc_state.malloc_size +
+             (rt->malloc_state.malloc_size >> 1);
++        /* mikrojs patch: never re-arm the threshold above the memory limit,
++           else a single long job whose live size exceeds ~2/3 of the limit
++           accumulates collectible garbage straight into OOM. */
++        if (rt->malloc_state.malloc_limit &&
++            rt->malloc_gc_threshold >
++                rt->malloc_state.malloc_limit - (rt->malloc_state.malloc_limit >> 3)) {
++            rt->malloc_gc_threshold =
++                rt->malloc_state.malloc_limit - (rt->malloc_state.malloc_limit >> 3);
++        }
+     }
+ }
+ 
