@@ -27,7 +27,7 @@ These options are bundled into the deployed app and read by the firmware at boot
 | `stackSize`       | `number` (bytes)    | firmware default                 | QuickJS C stack size                             |
 | `memReserved`     | `number` (bytes)    | `65536` (64 KB)                  | Heap reserved for native subsystems              |
 | `wifi.country`    | `WifiCountryCode`   | none                             | WiFi regulatory country code                     |
-| `wifi.hostname`   | `string`            | `mikrojs-<id>`                   | DHCP hostname advertised by the STA interface    |
+| `wifi.hostname`   | `string`            | device name, else `mikrojs-<id>` | DHCP hostname advertised by the STA interface    |
 | `logFile`         | `true \| object`    | off                              | Enable on-device file logging                    |
 | `logFile.dir`     | `string`            | `'/appfs/logs'`                  | Directory the log file lives in                  |
 | `logFile.maxSize` | `number \| string`  | `'64k'`                          | Rotate when file exceeds this size               |
@@ -69,7 +69,11 @@ Two-letter [ISO 3166-1](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) countr
 
 ### `wifi.hostname`
 
-DHCP hostname advertised by the STA interface. This is what your router shows in its client list. When unset, defaults to `mikrojs-<device-id>` (e.g. `mikrojs-abcdef0123`), where the device ID is a base32-encoded MAC. Must conform to RFC 1123: letters, digits and hyphens only, must not start or end with a hyphen, max 63 characters. Takes effect on the next DHCP lease.
+DHCP hostname advertised by the STA interface. This is what your router shows in its client list. Must conform to RFC 1123: letters, digits and hyphens only, must not start or end with a hyphen, max 63 characters.
+
+When unset, the device's name (set with `mikro name`) is used, shaped into a valid hostname: lowercased, with `.` and `_` replaced by hyphens (e.g. `Living_Room.Sensor` becomes `living-room-sensor`). An unnamed device falls back to `mikrojs-<device-id>` (e.g. `mikrojs-abcdef0123`), where the device ID is a base32-encoded MAC.
+
+Takes effect on the next DHCP lease. A name change applies after the WiFi stack is next brought up, typically on the next restart.
 
 ### `logFile`
 
