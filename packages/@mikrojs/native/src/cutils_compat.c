@@ -9,6 +9,10 @@ int mik__dbuf_put(DynBuf *s, const void *data, size_t len) {
     return dbuf_put(s, data, len);
 }
 
+int mik__dbuf_claim(DynBuf *s, size_t len) {
+    return dbuf_claim(s, len);
+}
+
 int mik__dbuf_putc(DynBuf *s, uint8_t val) {
     return dbuf_putc(s, val);
 }
