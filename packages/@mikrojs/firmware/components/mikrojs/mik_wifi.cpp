@@ -253,8 +253,38 @@ static void mik__wifi_event_handler(void* arg, esp_event_base_t event_base, int3
     }
 }
 
+/* Shape the device's stored name into an RFC 1123 hostname label: extract the
+ * name from the `[rev, name]` JSON pair, lowercase it, map anything outside
+ * [a-z0-9] to `-`, collapse runs, trim hyphens at both ends, cap at 63 chars.
+ * Returns false when no usable label comes out. */
+static bool mik__wifi_hostname_from_device_name(char* out, size_t out_size) {
+    const MIKPlatform* platform = MIK_GetPlatform();
+    if (!platform->get_device_name) return false;
+    const char* pair = platform->get_device_name();
+    if (!pair) return false;
+    const char* p = strchr(pair, '"');
+    if (!p) return false;
+    size_t n = 0;
+    for (p++; *p != '\0' && *p != '"'; p++) {
+        /* CLI-validated names contain no escapes; a backslash means this pair
+         * came from somewhere else, so don't guess at decoding it. */
+        if (*p == '\\') return false;
+        char c = *p;
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))) c = '-';
+        if (c == '-' && (n == 0 || out[n - 1] == '-')) continue;
+        if (n >= 63 || n + 1 >= out_size) break;
+        out[n++] = c;
+    }
+    while (n > 0 && out[n - 1] == '-') n--;
+    if (n == 0) return false;
+    out[n] = '\0';
+    return true;
+}
+
 /* Pick the DHCP hostname for the STA netif: configured `wifi.hostname` from
- * mikro.config.json takes priority; otherwise default to `mikrojs-<device-id>`.
+ * mikro.config.json takes priority, then the device's stored name (shaped into
+ * a valid hostname label); otherwise default to `mikrojs-<device-id>`.
  * Returns true if a hostname was applied. */
 static bool mik__wifi_apply_hostname(JSContext* ctx) {
     if (!s_sta_netif) return false;
@@ -265,6 +295,9 @@ static bool mik__wifi_apply_hostname(JSContext* ctx) {
         if (mik_rt && mik_rt->config.wifi_hostname[0] != '\0') {
             hostname = mik_rt->config.wifi_hostname;
         }
+    }
+    if (!hostname && mik__wifi_hostname_from_device_name(buf, sizeof(buf))) {
+        hostname = buf;
     }
     if (!hostname) {
         const char* dev_id = MIK_GetPlatform()->get_device_id();

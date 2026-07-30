@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mikrojs.h"
+#include "mikrojs/platform.h"
 #include "private.h"
 #include "quickjs.h"
 #include "unity.h"
@@ -421,6 +422,46 @@ TEST_CASE("Wifi hostname reflects configured wifi.hostname", "[wifi]") {
     JSValue hnVal = JS_GetPropertyStr(ctx, global, "__hostname");
     const char* hn = JS_ToCString(ctx, hnVal);
     TEST_ASSERT_EQUAL_STRING("test-device", hn);
+    JS_FreeCString(ctx, hn);
+    JS_FreeValue(ctx, hnVal);
+    JS_FreeValue(ctx, global);
+    teardown();
+}
+
+TEST_CASE("Wifi hostname falls back to the device name", "[wifi]") {
+    /* No wifi.hostname configured, but a stored device name. The name pair is
+     * NVS-backed, so save and restore whatever the device really has. */
+    const MIKPlatform* platform = MIK_GetPlatform();
+    char saved[256] = {0};
+    const char* prev = platform->get_device_name();
+    bool had_name = prev != nullptr;
+    if (had_name) {
+        snprintf(saved, sizeof(saved), "%s", prev);
+    }
+    platform->set_device_name("[1,\"Living_Room.Sensor\"]");
+
+    esp_wifi_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(100));
+    rt = MIK_NewRuntime();
+    ctx = MIK_GetJSContext(rt);
+    MIKConfig cfg;
+    MIK_DefaultConfig(&cfg);
+    snprintf(cfg.wifi_country, sizeof(cfg.wifi_country), "US");
+    MIK_SetConfig(rt, &cfg);
+
+    JSValue ret = eval_module(R"(
+        import { Wifi } from "native:mikro/wifi";
+        globalThis.__hostname = new Wifi().getHostname();
+    )");
+    /* Restore before any assertion: a failing TEST_ASSERT longjmps out of the
+     * test body, and the hostname was already applied during the eval above. */
+    platform->set_device_name(had_name ? saved : nullptr);
+    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue hnVal = JS_GetPropertyStr(ctx, global, "__hostname");
+    const char* hn = JS_ToCString(ctx, hnVal);
+    TEST_ASSERT_EQUAL_STRING("living-room-sensor", hn);
     JS_FreeCString(ctx, hn);
     JS_FreeValue(ctx, hnVal);
     JS_FreeValue(ctx, global);
