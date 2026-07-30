@@ -573,3 +573,159 @@ TEST_CASE("Bytecode roundtrip: compile then load" * doctest::test_suite("modules
     JS_FreeContext(ctx);
     JS_FreeRuntime(rt);
 }
+
+/* Regression coverage for quickjs patch 0002 (free m->func_obj once a
+ * module reaches EVALUATED): the async completion paths and the cached
+ * eval-exception path each release the init function through a different
+ * hunk, and none of them were exercised anywhere in the repo before. */
+
+/* Multiple fixed rounds rather than until-settled: the entry promise can
+ * fulfill before a dynamic import() chain it kicked off has pumped. Extra
+ * rounds are no-ops once the queue is empty. */
+static void drain_jobs(JSContext* ctx) {
+    for (int i = 0; i < 10; i++) {
+        mik__execute_jobs(ctx);
+    }
+}
+
+TEST_CASE("TLA module evaluates once and stays importable after completion" *
+          doctest::test_suite("modules")) {
+    const auto mik_rt = MIK_NewRuntime();
+    const auto ctx = MIK_GetJSContext(mik_rt);
+
+    const char* dep =
+        "globalThis.__tlaRuns = (globalThis.__tlaRuns || 0) + 1;\n"
+        "export const v = await Promise.resolve(41);\n";
+    MIK_RegisterVirtualModule(mik_rt, "/test/tla.js", dep, strlen(dep));
+
+    const char* entry1 = "import {v} from '/test/tla.js'; globalThis.__v1 = v;";
+    JSValue p1 = MIK_EvalModuleContent(ctx, "/test/main1.js", entry1, strlen(entry1));
+    CHECK_FALSE(JS_IsException(p1));
+    drain_jobs(ctx);
+    CHECK_EQ(JS_PromiseState(ctx, p1), JS_PROMISE_FULFILLED);
+    JS_FreeValue(ctx, p1);
+
+    /* Second entry statically imports the already-EVALUATED TLA module:
+     * bindings must resolve from the export var_refs, with the init
+     * function long gone and the body not re-run. */
+    const char* entry2 = "import {v} from '/test/tla.js'; globalThis.__v2 = v + 1;";
+    JSValue p2 = MIK_EvalModuleContent(ctx, "/test/main2.js", entry2, strlen(entry2));
+    CHECK_FALSE(JS_IsException(p2));
+    drain_jobs(ctx);
+    CHECK_EQ(JS_PromiseState(ctx, p2), JS_PROMISE_FULFILLED);
+    JS_FreeValue(ctx, p2);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    int32_t v1 = 0, v2 = 0, runs = 0;
+    JSValue jv1 = JS_GetPropertyStr(ctx, global, "__v1");
+    JSValue jv2 = JS_GetPropertyStr(ctx, global, "__v2");
+    JSValue jruns = JS_GetPropertyStr(ctx, global, "__tlaRuns");
+    JS_ToInt32(ctx, &v1, jv1);
+    JS_ToInt32(ctx, &v2, jv2);
+    JS_ToInt32(ctx, &runs, jruns);
+    CHECK_EQ(v1, 41);
+    CHECK_EQ(v2, 42);
+    CHECK_MESSAGE(runs == 1, "TLA module body must run exactly once");
+    JS_FreeValue(ctx, jv1);
+    JS_FreeValue(ctx, jv2);
+    JS_FreeValue(ctx, jruns);
+    JS_FreeValue(ctx, global);
+
+    MIK_FreeRuntime(mik_rt);
+}
+
+TEST_CASE("Rejected TLA module reports the cached exception on re-import" *
+          doctest::test_suite("modules")) {
+    const auto mik_rt = MIK_NewRuntime();
+    const auto ctx = MIK_GetJSContext(mik_rt);
+
+    const char* dep =
+        "globalThis.__badRuns = (globalThis.__badRuns || 0) + 1;\n"
+        "await Promise.reject(new Error('tla-nope'));\n";
+    MIK_RegisterVirtualModule(mik_rt, "/test/tla-bad.js", dep, strlen(dep));
+
+    /* Dynamic import so the rejection is handled in JS and the test can
+     * read the message instead of fighting the unhandled-rejection hook. */
+    const char* entry1 =
+        "import('/test/tla-bad.js').catch(e => { globalThis.__e1 = e.message; });";
+    JSValue p1 = MIK_EvalModuleContent(ctx, "/test/main1.js", entry1, strlen(entry1));
+    CHECK_FALSE(JS_IsException(p1));
+    drain_jobs(ctx);
+    JS_FreeValue(ctx, p1);
+
+    const char* entry2 =
+        "import('/test/tla-bad.js').catch(e => { globalThis.__e2 = e.message; });";
+    JSValue p2 = MIK_EvalModuleContent(ctx, "/test/main2.js", entry2, strlen(entry2));
+    CHECK_FALSE(JS_IsException(p2));
+    drain_jobs(ctx);
+    JS_FreeValue(ctx, p2);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue e1 = JS_GetPropertyStr(ctx, global, "__e1");
+    JSValue e2 = JS_GetPropertyStr(ctx, global, "__e2");
+    const char* s1 = JS_ToCString(ctx, e1);
+    const char* s2 = JS_ToCString(ctx, e2);
+    const bool s1_ok_tla_nope = s1 != nullptr && strcmp(s1, "tla-nope") == 0;
+    CHECK_MESSAGE(s1_ok_tla_nope, "First import must reject with the TLA error");
+    const bool s2_ok_tla_nope = s2 != nullptr && strcmp(s2, "tla-nope") == 0;
+    CHECK_MESSAGE(s2_ok_tla_nope, "Re-import must reject with the cached exception");
+    int32_t runs = 0;
+    JSValue jruns = JS_GetPropertyStr(ctx, global, "__badRuns");
+    JS_ToInt32(ctx, &runs, jruns);
+    CHECK_MESSAGE(runs == 1, "Failed TLA module body must not re-run");
+    JS_FreeCString(ctx, s1);
+    JS_FreeCString(ctx, s2);
+    JS_FreeValue(ctx, e1);
+    JS_FreeValue(ctx, e2);
+    JS_FreeValue(ctx, jruns);
+    JS_FreeValue(ctx, global);
+
+    MIK_FreeRuntime(mik_rt);
+}
+
+TEST_CASE("Module that throws at top level caches the error across imports" *
+          doctest::test_suite("modules")) {
+    const auto mik_rt = MIK_NewRuntime();
+    const auto ctx = MIK_GetJSContext(mik_rt);
+
+    const char* dep =
+        "globalThis.__boomRuns = (globalThis.__boomRuns || 0) + 1;\n"
+        "throw new Error('boom');\n";
+    MIK_RegisterVirtualModule(mik_rt, "/test/boom.js", dep, strlen(dep));
+
+    const char* entry1 =
+        "import('/test/boom.js').catch(e => { globalThis.__e1 = e.message; });";
+    JSValue p1 = MIK_EvalModuleContent(ctx, "/test/main1.js", entry1, strlen(entry1));
+    CHECK_FALSE(JS_IsException(p1));
+    drain_jobs(ctx);
+    JS_FreeValue(ctx, p1);
+
+    const char* entry2 =
+        "import('/test/boom.js').catch(e => { globalThis.__e2 = e.message; });";
+    JSValue p2 = MIK_EvalModuleContent(ctx, "/test/main2.js", entry2, strlen(entry2));
+    CHECK_FALSE(JS_IsException(p2));
+    drain_jobs(ctx);
+    JS_FreeValue(ctx, p2);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue e1 = JS_GetPropertyStr(ctx, global, "__e1");
+    JSValue e2 = JS_GetPropertyStr(ctx, global, "__e2");
+    const char* s1 = JS_ToCString(ctx, e1);
+    const char* s2 = JS_ToCString(ctx, e2);
+    const bool s1_ok_boom = s1 != nullptr && strcmp(s1, "boom") == 0;
+    CHECK_MESSAGE(s1_ok_boom, "First import must reject with the thrown error");
+    const bool s2_ok_boom = s2 != nullptr && strcmp(s2, "boom") == 0;
+    CHECK_MESSAGE(s2_ok_boom, "Re-import must reject with the cached error, not re-run the body");
+    int32_t runs = 0;
+    JSValue jruns = JS_GetPropertyStr(ctx, global, "__boomRuns");
+    JS_ToInt32(ctx, &runs, jruns);
+    CHECK_MESSAGE(runs == 1, "Throwing module body must run exactly once");
+    JS_FreeCString(ctx, s1);
+    JS_FreeCString(ctx, s2);
+    JS_FreeValue(ctx, e1);
+    JS_FreeValue(ctx, e2);
+    JS_FreeValue(ctx, jruns);
+    JS_FreeValue(ctx, global);
+
+    MIK_FreeRuntime(mik_rt);
+}
