@@ -1,0 +1,48 @@
+diff --git a/quickjs.c b/quickjs.c
+index 8155888..ffe0951 100644
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -31238,9 +31238,19 @@ done:
+     goto done;
+ }
+ 
++/* mikrojs patch: once a module reaches EVALUATED its init function can
++   never run again; drop the bytecode so top-level-only code is reclaimed.
++   Live closures and export binding var_refs hold their own references. */
++static void js_module_release_func(JSContext *ctx, JSModuleDef *m)
++{
++    JS_FreeValue(ctx, m->func_obj);
++    m->func_obj = JS_UNDEFINED;
++}
++
+ static void js_set_module_evaluated(JSContext *ctx, JSModuleDef *m)
+ {
+     m->status = JS_MODULE_STATUS_EVALUATED;
++    js_module_release_func(ctx, m);
+     if (!JS_IsUndefined(m->promise)) {
+         JSValue ret_val;
+         assert(m->cycle_root == m);
+@@ -31335,6 +31345,7 @@ static JSValue js_async_module_execution_rejected(JSContext *ctx, JSValueConst t
+     module->eval_has_exception = true;
+     module->eval_exception = js_dup(error);
+     module->status = JS_MODULE_STATUS_EVALUATED;
++    js_module_release_func(ctx, module);
+ 
+     for(i = 0; i < module->async_parent_modules_count; i++) {
+         JSModuleDef *m = module->async_parent_modules[i];
+@@ -31564,6 +31575,7 @@ static int js_inner_module_evaluation(JSContext *ctx, JSModuleDef *m,
+             *pstack_top = m1->stack_prev;
+             if (!m1->async_evaluation) {
+                 m1->status = JS_MODULE_STATUS_EVALUATED;
++                js_module_release_func(ctx, m1);
+             } else {
+                 m1->status = JS_MODULE_STATUS_EVALUATING_ASYNC;
+             }
+@@ -31604,6 +31616,7 @@ static JSValue js_evaluate_module(JSContext *ctx, JSModuleDef *m)
+             m1 = stack_top;
+             assert(m1->status == JS_MODULE_STATUS_EVALUATING);
+             m1->status = JS_MODULE_STATUS_EVALUATED;
++            js_module_release_func(ctx, m1);
+             m1->eval_has_exception = true;
+             m1->eval_exception = js_dup(result);
+             m1->cycle_root = m; /* spec bug: should be present */
