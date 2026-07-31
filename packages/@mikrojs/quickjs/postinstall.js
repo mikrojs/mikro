@@ -8,7 +8,8 @@
  * Skips gracefully if cc or the submodule is not available.
  */
 import {execFileSync} from 'node:child_process'
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs'
+import {createHash} from 'node:crypto'
+import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from 'node:fs'
 import {dirname, join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 
@@ -19,12 +20,34 @@ const binDir = join(__dirname, 'bin')
 const qjsDir = join(__dirname, 'deps', 'quickjs')
 const repoRoot = join(__dirname, '..', '..', '..')
 
-// Always sync submodule to the pinned commit
+// Sync the submodule to the commit the superproject records, but only when
+// it actually moved: an unconditional sync would re-checkout every run and
+// wipe the applied patch series (and any transient local experiments).
+// --force because the applied patches count as local changes and would
+// otherwise block the checkout when a branch switch moves the pinned
+// commit; the patches are reapplied below, so discarding them is safe.
+const submodulePath = 'packages/@mikrojs/quickjs/deps/quickjs'
+let recordedCommit = ''
+let checkedOutCommit = ''
 try {
-  execFileSync('git', ['submodule', 'update', '--init', 'packages/@mikrojs/quickjs/deps/quickjs'], {
+  recordedCommit = execFileSync('git', ['ls-tree', '--object-only', 'HEAD', submodulePath], {
     cwd: repoRoot,
-    stdio: 'inherit',
-  })
+    encoding: 'utf8',
+  }).trim()
+  checkedOutCommit = execFileSync('git', ['-C', qjsDir, 'rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+  }).trim()
+} catch {
+  // Not a git repo (published package) or submodule missing; fall through to
+  // the sync attempt, whose own error handling covers the missing-tree case.
+}
+try {
+  if (!recordedCommit || recordedCommit !== checkedOutCommit) {
+    execFileSync('git', ['submodule', 'update', '--init', '--force', submodulePath], {
+      cwd: repoRoot,
+      stdio: 'inherit',
+    })
+  }
 } catch {
   if (!existsSync(join(qjsDir, 'quickjs.c'))) {
     console.error(
@@ -51,6 +74,24 @@ try {
   // Not a git repo (e.g. published package), skip commit tracking
 }
 
+// Stamp = submodule commit + patch-set hash. The commit alone missed patch
+// edits, and a qjsc built from a different engine silently emits bytecode
+// in the wrong format (firmware builtins then fail with "invalid version").
+const patchesDir = join(__dirname, 'patches')
+function patchSetHash() {
+  const h = createHash('sha256')
+  if (existsSync(patchesDir)) {
+    for (const f of readdirSync(patchesDir)
+      .filter((n) => n.endsWith('.patch'))
+      .sort()) {
+      h.update(f)
+      h.update(readFileSync(join(patchesDir, f)))
+    }
+  }
+  return h.digest('hex').slice(0, 12)
+}
+const currentStamp = currentCommit ? `${currentCommit}:${patchSetHash()}` : ''
+
 // On Windows the C compiler appends .exe automatically.
 const exeSuffix = process.platform === 'win32' ? '.exe' : ''
 const qjscPath = join(binDir, `qjsc${exeSuffix}`)
@@ -58,12 +99,12 @@ const qjscPath = join(binDir, `qjsc${exeSuffix}`)
 // Skip rebuild if qjsc exists and source hasn't changed
 const stampFile = join(binDir, '.commit')
 if (existsSync(qjscPath)) {
-  if (!currentCommit) {
+  if (!currentStamp) {
     // No git info (npm install): qjsc exists, sources are static, skip rebuild
     process.exit(0)
   }
-  const builtCommit = existsSync(stampFile) ? readFileSync(stampFile, 'utf8').trim() : ''
-  if (builtCommit === currentCommit) {
+  const builtStamp = existsSync(stampFile) ? readFileSync(stampFile, 'utf8').trim() : ''
+  if (builtStamp === currentStamp) {
     process.exit(0)
   }
 }
@@ -93,7 +134,7 @@ execFileSync('cc', ['-O2', '-D_GNU_SOURCE', '-I', qjsDir, '-o', output, ...sourc
   stdio: 'inherit',
 })
 
-if (currentCommit) {
-  writeFileSync(stampFile, currentCommit)
+if (currentStamp) {
+  writeFileSync(stampFile, currentStamp)
 }
 console.log('@mikrojs/quickjs: qjsc built successfully')
