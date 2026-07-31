@@ -7,6 +7,7 @@
 #     - QUICKJS_SOURCES       — list of source files
 #     - QUICKJS_INCLUDE_DIR   — include directory
 #     - QUICKJS_COMPILE_OPTIONS — compiler flags for QuickJS sources
+#     - QUICKJS_COMPILE_DEFINITIONS — preprocessor defines for QuickJS sources
 #   Both modes:
 #     - QJSC_EXECUTABLE       — path to the qjsc bytecode compiler
 #
@@ -86,6 +87,14 @@ else()
     set(QUICKJS_COMPILE_OPTIONS -Wno-implicit-fallthrough -Wno-sign-compare -fno-strict-aliasing)
 endif()
 
+# Arena tuning (definitions for QuickJS sources; patch 0004 makes them
+# overridable). Upstream's small-block arena serves allocations from 4 KB
+# pages across 31 size classes; on an ESP32-C6 that retained ~35 KB of
+# partially-used pages after big module load/unload cycles, starving TLS
+# handshakes. 1 KB pages with pooling capped at 128-byte blocks measured
+# baseline retention (2.2 KB vs 39.3 KB) with the arena's speed kept.
+set(QUICKJS_COMPILE_DEFINITIONS JS_ARENA_SIZE=1024 JS_ARENA_MAX_SMALL_SIZE=128)
+
 # qjsc executable path (built by postinstall)
 if(WIN32)
     set(QJSC_EXECUTABLE "${_QUICKJS_CMAKE_DIR}/bin/qjsc.exe")
@@ -101,6 +110,7 @@ if(NOT ESP_PLATFORM)
     set_target_properties(quickjs PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_include_directories(quickjs SYSTEM PUBLIC "${QUICKJS_INCLUDE_DIR}")
     target_compile_options(quickjs PRIVATE ${QUICKJS_COMPILE_OPTIONS})
+    target_compile_definitions(quickjs PRIVATE ${QUICKJS_COMPILE_DEFINITIONS})
 
     # cutils.h has inline functions with C-style void* implicit conversions that are
     # errors in C++. -fpermissive (GCC) downgrades them to warnings, then SYSTEM suppresses.

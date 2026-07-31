@@ -1,0 +1,19 @@
+diff --git a/quickjs.c b/quickjs.c
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -264,7 +264,13 @@
+    object. */
+
+ #define JS_ARENA_ALIGN             8
+-#define JS_ARENA_SIZE              4096
++/* mikrojs patch: let the build override the arena tunables so small-heap
++ * targets can shrink the pool granularity (values set in quickjs.cmake). */
++#ifndef JS_ARENA_SIZE
++#define JS_ARENA_SIZE              4096
++#endif
+ #define JS_ARENA_BLOCK_SIZE_COUNT  31
+-#define JS_ARENA_MAX_SMALL_SIZE    512
++#ifndef JS_ARENA_MAX_SMALL_SIZE
++#define JS_ARENA_MAX_SMALL_SIZE    512
++#endif
+ #define JS_ARENA_FREE_NIL          0xffff

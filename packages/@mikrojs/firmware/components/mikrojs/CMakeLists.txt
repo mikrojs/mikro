@@ -125,7 +125,7 @@ target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-implicit-fallthrough -Wno-m
 # -Wno-unused-but-set-variable: several quickjs.c variables are only read
 # inside assert(), which NDEBUG compiles away.
 set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES
-    COMPILE_DEFINITIONS NDEBUG
+    COMPILE_DEFINITIONS "NDEBUG;${QUICKJS_COMPILE_DEFINITIONS}"
     COMPILE_OPTIONS "-Wno-unused-but-set-variable")
 
 # ── Board and version metadata ──────────────────────────────────────
