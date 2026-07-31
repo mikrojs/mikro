@@ -729,3 +729,73 @@ TEST_CASE("Module that throws at top level caches the error across imports" *
 
     MIK_FreeRuntime(mik_rt);
 }
+
+TEST_CASE("Builtin bytecode loads zero-copy via the frozen atom table" *
+          doctest::test_suite("modules")) {
+    /* Every failure mode in the frozen-atom pipeline degrades silently to
+     * the classic copying loader (empty table, version mismatch, INPLACE
+     * fallback): builds stay green and only the memory win disappears.
+     * This pins the path end-to-end: importing a builtin must add real
+     * functions while adding (almost) no heap-resident bytecode, which is
+     * only true when the instruction streams stay in rodata. mikro/schema
+     * carries well over 1 KB of opcodes, so a silent fallback trips the
+     * threshold with a wide margin. */
+    MIKRuntime* mik_rt = MIK_NewRuntime();
+    REQUIRE(mik_rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(mik_rt);
+    JSRuntime* rt = JS_GetRuntime(ctx);
+
+    JSMemoryUsage before;
+    JS_ComputeMemoryUsage(rt, &before);
+
+    const char* code = "import 'mikro/schema';";
+    JSValue ret = MIK_EvalModuleContent(ctx, "/test/main.js", code, strlen(code));
+    CHECK_MESSAGE(!JS_IsException(ret), "builtin import should not throw");
+    JS_FreeValue(ctx, ret);
+    drain_jobs(ctx);
+
+    JSMemoryUsage after;
+    JS_ComputeMemoryUsage(rt, &after);
+
+    CHECK_MESSAGE(after.js_func_count > before.js_func_count,
+                  "importing the builtin must actually load functions");
+    const int64_t code_growth = after.js_func_code_size - before.js_func_code_size;
+    CHECK_MESSAGE(code_growth < 256,
+                  "builtin instruction streams must stay in rodata (zero-copy), got "
+                      << code_growth << " bytes of heap bytecode");
+
+    MIK_FreeRuntime(mik_rt);
+}
+
+TEST_CASE("Device bytecode-version probe reports classic despite the frozen table" *
+          doctest::test_suite("modules")) {
+    /* mikro/sys reports the device's app-bytecode version to the OTA
+     * registry by serializing a trivial value and reading byte 0; packs
+     * built by the CLI are classic-format, so a frozen-format answer makes
+     * the registry reject every push. A blob with no frozen-atom
+     * references and no atom table must stay classic (26); anything that
+     * carries atoms from a frozen runtime must keep the frozen header. */
+    MIKRuntime* mik_rt = MIK_NewRuntime();
+    REQUIRE(mik_rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(mik_rt);
+
+    size_t len = 0;
+    uint8_t* buf = JS_WriteObject(ctx, &len, JS_NULL, JS_WRITE_OBJ_BYTECODE);
+    REQUIRE(buf != nullptr);
+    REQUIRE(len > 0);
+    CHECK_MESSAGE(buf[0] == 26, "trivial probe blob must be classic-format");
+    js_free(ctx, buf);
+
+    const char* code = "export function probe() { return 1; }";
+    JSValue compiled = JS_Eval(ctx, code, strlen(code), "/probe.js",
+                               JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    REQUIRE(!JS_IsException(compiled));
+    uint8_t* mod = JS_WriteObject(ctx, &len, compiled, JS_WRITE_OBJ_BYTECODE);
+    JS_FreeValue(ctx, compiled);
+    REQUIRE(mod != nullptr);
+    CHECK_MESSAGE(mod[0] == (26 | 0x40),
+                  "atom-carrying blobs from a frozen runtime must keep the frozen header");
+    js_free(ctx, mod);
+
+    MIK_FreeRuntime(mik_rt);
+}

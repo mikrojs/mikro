@@ -187,6 +187,9 @@ void mik__flush_unhandled_rejections(JSContext* ctx);
 /* Drop a promise from the pending-rejection queue without reporting it. */
 void mik__forget_rejection(JSContext* ctx, JSValue promise);
 JSModuleDef* mik__load_builtin(JSContext* ctx, const char* name);
+/* Preload the generated frozen atom table (must run right after
+ * JS_NewRuntime2, before any context/intrinsic creates atoms). */
+int mik__preload_frozen_atoms(JSRuntime* rt);
 int mik__load_file(JSContext* ctx, DynBuf* dbuf, const char* filename);
 void mik__resolve_fs_path(JSContext* ctx, const char* module_name, char* out, size_t out_size);
 int mik__resolve_fs_root(JSContext* ctx, const char* path, char* out, size_t out_size);

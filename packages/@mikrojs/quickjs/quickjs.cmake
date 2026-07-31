@@ -28,11 +28,15 @@ endif()
 get_filename_component(_QUICKJS_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 set(QUICKJS_INCLUDE_DIR "${_QUICKJS_CMAKE_DIR}/deps/quickjs")
 
-# Apply the mikrojs patch series before anything compiles QuickJS sources.
-# postinstall covers `pnpm install`, but a patch file added or edited after
-# install was previously a silent no-op: the tree built unpatched and the
-# full test suite ran against code the patch never touched. apply-patches.js
-# is stamp-guarded so this is cheap when nothing changed; the GLOB's
+# Sync the patched QuickJS tree AND the qjsc compiler before anything
+# compiles or generates bytecode. postinstall covers `pnpm install`, but a
+# patch file added or edited after install was previously a silent no-op:
+# the tree built unpatched and the full test suite ran against code the
+# patch never touched. Running postinstall (not just apply-patches) matters
+# because qjsc is compiled FROM the patched sources: a stale qjsc paired
+# with a fresh runtime emits bytecode the runtime rejects at import time
+# (frozen atom table mismatch) — a runtime failure born from a green build.
+# Both steps are stamp-guarded, so the no-change case is cheap; the GLOB's
 # CONFIGURE_DEPENDS reruns configure when the patch set changes, and
 # CMAKE_CONFIGURE_DEPENDS reruns it when patch contents change.
 #
@@ -45,11 +49,11 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     file(GLOB _QUICKJS_PATCHES CONFIGURE_DEPENDS "${_QUICKJS_CMAKE_DIR}/patches/*.patch")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_QUICKJS_PATCHES})
     execute_process(
-        COMMAND node "${_QUICKJS_CMAKE_DIR}/apply-patches.js"
+        COMMAND node "${_QUICKJS_CMAKE_DIR}/postinstall.js"
         RESULT_VARIABLE _QUICKJS_PATCH_RC
     )
     if(NOT _QUICKJS_PATCH_RC EQUAL 0)
-        message(FATAL_ERROR "quickjs.cmake: applying QuickJS patches failed (see output above)")
+        message(FATAL_ERROR "quickjs.cmake: syncing QuickJS patches/qjsc failed (see output above)")
     endif()
 endif()
 

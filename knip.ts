@@ -62,11 +62,17 @@ const config = {
       ignoreDependencies: ['@mikrojs/firmware'],
     },
     'packages/@mikrojs/native': {
-      // bundle-runtime.js + generate-symbol-map.js are invoked by CMake during
-      // the firmware build (see @mikrojs/firmware/components/mikrojs/CMakeLists.txt
-      // for the symbol-map invocation), not via JS imports — so knip can't
-      // see them and we declare them as entries explicitly.
-      entry: ['scripts/bundle-runtime.js', 'scripts/generate-symbol-map.js'],
+      // bundle-runtime.js + generate-symbol-map.js + extract-atoms.js are
+      // invoked by CMake during the firmware build (see
+      // @mikrojs/firmware/components/mikrojs/CMakeLists.txt for the
+      // symbol-map invocation and cmake/mikrojs_bytecode.cmake for
+      // extract-atoms), not via JS imports — so knip can't see them and we
+      // declare them as entries explicitly.
+      entry: [
+        'scripts/bundle-runtime.js',
+        'scripts/generate-symbol-map.js',
+        'scripts/extract-atoms.js',
+      ],
       ignore: ['runtime/**'],
       // node-addon-api, @mikrojs/quickjs: resolved by CMake/node-gyp, not by JS imports
       // terser, @swc/core: optional minifiers loaded dynamically in bundle-runtime.js

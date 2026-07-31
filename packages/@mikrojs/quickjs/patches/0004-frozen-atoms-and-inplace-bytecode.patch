@@ -1,0 +1,437 @@
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -279,6 +279,10 @@
+     uint32_t *atom_hash;
+     JSAtomStruct **atom_array;
+     int atom_free_index; /* 0 = none */
++    /* mikrojs patch: frozen atom table (JS_PreloadFrozenAtoms). Atoms below
++       frozen_atom_end serialize as final ids; hash is nonzero once loaded. */
++    uint32_t frozen_atom_end;
++    uint32_t frozen_atom_hash;
+ 
+     JSClassID js_class_id_alloc; /* counter for user defined classes */
+     int class_count;    /* size of class_array */
+@@ -790,7 +794,13 @@
+     uint8_t super_allowed : 1;
+     uint8_t arguments_allowed : 1;
+     uint8_t backtrace_barrier : 1; /* stop backtrace on this function */
+-    /* XXX: 5 bits available */
++    /* mikrojs patch: byte_code_buf points into the (ROM) input buffer of
++       JS_ReadObject and must not be freed or written */
++    uint8_t bc_in_rom : 1;
++    /* mikrojs patch: byte_code_buf is a separate heap allocation instead of
++       the tail of the function block (in-place read fallback) */
++    uint8_t bc_separate : 1;
++    /* XXX: 3 bits available */
+     uint8_t *byte_code_buf; /* (self pointer) */
+     int byte_code_len;
+     JSAtom func_name;
+@@ -2000,6 +2010,7 @@
+ 
+     if (JS_InitAtoms(rt))
+         goto fail;
++    rt->frozen_atom_end = JS_ATOM_END;
+ 
+     /* create the object, array and function classes */
+     if (init_class_range(rt, js_std_class_def, JS_CLASS_OBJECT,
+@@ -3271,6 +3282,62 @@
+     return __JS_NewAtom(rt, p, atom_type);
+ }
+ 
++/* mikrojs patch: intern a fixed list of atoms right after runtime creation
++ * so that blobs compiled against the same list (in a runtime that ran the
++ * same preload) can reference them by final id, with no relocation at load
++ * time. The returned mapping is validated between writer and reader via a
++ * hash over every dynamic atom's string and id, so any divergence in the
++ * runtime's pre-preload atom state rejects the blob instead of silently
++ * resolving atoms to the wrong strings. The references taken here are
++ * intentionally never released: frozen atoms live for the runtime's
++ * lifetime (JS_FreeRuntime frees all remaining atom structs wholesale).
++ * Names must be raw 8-bit strings. Returns 0 on success. */
++int JS_PreloadFrozenAtoms(JSRuntime *rt, const char *const *names,
++                          const uint32_t *lens, uint32_t count)
++{
++    uint32_t i, h, end;
++    JSAtom atom;
++
++    if (rt->frozen_atom_end != JS_ATOM_END || rt->frozen_atom_hash != 0)
++        return -1; /* already preloaded */
++    end = JS_ATOM_END;
++    for (i = 0; i < count; i++) {
++        atom = __JS_NewAtomInit(rt, names[i], (int)lens[i],
++                                JS_ATOM_TYPE_STRING);
++        if (atom == JS_ATOM_NULL)
++            return -1;
++        if (!__JS_AtomIsTaggedInt(atom) && atom + 1 > end)
++            end = atom + 1;
++    }
++    /* hash the entire dynamic atom range, not just the preloaded names:
++       atoms created before the preload (e.g. class init) also serialize
++       as final ids once the boundary is raised */
++    h = 5381;
++    for (i = JS_ATOM_END; i < end; i++) {
++        JSAtomStruct *p = rt->atom_array[i];
++        if (atom_is_free(p)) {
++            h = h * 33 ^ 0xfe;
++            continue;
++        }
++        h = h * 33 ^ p->atom_type;
++        if (p->is_wide_char) {
++            uint32_t j;
++            for (j = 0; j < p->len; j++) {
++                h = h * 33 ^ (str16(p)[j] & 0xff);
++                h = h * 33 ^ (str16(p)[j] >> 8);
++            }
++        } else {
++            uint32_t j;
++            for (j = 0; j < p->len; j++)
++                h = h * 33 ^ str8(p)[j];
++        }
++        h = h * 33 ^ 0xff;
++    }
++    rt->frozen_atom_end = end;
++    rt->frozen_atom_hash = h | 1; /* nonzero marks "loaded" */
++    return 0;
++}
++
+ // XXX: `str` must be raw 8-bit contents. No UTF-8 encoded strings
+ static JSAtom __JS_FindAtom(JSRuntime *rt, const char *str, size_t len,
+                             int atom_type)
+@@ -7153,7 +7220,7 @@
+     if (b->closure_var) {
+         js_func_size += b->closure_var_count * sizeof(*b->closure_var);
+     }
+-    if (b->byte_code_buf) {
++    if (b->byte_code_buf && !b->bc_in_rom) {
+         hp->js_func_code_size += b->byte_code_len;
+     }
+     memory_used_count++;
+@@ -36382,6 +36449,8 @@
+ 
+     if (b->byte_code_buf)
+         free_bytecode_atoms(rt, b->byte_code_buf, b->byte_code_len, true);
++    if (b->bc_separate)
++        js_free_rt(rt, b->byte_code_buf);
+ 
+     if (b->vardefs) {
+         for(i = 0; i < b->arg_count + b->var_count; i++) {
+@@ -37718,6 +37787,11 @@
+ } BCTagEnum;
+ 
+ #define BC_VERSION 26
++/* mikrojs patch: variant of BC_VERSION for blobs whose atom references
++   below the frozen boundary are final runtime atom ids (see
++   JS_PreloadFrozenAtoms). The header carries the boundary and the frozen
++   table hash so a mismatched runtime rejects the blob at load. */
++#define BC_VERSION_FROZEN (BC_VERSION | 0x40)
+ 
+ typedef struct BCWriterState {
+     JSContext *ctx;
+@@ -38454,8 +38528,16 @@
+ 
+     dbuf1 = s->dbuf;
+     js_dbuf_init(s->ctx, &s->dbuf);
+-    bc_put_u8(s, BC_VERSION);
+-    bc_put_u32(s, 0); // checksum, filled in after serialization
++    if (s->allow_bytecode && s->first_atom > JS_ATOM_END) {
++        /* mikrojs patch: frozen-atom blob; record boundary + table hash */
++        bc_put_u8(s, BC_VERSION_FROZEN);
++        bc_put_u32(s, 0); // checksum, filled in after serialization
++        bc_put_leb128(s, s->first_atom);
++        bc_put_u32(s, rt->frozen_atom_hash);
++    } else {
++        bc_put_u8(s, BC_VERSION);
++        bc_put_u32(s, 0); // checksum, filled in after serialization
++    }
+ 
+     bc_put_leb128(s, s->idx_to_atom_count);
+     for(i = 0; i < s->idx_to_atom_count; i++) {
+@@ -38508,7 +38590,9 @@
+     s->allow_debug = ((flags & JS_WRITE_OBJ_STRIP_DEBUG) == 0);
+     /* XXX: could use a different version when bytecode is included */
+     if (s->allow_bytecode)
+-        s->first_atom = JS_ATOM_END;
++        /* mikrojs patch: frozen atoms (< frozen_atom_end) serialize as
++           final ids; JS_ATOM_END when no frozen table is loaded */
++        s->first_atom = ctx->rt->frozen_atom_end;
+     else
+         s->first_atom = 1;
+     js_dbuf_init(ctx, &s->dbuf);
+@@ -38562,6 +38646,9 @@
+     bool allow_sab;
+     bool allow_bytecode;
+     bool allow_reference;
++    /* mikrojs patch: keep qualifying bytecode in the input buffer (which
++       must then outlive the runtime, e.g. flash rodata) */
++    bool inplace_bytecode;
+     /* object references */
+     JSObject **objects;
+     int objects_count;
+@@ -38802,6 +38889,37 @@
+     return val;
+ }
+ 
++/* mikrojs patch: true if every atom operand is already a final atom id
++   (tagged int or below first_atom), i.e. loading needs no relocation
++   writes and the instruction stream can stay in the (ROM) input buffer */
++static bool bc_bytecode_is_final(BCReaderState *s, const uint8_t *bc_buf,
++                                 uint32_t bc_len)
++{
++    uint32_t pos = 0;
++    int op, len;
++    uint32_t idx;
++
++    while (pos < bc_len) {
++        op = bc_buf[pos];
++        len = short_opcode_info(op).size;
++        switch(short_opcode_info(op).fmt) {
++        case OP_FMT_atom:
++        case OP_FMT_atom_u8:
++        case OP_FMT_atom_u16:
++        case OP_FMT_atom_label_u8:
++        case OP_FMT_atom_label_u16:
++            idx = get_u32(bc_buf + pos + 1);
++            if (!__JS_AtomIsTaggedInt(idx) && idx >= s->first_atom)
++                return false;
++            break;
++        default:
++            break;
++        }
++        pos += len;
++    }
++    return true;
++}
++
+ static int JS_ReadFunctionBytecode(BCReaderState *s, JSFunctionBytecode *b,
+                                    int byte_code_offset, uint32_t bc_len)
+ {
+@@ -38810,7 +38928,50 @@
+     JSAtom atom;
+     uint32_t idx;
+ 
+-    bc_buf = (uint8_t*)b + byte_code_offset;
++    if (s->inplace_bytecode) {
++        /* mikrojs patch: zero-copy when possible, else a separate heap
++           copy (the function block was allocated without a bytecode tail) */
++        if (bc_len != 0 && (uint32_t)(s->buf_end - s->ptr) >= bc_len &&
++            bc_bytecode_is_final(s, s->ptr, bc_len)) {
++            const uint8_t *rom = s->ptr;
++            /* take a reference on each atom operand so the free path
++               (free_bytecode_atoms) stays symmetric with the copy path */
++            pos = 0;
++            while (pos < (int)bc_len) {
++                op = rom[pos];
++                len = short_opcode_info(op).size;
++                switch(short_opcode_info(op).fmt) {
++                case OP_FMT_atom:
++                case OP_FMT_atom_u8:
++                case OP_FMT_atom_u16:
++                case OP_FMT_atom_label_u8:
++                case OP_FMT_atom_label_u16:
++                    idx = get_u32(rom + pos + 1);
++                    if (!__JS_AtomIsTaggedInt(idx))
++                        JS_DupAtom(s->ctx, idx);
++                    break;
++                default:
++                    break;
++                }
++                pos += len;
++            }
++            b->byte_code_buf = (uint8_t *)rom;
++            b->bc_in_rom = 1;
++            s->ptr += bc_len;
++            return 0;
++        }
++        if (bc_len == 0) {
++            b->byte_code_buf = NULL;
++            return 0;
++        }
++        bc_buf = js_mallocz(s->ctx, bc_len);
++        if (!bc_buf)
++            return s->error_state = -1;
++        b->bc_separate = 1;
++        b->byte_code_buf = bc_buf; /* owned now; freed on error paths too */
++    } else {
++        bc_buf = (uint8_t*)b + byte_code_offset;
++    }
+     if (bc_get_buf(s, bc_buf, bc_len))
+         return -1;
+     b->byte_code_buf = bc_buf;
+@@ -38980,7 +39141,10 @@
+     closure_var_offset = function_size;
+     function_size += bc.closure_var_count * sizeof(*bc.closure_var);
+     byte_code_offset = function_size;
+-    function_size += bc.byte_code_len;
++    /* mikrojs patch: in-place reads keep the bytecode out of the function
++       block (ROM pointer, or a separate heap copy on fallback) */
++    if (!s->inplace_bytecode)
++        function_size += bc.byte_code_len;
+ 
+     b = js_mallocz(ctx, function_size);
+     if (!b)
+@@ -39720,7 +39884,8 @@
+ 
+     if (bc_get_u8(s, &v8))
+         return -1;
+-    if (v8 != BC_VERSION) {
++    if (v8 != BC_VERSION &&
++        !(v8 == BC_VERSION_FROZEN && s->allow_bytecode)) {
+         JS_ThrowSyntaxError(s->ctx, "invalid version (%d expected=%d)",
+                             v8, BC_VERSION);
+         return -1;
+@@ -39732,6 +39897,22 @@
+     if (h != UINT32_MAX && h != bc_csum(s->ptr, s->buf_end - s->ptr)) {
+         JS_ThrowSyntaxError(s->ctx, "checksum error");
+         return -1;
++    }
++    if (v8 == BC_VERSION_FROZEN) {
++        /* mikrojs patch: atom ids below the boundary are final; require the
++           exact same frozen table the blob was compiled against */
++        uint32_t boundary, fhash;
++        JSRuntime *rt = s->ctx->rt;
++        if (bc_get_leb128(s, &boundary))
++            return -1;
++        if (bc_get_u32(s, &fhash))
++            return -1;
++        if (boundary != rt->frozen_atom_end ||
++            fhash != rt->frozen_atom_hash) {
++            JS_ThrowSyntaxError(s->ctx, "frozen atom table mismatch");
++            return -1;
++        }
++        s->first_atom = boundary;
+     }
+     if (bc_get_leb128(s, &s->idx_to_atom_count))
+         return -1;
+@@ -39807,6 +39988,8 @@
+     s->allow_bytecode = ((flags & JS_READ_OBJ_BYTECODE) != 0);
+     s->allow_sab = ((flags & JS_READ_OBJ_SAB) != 0);
+     s->allow_reference = ((flags & JS_READ_OBJ_REFERENCE) != 0);
++    s->inplace_bytecode = s->allow_bytecode &&
++        ((flags & JS_READ_OBJ_INPLACE) != 0);
+     if (s->allow_bytecode)
+         s->first_atom = JS_ATOM_END;
+     else
+--- a/quickjs.h
++++ b/quickjs.h
+@@ -1251,6 +1251,18 @@
+    writer in the same process (e.g. another Worker on the same runtime). */
+ #define JS_READ_OBJ_SAB       (1 << 2) /* allow SharedArrayBuffer */
+ #define JS_READ_OBJ_REFERENCE (1 << 3) /* allow object references */
++/* mikrojs patch: keep bytecode whose atom operands are all final ids
++   (predefined or frozen, see JS_PreloadFrozenAtoms) in the input buffer
++   instead of copying it to the heap. The buffer must then outlive every
++   function read from it (e.g. flash rodata / static const data). */
++#define JS_READ_OBJ_INPLACE   (1 << 4)
++
++/* mikrojs patch: intern `count` atoms right after JS_NewRuntime so blobs
++   compiled by a writer runtime with the same preload reference them as
++   final ids (enables JS_READ_OBJ_INPLACE zero-copy). Must be called
++   before any other dynamic atom is created; returns 0 on success. */
++JS_EXTERN int JS_PreloadFrozenAtoms(JSRuntime *rt, const char *const *names,
++                                    const uint32_t *lens, uint32_t count);
+ JS_EXTERN JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len, int flags);
+ JS_EXTERN JSValue JS_ReadObject2(JSContext *ctx, const uint8_t *buf, size_t buf_len,
+                                  int flags, JSSABTab *psab_tab);
+--- a/qjsc.c
++++ b/qjsc.c
+@@ -330,6 +330,59 @@
+     "}\n";
+ 
+ #define PROG_NAME "qjsc"
++
++/* mikrojs patch: load a frozen atom table (see JS_PreloadFrozenAtoms) from
++   a little-endian binary file: u32 count, then per atom u32 len + bytes. */
++static int load_frozen_atoms(JSRuntime *rt, const char *filename)
++{
++    FILE *f;
++    uint8_t hdr[4];
++    uint32_t count = 0, i, len;
++    char **names = NULL;
++    uint32_t *lens = NULL;
++    int ret = -1;
++
++    f = fopen(filename, "rb");
++    if (!f) {
++        fprintf(stderr, "qjsc: could not open atom table '%s'\n", filename);
++        return -1;
++    }
++    if (fread(hdr, 1, 4, f) != 4)
++        goto done;
++    count = hdr[0] | (hdr[1] << 8) | (hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
++    names = calloc(count, sizeof(*names));
++    lens = calloc(count, sizeof(*lens));
++    if (!names || !lens)
++        goto done;
++    for (i = 0; i < count; i++) {
++        if (fread(hdr, 1, 4, f) != 4)
++            goto done;
++        len = hdr[0] | (hdr[1] << 8) | (hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
++        names[i] = malloc(len + 1);
++        if (!names[i])
++            goto done;
++        if (len != 0 && fread(names[i], 1, len, f) != len)
++            goto done;
++        names[i][len] = '\0';
++        lens[i] = len;
++    }
++    if (JS_PreloadFrozenAtoms(rt, (const char *const *)names, lens, count)) {
++        fprintf(stderr, "qjsc: failed to preload frozen atom table\n");
++        goto done;
++    }
++    ret = 0;
++ done:
++    if (ret != 0 && !feof(f))
++        fprintf(stderr, "qjsc: bad atom table '%s'\n", filename);
++    if (names) {
++        for (i = 0; i < count; i++)
++            free(names[i]);
++        free(names);
++    }
++    free(lens);
++    fclose(f);
++    return ret;
++}
+ 
+ void help(void)
+ {
+@@ -349,6 +402,7 @@
+            "-p prefix   set the prefix of the generated C names\n"
+            "-P          do not add default system modules\n"
+            "-s          strip the source code, specify twice to also strip debug info\n"
++           "-A file     preload a frozen atom table (binary: u32le count, then u32le len + bytes per atom)\n"
+            "-S n        set the maximum stack size to 'n' bytes (default=%d)\n",
+            JS_GetVersion(),
+            JS_DEFAULT_STACK_SIZE);
+@@ -407,6 +461,8 @@
+     namelist_t dynamic_module_list;
+     bool load_system_modules = true;
+ 
++    const char *frozen_atoms_file = NULL;
++
+     out_filename = NULL;
+     script_name = NULL;
+     output_type = OUTPUT_C;
+@@ -462,6 +518,14 @@
+                 output_type = OUTPUT_C_MAIN;
+                 continue;
+             }
++            if (opt == 'A') {
++                if (!optarg) {
++                    check_hasarg(optind, argc, opt);
++                    optarg = argv[optind++];
++                }
++                frozen_atoms_file = optarg;
++                continue;
++            }
+             if (opt == 'n') {
+                 if (!optarg) {
+                     check_hasarg(optind, argc, opt);
+@@ -571,6 +635,8 @@
+     outfile = fo;
+ 
+     rt = JS_NewRuntime();
++    if (frozen_atoms_file && load_frozen_atoms(rt, frozen_atoms_file))
++        exit(1);
+     ctx = JS_NewContext(rt);
+ 
+     /* loader for ES6 modules */

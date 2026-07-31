@@ -8,7 +8,8 @@
  * Skips gracefully if cc or the submodule is not available.
  */
 import {execFileSync} from 'node:child_process'
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs'
+import {createHash} from 'node:crypto'
+import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from 'node:fs'
 import {dirname, join} from 'node:path'
 import {fileURLToPath} from 'node:url'
 
@@ -49,6 +50,21 @@ try {
   }).trim()
 } catch {
   // Not a git repo (e.g. published package), skip commit tracking
+}
+
+// Patches change qjsc behavior without moving the submodule commit, so the
+// rebuild stamp must cover them too or bin/qjsc goes stale silently.
+if (currentCommit) {
+  const patchesDir = join(__dirname, 'patches')
+  if (existsSync(patchesDir)) {
+    const hash = createHash('sha256')
+    for (const f of readdirSync(patchesDir)
+      .filter((f) => f.endsWith('.patch'))
+      .sort()) {
+      hash.update(readFileSync(join(patchesDir, f)))
+    }
+    currentCommit += `+${hash.digest('hex').slice(0, 16)}`
+  }
 }
 
 // On Windows the C compiler appends .exe automatically.

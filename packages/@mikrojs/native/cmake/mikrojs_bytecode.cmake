@@ -25,7 +25,11 @@ get_filename_component(_MIK_BC_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 set(_MIK_BC_SCRIPTS_DIR "${_MIK_BC_CMAKE_DIR}/../scripts" CACHE INTERNAL "")
 
 function(mikrojs_generate_bytecode)
-    cmake_parse_arguments(ARG "" "RUNTIME_DIR;MODULE_PREFIX;SYMBOL_PREFIX;TARGET;WORKING_DIRECTORY" "MODULES" ${ARGN})
+    # FREEZE_ATOMS: compile blobs against a generated frozen atom table so
+    # they load zero-copy (JS_READ_OBJ_INPLACE). Core runtime only: the
+    # device preloads exactly one table, so board/driver packages must
+    # stay classic (they load via the copy-and-relocate fallback).
+    cmake_parse_arguments(ARG "FREEZE_ATOMS" "RUNTIME_DIR;MODULE_PREFIX;SYMBOL_PREFIX;TARGET;WORKING_DIRECTORY" "MODULES" ${ARGN})
 
     # Defaults
     if(NOT ARG_TARGET)
@@ -86,7 +90,46 @@ function(mikrojs_generate_bytecode)
         WORKING_DIRECTORY ${ARG_WORKING_DIRECTORY}
     )
 
-    # Step 2: Compile each bundled JS file to a bytecode header with qjsc
+    # Steps 2a/2b (FREEZE_ATOMS only): pass-1 raw bytecode per module, then
+    # union the atom sections into the frozen atom table (frozen_atoms.bin
+    # for qjsc -A, <prefix>_frozen_atoms.h for the runtime preload).
+    # Module order fixes the table order.
+    set(_ATOMS_BIN "")
+    set(_ATOMS_HEADER "")
+    if(ARG_FREEZE_ATOMS)
+        set(_EXTRACT_SCRIPT "${_MIK_BC_SCRIPTS_DIR}/extract-atoms.js")
+        set(_PASS1_BLOBS "")
+        foreach(mod ${ARG_MODULES})
+            string(REGEX REPLACE "[^a-zA-Z0-9]" "_" _mod_safe "${mod}")
+            set(_blob "${_GEN_DIR}/pass1/${_mod_safe}.bjs")
+            add_custom_command(
+                OUTPUT ${_blob}
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${_GEN_DIR}/pass1
+                COMMAND sh ${_COMPILE_SCRIPT}
+                    ${QJSC_EXECUTABLE}
+                    ${_BUNDLE_DIR}/${mod}.js
+                    ${_blob}
+                    "${ARG_MODULE_PREFIX}/${mod}"
+                    "unused"
+                DEPENDS ${_BUNDLE_DIR}/bundle.stamp ${_COMPILE_SCRIPT} ${QJSC_EXECUTABLE}
+                COMMENT "Bytecode pass 1: ${ARG_MODULE_PREFIX}/${mod}"
+            )
+            list(APPEND _PASS1_BLOBS ${_blob})
+        endforeach()
+
+        set(_ATOMS_BIN "${_GEN_DIR}/frozen_atoms.bin")
+        set(_ATOMS_HEADER "${_GEN_DIR}/${ARG_SYMBOL_PREFIX}_frozen_atoms.h")
+        add_custom_command(
+            OUTPUT ${_ATOMS_BIN} ${_ATOMS_HEADER}
+            COMMAND node ${_EXTRACT_SCRIPT} ${_GEN_DIR} ${ARG_SYMBOL_PREFIX} ${_PASS1_BLOBS}
+            DEPENDS ${_PASS1_BLOBS} ${_EXTRACT_SCRIPT}
+            COMMENT "Extracting frozen atom table"
+        )
+    endif()
+
+    # Step 2c: Compile each bundled JS file to a bytecode header with qjsc,
+    # against the frozen atom table so atom references are final ids
+    # (enables zero-copy loading via JS_READ_OBJ_INPLACE).
     set(_HEADERS "")
     foreach(mod ${ARG_MODULES})
         # Sanitize module name for C identifiers (replace non-alphanumeric with _)
@@ -101,11 +144,15 @@ function(mikrojs_generate_bytecode)
                 ${_header}
                 "${ARG_MODULE_PREFIX}/${mod}"
                 "${ARG_SYMBOL_PREFIX}_${_mod_safe}_bytecode"
-            DEPENDS ${_BUNDLE_DIR}/bundle.stamp ${_COMPILE_SCRIPT} ${QJSC_EXECUTABLE}
+                ${_ATOMS_BIN}
+            DEPENDS ${_BUNDLE_DIR}/bundle.stamp ${_COMPILE_SCRIPT} ${QJSC_EXECUTABLE} ${_ATOMS_BIN}
             COMMENT "Compiling bytecode: ${ARG_MODULE_PREFIX}/${mod}"
         )
         list(APPEND _HEADERS ${_header})
     endforeach()
+    if(_ATOMS_HEADER)
+        list(APPEND _HEADERS ${_ATOMS_HEADER})
+    endif()
 
     # Step 3: Generate builtins table header (includes + lookup table)
     set(_TABLE_HEADER "${_GEN_DIR}/${ARG_SYMBOL_PREFIX}_builtins_table.h")

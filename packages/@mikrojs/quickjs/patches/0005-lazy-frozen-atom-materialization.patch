@@ -1,0 +1,725 @@
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -280,9 +280,17 @@
+     JSAtomStruct **atom_array;
+     int atom_free_index; /* 0 = none */
+     /* mikrojs patch: frozen atom table (JS_PreloadFrozenAtoms). Atoms below
+-       frozen_atom_end serialize as final ids; hash is nonzero once loaded. */
++       frozen_atom_end serialize as final ids; hash is nonzero once loaded.
++       Ids in [frozen_first, frozen_first + frozen_count) are reserved slots
++       whose JSString bodies materialize lazily from the (flash-resident)
++       frozen_names table on first string use. */
+     uint32_t frozen_atom_end;
+     uint32_t frozen_atom_hash;
++    const char *const *frozen_names;
++    const uint32_t *frozen_lens;
++    uint32_t *frozen_sorted; /* rt-owned indexes into frozen_names, sorted */
++    uint32_t frozen_count;
++    JSAtom frozen_first;
+ 
+     JSClassID js_class_id_alloc; /* counter for user defined classes */
+     int class_count;    /* size of class_array */
+@@ -2234,6 +2242,33 @@
+ static inline JSAtomStruct *atom_set_free(uint32_t v)
+ {
+     return (JSAtomStruct *)(((uintptr_t)v << 1) | 1);
++}
++
++/* mikrojs patch: shared placeholder occupying reserved frozen-atom slots
++   until their string materializes. Deliberately a valid, readable JSString
++   (empty, narrow, type STRING) so walkers that only inspect atom_type/kind
++   need no guard; only string-producing paths and the free/teardown loops
++   check for it. Never hashed, never refcounted, never freed. */
++static JSAtomStruct js_lazy_atom_placeholder = {
++    .header = {.ref_count = 1},
++    .len = 0,
++    .is_wide_char = 0,
++    .hash = 0,
++    .kind = JS_STRING_KIND_NORMAL,
++    .atom_type = JS_ATOM_TYPE_STRING,
++    .hash_next = 0,
++};
++
++static inline bool js_atom_is_lazy(const JSAtomStruct *p)
++{
++    return p == &js_lazy_atom_placeholder;
++}
++
++/* mikrojs patch: frozen atoms are refcount-exempt like predefined atoms;
++   the runtime pins them for its whole lifetime. */
++static inline bool js_atom_is_frozen_id(const JSRuntime *rt, JSAtom v)
++{
++    return v - rt->frozen_first < rt->frozen_count;
+ }
+ 
+ /* Note: the string contents are uninitialized */
+@@ -2383,7 +2418,7 @@
+ 
+         for(i = 0; i < rt->atom_size; i++) {
+             JSAtomStruct *p = rt->atom_array[i];
+-            if (!atom_is_free(p) /* && p->str*/) {
++            if (!atom_is_free(p) && !js_atom_is_lazy(p) /* && p->str*/) {
+                 if (i >= JS_ATOM_END || p->header.ref_count != 1) {
+                     if (!header_done) {
+                         header_done = true;
+@@ -2438,7 +2473,7 @@
+     /* free the atoms */
+     for(i = 0; i < rt->atom_size; i++) {
+         JSAtomStruct *p = rt->atom_array[i];
+-        if (!atom_is_free(p)) {
++        if (!atom_is_free(p) && !js_atom_is_lazy(p)) {
+ #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
+             list_del(&p->link);
+ #endif
+@@ -2447,6 +2482,7 @@
+     }
+     js_free_rt(rt, rt->atom_array);
+     js_free_rt(rt, rt->atom_hash);
++    js_free_rt(rt, rt->frozen_sorted);
+     js_free_rt(rt, rt->shape_hash);
+ #ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
+     if (check_dump_flag(rt, JS_DUMP_LEAKS) && !list_empty(&rt->string_list)) {
+@@ -2972,7 +3008,7 @@
+     printf("JSAtom table: {\n");
+     for(i = 0; i < rt->atom_size; i++) {
+         p = rt->atom_array[i];
+-        if (!atom_is_free(p)) {
++        if (!atom_is_free(p) && !js_atom_is_lazy(p)) {
+             printf("  %d: { %d %08x ", i, p->atom_type, p->hash);
+             if (!(p->len == 0 && p->is_wide_char != 0))
+                 JS_DumpString(rt, p);
+@@ -3045,7 +3081,7 @@
+ {
+     JSAtomStruct *p;
+ 
+-    if (!__JS_AtomIsConst(v)) {
++    if (!__JS_AtomIsConst(v) && !js_atom_is_frozen_id(rt, v)) {
+         p = rt->atom_array[v];
+         p->header.ref_count++;
+     }
+@@ -3057,8 +3093,8 @@
+     JSRuntime *rt;
+     JSAtomStruct *p;
+ 
+-    if (!__JS_AtomIsConst(v)) {
+-        rt = ctx->rt;
++    rt = ctx->rt;
++    if (!__JS_AtomIsConst(v) && !js_atom_is_frozen_id(rt, v)) {
+         p = rt->atom_array[v];
+         p->header.ref_count++;
+     }
+@@ -3109,8 +3145,135 @@
+         }
+     }
+     return i;
++}
++
++/* mikrojs patch: compare a JSString against a frozen table entry with a
++   total order (length first, then charwise numeric) matching the order
++   frozen_sorted was built with. */
++static int js_frozen_cmp_str(JSString *str, const uint8_t *name,
++                             uint32_t nlen)
++{
++    uint32_t i, len = str->len;
++    if (len != nlen)
++        return len < nlen ? -1 : 1;
++    for (i = 0; i < len; i++) {
++        uint32_t c = str->is_wide_char ? str16(str)[i] : str8(str)[i];
++        if (c != name[i])
++            return c < name[i] ? -1 : 1;
++    }
++    return 0;
+ }
+ 
++/* mikrojs patch: find a frozen atom id by content, or JS_ATOM_NULL. */
++static JSAtom js_frozen_lookup(JSRuntime *rt, JSString *str)
++{
++    uint32_t lo = 0, hi = rt->frozen_count;
++    while (lo < hi) {
++        uint32_t mid = (lo + hi) / 2;
++        uint32_t idx = rt->frozen_sorted[mid];
++        int cmp = js_frozen_cmp_str(str, (const uint8_t *)rt->frozen_names[idx],
++                                    rt->frozen_lens[idx]);
++        if (cmp == 0)
++            return rt->frozen_first + idx;
++        if (cmp < 0)
++            hi = mid;
++        else
++            lo = mid + 1;
++    }
++    return JS_ATOM_NULL;
++}
++
++/* mikrojs patch: materialize a reserved frozen atom's JSString from the
++   flash name table and insert it into the hash. Returns NULL on OOM. */
++static JSAtomStruct *js_frozen_materialize(JSRuntime *rt, JSAtom v)
++{
++    uint32_t idx = v - rt->frozen_first;
++    const char *name = rt->frozen_names[idx];
++    uint32_t len = rt->frozen_lens[idx];
++    uint32_t h, h1;
++    JSString *p;
++
++    p = js_alloc_string_rt(rt, len, 0);
++    if (!p)
++        return NULL;
++    memcpy(str8(p), name, len);
++    str8(p)[len] = '\0';
++    h = hash_string8((const uint8_t *)name, len, JS_ATOM_TYPE_STRING);
++    h &= JS_ATOM_HASH_MASK;
++    p->hash = h;
++    p->atom_type = JS_ATOM_TYPE_STRING;
++    p->first_weak_ref = NULL;
++    rt->atom_array[v] = p;
++    h1 = h & (rt->atom_hash_size - 1);
++    p->hash_next = rt->atom_hash[h1];
++    rt->atom_hash[h1] = v;
++    rt->atom_count++;
++    if (unlikely(rt->atom_count >= rt->atom_count_resize))
++        JS_ResizeAtomHash(rt, rt->atom_hash_size * 2);
++    return p;
++}
++
++/* mikrojs patch: atom_array access that materializes reserved frozen slots
++   on demand; NULL only on OOM. */
++static JSAtomStruct *js_atom_ensure_str(JSRuntime *rt, JSAtom v)
++{
++    JSAtomStruct *p = rt->atom_array[v];
++    if (unlikely(js_atom_is_lazy(p)))
++        p = js_frozen_materialize(rt, v);
++    return p;
++}
++
++/* mikrojs patch: grow the atom array so at least one free slot exists.
++   Extracted from __JS_NewAtom so frozen-slot reservation can share it. */
++static int js_atom_grow_free(JSRuntime *rt)
++{
++    uint32_t new_size, start, i;
++    JSAtomStruct **new_array;
++    JSAtomStruct *p;
++
++    /* alloc new with size progression 3/2:
++       4 6 9 13 19 28 42 63 94 141 211 316 474 711 1066 1599 2398 3597 5395 8092
++       preallocating space for predefined atoms (at least 504).
++     */
++    new_size = max_int(711, rt->atom_size * 3 / 2);
++    if (new_size > JS_ATOM_MAX)
++        return -1;
++    /* XXX: should use realloc2 to use slack space */
++    new_array = js_realloc_rt(rt, rt->atom_array, sizeof(*new_array) * new_size);
++    if (!new_array)
++        return -1;
++    /* Note: the atom 0 is not used */
++    start = rt->atom_size;
++    if (start == 0) {
++        /* JS_ATOM_NULL entry */
++        p = js_mallocz_rt(rt, sizeof(JSAtomStruct));
++        if (!p) {
++            js_free_rt(rt, new_array);
++            return -1;
++        }
++        p->header.ref_count = 1;  /* not refcounted */
++        p->atom_type = JS_ATOM_TYPE_SYMBOL;
++#ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
++        list_add_tail(&p->link, &rt->string_list);
++#endif
++        new_array[0] = p;
++        rt->atom_count++;
++        start = 1;
++    }
++    rt->atom_size = new_size;
++    rt->atom_array = new_array;
++    rt->atom_free_index = start;
++    for(i = start; i < new_size; i++) {
++        uint32_t next;
++        if (i == (new_size - 1))
++            next = 0;
++        else
++            next = i + 1;
++        rt->atom_array[i] = atom_set_free(next);
++    }
++    return 0;
++}
++
+ /* string case (internal). Return JS_ATOM_NULL if error. 'str' is
+    freed. */
+ static JSAtom __JS_NewAtom(JSRuntime *rt, JSString *str, int atom_type)
+@@ -3125,7 +3288,7 @@
+             /* str is the atom, return its index */
+             i = js_get_atom_index(rt, str);
+             /* reduce string refcount and increase atom's unless constant */
+-            if (__JS_AtomIsConst(i))
++            if (__JS_AtomIsConst(i) || js_atom_is_frozen_id(rt, i))
+                 str->header.ref_count--;
+             return i;
+         }
+@@ -3141,12 +3304,23 @@
+                 p->atom_type == atom_type &&
+                 p->len == len &&
+                 js_string_memcmp(p, str, len) == 0) {
+-                if (!__JS_AtomIsConst(i))
++                if (!__JS_AtomIsConst(i) && !js_atom_is_frozen_id(rt, i))
+                     p->header.ref_count++;
+                 goto done;
+             }
+             i = p->hash_next;
+         }
++        /* mikrojs patch: an equal string may exist as a reserved frozen
++           atom that is not in the hash yet; materialize it instead of
++           creating a second atom with a different id */
++        if (atom_type == JS_ATOM_TYPE_STRING && rt->frozen_count != 0) {
++            i = js_frozen_lookup(rt, str);
++            if (i != JS_ATOM_NULL && js_atom_is_lazy(rt->atom_array[i])) {
++                if (!js_frozen_materialize(rt, i))
++                    goto fail;
++                goto done; /* frozen: refcount-exempt, str freed at done */
++            }
++        }
+     } else {
+         h1 = 0; /* avoid warning */
+         if (atom_type == JS_ATOM_TYPE_SYMBOL) {
+@@ -3159,49 +3333,8 @@
+ 
+     if (rt->atom_free_index == 0) {
+         /* allow new atom entries */
+-        uint32_t new_size, start;
+-        JSAtomStruct **new_array;
+-
+-        /* alloc new with size progression 3/2:
+-           4 6 9 13 19 28 42 63 94 141 211 316 474 711 1066 1599 2398 3597 5395 8092
+-           preallocating space for predefined atoms (at least 504).
+-         */
+-        new_size = max_int(711, rt->atom_size * 3 / 2);
+-        if (new_size > JS_ATOM_MAX)
++        if (js_atom_grow_free(rt))
+             goto fail;
+-        /* XXX: should use realloc2 to use slack space */
+-        new_array = js_realloc_rt(rt, rt->atom_array, sizeof(*new_array) * new_size);
+-        if (!new_array)
+-            goto fail;
+-        /* Note: the atom 0 is not used */
+-        start = rt->atom_size;
+-        if (start == 0) {
+-            /* JS_ATOM_NULL entry */
+-            p = js_mallocz_rt(rt, sizeof(JSAtomStruct));
+-            if (!p) {
+-                js_free_rt(rt, new_array);
+-                goto fail;
+-            }
+-            p->header.ref_count = 1;  /* not refcounted */
+-            p->atom_type = JS_ATOM_TYPE_SYMBOL;
+-#ifdef ENABLE_DUMPS // JS_DUMP_LEAKS
+-            list_add_tail(&p->link, &rt->string_list);
+-#endif
+-            new_array[0] = p;
+-            rt->atom_count++;
+-            start = 1;
+-        }
+-        rt->atom_size = new_size;
+-        rt->atom_array = new_array;
+-        rt->atom_free_index = start;
+-        for(i = start; i < new_size; i++) {
+-            uint32_t next;
+-            if (i == (new_size - 1))
+-                next = 0;
+-            else
+-                next = i + 1;
+-            rt->atom_array[i] = atom_set_free(next);
+-        }
+     }
+ 
+     if (str) {
+@@ -3282,38 +3415,84 @@
+     return __JS_NewAtom(rt, p, atom_type);
+ }
+ 
+-/* mikrojs patch: intern a fixed list of atoms right after runtime creation
+- * so that blobs compiled against the same list (in a runtime that ran the
+- * same preload) can reference them by final id, with no relocation at load
+- * time. The returned mapping is validated between writer and reader via a
+- * hash over every dynamic atom's string and id, so any divergence in the
+- * runtime's pre-preload atom state rejects the blob instead of silently
+- * resolving atoms to the wrong strings. The references taken here are
+- * intentionally never released: frozen atoms live for the runtime's
+- * lifetime (JS_FreeRuntime frees all remaining atom structs wholesale).
+- * Names must be raw 8-bit strings. Returns 0 on success. */
++typedef struct JSFrozenSortCtx {
++    const char *const *names;
++    const uint32_t *lens;
++} JSFrozenSortCtx;
++
++static int js_frozen_sort_cmp(const void *a, const void *b, void *opaque)
++{
++    JSFrozenSortCtx *c = opaque;
++    uint32_t ia = *(const uint32_t *)a, ib = *(const uint32_t *)b;
++    uint32_t la = c->lens[ia], lb = c->lens[ib];
++    int cmp;
++    if (la != lb)
++        return la < lb ? -1 : 1;
++    cmp = memcmp(c->names[ia], c->names[ib], la);
++    return cmp < 0 ? -1 : cmp > 0 ? 1 : 0;
++}
++
++/* mikrojs patch: reserve a contiguous id range for a fixed atom table so
++ * blobs compiled against the same list (in a runtime that ran the same
++ * preload) reference them by final id with no relocation at load time.
++ * The JSString bodies are NOT allocated here: reserved slots hold a shared
++ * placeholder and materialize lazily from `names` on first string use, so
++ * the boot-time heap cost is one atom_array slot per name. `names`/`lens`
++ * must outlive the runtime (e.g. rodata). The writer/reader mapping is
++ * validated via a hash over the pre-preload dynamic atoms and the table,
++ * so any divergence rejects blobs instead of silently resolving atoms to
++ * the wrong strings. Names must be raw 8-bit, unique, non-numeric strings.
++ * Must run before any dynamic atom is freed. Returns 0 on success. */
+ int JS_PreloadFrozenAtoms(JSRuntime *rt, const char *const *names,
+                           const uint32_t *lens, uint32_t count)
+ {
+-    uint32_t i, h, end;
+-    JSAtom atom;
++    uint32_t i, h, slot, reserved;
++    uint32_t *sorted;
++    JSAtom first = 0;
++    JSFrozenSortCtx sctx = {names, lens};
+ 
+-    if (rt->frozen_atom_end != JS_ATOM_END || rt->frozen_atom_hash != 0)
++    if (rt->frozen_atom_hash != 0 || rt->frozen_count != 0)
+         return -1; /* already preloaded */
+-    end = JS_ATOM_END;
++    if (count == 0)
++        return 0;
++
++    sorted = js_malloc_rt(rt, sizeof(*sorted) * count);
++    if (!sorted)
++        return -1;
++    for (i = 0; i < count; i++)
++        sorted[i] = i;
++    rqsort(sorted, count, sizeof(*sorted), js_frozen_sort_cmp, &sctx);
++    for (i = 1; i < count; i++) {
++        if (js_frozen_sort_cmp(&sorted[i - 1], &sorted[i], &sctx) == 0)
++            goto fail_sorted; /* duplicate names break the id mapping */
++    }
++
++    /* reserve contiguous ids; the free list is sequential on a fresh
++       runtime, so pops come out ascending */
++    reserved = 0;
+     for (i = 0; i < count; i++) {
+-        atom = __JS_NewAtomInit(rt, names[i], (int)lens[i],
+-                                JS_ATOM_TYPE_STRING);
+-        if (atom == JS_ATOM_NULL)
+-            return -1;
+-        if (!__JS_AtomIsTaggedInt(atom) && atom + 1 > end)
+-            end = atom + 1;
++        if (rt->atom_free_index == 0 && js_atom_grow_free(rt))
++            goto fail_slots;
++        slot = rt->atom_free_index;
++        rt->atom_free_index = atom_get_free(rt->atom_array[slot]);
++        rt->atom_array[slot] = &js_lazy_atom_placeholder;
++        if (i == 0) {
++            first = slot;
++        } else if (slot != first + i) {
++            /* atoms were freed before preload; put this stray slot back
++               first, then unwind the sequential prefix */
++            rt->atom_array[slot] = atom_set_free(rt->atom_free_index);
++            rt->atom_free_index = slot;
++            goto fail_slots;
++        }
++        reserved++;
+     }
+-    /* hash the entire dynamic atom range, not just the preloaded names:
+-       atoms created before the preload (e.g. class init) also serialize
+-       as final ids once the boundary is raised */
++
++    /* hash the pre-preload dynamic atoms (identical on writer and reader
++       by construction) plus the frozen names: any divergence changes the
++       mapping, so it must change the hash */
+     h = 5381;
+-    for (i = JS_ATOM_END; i < end; i++) {
++    for (i = JS_ATOM_END; i < (uint32_t)first; i++) {
+         JSAtomStruct *p = rt->atom_array[i];
+         if (atom_is_free(p)) {
+             h = h * 33 ^ 0xfe;
+@@ -3333,9 +3512,33 @@
+         }
+         h = h * 33 ^ 0xff;
+     }
+-    rt->frozen_atom_end = end;
++    for (i = 0; i < count; i++) {
++        const uint8_t *nb = (const uint8_t *)names[i];
++        uint32_t j;
++        for (j = 0; j < lens[i]; j++)
++            h = h * 33 ^ nb[j];
++        h = h * 33 ^ 0xff;
++    }
++    h = h * 33 ^ first;
++
++    rt->frozen_names = names;
++    rt->frozen_lens = lens;
++    rt->frozen_sorted = sorted;
++    rt->frozen_count = count;
++    rt->frozen_first = first;
++    rt->frozen_atom_end = first + count;
+     rt->frozen_atom_hash = h | 1; /* nonzero marks "loaded" */
+     return 0;
++
++ fail_slots:
++    /* return reserved slots to the free list */
++    for (i = 0; i < reserved; i++) {
++        rt->atom_array[first + i] = atom_set_free(rt->atom_free_index);
++        rt->atom_free_index = first + i;
++    }
++ fail_sorted:
++    js_free_rt(rt, sorted);
++    return -1;
+ }
+ 
+ // XXX: `str` must be raw 8-bit contents. No UTF-8 encoded strings
+@@ -3356,12 +3559,42 @@
+             p->len == len &&
+             p->is_wide_char == 0 &&
+             memcmp(str8(p), str, len) == 0) {
+-            if (!__JS_AtomIsConst(i))
++            if (!__JS_AtomIsConst(i) && !js_atom_is_frozen_id(rt, i))
+                 p->header.ref_count++;
+             return i;
+         }
+         i = p->hash_next;
+     }
++    /* mikrojs patch: a reserved frozen atom exists even before it is in
++       the hash; report it (materialized) rather than "not found" */
++    if (atom_type == JS_ATOM_TYPE_STRING && rt->frozen_count != 0) {
++        uint32_t lo = 0, hi = rt->frozen_count;
++        while (lo < hi) {
++            uint32_t mid = (lo + hi) / 2;
++            uint32_t idx = rt->frozen_sorted[mid];
++            uint32_t nlen = rt->frozen_lens[idx];
++            const uint8_t *name = (const uint8_t *)rt->frozen_names[idx];
++            int cmp;
++            if (len != nlen) {
++                cmp = len < nlen ? -1 : 1;
++            } else {
++                cmp = memcmp(str, name, len);
++                if (cmp != 0)
++                    cmp = cmp < 0 ? -1 : 1;
++            }
++            if (cmp == 0) {
++                i = rt->frozen_first + idx;
++                if (js_atom_is_lazy(rt->atom_array[i]) &&
++                    !js_frozen_materialize(rt, i))
++                    return JS_ATOM_NULL;
++                return i;
++            }
++            if (cmp < 0)
++                hi = mid;
++            else
++                lo = mid + 1;
++        }
++    }
+     return JS_ATOM_NULL;
+ }
+ 
+@@ -3504,7 +3737,13 @@
+ 
+     assert(!__JS_AtomIsTaggedInt(descr));
+     assert(descr < rt->atom_size);
+-    p = rt->atom_array[descr];
++    /* mikrojs patch: the symbol takes ownership of the description string,
++       so a reserved frozen atom must materialize first — duping the shared
++       lazy placeholder would mutate and eventually free a static. Reachable
++       via OP_private_symbol when a #private field name is a frozen atom. */
++    p = js_atom_ensure_str(rt, descr);
++    if (unlikely(!p))
++        return JS_ThrowOutOfMemory(ctx);
+     js_dup(JS_MKPTR(JS_TAG_STRING, p));
+     return JS_NewSymbolInternal(ctx, p, atom_type);
+ }
+@@ -3546,6 +3785,15 @@
+     } else {
+         JSAtomStruct *p = rt->atom_array[atom];
+         *buf = '\0';
++        if (unlikely(js_atom_is_lazy(p))) {
++            /* mikrojs patch: read straight from the frozen table; this
++               path must not allocate (used while reporting errors) */
++            uint32_t idx = atom - rt->frozen_first;
++            utf8_encode_buf8(buf, buf_size,
++                             (const uint8_t *)rt->frozen_names[idx],
++                             rt->frozen_lens[idx]);
++            return buf;
++        }
+         if (atom_is_free(p)) {
+             snprintf(buf, buf_size, "<free %x>", atom);
+         } else if (p != NULL) {
+@@ -3577,7 +3825,9 @@
+         JSRuntime *rt = ctx->rt;
+         JSAtomStruct *p;
+         assert(atom < rt->atom_size);
+-        p = rt->atom_array[atom];
++        p = js_atom_ensure_str(rt, atom);
++        if (unlikely(!p))
++            return JS_ThrowOutOfMemory(ctx);
+         if (p->atom_type == JS_ATOM_TYPE_STRING) {
+             goto ret_string;
+         } else if (force_string) {
+@@ -3616,7 +3866,12 @@
+         uint32_t val;
+ 
+         assert(atom < rt->atom_size);
+-        p = rt->atom_array[atom];
++        p = js_atom_ensure_str(rt, atom);
++        if (unlikely(!p)) {
++            /* OOM while materializing; a frozen name is not an index */
++            *pval = 0;
++            return false;
++        }
+         if (p->atom_type == JS_ATOM_TYPE_STRING &&
+             is_num_string(&val, p) && val != -1) {
+             *pval = val;
+@@ -3642,7 +3897,9 @@
+     if (__JS_AtomIsTaggedInt(atom))
+         return js_int32(__JS_AtomToUInt32(atom));
+     assert(atom < rt->atom_size);
+-    p1 = rt->atom_array[atom];
++    p1 = js_atom_ensure_str(rt, atom);
++    if (unlikely(!p1))
++        return JS_ThrowOutOfMemory(ctx);
+     if (p1->atom_type != JS_ATOM_TYPE_STRING)
+         return JS_UNDEFINED;
+     p = p1;
+@@ -3725,13 +3982,13 @@
+ 
+ void JS_FreeAtom(JSContext *ctx, JSAtom v)
+ {
+-    if (!__JS_AtomIsConst(v))
++    if (!__JS_AtomIsConst(v) && !js_atom_is_frozen_id(ctx->rt, v))
+         __JS_FreeAtom(ctx->rt, v);
+ }
+ 
+ void JS_FreeAtomRT(JSRuntime *rt, JSAtom v)
+ {
+-    if (!__JS_AtomIsConst(v))
++    if (!__JS_AtomIsConst(v) && !js_atom_is_frozen_id(rt, v))
+         __JS_FreeAtom(rt, v);
+ }
+ 
+@@ -7517,7 +7774,7 @@
+         sizeof(rt->atom_hash[0]) * rt->atom_hash_size;
+     for(i = 0; i < rt->atom_size; i++) {
+         JSAtomStruct *p = rt->atom_array[i];
+-        if (!atom_is_free(p)) {
++        if (!atom_is_free(p) && !js_atom_is_lazy(p)) {
+             s->atom_size += (sizeof(*p) + (p->len << p->is_wide_char) +
+                              1 - p->is_wide_char);
+         }
+@@ -37790,8 +38047,12 @@
+ /* mikrojs patch: variant of BC_VERSION for blobs whose atom references
+    below the frozen boundary are final runtime atom ids (see
+    JS_PreloadFrozenAtoms). The header carries the boundary and the frozen
+-   table hash so a mismatched runtime rejects the blob at load. */
++   table hash so a mismatched runtime rejects the blob at load. Derived
++   with a high flag bit so it tracks upstream bumps; the assert catches
++   the far-future collision when BC_VERSION itself reaches bit 6. */
+ #define BC_VERSION_FROZEN (BC_VERSION | 0x40)
++_Static_assert((BC_VERSION & 0x40) == 0,
++               "BC_VERSION collides with the frozen-format flag bit");
+ 
+ typedef struct BCWriterState {
+     JSContext *ctx;
+@@ -37801,6 +38062,9 @@
+     bool allow_reference;
+     bool allow_source;
+     bool allow_debug;
++    /* mikrojs patch: set when a frozen/pre-preload dynamic atom was written
++       as a final id; only such blobs need the frozen header. */
++    bool used_frozen_atom;
+     uint32_t first_atom;
+     uint32_t *atom_to_idx;
+     int atom_to_idx_size;
+@@ -37891,6 +38155,10 @@
+     uint32_t v;
+ 
+     if (atom < s->first_atom || __JS_AtomIsTaggedInt(atom)) {
++        /* mikrojs patch: a non-predefined atom passing through as a final
++           id makes the blob depend on the frozen table */
++        if (!__JS_AtomIsTaggedInt(atom) && atom >= JS_ATOM_END)
++            s->used_frozen_atom = true;
+         *pres = atom;
+         return 0;
+     }
+@@ -38528,8 +38796,14 @@
+ 
+     dbuf1 = s->dbuf;
+     js_dbuf_init(s->ctx, &s->dbuf);
+-    if (s->allow_bytecode && s->first_atom > JS_ATOM_END) {
+-        /* mikrojs patch: frozen-atom blob; record boundary + table hash */
++    /* mikrojs patch: the frozen header is only needed when the blob depends
++       on the frozen table: a final-id atom reference, or an atom-table
++       entry (idx values are encoded relative to the boundary). A blob with
++       neither is byte-compatible classic even when written from a frozen
++       runtime — e.g. the trivial serialize-and-peek probe mikro/sys uses
++       to report the app-bytecode version to the OTA registry. */
++    if (s->allow_bytecode && s->first_atom > JS_ATOM_END &&
++        (s->used_frozen_atom || s->idx_to_atom_count != 0)) {
+         bc_put_u8(s, BC_VERSION_FROZEN);
+         bc_put_u32(s, 0); // checksum, filled in after serialization
+         bc_put_leb128(s, s->first_atom);
+@@ -38548,8 +38822,11 @@
+                more efficient. */
+             bc_put_u32(s, atom);
+         } else {
+-            JSAtomStruct *p = rt->atom_array[atom];
+-            uint8_t type = p->atom_type;
++            JSAtomStruct *p = js_atom_ensure_str(rt, atom);
++            uint8_t type;
++            if (!p)
++                goto fail;
++            type = p->atom_type;
+             assert(type != JS_ATOM_TYPE_PRIVATE);
+             bc_put_u8(s, type);
+             JS_WriteString(s, p);
+--- a/quickjs.h
++++ b/quickjs.h
+@@ -1257,10 +1257,12 @@
+    function read from it (e.g. flash rodata / static const data). */
+ #define JS_READ_OBJ_INPLACE   (1 << 4)
+ 
+-/* mikrojs patch: intern `count` atoms right after JS_NewRuntime so blobs
+-   compiled by a writer runtime with the same preload reference them as
+-   final ids (enables JS_READ_OBJ_INPLACE zero-copy). Must be called
+-   before any other dynamic atom is created; returns 0 on success. */
++/* mikrojs patch: reserve ids for `count` atoms right after JS_NewRuntime so
++   blobs compiled by a writer runtime with the same preload reference them
++   as final ids (enables JS_READ_OBJ_INPLACE zero-copy). Atom strings
++   materialize lazily from `names` on first string use, so `names` and
++   `lens` must outlive the runtime (e.g. rodata). Must be called before any
++   dynamic atom is freed; returns 0 on success. */
+ JS_EXTERN int JS_PreloadFrozenAtoms(JSRuntime *rt, const char *const *names,
+                                     const uint32_t *lens, uint32_t count);
+ JS_EXTERN JSValue JS_ReadObject(JSContext *ctx, const uint8_t *buf, size_t buf_len, int flags);
+--- a/qjsc.c
++++ b/qjsc.c
+@@ -358,6 +358,8 @@
+         if (fread(hdr, 1, 4, f) != 4)
+             goto done;
+         len = hdr[0] | (hdr[1] << 8) | (hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
++        if (len > (1u << 20))
++            goto done; /* corrupted table; also guards the len + 1 overflow */
+         names[i] = malloc(len + 1);
+         if (!names[i])
+             goto done;
+@@ -368,11 +370,15 @@
+     }
+     if (JS_PreloadFrozenAtoms(rt, (const char *const *)names, lens, count)) {
+         fprintf(stderr, "qjsc: failed to preload frozen atom table\n");
++        ret = -2; /* already reported */
+         goto done;
+     }
+-    ret = 0;
++    /* The runtime keeps pointers into names/lens for lazy atom
++       materialization; leak them intentionally (process-lifetime tool). */
++    fclose(f);
++    return 0;
+  done:
+-    if (ret != 0 && !feof(f))
++    if (ret == -1)
+         fprintf(stderr, "qjsc: bad atom table '%s'\n", filename);
+     if (names) {
+         for (i = 0; i < count; i++)
