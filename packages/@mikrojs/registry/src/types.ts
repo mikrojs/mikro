@@ -1,4 +1,4 @@
-/** A stored build variant: one release's artifact for one bytecode version. */
+/** A stored build variant: one release's artifact for one firmware range. */
 export interface BuildRecord {
   /** SHA-256 of the `.tgz`, lowercase hex. Content address of the blob. */
   checksum: string
@@ -27,7 +27,7 @@ export interface BuildRecord {
   /**
    * ISO timestamp of the most recent publish of this build, including a
    * re-publish of bytes already stored. The highest one per
-   * `(app, bytecodeVersion)` is the current build, which is what makes
+   * `(app, firmwareRange)` is the current build, which is what makes
    * re-publishing an earlier release a rollback. Absent on records written
    * before this field existed, which read as `createdAt`.
    */
@@ -36,7 +36,7 @@ export interface BuildRecord {
 
 /**
  * A channel pointer: which build one named channel currently serves for one
- * bytecode version of one app. Movable, unlike a build record, so a build
+ * firmware range of one app. Movable, unlike a build record, so a build
  * proven on `beta` can be pointed to by `stable` without re-publishing.
  *
  * The default channel `main` is NOT stored here: its current build is the
@@ -48,8 +48,9 @@ export interface ChannelRecord {
   app: string
   /** Channel name (never `main`, which is the promotedAt default). */
   channel: string
-  bytecodeVersion: number
-  /** Checksum of the build this channel serves for this app + bytecode. The key
+  /** The pointed build's firmware range, derived from its `firmwareVersion`. */
+  firmwareRange: string
+  /** Checksum of the build this channel serves for this app + range. The key
    *  is unique, so there is exactly one record per channel and no ordering to
    *  keep: a release overwrites it. */
   checksum: string
@@ -127,7 +128,7 @@ export interface RegistryStorage {
   getChannel(
     app: string,
     channel: string,
-    bytecodeVersion: number,
+    firmwareRange: string,
   ): Promise<ChannelRecord | undefined>
   putChannel(record: ChannelRecord): Promise<void>
   getDevice(deviceId: string): Promise<DeviceRecord | undefined>

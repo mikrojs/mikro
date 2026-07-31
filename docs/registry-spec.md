@@ -119,7 +119,7 @@ absolute or contains `..`, and render the link as untrusted outbound content
 
 **Storing a build and serving it are separate steps.** A build is stored the moment it uploads,
 but it is offered to a device only once a **channel** points at it. A channel is a movable pointer
-to a build, keyed on `(app, channel, bytecodeVersion)`; the build record stays tag-less (its
+to a build, keyed on `(app, channel, firmwareRange)`; the build record stays tag-less (its
 checksum is still its primary key), so one build can be served on more than one channel. The
 optional `channel` part decides serving: absent, it is served to nobody (a bare `push`); present,
 that channel is pointed at it. `channel=main` promotes the
@@ -128,10 +128,22 @@ build (it sets `promotedAt`, the pre-channels mechanism described under
 is `main`, so a build or device with no channel reads as `main`. Channel names must match
 `^[a-zA-Z0-9][a-zA-Z0-9._-]*$` and be at most 64 characters; an invalid one is a `400`.
 
-Releases are immutable. Publishing the same `(app, version, bytecodeVersion)` again with the
+A build's **firmware range** is derived from its `firmwareVersion` at publish time: the left-most
+non-zero segment, which is where npm caret semantics place breaking changes. That is `1` for a
+`1.x` version, `0.17` for `0.17.x`, and `0.0.3` for an exact `0.0.3`. Two builds share a range
+exactly when offer rule 3 draws the same caret boundary for both. The registry derives the range;
+a client never sends it. One mikro toolchain release compiles against exactly one
+`(firmwareVersion, bytecodeVersion)` pair, so the range also identifies the toolchain line a build
+came from; `bytecodeVersion` stays on the build record as metadata and as the sanity gate in offer
+rule 1.
+
+Releases are immutable. Publishing the same `(app, version, firmwareRange)` again with the
 same checksum is a success (a `2xx`), so a CI retry is safe. Publishing it with a different
-checksum is a `409`. On any failure, respond with a non-`2xx` status and a text body; the CLI
-shows the status and the body to the user.
+checksum is a `409`. Keying on the range rather than on `bytecodeVersion` is what lets one version
+carry a variant per firmware line: two toolchains, say mikro `0.16` and `0.17`, often share a
+bytecode version, and a bytecode key would reject the second publish as a conflicting re-publish,
+blocking exactly the transition the variant mechanism exists for. On any failure, respond with a
+non-`2xx` status and a text body; the CLI shows the status and the body to the user.
 
 A minimal registry may ignore `create`, for example by auto-creating apps or serving a single
 implicit app. It exists so that a multi-app registry can refuse to start a new app lineage from
@@ -146,7 +158,8 @@ adapter defaults to 16 MiB (`maxBodyBytes`).
 that is already uploaded. `POST /releases`, JSON body `{app, version, channel}`,
 `Authorization: Bearer <token>`, app-scoped exactly like publish (an app-scoped token that names
 another app is a `403`). It points `channel` at every already-stored build for `(app, version)`
-(one build per bytecode version, since a build pins its bytecode), and responds
+(one build per firmware range, since a build pins the firmware line it was compiled against), and
+responds
 `{ok: true, released: <count>}`. It answers `404` when no such build exists. `channel` follows the
 same rule as at publish. One operation covers two jobs: graduation (point a second channel at a
 proven build) and rollback (point a channel at an older one); the direction does not matter. The
@@ -162,6 +175,13 @@ decoupling storage from serving, both to be stated for anyone tracking the CLI:
   in one step; that is now `push --release main` (or `release <version> main`), and a `push` with no
   channel uploads without serving.
 - The CLI command `publish` is renamed to `push`.
+
+Re-keying from `bytecodeVersion` to the firmware range needs no migration for `main`: it is derived
+from `promotedAt` on build records, and a stored build's range derives from its `firmwareVersion`
+on read. A registry holding named-channel pointers keyed by bytecode version must re-key them,
+either by joining each pointer's checksum to its build and deriving the range, or by re-pointing
+each channel (`release` is idempotent). Stored builds stand as they are; the new key only changes
+which future publishes conflict.
 
 ### 3. The offer object and the download
 
@@ -599,12 +619,12 @@ does not. Whether an unbound device is an error or a device awaiting a decision 
 call, not the registry's. The only consequence is that it receives nothing until it is re-enrolled
 with an app.
 
-Keep one **current build** per `(app, channel, bytecodeVersion)`; pointing a channel at a build
-makes it that channel's current build for the build's bytecode. A device follows one channel
+Keep one **current build** per `(app, channel, firmwareRange)`; pointing a channel at a build
+makes it that channel's current build for the build's firmware range. A device follows one channel
 (`device.channel`, set at enrollment, absent reads as `main`), and its current build is whatever
-that channel points at. For a named channel that is the `(app, channel, bytecodeVersion)` pointer.
+that channel points at. For a named channel that is the `(app, channel, firmwareRange)` pointer.
 For `main` it is the pre-channels current build: the highest-`promotedAt` build for
-`(app, bytecodeVersion)` among those that have a `promotedAt`, so a build stored by a bare `push`,
+`(app, firmwareRange)` among those that have a `promotedAt`, so a build stored by a bare `push`,
 which has none, is never `main`'s current. Track "current" explicitly rather than deriving it from a
 creation timestamp, and give each channel's pointer a total order, so that two writes in the same
 millisecond cannot leave "current" ambiguous. Pointing a channel at an already-stored build must
@@ -613,18 +633,24 @@ earlier one, and the pointer still moves even though the write is otherwise idem
 
 Given a check-in, offer the current build only when all of these hold:
 
-1. The device is bound to an app, and a current build exists for that app and the device's channel
-   at the device's `bytecode`. If no build matches, offer nothing: the device needs a firmware
-   reflash first, which happens out of band.
+1. The device is bound to an app, its reported `firmware` derives a firmware range (a version
+   that is not valid semver derives none and withholds the offer rather than widening the gate),
+   a current build exists for that app and the device's channel at that range, and the build's
+   `bytecodeVersion` equals the device's `bytecode`. The bytecode check is a sanity gate, not the
+   compatibility key: one toolchain produces one `(firmwareVersion, bytecodeVersion)` pair, so the
+   range already implies the bytecode, and a mismatch means a firmware whose version string
+   over-promises. If no build matches, offer nothing: the device needs a firmware reflash first,
+   which happens out of band.
 2. `build.checksum != running.checksum`, so you do not offer what is already running.
 3. `device.firmware` satisfies `^build.firmwareVersion` (npm caret semantics): at or above the
    build's firmware version, within its left-most non-zero segment. That is the major for `1.x`
    (`^1.3.0` serves `1.9`, not `2.0`) and the minor for `0.x` (`^0.16.0` serves `0.16.x`, not
    `0.17`). During `0.x`, semver treats a minor bump as breaking, so a plain "same major" check
-   does nothing there, since every `0.x` version shares major `0`. This is not an open-ended
-   floor: the caret boundary is where breaking changes are. `bytecodeVersion` does not cover them,
-   because it tracks the engine, and a release can remove a `mikro/*` API without changing QuickJS.
-   A firmware version that is not valid semver withholds the offer rather than widening the gate.
+   does nothing there, since every `0.x` version shares major `0`. The caret boundary is where
+   breaking changes are, which is why variants and channel pointers key on the firmware range:
+   `bytecodeVersion` does not cover them, because it tracks the engine, and a release can remove a
+   `mikro/*` API without changing QuickJS. Rule 1's range lookup fixes the breaking boundary; this
+   rule enforces the lower bound within it, at or above the build's `firmwareVersion`.
 4. The checksum has not failed on this device before. `lastInstall` reports failures, and the
    device also refuses to re-download a build it has abandoned.
 
@@ -654,13 +680,13 @@ one build known to work on it.
 
 - **builds**: `checksum` (primary key), `app`, `version`, `bytecodeVersion`, `firmwareVersion`,
   `size`, `storageRef`, `createdAt`, `promotedAt` (the highest `promotedAt` per
-  `(app, bytecodeVersion)` is `main`'s current build), and optional source fields `repository`,
+  `(app, firmwareRange)` is `main`'s current build; the range derives from `firmwareVersion`, so
+  whether to store it is an implementation choice), and optional source fields `repository`,
   `directory`, `commit`, `dirty` (see the publish table). Records stay tag-less, so one build can
   be served on more than one channel.
-- **channels**: `(app, channel, bytecodeVersion)` (primary key), `checksum`. A movable pointer to a
+- **channels**: `(app, channel, firmwareRange)` (primary key), `checksum`. A movable pointer to a
   build; the key is unique, so a release overwrites it and there is nothing to order. `main` is not
-  stored here; it is the highest-`promotedAt` build (see builds), so today's per-`(app,
-bytecodeVersion)` current build is `main`'s pointer and needs no migration.
+  stored here; it is the highest-`promotedAt` build (see builds).
 - **devices**: `deviceId` (primary key), `updateKeyHash`, `app` (the binding, set at enrollment,
   nullable), `channel` (the release channel, set at enrollment, nullable, absent reads as `main`),
   `name` (nullable), `lastSeen`, `runningChecksum`, `runningVersion`, `trial`, `lastFirmware`,

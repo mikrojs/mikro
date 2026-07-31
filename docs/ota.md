@@ -126,13 +126,18 @@ build immediately.
 
 Two conditions decide whether a build can run on a device:
 
-- **Bytecode version must match.** App builds are compiled to bytecode, which is tied to the
-  exact engine build, so a build compiled for a different version will not load.
 - **Firmware version must satisfy the build's caret range.** A build records the firmware it
   was compiled against as `firmwareVersion`, and serves every later firmware within the same
   breaking boundary — the major for `1.x`, the minor while the firmware is still `0.x` (semver
   treats a `0.x` minor bump as breaking). So a patch upgrade never needs a republish; a bump
-  across the breaking boundary does, because that is where APIs disappear.
+  across the breaking boundary does, because that is where APIs disappear. A release stores
+  one build per breaking range, and the registry serves the variant matching the device's
+  firmware.
+- **Bytecode version must match.** App builds are compiled to bytecode, which is tied to the
+  exact engine build, so a build compiled for a different version will not load. The registry
+  checks this too, but it follows from the firmware range — one toolchain produces one
+  firmware/bytecode pair — so it is a cross-check on the reported firmware, not what variants
+  are keyed by.
 
 **The registry decides this, not the device.** A check-in reports the device's firmware and
 bytecode version, and the registry picks a build that fits — or offers nothing. That is the

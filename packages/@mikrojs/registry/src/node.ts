@@ -116,12 +116,14 @@ export function fileStorage(dir: string): RegistryStorage {
     async listBuilds() {
       return Object.values(readIndex<BuildRecord>(buildsPath))
     },
-    async getChannel(app, channel, bytecodeVersion) {
-      return readIndex<ChannelRecord>(channelsPath)[channelKey(app, channel, bytecodeVersion)]
+    // channels.json entries written before firmware-range keying are keyed by
+    // bytecode version and are never read; re-point the channel with `release`.
+    async getChannel(app, channel, firmwareRange) {
+      return readIndex<ChannelRecord>(channelsPath)[channelKey(app, channel, firmwareRange)]
     },
     async putChannel(record) {
       const index = readIndex<ChannelRecord>(channelsPath)
-      index[channelKey(record.app, record.channel, record.bytecodeVersion)] = record
+      index[channelKey(record.app, record.channel, record.firmwareRange)] = record
       writeIndex(channelsPath, index)
     },
     async getDevice(deviceId) {

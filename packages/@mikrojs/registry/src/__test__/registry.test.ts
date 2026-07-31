@@ -144,6 +144,56 @@ describe('publish', () => {
     expect(conflict.response.status).toBe(409)
   })
 
+  // The variant key is the firmware range, not the bytecode: two toolchain
+  // lines (say mikro 0.16 and 0.17) often share a bytecode version, and a
+  // bytecode key would 409 the second publish — the exact transition variants
+  // exist for. Each range's devices get their own variant.
+  it('accepts one version built for two firmware ranges sharing a bytecode', async () => {
+    const registry = makeRegistry()
+    const b16 = await publish(registry, {firmwareVersion: '0.16.0'}, 'range-16')
+    const b17 = await publish(registry, {firmwareVersion: '0.17.0'}, 'range-17')
+    expect(b16.response.status).toBe(201)
+    expect(b17.response.status).toBe(201)
+
+    const cred16 = await enroll(registry, 'dev-16')
+    const cred17 = await enroll(registry, 'dev-17')
+    const offer16 = (await (await checkin(registry, cred16, {firmware: '0.16.5'})).json()) as {
+      checksum: string
+    }
+    const offer17 = (await (await checkin(registry, cred17, {firmware: '0.17.0'})).json()) as {
+      checksum: string
+    }
+    expect(offer16.checksum).toBe(b16.checksum)
+    expect(offer17.checksum).toBe(b17.checksum)
+  })
+
+  // Two firmwareVersions in the same range are the same variant: immutability
+  // keys on the range, so a different anchor patch does not dodge the 409.
+  it('409s a re-publish whose firmwareVersion differs only within the range', async () => {
+    const registry = makeRegistry()
+    expect((await publish(registry, {firmwareVersion: '0.16.0'}, 'range-a')).response.status).toBe(
+      201,
+    )
+    const conflict = await publish(registry, {firmwareVersion: '0.16.4'}, 'range-b')
+    expect(conflict.response.status).toBe(409)
+    expect(await conflict.response.text()).toContain('firmware range 0.16')
+    // Same bytes stay idempotent within the range.
+    expect((await publish(registry, {firmwareVersion: '0.16.0'}, 'range-a')).response.status).toBe(
+      200,
+    )
+  })
+
+  // ^0.0.z pins to the exact patch, so every 0.0.z is its own range.
+  it('treats each 0.0.z firmwareVersion as its own range', async () => {
+    const registry = makeRegistry()
+    expect((await publish(registry, {firmwareVersion: '0.0.3'}, 'patch-3')).response.status).toBe(
+      201,
+    )
+    expect((await publish(registry, {firmwareVersion: '0.0.4'}, 'patch-4')).response.status).toBe(
+      201,
+    )
+  })
+
   // Storage is keyed by checksum, so identical bytes under two apps cannot both
   // exist. Silently keeping one strands the other app's devices with no offer
   // and no error; reproducible packing means two apps from the same starter
@@ -361,26 +411,26 @@ describe('release channels', () => {
     expect(offer.checksum).toBe(checksum)
   })
 
-  // One version spans a build per bytecode; a single release points the channel
-  // at every one, so a fleet on different firmware lines moves together.
-  it('points every bytecode of a version at the channel in one release', async () => {
+  // One version spans a build per firmware range; a single release points the
+  // channel at every one, so a fleet on different firmware lines moves together.
+  it('points every firmware range of a version at the channel in one release', async () => {
     const registry = makeRegistry()
-    const b13 = await publish(registry, {channel: '', bytecodeVersion: '13'}, 'multi-bc13')
-    const b14 = await publish(registry, {channel: '', bytecodeVersion: '14'}, 'multi-bc14')
+    const b16 = await publish(registry, {channel: '', firmwareVersion: '0.16.0'}, 'multi-fw16')
+    const b17 = await publish(registry, {channel: '', firmwareVersion: '0.17.0'}, 'multi-fw17')
 
     const released = await release(registry, {app: 'sensor', version: '1.0.0', channel: 'beta'})
     expect(await released.json()).toEqual({ok: true, released: 2})
 
-    const cred13 = await enroll(registry, 'dev-13', {app: 'sensor', channel: 'beta'})
-    const cred14 = await enroll(registry, 'dev-14', {app: 'sensor', channel: 'beta'})
-    const offer13 = (await (await checkin(registry, cred13, {bytecode: 13})).json()) as {
+    const cred16 = await enroll(registry, 'dev-16', {app: 'sensor', channel: 'beta'})
+    const cred17 = await enroll(registry, 'dev-17', {app: 'sensor', channel: 'beta'})
+    const offer16 = (await (await checkin(registry, cred16, {firmware: '0.16.2'})).json()) as {
       checksum: string
     }
-    const offer14 = (await (await checkin(registry, cred14, {bytecode: 14})).json()) as {
+    const offer17 = (await (await checkin(registry, cred17, {firmware: '0.17.1'})).json()) as {
       checksum: string
     }
-    expect(offer13.checksum).toBe(b13.checksum)
-    expect(offer14.checksum).toBe(b14.checksum)
+    expect(offer16.checksum).toBe(b16.checksum)
+    expect(offer17.checksum).toBe(b17.checksum)
   })
 
   // Rollback and graduation are the same operation: releasing an older version
@@ -688,6 +738,10 @@ describe('check-in', () => {
     const credential = await enroll(registry)
     expect(await (await checkin(registry, credential)).json()).toBeNull()
 
+    // Same firmware range, wrong bytecode: the range lookup succeeds and the
+    // bytecode sanity gate withholds. One toolchain produces one
+    // (firmwareVersion, bytecodeVersion) pair, so the reported firmware version
+    // over-promises here.
     const registry2 = makeRegistry()
     await publish(registry2)
     const credential2 = await enroll(registry2)
