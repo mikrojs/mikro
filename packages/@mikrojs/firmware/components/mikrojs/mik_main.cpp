@@ -415,8 +415,8 @@ void MIK_Main(void) {
      * came up successfully." If a step earlier in boot panicked or
      * aborted, the banner doesn't print — the absence is the diagnostic.
      *
-     * Two lines: first identifies the device (version, chip, cores,
-     * radios), second reports free app heap.
+     * Two lines: first identifies the device (version, engine version,
+     * chip, cores, radios), second reports free app heap.
      *
      * The "free app heap" number is QuickJS's `malloc_limit − malloc_size`
      * immediately after runtime init — i.e. how much the user's JS code
@@ -437,10 +437,11 @@ void MIK_Main(void) {
         char banner[160];
         int off = 0;
 #ifdef MIK_FW_VERSION
-        off += snprintf(banner + off, sizeof(banner) - off, "Mikro.js v%s on %s", MIK_FW_VERSION,
-                        CONFIG_IDF_TARGET);
+        off += snprintf(banner + off, sizeof(banner) - off, "Mikro.js v%s (quickjs-ng %s) on %s",
+                        MIK_FW_VERSION, JS_GetVersion(), CONFIG_IDF_TARGET);
 #else
-        off += snprintf(banner + off, sizeof(banner) - off, "Mikro.js on %s", CONFIG_IDF_TARGET);
+        off += snprintf(banner + off, sizeof(banner) - off, "Mikro.js (quickjs-ng %s) on %s",
+                        JS_GetVersion(), CONFIG_IDF_TARGET);
 #endif
         /* Stable per-board device id (chip MAC as Crockford Base32). */
         if (dev_id && dev_id[0]) {
