@@ -90,15 +90,12 @@ TEST_CASE("uncaught failed dynamic import reports once" *
     CHECK_EQ(run_and_count_reports(main), 1);
 }
 
-/* KNOWN RESIDUAL: a caught failed dynamic import still surfaces ONE report.
- * QuickJS runs a module body as an async function (js_execute_sync_module)
- * and resolves the resulting promise by value, never attaching a handler;
- * when the body throws, that internal promise is rejected-and-never-handled
- * and there is no host-side signal that it was "handled". Fully silencing
- * this requires marking that promise handled inside QuickJS. Until then the
- * deferred tracker reports it once (down from the pre-fix behaviour, and the
- * propagated/await-chain duplicate is collapsed by reason identity). */
-TEST_CASE("caught failed dynamic import: one residual engine-internal report" *
+/* A caught failed dynamic import reports nothing. QuickJS-NG 0.16 marks the
+ * module's internal evaluation promise as handled (it reads the rejection by
+ * value, never attaching a handler), so the only observable rejection is the
+ * import() promise the catch block handles. Before 0.16 this surfaced one
+ * residual engine-internal report. */
+TEST_CASE("caught failed dynamic import reports nothing" *
           doctest::test_suite("unhandled-rejection")) {
     TmpDir dir;
     dir.write("wifi.js", "throw new Error('WiFi init failed: ESP_ERR_NO_MEM');\n");
@@ -106,7 +103,7 @@ TEST_CASE("caught failed dynamic import: one residual engine-internal report" *
         "main.js",
         "try { await import('./wifi.js'); } catch { /* handled */ }\n");
 
-    CHECK_EQ(run_and_count_reports(main), 1);
+    CHECK_EQ(run_and_count_reports(main), 0);
 }
 
 /* A caught await of a synchronously-throwing async function must report
