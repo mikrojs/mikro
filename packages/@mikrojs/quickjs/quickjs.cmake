@@ -35,14 +35,22 @@ set(QUICKJS_INCLUDE_DIR "${_QUICKJS_CMAKE_DIR}/deps/quickjs")
 # is stamp-guarded so this is cheap when nothing changed; the GLOB's
 # CONFIGURE_DEPENDS reruns configure when the patch set changes, and
 # CMAKE_CONFIGURE_DEPENDS reruns it when patch contents change.
-file(GLOB _QUICKJS_PATCHES CONFIGURE_DEPENDS "${_QUICKJS_CMAKE_DIR}/patches/*.patch")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_QUICKJS_PATCHES})
-execute_process(
-    COMMAND node "${_QUICKJS_CMAKE_DIR}/apply-patches.js"
-    RESULT_VARIABLE _QUICKJS_PATCH_RC
-)
-if(NOT _QUICKJS_PATCH_RC EQUAL 0)
-    message(FATAL_ERROR "quickjs.cmake: applying QuickJS patches failed (see output above)")
+#
+# Guarded for CMake script mode: ESP-IDF's early component-requirements
+# pass includes component CMakeLists (and through them this file) via
+# script-mode CMake, where CONFIGURE_DEPENDS globs and directory
+# properties are hard errors. The real project-mode configure that
+# follows runs the sync; the requirements pass only needs the variables.
+if(NOT CMAKE_SCRIPT_MODE_FILE)
+    file(GLOB _QUICKJS_PATCHES CONFIGURE_DEPENDS "${_QUICKJS_CMAKE_DIR}/patches/*.patch")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_QUICKJS_PATCHES})
+    execute_process(
+        COMMAND node "${_QUICKJS_CMAKE_DIR}/apply-patches.js"
+        RESULT_VARIABLE _QUICKJS_PATCH_RC
+    )
+    if(NOT _QUICKJS_PATCH_RC EQUAL 0)
+        message(FATAL_ERROR "quickjs.cmake: applying QuickJS patches failed (see output above)")
+    endif()
 endif()
 
 # Source files
