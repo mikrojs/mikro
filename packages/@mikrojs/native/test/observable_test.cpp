@@ -590,3 +590,39 @@ TEST_CASE("withEmitters: unsubscribe during dispatch doesn't break iteration" *
     CHECK(read_global_string(ctx, "__c") == "x");
     MIK_FreeRuntime(rt);
 }
+
+/* A panic that cannot be scheduled (setTimeout unusable — the same shape as
+ * stack exhaustion, where scheduling the deferred re-throw fails the stack
+ * check the dispatch just failed) must escalate through the native error
+ * handler instead of going silent. Regression for the on-device esp32s3
+ * failure where a stack-exhausted pipe chain delivered an empty, cleanly
+ * completed stream with no error anywhere. */
+TEST_CASE("unschedulable dispatch panic escalates to the error handler" *
+          doctest::test_suite("observable")) {
+    static int error_count;
+    error_count = 0;
+
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+    MIK_SetErrorHandler(
+        rt, [](JSContext*, JSValue, void*) { error_count++; }, nullptr);
+
+    JSValue rv = eval_module(ctx,
+                             "import {Observable} from 'mikro/observable'\n"
+                             "globalThis.setTimeout = undefined\n"
+                             "const seen = []\n"
+                             "new Observable((s) => { s.next(1); s.complete() })\n"
+                             "  .subscribe({next: () => { throw new Error('boom') },\n"
+                             "              complete: () => { seen.push('done') }})\n"
+                             "globalThis.__seen = seen.length\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    /* The throw from the subscriber surfaced through the handler; before the
+     * escalation existed this was 0 and the stream ended silently. */
+    CHECK(error_count == 1);
+    /* Keep-going contract: escalation reports and halts, but the producer's
+     * complete() still reached this subscriber. */
+    CHECK(read_global_int(ctx, "__seen") == 1);
+    MIK_FreeRuntime(rt);
+}

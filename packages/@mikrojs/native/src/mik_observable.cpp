@@ -72,11 +72,29 @@ static JSValue throw_captured(JSContext* ctx, JSValueConst this_val, int argc,
     return JS_Throw(ctx, JS_DupValue(ctx, func_data[0]));
 }
 
+/* Escalation for a panic that cannot be scheduled: report through the
+ * allocation-free native uncaught path and halt, mirroring the
+ * unhandled-rejection flush. Scheduling fails exactly when the runtime is
+ * out of stack or memory — the same conditions that caused the throw — and
+ * silence here turned engine-level failures into silently dropped values.
+ * Consumes `exception`. */
+static void panic_now(JSContext* ctx, JSValue exception) {
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+    if (mik__report_uncaught(ctx, exception, false) && mik_rt) {
+        if (mik_rt->error_handler_fn) {
+            mik_rt->error_handler_fn(ctx, exception, mik_rt->error_handler_opaque);
+        }
+        MIK_Stop(mik_rt);
+    }
+    JS_FreeValue(ctx, exception);
+}
+
 /* Catch a thrown error and re-throw it on the next event-loop tick via the
  * runtime's setTimeout. The synchronous caller keeps going (sibling
  * subscribers receive the value, remaining teardowns run); the eventual
  * uncaught throw halts the runtime via the existing unhandled-rejection
- * path. Stream errors are panics.
+ * path. Stream errors are panics. If the deferred throw cannot be
+ * scheduled, escalate via panic_now instead of going silent.
  *
  * Takes ownership of `exception` — caller must not free after this call. */
 static void panic_async(JSContext* ctx, JSValue exception) {
@@ -84,18 +102,17 @@ static void panic_async(JSContext* ctx, JSValue exception) {
     JSValue setTimeout = JS_GetPropertyStr(ctx, global, "setTimeout");
     JS_FreeValue(ctx, global);
     if (!JS_IsFunction(ctx, setTimeout)) {
-        /* setTimeout missing or not a function — should not happen in the
-         * mikrojs runtime since it's globally defined. Drop on the floor
-         * rather than disrupting the dispatch path. */
         JS_FreeValue(ctx, setTimeout);
-        JS_FreeValue(ctx, exception);
+        panic_now(ctx, exception);
         return;
     }
     JSValueConst data[1] = {exception};
     JSValue thrower = JS_NewCFunctionData(ctx, throw_captured, 0, 0, 1, data);
-    JS_FreeValue(ctx, exception);
     if (JS_IsException(thrower)) {
+        JSValue stray = JS_GetException(ctx);
+        JS_FreeValue(ctx, stray);
         JS_FreeValue(ctx, setTimeout);
+        panic_now(ctx, exception);
         return;
     }
     JSValue zero = JS_NewInt32(ctx, 0);
@@ -105,12 +122,15 @@ static void panic_async(JSContext* ctx, JSValue exception) {
     JS_FreeValue(ctx, thrower);
     JS_FreeValue(ctx, zero);
     if (JS_IsException(ret)) {
-        /* setTimeout itself threw — best effort, drop the secondary error. */
-        JSValue suppressed = JS_GetException(ctx);
-        JS_FreeValue(ctx, suppressed);
-    } else {
-        JS_FreeValue(ctx, ret);
+        /* setTimeout itself threw — under stack exhaustion it fails the
+         * same check the dispatch just failed. Escalate. */
+        JSValue stray = JS_GetException(ctx);
+        JS_FreeValue(ctx, stray);
+        panic_now(ctx, exception);
+        return;
     }
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, exception);
 }
 
 /* Call `fn(argv...)` synchronously; if it throws, schedule the exception
