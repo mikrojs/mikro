@@ -120,10 +120,10 @@ static int mik__stdio_module_init(JSContext* ctx, JSModuleDef* m) {
  * handler is queued, and a promise that later gets a handler is removed
  * from the queue. This mirrors the HTML/WinterCG unhandledrejection
  * algorithm. It matters because some promises are born rejected before a
- * handler can be attached. The clearest example is a module's evaluation
- * promise, which the dynamic-import loader rejects (when the module body
- * throws) and only then attaches its .then to. Reporting eagerly surfaced
- * that transient rejection as a spurious second "Uncaught (in promise)".
+ * handler can be attached. The clearest example is an async function that
+ * throws synchronously: its result promise rejects before the caller's
+ * `await` attaches a handler. Reporting eagerly surfaced that transient
+ * rejection as a spurious "Uncaught (in promise)".
  *
  * This is the same add-on-reject / remove-on-handle / report-after-drain
  * pattern quickjs-libc's js_std_promise_rejection_tracker uses. */
@@ -158,26 +158,6 @@ static void mik__promise_rejection_tracker(JSContext* ctx, JSValue promise, JSVa
     pending.push_back({JS_DupValue(ctx, promise), JS_DupValue(ctx, reason)});
 }
 
-/* Drop a promise from the pending-rejection queue without reporting it. The
- * REPL eval pump calls this for the result promise it polls and reports via
- * the throw path, so the end-of-turn flush doesn't report it a second time. */
-void mik__forget_rejection(JSContext* ctx, JSValue promise) {
-    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    if (!mik_rt) {
-        return;
-    }
-    auto& pending = mik_rt->pending_rejections;
-    void* key = JS_VALUE_GET_PTR(promise);
-    for (size_t i = 0; i < pending.size(); i++) {
-        if (JS_VALUE_GET_PTR(pending[i].promise) == key) {
-            JS_FreeValue(ctx, pending[i].promise);
-            JS_FreeValue(ctx, pending[i].reason);
-            pending.erase(pending.begin() + i);
-            return;
-        }
-    }
-}
-
 /* End-of-turn unhandled-rejection check. Any promise still queued after a
  * microtask drain rejected and never got a handler: report it, notify the
  * host error handler, and halt. */
@@ -198,14 +178,12 @@ void mik__flush_unhandled_rejections(JSContext* ctx) {
     std::vector<MIKRejectedPromise> rejected;
     rejected.swap(mik_rt->pending_rejections);
 
-    /* One failed dynamic import leaves two never-handled promises with the
-     * SAME reason: the module's internal sync-evaluation promise (QuickJS runs
-     * a module body as an async function and reads its rejected result by
-     * value, never attaching a handler) and the promise the error propagates
-     * to up the await chain. mik__report_uncaught dedups by reason-object
-     * identity, so the second is a no-op; only act on a fresh report so the
-     * host bridge and the halt don't fire twice. (quickjs-libc reports every
-     * entry; we collapse same-error duplicates.) */
+    /* The same reason can reach reporting twice: the entry-eval path reads a
+     * rejected module promise by value and the host dumps it via the throw
+     * path while the promise itself stays queued here. mik__report_uncaught
+     * dedups by reason-object identity, so the duplicate is a no-op; only act
+     * on a fresh report so the host bridge and the halt don't fire twice.
+     * (quickjs-libc reports every entry; we collapse same-error duplicates.) */
     for (const MIKRejectedPromise& rp : rejected) {
         if (mik__report_uncaught(ctx, rp.reason, true)) {
             /* Notify the error handler (e.g. host bridge) directly. Don't

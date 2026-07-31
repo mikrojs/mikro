@@ -65,6 +65,9 @@ static JSValue mik__abort_lazy_get(JSContext* ctx, JSValue this_val, int magic) 
     }
     if (JS_PromiseState(ctx, ret) == JS_PROMISE_REJECTED) {
         JSValue err = JS_PromiseResult(ctx, ret);
+        /* The rejection is re-thrown below; mark the promise handled so the
+         * unhandled-rejection flush doesn't report the same error again. */
+        JS_PromiseMarkAsHandled(ctx, ret);
         JS_FreeValue(ctx, ret);
         JS_FreeValue(ctx, global_obj);
         return JS_Throw(ctx, err);
