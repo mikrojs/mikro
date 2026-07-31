@@ -6,3 +6,8 @@
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_USE_MALLOC=y
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
+
+# Same Xtensa frame-size reasoning as sdkconfig.defaults.esp32s3: the
+# 24 KB base main-task stack leaves too little JS stack depth for nested
+# dispatch chains under quickjs-ng 0.16.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=40960
