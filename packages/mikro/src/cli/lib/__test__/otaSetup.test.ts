@@ -204,18 +204,28 @@ describe('canOpenBrowser', () => {
 })
 
 describe('ensureFileIgnored', () => {
+  // Git exports GIT_DIR (absolute in linked worktrees) and friends into hook
+  // processes. Without scrubbing them, these commands operate on the
+  // developer's real repository instead of the temp fixture whenever the
+  // suite runs under a git hook: `git init` re-inits it (core.bare=true,
+  // repositoryformatversion=0) and the identity writes land in its config.
+  const gitEnv: Record<string, string | undefined> = {...process.env}
+  for (const key of Object.keys(gitEnv)) {
+    if (key.startsWith('GIT_')) delete gitEnv[key]
+  }
+  const git = (cwd: string, ...args: string[]) => spawnSync('git', args, {cwd, env: gitEnv})
+
   let dir = ''
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'mikro-ignore-'))
-    spawnSync('git', ['init', '-q'], {cwd: dir})
+    if (git(dir, 'init', '-q').status !== 0) throw new Error('git init failed in temp fixture')
     // A committed identity so nothing here depends on the machine's git config.
-    spawnSync('git', ['config', 'user.email', 't@t'], {cwd: dir})
-    spawnSync('git', ['config', 'user.name', 't'], {cwd: dir})
+    git(dir, 'config', 'user.email', 't@t')
+    git(dir, 'config', 'user.name', 't')
   })
   afterEach(() => rmSync(dir, {recursive: true, force: true}))
 
-  const ignored = (target: string): boolean =>
-    spawnSync('git', ['check-ignore', '-q', target], {cwd: dir}).status === 0
+  const ignored = (target: string): boolean => git(dir, 'check-ignore', '-q', target).status === 0
 
   // The hole this closes: a partial .mikro/.gitignore that ignores something
   // else but not the token file left the fleet credential committable.
