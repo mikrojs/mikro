@@ -1,3 +1,5 @@
+import semver from 'semver'
+
 import {encodeCbor} from './cbor.js'
 
 /** SHA-256 as lowercase hex via WebCrypto (portable across runtimes). */
@@ -49,9 +51,20 @@ export function normalizeUserCode(input: string): string {
 export const DEFAULT_CHANNEL = 'main'
 
 /** Storage key for a channel pointer. `\u0000` cannot occur in an app, channel,
- *  or number, so the three fields never run together ambiguously. */
-export function channelKey(app: string, channel: string, bytecodeVersion: number): string {
-  return `${app}\u0000${channel}\u0000${bytecodeVersion}`
+ *  or range, so the three fields never run together ambiguously. */
+export function channelKey(app: string, channel: string, firmwareRange: string): string {
+  return `${app}\u0000${channel}\u0000${firmwareRange}`
+}
+
+/** The breaking range a firmware version anchors under npm caret semantics:
+ *  the left-most non-zero segment. `1` for 1.x, `0.17` for 0.17.x, `0.0.3`
+ *  for an exact 0.0.x patch. undefined for anything that is not semver. */
+export function firmwareRange(version: string): string | undefined {
+  const parsed = semver.parse(version)
+  if (parsed === null) return undefined
+  if (parsed.major > 0) return `${parsed.major}`
+  if (parsed.minor > 0) return `0.${parsed.minor}`
+  return `0.0.${parsed.patch}`
 }
 
 export const CLIENT_IP_HEADER = 'mikro-client-ip'

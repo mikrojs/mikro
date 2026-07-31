@@ -31,11 +31,11 @@ export function memoryStorage(): RegistryStorage {
     async listBuilds() {
       return [...builds.values()]
     },
-    async getChannel(app, channel, bytecodeVersion) {
-      return channels.get(channelKey(app, channel, bytecodeVersion))
+    async getChannel(app, channel, firmwareRange) {
+      return channels.get(channelKey(app, channel, firmwareRange))
     },
     async putChannel(record) {
-      channels.set(channelKey(record.app, record.channel, record.bytecodeVersion), record)
+      channels.set(channelKey(record.app, record.channel, record.firmwareRange), record)
     },
     async getDevice(deviceId) {
       return devices.get(deviceId)

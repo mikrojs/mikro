@@ -16,6 +16,7 @@ import {
   DEFAULT_CHANNEL,
   error,
   escapeHtml,
+  firmwareRange,
   html,
   isSameOriginPost,
   json,
@@ -240,15 +241,15 @@ export function createRegistry(options: RegistryOptions): Registry {
   // ── Publish ──────────────────────────────────────────────────────
 
   /** A promotedAt strictly after every build already promoted for
-   *  `(app, bytecode)`, so `main`'s current build is a total order even when two
-   *  releases land in the same millisecond. reduce, not `Math.max(...spread)`:
-   *  the build history can grow past the call-stack limit, which would break
-   *  releasing permanently (nothing deletes builds). */
-  async function nextMainPromotedAt(app: string, bytecodeVersion: number): Promise<string> {
+   *  `(app, firmware range)`, so `main`'s current build is a total order even
+   *  when two releases land in the same millisecond. reduce, not
+   *  `Math.max(...spread)`: the build history can grow past the call-stack
+   *  limit, which would break releasing permanently (nothing deletes builds). */
+  async function nextMainPromotedAt(app: string, range: string): Promise<string> {
     const builds = await storage.listBuilds()
     return new Date(
       builds.reduce((latest, b) => {
-        if (b.app !== app || b.bytecodeVersion !== bytecodeVersion) return latest
+        if (b.app !== app || firmwareRange(b.firmwareVersion) !== range) return latest
         const at = Date.parse(b.promotedAt ?? b.createdAt) + 1
         return Number.isFinite(at) && at > latest ? at : latest
       }, Date.now()),
@@ -260,15 +261,19 @@ export function createRegistry(options: RegistryOptions): Registry {
    *  build record; a named channel gets an explicit pointer, leaving the build
    *  tag-less so it can be served on more than one channel. */
   async function pointChannel(build: BuildRecord, channel: string): Promise<void> {
+    // A legacy record with an unparseable firmwareVersion has no range; a
+    // pointer without one could never be read back, so do not write it.
+    const range = firmwareRange(build.firmwareVersion)
+    if (range === undefined) return
     if (channel === DEFAULT_CHANNEL) {
-      const promotedAt = await nextMainPromotedAt(build.app, build.bytecodeVersion)
+      const promotedAt = await nextMainPromotedAt(build.app, range)
       await storage.putBuild({...build, promotedAt})
       return
     }
     const record: ChannelRecord = {
       app: build.app,
       channel,
-      bytecodeVersion: build.bytecodeVersion,
+      firmwareRange: range,
       checksum: build.checksum,
     }
     await storage.putChannel(record)
@@ -387,9 +392,11 @@ export function createRegistry(options: RegistryOptions): Registry {
     if (!Number.isInteger(bytecodeVersion)) return error('Invalid bytecodeVersion', 400)
     if (!(file instanceof Blob)) return error('Missing build file', 400)
 
-    // Release immutability: same (app, version, bytecodeVersion) with the
+    // Release immutability: same (app, version, firmwareRange) with the
     // same checksum is an idempotent success (CI retry-safe); a different
-    // checksum is a conflict, so bump the version instead.
+    // checksum is a conflict, so bump the version instead. The range, not the
+    // bytecode, is the variant key: two toolchain lines can share a bytecode.
+    const range = firmwareRange(firmwareVersion)!
     const builds = await storage.listBuilds()
     // Builds are stored by checksum, so identical bytes under two apps would
     // leave one record and silently strand the other app's devices — they would
@@ -408,12 +415,12 @@ export function createRegistry(options: RegistryOptions): Registry {
     let record: BuildRecord
     let created = false
     const existing = builds.find(
-      (b) => b.app === app && b.version === version && b.bytecodeVersion === bytecodeVersion,
+      (b) => b.app === app && b.version === version && firmwareRange(b.firmwareVersion) === range,
     )
     if (existing) {
       if (existing.checksum !== checksum) {
         return error(
-          `Release ${app}@${version} (bytecode ${bytecodeVersion}) already exists with a different checksum`,
+          `Release ${app}@${version} (firmware range ${range}) already exists with a different checksum`,
           409,
         )
       }
@@ -492,8 +499,8 @@ export function createRegistry(options: RegistryOptions): Registry {
     if (channel.length > MAX_CHANNEL_LENGTH || !CHANNEL_RE.test(channel)) {
       return error('channel must be alphanumeric with . _ - (e.g. beta, stable)', 400)
     }
-    // One version can have a build per bytecode; point the channel at every one,
-    // so a fleet spanning firmware lines moves to the release together.
+    // One version can have a build per firmware range; point the channel at
+    // every one, so a fleet spanning firmware lines moves to the release together.
     const matches = (await storage.listBuilds()).filter(
       (b) => b.app === app && b.version === version,
     )
@@ -1088,15 +1095,15 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
     return record.name === undefined ? [rev] : [rev, record.name]
   }
 
-  /** The build a channel currently serves for `(app, bytecode)`, or undefined.
-   *  `main` is the highest-promotedAt build, the pre-channels default, so
-   *  existing builds keep serving with no migration; a build with no promotedAt
-   *  has been pushed but not released to main, so it is never main's current. A
-   *  named channel is its explicit pointer. */
+  /** The build a channel currently serves for `(app, firmware range)`, or
+   *  undefined. `main` is the highest-promotedAt build, the pre-channels
+   *  default, so existing builds keep serving with no migration; a build with
+   *  no promotedAt has been pushed but not released to main, so it is never
+   *  main's current. A named channel is its explicit pointer. */
   async function currentBuild(
     app: string,
     channel: string,
-    bytecode: number,
+    range: string,
   ): Promise<BuildRecord | undefined> {
     if (channel === DEFAULT_CHANNEL) {
       // Most recently promoted wins, with the checksum breaking ties so two
@@ -1107,11 +1114,14 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
       const cmp = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0)
       return (await storage.listBuilds())
         .filter(
-          (b) => b.app === app && b.bytecodeVersion === bytecode && b.promotedAt !== undefined,
+          (b) =>
+            b.app === app &&
+            firmwareRange(b.firmwareVersion) === range &&
+            b.promotedAt !== undefined,
         )
         .sort((a, b) => cmp(b.promotedAt!, a.promotedAt!) || cmp(a.checksum, b.checksum))[0]
     }
-    const pointer = await storage.getChannel(app, channel, bytecode)
+    const pointer = await storage.getChannel(app, channel, range)
     if (pointer === undefined) return undefined
     return storage.getBuild(pointer.checksum)
   }
@@ -1124,24 +1134,21 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
     const {app, lastBytecode: bytecode, lastFirmware: firmware, lastFree: free} = device
     if (app === undefined || bytecode === undefined || firmware === undefined) return undefined
 
-    const current = await currentBuild(app, device.channel ?? DEFAULT_CHANNEL, bytecode)
+    // An unparseable reported firmware derives no range: withhold rather than
+    // widen the gate.
+    const range = firmwareRange(firmware)
+    if (range === undefined) return undefined
+
+    const current = await currentBuild(app, device.channel ?? DEFAULT_CHANNEL, range)
     if (current === undefined) return undefined
     if (current.checksum === device.runningChecksum) return undefined
-    // At or above the build's firmware, and within the same major. A floor
-    // alone would offer a build compiled against 1.x to a 2.0 device, where a
-    // major bump means exactly the breaking changes it may not survive.
-    // `bytecodeVersion` does not cover this: it tracks the engine, so a release
-    // that removes a `mikro/*` API without changing QuickJS still matches.
-    //
-    // Caret semantics, exactly as npm ranges define them: at or above the
-    // build's firmware, within its left-most non-zero segment. For 1.x that is
-    // the major (^1.3 serves 1.9, not 2.0); for 0.x, where semver makes the
-    // minor the breaking boundary, it is the minor (^0.16 serves 0.16.x, not
-    // 0.17). A hand-rolled "same major" is inert during 0.x — every 0.x
-    // firmware shares major 0 — which is the whole of the current release line.
-    // includePrerelease so a device on a prerelease firmware still matches its
-    // own line rather than being offered nothing.
-    if (semver.valid(firmware) === null) return undefined
+    // Sanity gate, not the compatibility key: one toolchain produces one
+    // (firmwareVersion, bytecodeVersion) pair, so a mismatch means the reported
+    // firmware version over-promises.
+    if (current.bytecodeVersion !== bytecode) return undefined
+    // The range lookup fixed the breaking boundary; this enforces the lower
+    // bound within it, at or above the build's firmware. includePrerelease so a
+    // device on a prerelease firmware still matches its own line.
     if (!semver.satisfies(firmware, `^${current.firmwareVersion}`, {includePrerelease: true})) {
       return undefined
     }
