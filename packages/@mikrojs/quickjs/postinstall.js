@@ -20,12 +20,34 @@ const binDir = join(__dirname, 'bin')
 const qjsDir = join(__dirname, 'deps', 'quickjs')
 const repoRoot = join(__dirname, '..', '..', '..')
 
-// Always sync submodule to the pinned commit
+// Sync the submodule to the commit the superproject records, but only when
+// it actually moved: an unconditional sync would re-checkout every run and
+// wipe the applied patch series (and any transient local experiments).
+// --force because the applied patches count as local changes and would
+// otherwise block the checkout when a branch switch moves the pinned
+// commit; the patches are reapplied below, so discarding them is safe.
+const submodulePath = 'packages/@mikrojs/quickjs/deps/quickjs'
+let recordedCommit = ''
+let checkedOutCommit = ''
 try {
-  execFileSync('git', ['submodule', 'update', '--init', 'packages/@mikrojs/quickjs/deps/quickjs'], {
+  recordedCommit = execFileSync('git', ['ls-tree', '--object-only', 'HEAD', submodulePath], {
     cwd: repoRoot,
-    stdio: 'inherit',
-  })
+    encoding: 'utf8',
+  }).trim()
+  checkedOutCommit = execFileSync('git', ['-C', qjsDir, 'rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+  }).trim()
+} catch {
+  // Not a git repo (published package) or submodule missing; fall through to
+  // the sync attempt, whose own error handling covers the missing-tree case.
+}
+try {
+  if (!recordedCommit || recordedCommit !== checkedOutCommit) {
+    execFileSync('git', ['submodule', 'update', '--init', '--force', submodulePath], {
+      cwd: repoRoot,
+      stdio: 'inherit',
+    })
+  }
 } catch {
   if (!existsSync(join(qjsDir, 'quickjs.c'))) {
     console.error(
