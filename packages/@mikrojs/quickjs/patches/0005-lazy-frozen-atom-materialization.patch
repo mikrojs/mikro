@@ -19,10 +19,12 @@
  
      JSClassID js_class_id_alloc; /* counter for user defined classes */
      int class_count;    /* size of class_array */
-@@ -2236,6 +2244,33 @@
+@@ -2234,6 +2242,33 @@
+ static inline JSAtomStruct *atom_set_free(uint32_t v)
+ {
      return (JSAtomStruct *)(((uintptr_t)v << 1) | 1);
- }
- 
++}
++
 +/* mikrojs patch: shared placeholder occupying reserved frozen-atom slots
 +   until their string materializes. Deliberately a valid, readable JSString
 +   (empty, narrow, type STRING) so walkers that only inspect atom_type/kind
@@ -48,11 +50,9 @@
 +static inline bool js_atom_is_frozen_id(const JSRuntime *rt, JSAtom v)
 +{
 +    return v - rt->frozen_first < rt->frozen_count;
-+}
-+
+ }
+ 
  /* Note: the string contents are uninitialized */
- static JSString *js_alloc_string_rt(JSRuntime *rt, int max_len, int is_wide_char)
- {
 @@ -2383,7 +2418,7 @@
  
          for(i = 0; i < rt->atom_size; i++) {
@@ -609,7 +609,59 @@
              s->atom_size += (sizeof(*p) + (p->len << p->is_wide_char) +
                               1 - p->is_wide_char);
          }
-@@ -38548,8 +38805,11 @@
+@@ -37790,8 +38047,12 @@
+ /* mikrojs patch: variant of BC_VERSION for blobs whose atom references
+    below the frozen boundary are final runtime atom ids (see
+    JS_PreloadFrozenAtoms). The header carries the boundary and the frozen
+-   table hash so a mismatched runtime rejects the blob at load. */
++   table hash so a mismatched runtime rejects the blob at load. Derived
++   with a high flag bit so it tracks upstream bumps; the assert catches
++   the far-future collision when BC_VERSION itself reaches bit 6. */
+ #define BC_VERSION_FROZEN (BC_VERSION | 0x40)
++_Static_assert((BC_VERSION & 0x40) == 0,
++               "BC_VERSION collides with the frozen-format flag bit");
+ 
+ typedef struct BCWriterState {
+     JSContext *ctx;
+@@ -37801,6 +38062,9 @@
+     bool allow_reference;
+     bool allow_source;
+     bool allow_debug;
++    /* mikrojs patch: set when a frozen/pre-preload dynamic atom was written
++       as a final id; only such blobs need the frozen header. */
++    bool used_frozen_atom;
+     uint32_t first_atom;
+     uint32_t *atom_to_idx;
+     int atom_to_idx_size;
+@@ -37891,6 +38155,10 @@
+     uint32_t v;
+ 
+     if (atom < s->first_atom || __JS_AtomIsTaggedInt(atom)) {
++        /* mikrojs patch: a non-predefined atom passing through as a final
++           id makes the blob depend on the frozen table */
++        if (!__JS_AtomIsTaggedInt(atom) && atom >= JS_ATOM_END)
++            s->used_frozen_atom = true;
+         *pres = atom;
+         return 0;
+     }
+@@ -38528,8 +38796,14 @@
+ 
+     dbuf1 = s->dbuf;
+     js_dbuf_init(s->ctx, &s->dbuf);
+-    if (s->allow_bytecode && s->first_atom > JS_ATOM_END) {
+-        /* mikrojs patch: frozen-atom blob; record boundary + table hash */
++    /* mikrojs patch: the frozen header is only needed when the blob depends
++       on the frozen table: a final-id atom reference, or an atom-table
++       entry (idx values are encoded relative to the boundary). A blob with
++       neither is byte-compatible classic even when written from a frozen
++       runtime — e.g. the trivial serialize-and-peek probe mikro/sys uses
++       to report the app-bytecode version to the OTA registry. */
++    if (s->allow_bytecode && s->first_atom > JS_ATOM_END &&
++        (s->used_frozen_atom || s->idx_to_atom_count != 0)) {
+         bc_put_u8(s, BC_VERSION_FROZEN);
+         bc_put_u32(s, 0); // checksum, filled in after serialization
+         bc_put_leb128(s, s->first_atom);
+@@ -38548,8 +38822,11 @@
                 more efficient. */
              bc_put_u32(s, atom);
          } else {

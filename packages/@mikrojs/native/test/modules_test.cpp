@@ -766,3 +766,36 @@ TEST_CASE("Builtin bytecode loads zero-copy via the frozen atom table" *
 
     MIK_FreeRuntime(mik_rt);
 }
+
+TEST_CASE("Device bytecode-version probe reports classic despite the frozen table" *
+          doctest::test_suite("modules")) {
+    /* mikro/sys reports the device's app-bytecode version to the OTA
+     * registry by serializing a trivial value and reading byte 0; packs
+     * built by the CLI are classic-format, so a frozen-format answer makes
+     * the registry reject every push. A blob with no frozen-atom
+     * references and no atom table must stay classic (26); anything that
+     * carries atoms from a frozen runtime must keep the frozen header. */
+    MIKRuntime* mik_rt = MIK_NewRuntime();
+    REQUIRE(mik_rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(mik_rt);
+
+    size_t len = 0;
+    uint8_t* buf = JS_WriteObject(ctx, &len, JS_NULL, JS_WRITE_OBJ_BYTECODE);
+    REQUIRE(buf != nullptr);
+    REQUIRE(len > 0);
+    CHECK_MESSAGE(buf[0] == 26, "trivial probe blob must be classic-format");
+    js_free(ctx, buf);
+
+    const char* code = "export function probe() { return 1; }";
+    JSValue compiled = JS_Eval(ctx, code, strlen(code), "/probe.js",
+                               JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+    REQUIRE(!JS_IsException(compiled));
+    uint8_t* mod = JS_WriteObject(ctx, &len, compiled, JS_WRITE_OBJ_BYTECODE);
+    JS_FreeValue(ctx, compiled);
+    REQUIRE(mod != nullptr);
+    CHECK_MESSAGE(mod[0] == (26 | 0x40),
+                  "atom-carrying blobs from a frozen runtime must keep the frozen header");
+    js_free(ctx, mod);
+
+    MIK_FreeRuntime(mik_rt);
+}
