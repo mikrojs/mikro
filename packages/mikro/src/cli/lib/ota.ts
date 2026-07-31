@@ -264,7 +264,7 @@ function stripBuildMetadata(version: string): string {
 /**
  * Derive a unique OTA version for `--snapshot`, so dev iteration does not need a
  * manual `package.json` bump. The registry keys build immutability on
- * `(app, version, bytecodeVersion)`, so each iteration needs a distinct version.
+ * `(app, version, firmwareRange)`, so each iteration needs a distinct version.
  * Form: `<base>-snapshot.<ts>`.
  *
  * Uniqueness rides in a semver **prerelease**, not build metadata: build

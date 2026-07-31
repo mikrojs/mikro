@@ -164,7 +164,7 @@ export function buildReleaseRequest(input: ReleaseInput, token: string): Release
 }
 
 /** Point a channel at an already-published build. Returns how many stored builds
- *  the channel was pointed at: one per bytecode version of `(app, version)`, not
+ *  the channel was pointed at: one per firmware range of `(app, version)`, not
  *  a device count. */
 export async function releaseBuild(
   input: ReleaseInput,
