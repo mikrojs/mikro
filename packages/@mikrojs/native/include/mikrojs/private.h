@@ -97,10 +97,10 @@ struct MIKRuntime {
      * here on `reject` and removes it on `handle`; whatever remains after a
      * microtask drain (mik__execute_jobs) is a genuine unhandled rejection
      * and gets reported. This deferral mirrors the HTML/WinterCG algorithm
-     * and is what prevents a transiently-unhandled promise (e.g. a module's
-     * evaluation promise, rejected before the import loader attaches its
-     * .then) from being reported. Entries hold dup'd references owned by this
-     * vector and freed when removed or flushed. */
+     * and is what prevents a transiently-unhandled promise (e.g. an async
+     * function's result promise, rejected synchronously before `await`
+     * attaches its handler) from being reported. Entries hold dup'd
+     * references owned by this vector and freed when removed or flushed. */
     std::vector<MIKRejectedPromise> pending_rejections;
     /* Shared prototype for Result objects ({ok, value} / {ok, error}) created
      * by mik__result_ok/mik__result_err and the native:mikro/result ok()/err()
@@ -184,8 +184,6 @@ JSValue mik_throw_errno(JSContext* ctx, int err);
 void mik__execute_jobs(JSContext* ctx);
 /* End-of-turn unhandled-rejection check; called after each microtask drain. */
 void mik__flush_unhandled_rejections(JSContext* ctx);
-/* Drop a promise from the pending-rejection queue without reporting it. */
-void mik__forget_rejection(JSContext* ctx, JSValue promise);
 JSModuleDef* mik__load_builtin(JSContext* ctx, const char* name);
 int mik__load_file(JSContext* ctx, DynBuf* dbuf, const char* filename);
 void mik__resolve_fs_path(JSContext* ctx, const char* module_name, char* out, size_t out_size);

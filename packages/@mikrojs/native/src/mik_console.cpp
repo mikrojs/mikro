@@ -237,11 +237,10 @@ static JSValue mik__console_error_warn(JSContext* ctx, JSValue this_val, int arg
 /* ── Uncaught error reporting ─────────────────────────────────────── */
 
 /* Dedup across report paths: one error can reach this function more than
- * once for a single failure. A failed dynamic import leaves two never-handled
- * promises with the SAME reason (QuickJS runs a module body as an async
- * function and reads its rejected result by value, plus the rejection
- * propagated up the await chain), and at the REPL the throw path reports an
- * error the deferred flush then sees again. Mark the error object the first
+ * once for a single failure. The sync throw path (mik_dump_error) can report
+ * an error whose promise still sits in the deferred flush queue, e.g. an
+ * entry module whose rejected eval promise is read by value while the host
+ * dumps the pending exception. Mark the error object the first
  * time it is reported and skip it afterwards. Keying on object identity is
  * exact and time-independent; a recycled address belongs to a fresh object
  * with no marker, so distinct errors are never suppressed. Primitive

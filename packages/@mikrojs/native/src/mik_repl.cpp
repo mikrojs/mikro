@@ -267,9 +267,9 @@ static JSValue repl_eval_and_pump(JSContext* ctx, const char* code, size_t len) 
         }
         if (state == JS_PROMISE_REJECTED) {
             /* This promise's rejection is about to be reported via the throw
-             * path below; drop it from the deferred unhandled-rejection queue
-             * so the end-of-turn flush doesn't report it a second time. */
-            mik__forget_rejection(ctx, result);
+             * path below; mark it handled so the end-of-turn flush doesn't
+             * report it a second time. */
+            JS_PromiseMarkAsHandled(ctx, result);
             JSValue reason = JS_PromiseResult(ctx, result);
             JS_FreeValue(ctx, result);
             JS_Throw(ctx, reason);
