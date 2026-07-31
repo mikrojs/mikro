@@ -785,7 +785,9 @@ static JSValue multicast_subscribe(JSContext* ctx, JSValueConst this_val, int ar
     JS_FreeValue(ctx, mc_ref);
     /* dup is owned by m->subscribers, no free here. */
 
-    JSValue ret = JS_Invoke(ctx, subscriber, JS_NewAtom(ctx, "addTeardown"), 1, &td);
+    JSAtom teardown_atom = JS_NewAtom(ctx, "addTeardown");
+    JSValue ret = JS_Invoke(ctx, subscriber, teardown_atom, 1, &td);
+    JS_FreeAtom(ctx, teardown_atom);
     JS_FreeValue(ctx, td);
     if (JS_IsException(ret)) return ret;
     JS_FreeValue(ctx, ret);
