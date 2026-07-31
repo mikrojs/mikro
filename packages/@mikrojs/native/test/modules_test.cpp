@@ -729,3 +729,40 @@ TEST_CASE("Module that throws at top level caches the error across imports" *
 
     MIK_FreeRuntime(mik_rt);
 }
+
+TEST_CASE("Builtin bytecode loads zero-copy via the frozen atom table" *
+          doctest::test_suite("modules")) {
+    /* Every failure mode in the frozen-atom pipeline degrades silently to
+     * the classic copying loader (empty table, version mismatch, INPLACE
+     * fallback): builds stay green and only the memory win disappears.
+     * This pins the path end-to-end: importing a builtin must add real
+     * functions while adding (almost) no heap-resident bytecode, which is
+     * only true when the instruction streams stay in rodata. mikro/schema
+     * carries well over 1 KB of opcodes, so a silent fallback trips the
+     * threshold with a wide margin. */
+    MIKRuntime* mik_rt = MIK_NewRuntime();
+    REQUIRE(mik_rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(mik_rt);
+    JSRuntime* rt = JS_GetRuntime(ctx);
+
+    JSMemoryUsage before;
+    JS_ComputeMemoryUsage(rt, &before);
+
+    const char* code = "import 'mikro/schema';";
+    JSValue ret = MIK_EvalModuleContent(ctx, "/test/main.js", code, strlen(code));
+    CHECK_MESSAGE(!JS_IsException(ret), "builtin import should not throw");
+    JS_FreeValue(ctx, ret);
+    drain_jobs(ctx);
+
+    JSMemoryUsage after;
+    JS_ComputeMemoryUsage(rt, &after);
+
+    CHECK_MESSAGE(after.js_func_count > before.js_func_count,
+                  "importing the builtin must actually load functions");
+    const int64_t code_growth = after.js_func_code_size - before.js_func_code_size;
+    CHECK_MESSAGE(code_growth < 256,
+                  "builtin instruction streams must stay in rodata (zero-copy), got "
+                      << code_growth << " bytes of heap bytecode");
+
+    MIK_FreeRuntime(mik_rt);
+}

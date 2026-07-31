@@ -17,6 +17,19 @@ typedef struct {
 #include "gen/mikro_builtins_table.h"
 #define builtins mikro_builtins
 
+/* Frozen atom table generated alongside the builtin bytecode: preloading it
+ * right after runtime creation gives builtin blobs final atom ids, letting
+ * their instruction streams load zero-copy from flash/rodata. */
+#include "gen/mikro_frozen_atoms.h"
+
+int mik__preload_frozen_atoms(JSRuntime* rt) {
+    if (mikro_frozen_atom_count == 0) {
+        return 0;
+    }
+    return JS_PreloadFrozenAtoms(rt, mikro_frozen_atom_names, mikro_frozen_atom_lens,
+                                 mikro_frozen_atom_count);
+}
+
 /* External builtins registered by board/driver packages via MIK_REGISTER_BUILTIN() */
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 mik_ext_builtin_t* mik__ext_builtin_head = nullptr;
@@ -29,7 +42,10 @@ static JSModuleDef* mik__deserialize_builtin(JSContext* ctx, const char* name,
     platform->log(MIK_LOG_DEBUG, "mikrojs", "Loading builtin '%s' (%u bytes, bc_version=%u, data_ptr=%p)", name,
              data_size, data_size > 0 ? data[0] : 0, (void*)data);
 
-    JSValue obj = JS_ReadObject(ctx, data, data_size, JS_READ_OBJ_BYTECODE);
+    /* Builtin bytecode lives in flash/rodata for the runtime's lifetime, so
+     * qualifying instruction streams stay in place instead of being copied
+     * to the JS heap (falls back per function for non-final atom refs). */
+    JSValue obj = JS_ReadObject(ctx, data, data_size, JS_READ_OBJ_BYTECODE | JS_READ_OBJ_INPLACE);
 
     if (JS_IsException(obj)) {
         /* Peek the exception for the log, then re-throw it so the caller

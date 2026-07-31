@@ -286,6 +286,12 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
     CHECK_NOT_NULL(rt);
     mik_rt->rt = rt;
 
+    /* Builtin blobs are compiled against this table; a mismatch would make
+     * every builtin import fail, and failure here can only mean atoms were
+     * created before this point (a programming error). Must run before any
+     * context/intrinsic setup creates atoms. */
+    CHECK(mik__preload_frozen_atoms(rt) == 0);
+
     /* Seed Math.random() with real entropy.
      * On ESP32 the system clock starts near epoch 0 on every boot, producing
      * the same seed. Use platform RNG to inject entropy. */

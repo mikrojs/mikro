@@ -195,6 +195,7 @@ mikrojs_generate_bytecode(
     SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode
     WORKING_DIRECTORY "${MIKROJS_PROJECT_DIR}"
+    FREEZE_ATOMS
 )
 add_dependencies(${COMPONENT_LIB} gen_bytecode)
 target_include_directories(${COMPONENT_LIB} PRIVATE "${gen_bytecode_INCLUDE_DIR}")

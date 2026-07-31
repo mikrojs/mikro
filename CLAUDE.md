@@ -281,10 +281,11 @@ Missing step 2 means the property exists on the internal namespace but `import {
 Runtime module bytecode headers are generated during each CMake build (both standalone lib and ESP-IDF):
 
 1. **Bundle**: `scripts/bundle-runtime.js` uses esbuild to bundle each TypeScript runtime module (`packages/@mikrojs/native/runtime/*.ts`) into a single JS file, marking `native:*` and `mikrojs/*` imports as external.
-2. **Compile**: `scripts/compile-bytecode.sh` runs `qjsc` (from `@mikrojs/quickjs` postinstall) on each bundled JS file to produce a C header with a bytecode array.
-3. **Include**: `builtins.cpp` includes the generated headers from `${CMAKE_CURRENT_BINARY_DIR}/gen/`.
+2. **Freeze atoms** (core runtime only, `FREEZE_ATOMS` in `mikrojs_generate_bytecode`): a first `qjsc -b` pass produces raw blobs, `scripts/extract-atoms.js` unions their atom sections into a frozen atom table (`frozen_atoms.bin` + a generated C header the runtime preloads at boot).
+3. **Compile**: `scripts/compile-bytecode.sh` runs `qjsc` (from `@mikrojs/quickjs` postinstall) on each bundled JS file — with `-A frozen_atoms.bin` when atoms are frozen — to produce a C header with a bytecode array. Frozen-format blobs carry final atom ids, so the loader executes their instruction streams in place from flash (`JS_READ_OBJ_INPLACE`) instead of copying them to the heap.
+4. **Include**: `builtins.cpp` includes the generated headers from `${CMAKE_CURRENT_BINARY_DIR}/gen/`.
 
-The `qjsc` executable is built from the same QuickJS source as the runtime, guaranteeing bytecode version compatibility.
+The `qjsc` executable is built from the same QuickJS source as the runtime, guaranteeing bytecode version compatibility. Board/driver packages compile without `FREEZE_ATOMS` (the device preloads exactly one atom table); their classic-format blobs load through the copying fallback, which is why an external builtin never gets the zero-copy saving.
 
 ### Dependency Graph
 

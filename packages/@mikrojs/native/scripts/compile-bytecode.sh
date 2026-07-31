@@ -1,9 +1,12 @@
 #!/bin/sh
 # Compile a bundled JS module to a C bytecode header using qjsc.
 #
-# Usage: compile-bytecode.sh <qjsc> <input.js> <output.h> <module_name> <symbol_name>
+# Usage: compile-bytecode.sh <qjsc> <input.js> <output.h> <module_name> <symbol_name> [atoms.bin]
 #
 # Reads <input>.externals for external module declarations.
+# If <output> ends in .bjs, emits raw bytecode instead of a C header
+# (pass 1 of the frozen-atom pipeline; see extract-atoms.js).
+# If [atoms.bin] is given, compiles against that frozen atom table (-A).
 
 set -e
 
@@ -12,6 +15,7 @@ INPUT="$2"
 OUTPUT="$3"
 MODULE_NAME="$4"
 SYMBOL_NAME="$5"
+ATOMS_BIN="$6"
 
 EXTERNALS_FILE="${INPUT%.js}.externals"
 
@@ -34,5 +38,20 @@ fi
 # so any runtime module that reads `import.meta.*` (e.g. mikrojs/env
 # accessing import.meta.env) breaks at runtime. The ~1 KB heap saving
 # from stripping debug isn't worth crippling a spec-standard module API.
-# shellcheck disable=SC2086
-"$QJSC" -m -s -N "$SYMBOL_NAME" -n "$MODULE_NAME" $M_FLAGS -o "$OUTPUT" "$INPUT"
+A_FLAGS=""
+if [ -n "$ATOMS_BIN" ]; then
+    A_FLAGS="-A $ATOMS_BIN"
+fi
+
+case "$OUTPUT" in
+*.bjs)
+    # Raw bytecode (frozen-atom pass 1). Must use the same flags as the
+    # header pass so the atom set matches, minus -N (no C symbol).
+    # shellcheck disable=SC2086
+    "$QJSC" -b -m -s -n "$MODULE_NAME" $M_FLAGS $A_FLAGS -o "$OUTPUT" "$INPUT"
+    ;;
+*)
+    # shellcheck disable=SC2086
+    "$QJSC" -m -s -N "$SYMBOL_NAME" -n "$MODULE_NAME" $M_FLAGS $A_FLAGS -o "$OUTPUT" "$INPUT"
+    ;;
+esac

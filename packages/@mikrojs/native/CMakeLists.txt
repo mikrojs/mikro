@@ -86,6 +86,7 @@ mikrojs_generate_bytecode(
     MODULE_PREFIX "mikro"
     SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode
+    FREEZE_ATOMS
 )
 add_dependencies(mikrojs gen_bytecode)
 target_include_directories(mikrojs PRIVATE "${gen_bytecode_INCLUDE_DIR}")

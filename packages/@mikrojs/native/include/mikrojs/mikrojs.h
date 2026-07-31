@@ -288,8 +288,12 @@ extern mik_module_desc_t* mik__module_registry_head;
  * Driver packages use MIK_REGISTER_BUILTIN() to embed their JS wrappers as
  * firmware builtins, resolved by the real npm package name (e.g. "@mikrojs/your-driver"). */
 typedef struct mik_ext_builtin_t {
-    const char* name;         /* module name, e.g. "@mikrojs/your-driver" */
-    const uint8_t* data;      /* compiled bytecode */
+    const char* name; /* module name, e.g. "@mikrojs/your-driver" */
+    /* Compiled bytecode. Must outlive every runtime that imports the
+     * module: the loader may keep instruction streams pointing into this
+     * buffer instead of copying them to the heap (JS_READ_OBJ_INPLACE).
+     * Use a static const array (flash/rodata), never a heap buffer. */
+    const uint8_t* data;
     uint32_t data_size;
     struct mik_ext_builtin_t* next;
 } mik_ext_builtin_t;
