@@ -16,13 +16,13 @@ index 38a724f..8155888 100644
 +    js_free_module_def(ctx, m);
 +}
 +
-+static JSModuleDef *js_find_loaded_module(JSContext *ctx, JSAtom name);
++static JSModuleDef *js_find_loaded_module_by_name(JSContext *ctx, JSAtom name);
 +
 +/* mikrojs patch: lookup a module in the context cache by name atom.
 + * Returns NULL if no module with that name is loaded. */
 +JSModuleDef *JS_FindLoadedModule(JSContext *ctx, JSAtom name)
 +{
-+    return js_find_loaded_module(ctx, name);
++    return js_find_loaded_module_by_name(ctx, name);
 +}
 +
 +/* mikrojs patch: return the module's current status as an integer.

@@ -162,10 +162,19 @@ JSValue MIK_NewRejectedPromise(JSContext* ctx, int argc, JSValue* argv) {
     return mik__settled_promise(ctx, true, argc, argv);
 }
 
-static void mik__buf_free(JSRuntime* rt, void* opaque, void* ptr) { js_free_rt(rt, ptr); }
+/* Backing-store hook for owned buffers: size 0 means free. A non-zero size
+ * services ArrayBuffer.prototype.transfer(), which relocates even
+ * fixed-length buffers. Every buffer handed to this hook is js_malloc'd. */
+static void* mik__buf_realloc(JSRuntime* rt, void* opaque, void* ptr, size_t size) {
+    if (size == 0) {
+        js_free_rt(rt, ptr);
+        return NULL;
+    }
+    return js_realloc_rt(rt, ptr, size);
+}
 
 JSValue MIK_NewUint8Array(JSContext* ctx, uint8_t* data, size_t size) {
-    return JS_NewUint8Array(ctx, data, size, mik__buf_free, NULL, false);
+    return JS_NewUint8Array(ctx, data, size, mik__buf_realloc, NULL, false);
 }
 
 void mik_dbuf_init(JSContext* ctx, DynBuf* s) {

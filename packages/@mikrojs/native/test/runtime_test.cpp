@@ -3,6 +3,11 @@
 
 #include <mikrojs/mikrojs.h>
 #include <mikrojs/platform.h>
+/* utils.h ships C-side CHECK helper macros; drop them so doctest's own
+ * CHECK/CHECK_EQ definitions below win without redefinition warnings. */
+#include <mikrojs/utils.h>
+#undef CHECK
+#undef CHECK_EQ
 #include <quickjs.h>
 
 #include <doctest.h>
@@ -243,4 +248,28 @@ TEST_CASE("Short job bursts do not force a yield" * doctest::test_suite("runtime
 
     CHECK_MESSAGE(yields_during_burst == 0,
                   "Expected no yields with no elapsed time, got " << yields_during_burst);
+}
+
+TEST_CASE("owned Uint8Array buffers support ArrayBuffer.transfer" * doctest::test_suite("runtime")) {
+    const auto rt = MIK_NewRuntime();
+    const auto ctx = MIK_GetJSContext(rt);
+
+    /* Buffers handed out via MIK_NewUint8Array (fs reads, UART/UDP/SPI RX)
+     * are js_malloc'd with a realloc-capable backing hook; transfer() to a
+     * different length must relocate them, not throw "out of memory". */
+    uint8_t* data = static_cast<uint8_t*>(js_malloc(ctx, 8));
+    REQUIRE(data != nullptr);
+    memset(data, 7, 8);
+    JSValue ta = MIK_NewUint8Array(ctx, data, 8);
+    REQUIRE_FALSE(JS_IsException(ta));
+    JSValue g = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, g, "__ta", ta);
+    JS_FreeValue(ctx, g);
+
+    const char* code = "const b = __ta.buffer.transfer(1024); new Uint8Array(b)[0] * 1000 + b.byteLength";
+    JSValue result = JS_Eval(ctx, code, strlen(code), "main.js", JS_EVAL_TYPE_GLOBAL);
+    CHECK_FALSE(JS_IsException(result));
+    CHECK(jsval_as_int32(ctx, result) == 8024);
+
+    MIK_FreeRuntime(rt);
 }

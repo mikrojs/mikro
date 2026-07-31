@@ -93,7 +93,16 @@ static MIKI2sState* mik__i2s_get(JSContext* ctx, JSValue this_val) {
     return static_cast<MIKI2sState*>(JS_GetOpaque2(ctx, this_val, mik_i2s_class_id));
 }
 
-static void mik__i2s_buf_free(JSRuntime* rt, void* opaque, void* ptr) { js_free_rt(rt, ptr); }
+/* Backing-store hook for the sample buffer: size 0 means free. A non-zero
+ * size services ArrayBuffer.prototype.transfer(), which relocates even
+ * non-resizable buffers. The buffer is js_malloc'd. */
+static void* mik__i2s_buf_realloc(JSRuntime* rt, void* opaque, void* ptr, size_t size) {
+    if (size == 0) {
+        js_free_rt(rt, ptr);
+        return nullptr;
+    }
+    return js_realloc_rt(rt, ptr, size);
+}
 
 /* write() returns Promise<Result>; settle synchronously for the immediate cases
  * (errors, fully-drained writes). Consumes `value`. */
@@ -105,7 +114,7 @@ static JSValue mik__i2s_resolved(JSContext* ctx, JSValue value) {
  * samples). The typed array never shares its buffer with another chunk, so it is
  * safe to retain. */
 static JSValue mik__i2s_new_samples(JSContext* ctx, uint8_t* data, size_t bytes) {
-    JSValue ab = JS_NewArrayBuffer(ctx, data, bytes, mik__i2s_buf_free, nullptr, false);
+    JSValue ab = JS_NewArrayBuffer(ctx, data, bytes, 0, mik__i2s_buf_realloc, nullptr, false);
     if (JS_IsException(ab)) {
         js_free(ctx, data);
         return ab;
