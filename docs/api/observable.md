@@ -1,6 +1,6 @@
 ---
 title: observable
-description: Push-shaped, composable event streams
+description: Push-based, composable event streams
 ---
 
 # observable
@@ -11,12 +11,13 @@ import {filter, finalize, map, take, takeUntil} from 'mikro/observable/operators
 import type {Observer, Subscriber, Subscription} from 'mikro/observable'
 ```
 
-`Observable<Ok, Err>` is a push-shaped, composable event stream. Native event sources (wifi connection state, ble peripheral lifecycle, UDP datagrams) expose Observables instead of `.on/.off` callbacks. User code can also build its own event sources via `Observable.withEmitters()`.
+`Observable<Ok, Err>` is a push-based, composable event stream. Native event sources (wifi connection state, ble peripheral lifecycle, UDP datagrams) expose Observables instead of `.on/.off` callbacks. User code can also build its own event sources via `Observable.withEmitters()`.
 
-The shape tracks the [WICG Observable](https://wicg.github.io/observable/) proposal in constructor and operator naming, with two deliberate divergences:
+The shape tracks the [WICG Observable](https://wicg.github.io/observable/) proposal in constructor and operator naming, but not in semantics. Three differences to know about:
 
 1. **`subscribe()` returns a `Subscription` with `unsubscribe()`** instead of accepting `AbortSignal`.
 2. **No error notification channel.** Throws inside observer or operator callbacks are caught at the dispatch boundary and logged, isolated to that subscriber. Recoverable failures that are part of a stream's contract flow as `Result<Ok, Err>` values via `next`.
+3. **Emitting from inside a handler is queued.** The proposal hands each value straight to the next handler, so the call stack grows with every operator in the chain. Here the value is passed on once your handler returns, which is what lets a long chain run on a microcontroller's small stack. Code ported from the proposal or from RxJS behaves the same unless it emits from inside a handler; see [Writing custom operators](#writing-custom-operators).
 
 ## When to use Observable
 
@@ -62,7 +63,7 @@ wifi.onConnect
   .subscribe((ip) => console.log('first LAN IP: %s', ip))
 ```
 
-Operators are pure functions — pass them to `pipe()` in order. Custom operators are just `(source: Observable<A>) => Observable<B>`; they compose identically.
+Operators are pure functions — pass them to `pipe()` in order. Custom operators are just `(source: Observable<A>) => Observable<B>`; they compose identically. If you write one, or emit from inside a handler, read [Writing custom operators](#writing-custom-operators) first: a value you emit is not handed on until your handler returns.
 
 ## Operators
 
@@ -110,6 +111,55 @@ Run `fn` when the subscription ends — natural completion or `unsubscribe()`. U
 
 ```ts
 const finalize: (fn: () => void) => <A>(source: Observable<A>) => Observable<A>
+```
+
+### Writing custom operators
+
+An operator is a function `(source: Observable<A>) => Observable<B>`: subscribe to the source, transform each value, and pass it on with `sub.next(...)`.
+
+`sub.next(value)` does not run the next handler in the chain. It puts the value in a queue and returns; the rest of your handler runs, and only once it returns does the value move on to the handler below. The values you pass on reach that handler in the order you emitted them. This is what keeps a long chain from growing the call stack with every value, and it has three consequences:
+
+- Code you write after `sub.next(value)` runs before the handler below sees that value.
+- `sub.closed` right after `sub.next(value)` cannot tell you how the rest of the chain reacted, because none of it has run yet. Keep your own state instead, the way `take` counts how many values it has left.
+- Subscribing to something inside a handler is deferred the same way. `Observable.from([7]).subscribe(...)` delivers its values before it returns when you call it normally, but not from inside a handler: there the values arrive after your handler finishes, so reading a variable your callback sets on the next line gives you the old value.
+
+The first one is easy to hit with a reused buffer. This batching operator hands the array on, then empties it, so every batch arrives empty:
+
+```ts twoslash
+import {Observable} from 'mikro/observable'
+// ---cut---
+const batch = (source: Observable<number>): Observable<number[]> =>
+  new Observable<number[]>((sub) => {
+    const buf: number[] = []
+    const upstream = source.subscribe({
+      next: (value) => {
+        buf.push(value)
+        if (buf.length === 4) {
+          sub.next(buf) // queued, not delivered yet...
+          buf.length = 0 // ...and this empties it before it is
+        }
+      },
+      complete: () => sub.complete(),
+    })
+    sub.addTeardown(() => upstream.unsubscribe())
+  })
+```
+
+`sub.next(buf.splice(0))` fixes it: the array is finished before it goes anywhere.
+
+Emitting last, after the rest of your handler's work, avoids all three. Every built-in operator is written that way:
+
+```ts twoslash
+import {Observable} from 'mikro/observable'
+// ---cut---
+const double = (source: Observable<number>): Observable<number> =>
+  new Observable<number>((sub) => {
+    const upstream = source.subscribe({
+      next: (value) => sub.next(value * 2),
+      complete: () => sub.complete(),
+    })
+    sub.addTeardown(() => upstream.unsubscribe())
+  })
 ```
 
 ## Building your own Observable

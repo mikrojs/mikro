@@ -626,3 +626,256 @@ TEST_CASE("unschedulable dispatch panic escalates to the error handler" *
     CHECK(read_global_int(ctx, "__seen") == 1);
     MIK_FreeRuntime(rt);
 }
+
+/* ── Dispatch trampoline ─────────────────────────────────────────── */
+
+TEST_CASE("re-entrant emission depth does not consume stack" *
+          doctest::test_suite("observable")) {
+    /* A subscriber that re-emits from its own next handler used to recurse
+     * one native + one JS frame per value; on a small stack this blew up
+     * after a few dozen values. The dispatch queue makes depth O(1). */
+    MIKRunOptions options;
+    MIK_DefaultOptions(&options);
+    options.stack_size = 64 * 1024;
+    auto* rt = MIK_NewRuntimeOptions(&options);
+    REQUIRE(rt != nullptr);
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(ctx,
+                             "import {Observable} from 'mikro/observable'\n"
+                             "const {observable, next} = Observable.withEmitters()\n"
+                             "let last = 0\n"
+                             "observable.subscribe(v => { last = v; if (v < 2000) next(v + 1) })\n"
+                             "next(1)\n"
+                             "globalThis.__last = last\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    CHECK(read_global_int(ctx, "__last") == 2000);
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("deep operator chain delivers values in order" *
+          doctest::test_suite("observable")) {
+    /* 32 relay layers: per-value dispatch cost must not scale with chain
+     * length (subscribe-time nesting still does — that's user recursion). */
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(
+        ctx,
+        "import {Observable} from 'mikro/observable'\n"
+        "const inc = src => new Observable(sub => {\n"
+        "  const u = src.subscribe({\n"
+        "    next: v => sub.next(v + 1),\n"
+        "    complete: () => sub.complete(),\n"
+        "  })\n"
+        "  sub.addTeardown(() => u.unsubscribe())\n"
+        "})\n"
+        "const ops = []\n"
+        "for (let i = 0; i < 32; i++) ops.push(inc)\n"
+        "let log = []\n"
+        "Observable.from([1, 2, 3]).pipe(...ops).subscribe({\n"
+        "  next: v => log.push(v),\n"
+        "  complete: () => log.push('done'),\n"
+        "})\n"
+        "globalThis.__log = log.join(',')\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    CHECK(read_global_string(ctx, "__log") == "33,34,35,done");
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("handler code after sub.next() runs before downstream delivery" *
+          doctest::test_suite("observable")) {
+    /* Deliberate semantic pin for the dispatch queue: inside an operator
+     * handler, sub.next(v) enqueues — the rest of the handler runs first,
+     * then downstream receives the value. (Recursive dispatch delivered
+     * downstream before the 'after' line.) Values still arrive in order. */
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(
+        ctx,
+        "import {Observable} from 'mikro/observable'\n"
+        "let log = []\n"
+        "const relay = src => new Observable(sub => {\n"
+        "  const u = src.subscribe({\n"
+        "    next: v => { log.push('before:' + v); sub.next(v); log.push('after:' + v) },\n"
+        "    complete: () => sub.complete(),\n"
+        "  })\n"
+        "  sub.addTeardown(() => u.unsubscribe())\n"
+        "})\n"
+        "new Observable(s => { s.next(1); s.next(2); s.complete() })\n"
+        "  .pipe(relay).subscribe(v => log.push('down:' + v))\n"
+        "globalThis.__log = log.join(',')\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    CHECK(read_global_string(ctx, "__log") ==
+          "before:1,after:1,down:1,before:2,after:2,down:2");
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("queued delivery is dropped when the subscriber unsubscribes first" *
+          doctest::test_suite("observable")) {
+    /* A re-entrant emission queues entries for every live subscriber. If one
+     * unsubscribes before its entry drains, that entry must be dropped. */
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(
+        ctx,
+        "import {Observable} from 'mikro/observable'\n"
+        "const {observable, next} = Observable.withEmitters()\n"
+        "let aLog = [], bLog = []\n"
+        "let subB\n"
+        "observable.subscribe(v => {\n"
+        "  if (v === 1) { next(2); subB.unsubscribe() }\n"
+        "  aLog.push(v)\n"
+        "})\n"
+        "subB = observable.subscribe(v => bLog.push(v))\n"
+        "next(1)\n"
+        "globalThis.__a = aLog.join(',')\n"
+        "globalThis.__b = bLog.join(',')\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    CHECK(read_global_string(ctx, "__a") == "1,2");
+    /* B's queued entry for value 2 (and its later turn for value 1) were
+     * both dropped by the closed check. */
+    CHECK(read_global_string(ctx, "__b") == "");
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("take-style completion mid-drain drops the remaining values" *
+          doctest::test_suite("observable")) {
+    /* sub.next() after sub.complete() is a no-op even when the complete is
+     * still queued (complete_pending closes the subscriber at the call
+     * site), so the trailing values never reach the observer. */
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(
+        ctx,
+        "import {Observable} from 'mikro/observable'\n"
+        "const take2 = src => new Observable(sub => {\n"
+        "  let remaining = 2\n"
+        "  const u = src.subscribe({\n"
+        "    next: v => {\n"
+        "      remaining--\n"
+        "      sub.next(v)\n"
+        "      if (remaining === 0) sub.complete()\n"
+        "    },\n"
+        "    complete: () => sub.complete(),\n"
+        "  })\n"
+        "  sub.addTeardown(() => u.unsubscribe())\n"
+        "})\n"
+        "let log = []\n"
+        "Observable.from([1, 2, 3, 4]).pipe(take2).subscribe({\n"
+        "  next: v => log.push(v),\n"
+        "  complete: () => log.push('done'),\n"
+        "})\n"
+        "globalThis.__log = log.join(',')\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    CHECK(read_global_string(ctx, "__log") == "1,2,done");
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("producer that completes then throws still delivers the completion" *
+          doctest::test_suite("observable")) {
+    /* A producer-setup throw closes the subscriber so deferred dispatch is
+     * dropped, but a completion queued before the throw owns the close: its
+     * complete handler and teardowns are the resource-release path and must
+     * still run. */
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(
+        ctx,
+        "import {Observable} from 'mikro/observable'\n"
+        "let log = []\n"
+        "new Observable(outer => { outer.next('go'); outer.complete() }).subscribe(() => {\n"
+        "  try {\n"
+        "    new Observable(sub => {\n"
+        "      sub.addTeardown(() => log.push('td'))\n"
+        "      sub.complete()\n"
+        "      throw new Error('setup-fail')\n"
+        "    }).subscribe({complete: () => log.push('c')})\n"
+        "  } catch (e) { log.push('caught') }\n"
+        "})\n"
+        "globalThis.__log = log.join(',')\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    /* The throw reaches the caller first (the queued completion drains after
+     * the handler returns), then the completion and its teardown run. */
+    CHECK(read_global_string(ctx, "__log") == "caught,c,td");
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("subscribing to a sync source inside a handler defers its values" *
+          doctest::test_suite("observable")) {
+    /* Pins the consequence for whole subscriptions, not just individual
+     * emits: a synchronous source subscribed from inside an active dispatch
+     * delivers nothing before subscribe() returns. */
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(
+        ctx,
+        "import {Observable} from 'mikro/observable'\n"
+        "let log = []\n"
+        "new Observable(s => { s.next('go'); s.complete() }).subscribe(() => {\n"
+        "  let got = 'none'\n"
+        "  Observable.from([7]).subscribe(x => { got = x })\n"
+        "  log.push('inline:' + got)\n"
+        "  log.push('after:' + got)\n"
+        "})\n"
+        "globalThis.__log = log.join(',')\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    /* Both reads happen before the queued value drains. */
+    CHECK(read_global_string(ctx, "__log") == "inline:none,after:none");
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("throw during a queued delivery doesn't break the drain" *
+          doctest::test_suite("observable")) {
+    /* A mid-drain throw is isolated to the offending subscriber: later
+     * queued entries still deliver, and exactly one re-throw is scheduled. */
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(
+        ctx,
+        "import {Observable} from 'mikro/observable'\n"
+        "const scheduled = []\n"
+        "globalThis.setTimeout = (fn, ms) => { scheduled.push(fn); return 0 }\n"
+        "const {observable, next} = Observable.withEmitters()\n"
+        "let cLog = []\n"
+        "observable.subscribe(v => { if (v === 1) next(2) })\n"
+        "observable.subscribe(v => { if (v === 2) throw new Error('boom') })\n"
+        "observable.subscribe(v => cLog.push(v))\n"
+        "next(1)\n"
+        "globalThis.__c = cLog.join(',')\n"
+        "globalThis.__scheduledCount = scheduled.length\n"
+        "let msg = ''\n"
+        "if (scheduled.length > 0) {\n"
+        "  try { scheduled[0]() } catch (e) { msg = e.message }\n"
+        "}\n"
+        "globalThis.__caughtMessage = msg\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    /* The re-entrant value 2 drains before the outer dispatch of value 1
+     * reaches the remaining subscribers — same order recursion produced. */
+    CHECK(read_global_string(ctx, "__c") == "2,1");
+    CHECK(read_global_int(ctx, "__scheduledCount") == 1);
+    CHECK(read_global_string(ctx, "__caughtMessage") == "boom");
+    MIK_FreeRuntime(rt);
+}

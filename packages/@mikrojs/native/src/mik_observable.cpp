@@ -1,4 +1,4 @@
-/* mik_observable.cpp — push-shaped composable event stream primitive.
+/* mik_observable.cpp — push-based composable event stream primitive.
  *
  * See .claude/plans/observable.md (worktree branch) for the locked design.
  *
@@ -20,6 +20,30 @@
  * Producer-setup throws inside the subscribe callback bubble synchronously
  * to the .subscribe() caller — that's a bug in the producer factory itself,
  * not a runtime dispatch event.
+ *
+ * Dispatch trampoline: next/complete invoked while a dispatch is already
+ * active (i.e. from inside a handler) enqueue onto a per-runtime FIFO
+ * instead of recursing; the outermost dispatch drains the queue before
+ * returning. Chain length and re-entrant emission therefore cost O(1)
+ * stack per delivery — on-device JS stacks are small and quickjs-ng 0.16
+ * frames are large enough that a 3-operator chain used to exhaust a 16 KB
+ * limit. Two consequences:
+ *   - Handler code after a sub.next()/sub.complete() call runs before the
+ *     downstream handler sees that event (FIFO order is preserved).
+ *   - complete() closes the subscriber at the call site (complete_pending),
+ *     so closed/no-op semantics stay synchronous while the complete_fn +
+ *     teardowns run when the queued entry drains.
+ * Delivery is what became O(1) stack, not subscription setup or teardown:
+ * subscribe() recurses once per chain layer (user JS calling subscribe), and
+ * unsubscribe -> run_teardowns -> upstream.unsubscribe() mirrors it on the
+ * way out. Both are paid once per subscription rather than once per value,
+ * so neither reintroduces a per-value ceiling.
+ * Trade-off: what used to be bounded stack growth is now unbounded heap
+ * growth. A synchronous producer emitting N values from inside a dispatch
+ * buffers N entries (plus the retained values) instead of recursing N deep.
+ * That turns a catchable stack overflow into heap pressure, which on device
+ * ends in an OOM panic. Left uncapped deliberately: no shipped producer
+ * emits unbounded bursts from inside a handler.
  */
 
 #include <cstddef>
@@ -32,6 +56,20 @@
 extern "C" {
 #include "quickjs.h"
 }
+
+/* Per-runtime dispatch queue. Entries hold their own references (dup on
+ * enqueue, freed after the drained delivery). The queue is only non-empty
+ * while a dispatch is on the stack, so runtime teardown never sees values. */
+struct MIKObservableDispatch {
+    struct Entry {
+        JSValue subscriber;
+        JSValue value; /* JS_UNDEFINED for complete entries */
+        bool is_complete;
+    };
+    bool active = false;
+    size_t head = 0;
+    std::vector<Entry> queue;
+};
 
 namespace {
 
@@ -46,6 +84,10 @@ struct ObservableData {
 struct SubscriberData {
     JSContext* ctx;
     bool closed;
+    /* complete() was called while queued dispatch was active: the subscriber
+     * is closed to producers, but complete_fn + teardowns run when the queued
+     * complete entry drains. */
+    bool complete_pending;
     /* observer object retained so its props can't be reclaimed mid-dispatch. */
     JSValue observer;
     JSValue next_fn;
@@ -174,6 +216,54 @@ static void run_teardowns(JSContext* ctx, SubscriberData* d) {
     }
 }
 
+/* ── Dispatch trampoline ────────────────────────────────────────── */
+
+static MIKObservableDispatch* dispatch_state(JSContext* ctx) {
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+    return mik_rt ? mik_rt->observable_dispatch : nullptr;
+}
+
+/* Deliver a value to the subscriber's next handler. `value` is borrowed. */
+static void deliver_next(JSContext* ctx, SubscriberData* d, JSValue value) {
+    if (!JS_IsUndefined(d->next_fn)) {
+        run_safely(ctx, d->next_fn, 1, &value);
+    }
+}
+
+static void deliver_complete(JSContext* ctx, SubscriberData* d) {
+    d->complete_pending = false;
+    d->closed = true;
+    if (!JS_IsUndefined(d->complete_fn)) {
+        run_safely(ctx, d->complete_fn, 0, nullptr);
+    }
+    run_teardowns(ctx, d);
+}
+
+/* Drain queued deliveries in FIFO order. Deliveries may enqueue more; the
+ * loop keeps going until the queue is empty. Entries whose subscriber closed
+ * (unsubscribed) between enqueue and drain are dropped. */
+static void drain(JSContext* ctx, MIKObservableDispatch* ds) {
+    while (ds->head < ds->queue.size()) {
+        MIKObservableDispatch::Entry e = ds->queue[ds->head++];
+        auto* d = static_cast<SubscriberData*>(JS_GetOpaque(e.subscriber, subscriber_class_id));
+        if (d && !d->closed) {
+            if (e.is_complete) {
+                deliver_complete(ctx, d);
+            } else {
+                deliver_next(ctx, d, e.value);
+            }
+        }
+        JS_FreeValue(ctx, e.subscriber);
+        JS_FreeValue(ctx, e.value);
+    }
+    ds->queue.clear();
+    ds->head = 0;
+    /* Don't let a one-off burst pin its capacity for the runtime lifetime. */
+    if (ds->queue.capacity() > 32) {
+        std::vector<MIKObservableDispatch::Entry>().swap(ds->queue);
+    }
+}
+
 /* ── Subscriber ─────────────────────────────────────────────────── */
 
 static void subscriber_finalizer(JSRuntime* rt, JSValue val) {
@@ -206,11 +296,21 @@ static JSClassDef subscriber_class_def = {
 static JSValue subscriber_next(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
     auto* d = static_cast<SubscriberData*>(JS_GetOpaque2(ctx, this_val, subscriber_class_id));
     if (!d) return JS_EXCEPTION;
-    if (d->closed) return JS_UNDEFINED;
-    if (!JS_IsUndefined(d->next_fn)) {
-        JSValue arg = argc > 0 ? argv[0] : JS_UNDEFINED;
-        run_safely(ctx, d->next_fn, 1, &arg);
+    if (d->closed || d->complete_pending) return JS_UNDEFINED;
+    JSValue arg = argc > 0 ? argv[0] : JS_UNDEFINED;
+    MIKObservableDispatch* ds = dispatch_state(ctx);
+    if (!ds) {
+        deliver_next(ctx, d, arg);
+        return JS_UNDEFINED;
     }
+    if (ds->active) {
+        ds->queue.push_back({JS_DupValue(ctx, this_val), JS_DupValue(ctx, arg), false});
+        return JS_UNDEFINED;
+    }
+    ds->active = true;
+    deliver_next(ctx, d, arg);
+    drain(ctx, ds);
+    ds->active = false;
     return JS_UNDEFINED;
 }
 
@@ -220,12 +320,21 @@ static JSValue subscriber_complete(JSContext* ctx, JSValueConst this_val, int ar
     (void)argv;
     auto* d = static_cast<SubscriberData*>(JS_GetOpaque2(ctx, this_val, subscriber_class_id));
     if (!d) return JS_EXCEPTION;
-    if (d->closed) return JS_UNDEFINED;
-    d->closed = true;
-    if (!JS_IsUndefined(d->complete_fn)) {
-        run_safely(ctx, d->complete_fn, 0, nullptr);
+    if (d->closed || d->complete_pending) return JS_UNDEFINED;
+    MIKObservableDispatch* ds = dispatch_state(ctx);
+    if (!ds) {
+        deliver_complete(ctx, d);
+        return JS_UNDEFINED;
     }
-    run_teardowns(ctx, d);
+    if (ds->active) {
+        d->complete_pending = true;
+        ds->queue.push_back({JS_DupValue(ctx, this_val), JS_UNDEFINED, true});
+        return JS_UNDEFINED;
+    }
+    ds->active = true;
+    deliver_complete(ctx, d);
+    drain(ctx, ds);
+    ds->active = false;
     return JS_UNDEFINED;
 }
 
@@ -248,7 +357,7 @@ static JSValue subscriber_add_teardown(JSContext* ctx, JSValueConst this_val, in
 static JSValue subscriber_get_closed(JSContext* ctx, JSValueConst this_val) {
     auto* d = static_cast<SubscriberData*>(JS_GetOpaque2(ctx, this_val, subscriber_class_id));
     if (!d) return JS_EXCEPTION;
-    return JS_NewBool(ctx, d->closed);
+    return JS_NewBool(ctx, d->closed || d->complete_pending);
 }
 
 static const JSCFunctionListEntry subscriber_proto_funcs[] = {
@@ -290,7 +399,10 @@ static JSValue subscription_unsubscribe(JSContext* ctx, JSValueConst this_val, i
     if (!sd) return JS_EXCEPTION;
     auto* sub = static_cast<SubscriberData*>(JS_GetOpaque(sd->subscriber_value,
                                                           subscriber_class_id));
-    if (!sub || sub->closed) return JS_UNDEFINED;
+    /* A pending complete owns the close: its queued entry delivers
+     * complete_fn + teardowns, matching the recursive-dispatch order where
+     * the complete had already run before unsubscribe could. */
+    if (!sub || sub->closed || sub->complete_pending) return JS_UNDEFINED;
     sub->closed = true;
     /* unsubscribe() is silent — does NOT call observer.complete().
      * Only natural producer-driven completion fires observer.complete(). */
@@ -380,6 +492,7 @@ static JSValue subscribe_with_callback(JSContext* ctx, JSValueConst subscribe_cb
     auto* d = new SubscriberData{
         ctx,
         false,
+        false,
         observer_dup,
         next_fn,
         complete_fn,
@@ -394,8 +507,13 @@ static JSValue subscribe_with_callback(JSContext* ctx, JSValueConst subscribe_cb
     JSValue cb_result = JS_Call(ctx, subscribe_cb, JS_UNDEFINED, 1, &subscriber_val);
     if (JS_IsException(cb_result)) {
         /* Producer setup threw — bubble up. Mark closed so any deferred
-         * dispatch back to this subscriber is silently dropped. */
-        d->closed = true;
+         * dispatch back to this subscriber is silently dropped, unless a
+         * completion is already queued: that entry owns the close and still
+         * has to run complete_fn + teardowns (the resource-release path).
+         * complete_pending already blocks further next(). */
+        if (!d->complete_pending) {
+            d->closed = true;
+        }
         JS_FreeValue(ctx, subscriber_val);
         return cb_result;
     }
@@ -948,8 +1066,18 @@ static int observable_module_init(JSContext* ctx, JSModuleDef* m) {
 
 }  // namespace
 
+void mik__observable_dispatch_free(MIKRuntime* mik_rt) {
+    delete mik_rt->observable_dispatch;
+    mik_rt->observable_dispatch = nullptr;
+}
+
 JSModuleDef* mik__observable_init(JSContext* ctx) {
     JSRuntime* rt = JS_GetRuntime(ctx);
+
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+    if (mik_rt && !mik_rt->observable_dispatch) {
+        mik_rt->observable_dispatch = new MIKObservableDispatch();
+    }
 
     /* Class IDs are runtime-scoped; safe to register once per runtime. */
     JS_NewClassID(rt, &observable_class_id);
