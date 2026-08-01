@@ -23,9 +23,11 @@ CONFIG_SPIRAM_IGNORE_NOTFOUND=y
 
 # Xtensa call frames are markedly larger than RISC-V ones (windowed ABI
 # register spills), and quickjs-ng 0.16's inlined interpreter grew them
-# further: with the base 24 KB main-task stack the JS stack limit (2/3 of
-# the task stack, see mik_main.cpp) allowed only ~23 interpreter frames,
-# and a 3-operator observable chain exhausted it. 40 KB restores ~2x the
-# depth the deepest shipped chain needs. Internal SRAM is plentiful here
-# (512 KB, JS heap in PSRAM).
+# further: the base 24 KB main-task stack leaves a JS stack limit (2/3 of
+# the task stack, see mik_main.cpp) of only ~23 interpreter frames, which is
+# thin for deeply nested user code. Observable dispatch no longer scales
+# with chain length, so this is margin rather than a fix for a known
+# failure; it stays because internal SRAM is not the constraint here
+# (512 KB, JS heap in PSRAM). The esp32 classic keeps the 24 KB base, where
+# the same 16 KB would come straight out of a ~230 KB heap.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=40960
