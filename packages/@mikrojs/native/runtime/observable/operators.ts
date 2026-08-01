@@ -10,9 +10,9 @@
  * Errors: throws inside operator transforms or finalize callbacks are caught
  * at the dispatch boundary, isolated to that subscriber, and re-thrown
  * asynchronously via setTimeout(0). The synchronous producer keeps going
- * (the bad value is dropped, sibling subscribers untouched), and on device
- * the eventual uncaught throw halts the runtime via the existing
- * unhandled-rejection path. Stream errors are panics.
+ * (the bad value is dropped, sibling subscribers untouched), and the
+ * deferred throw is reported from the timer callback without stopping the
+ * runtime.
  *
  * See `.claude/plans/observable.md` for the full design.
  */
@@ -60,16 +60,16 @@ export const map =
       sub.addTeardown(() => upstream.unsubscribe())
     })
 
-/* Pass through values matching `pred`. `pred` errors panic asynchronously. */
+/* Pass through values matching `predicate`. Its errors panic asynchronously. */
 export const filter =
-  <A>(pred: (value: A) => boolean) =>
+  <A>(predicate: (value: A) => boolean) =>
   (source: Observable<A>): Observable<A> =>
     new Observable<A>((sub) => {
       const upstream = source.subscribe({
         next: (value) => {
           let keep: boolean
           try {
-            keep = pred(value)
+            keep = predicate(value)
           } catch (err) {
             panicAsync(err)
             return
@@ -81,16 +81,16 @@ export const filter =
       sub.addTeardown(() => upstream.unsubscribe())
     })
 
-/* Take at most n values, then complete. n <= 0 completes immediately. */
+/* Take at most `count` values, then complete. count <= 0 completes immediately. */
 export const take =
-  (n: number) =>
+  (count: number) =>
   <A>(source: Observable<A>): Observable<A> =>
     new Observable<A>((sub) => {
-      if (n <= 0) {
+      if (count <= 0) {
         sub.complete()
         return
       }
-      let remaining = n
+      let remaining = count
       const upstream = source.subscribe({
         next: (value) => {
           if (remaining <= 0) return

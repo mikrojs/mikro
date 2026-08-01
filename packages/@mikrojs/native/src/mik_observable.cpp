@@ -13,9 +13,12 @@
  * teardown callbacks) are caught at the dispatch boundary, isolated to the
  * offending subscriber, and re-thrown asynchronously via setTimeout(0). The
  * synchronous producer keeps running (sibling subscribers receive the value,
- * remaining teardowns run); the bug eventually surfaces as an uncaught
- * exception, which the runtime treats as fatal via the existing
- * unhandled-rejection halt mechanism. Stream errors are panics.
+ * remaining teardowns run); the deferred throw lands in a timer callback,
+ * where mik__timers reports it (error handler + mik_dump_error) and the
+ * runtime keeps going, the same as any other uncaught callback error. It is
+ * NOT the unhandled-rejection halt path, which only covers rejected
+ * promises. The one stop is panic_now, when the re-throw cannot be
+ * scheduled at all.
  *
  * Producer-setup throws inside the subscribe callback bubble synchronously
  * to the .subscribe() caller — that's a bug in the producer factory itself,
@@ -133,10 +136,10 @@ static void panic_now(JSContext* ctx, JSValue exception) {
 
 /* Catch a thrown error and re-throw it on the next event-loop tick via the
  * runtime's setTimeout. The synchronous caller keeps going (sibling
- * subscribers receive the value, remaining teardowns run); the eventual
- * uncaught throw halts the runtime via the existing unhandled-rejection
- * path. Stream errors are panics. If the deferred throw cannot be
- * scheduled, escalate via panic_now instead of going silent.
+ * subscribers receive the value, remaining teardowns run); the timer
+ * callback then reports the throw and the runtime continues. If the
+ * deferred throw cannot be scheduled, escalate via panic_now instead of
+ * going silent.
  *
  * Takes ownership of `exception` — caller must not free after this call. */
 static void panic_async(JSContext* ctx, JSValue exception) {

@@ -6,8 +6,7 @@
 // - no error channel — throws inside dispatch or teardown are caught at the
 //   boundary, isolated to the offending subscriber, and re-thrown
 //   asynchronously via setTimeout(0) so the synchronous producer keeps
-//   running but the bug eventually surfaces (and on device, halts the
-//   runtime via the existing unhandled-rejection path)
+//   running and the bug is reported from the timer callback
 // - sync emission allowed
 // - pipe-only composition (operators live in operators.ts)
 // - withEmitters() factory: {observable, next, complete}
