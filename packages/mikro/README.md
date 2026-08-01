@@ -23,12 +23,12 @@
 
 ## Features
 
-- **Fast feedback loop**: interactive dev console with watch mode and incremental builds that deploy to your device in a few seconds
-- **Full TypeScript**: near-complete ES2024 support, type-checked hardware APIs, and editor autocomplete
-- **Batteries included**: GPIO, PWM, I2C, SPI, UART, WiFi, HTTP, UDP, NeoPixel, deep sleep, SNTP, CBOR, schema validation, key-value storage, and more
-- **Host simulator**: run your code on your computer with `mikro sim dev`. No microcontroller needed
-- **No exceptions**: typed Result errors instead of try/catch. Every failure is visible in the type signature
-- **Built-in testing**: test suites with resource leak detection and more. Run in the simulator or on a real device
+- **Fast feedback loop**: save a file and the device runs the new code seconds later
+- **Full TypeScript**: near-complete ES2024, type-checked hardware APIs, editor autocomplete
+- **Batteries included**: GPIO, PWM, I2C, SPI, UART, WiFi, HTTP, UDP, NeoPixel, deep sleep, SNTP, CBOR, schema validation, key-value storage
+- **Host simulator**: run your code on your computer with `mikro sim dev`, no microcontroller attached
+- **No exceptions**: typed `Result` errors instead of try/catch, so every expected failure is visible in the signature
+- **Built-in testing**: test suites with resource leak detection, in the simulator or on real hardware
 
 ## Quickstart
 

@@ -220,15 +220,22 @@ import type {Reading} from './types.js'
 // Import the native module (compiled into firmware)
 import native from 'native:@my-scope/bme280/sensor'
 
-export function readSensor(bus: number, address?: number): Result<Reading, Error> {
+export const SensorError = {
+  ReadFailed: (message: string) => ({name: 'ReadFailed', message}) as const,
+}
+export type SensorError = ReturnType<(typeof SensorError)[keyof typeof SensorError]>
+
+export function readSensor(bus: number, address?: number): Result<Reading, SensorError> {
+  // eslint-disable-next-line @mikrojs/no-try-catch -- native boundary: C code throws
   try {
-    const data = native.read(bus, address ?? 0x76)
-    return ok(data)
+    return ok(native.read(bus, address ?? 0x76))
   } catch (e) {
-    return err(e instanceof Error ? e : new Error(String(e)))
+    return err(SensorError.ReadFailed(e instanceof Error ? e.message : String(e)))
   }
 }
 ```
+
+The native module throws, so the wrapper is where that becomes a `Result`. Return a tagged union keyed on `name` rather than a bare `Error`, so callers can switch on the variant. See [Defining errors](/error-handling#defining-errors) for the pattern and [`no-try-catch`](/eslint-rules#no-try-catch) for why the boundary needs the disable comment.
 
 `runtime/sensor/types.ts`:
 
@@ -316,7 +323,3 @@ declare module 'native:@my-scope/bme280/sensor' {
 - **NVS namespaces**: if your driver stores state in NVS, use your own namespace. Namespace names starting with `mik.` are reserved for the runtime.
 - **C vs C++ source files**: Vendor C libraries (like sensor SDKs) should be compiled as `.c` files. Mixing them into `.cpp` files can cause issues with `-Werror` due to C++ strictness.
 - **DMA buffers**: If your peripheral uses DMA (SPI displays, etc.), allocate buffers with `heap_caps_malloc(size, MALLOC_CAP_DMA)`. DMA requires internal SRAM; PSRAM will not work.
-
-```
-
-```

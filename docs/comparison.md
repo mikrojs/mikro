@@ -5,7 +5,7 @@ description: How Mikro.js compares to other microcontroller platforms
 
 # Comparison
 
-Here's how Mikro.js compares to other options for programming microcontrollers.
+Mikro.js trades runtime performance and hardware breadth for type safety and a fast edit-test loop. If your project is tight on RAM, or targets a chip family other than ESP32, one of the platforms below is a better fit.
 
 ## Overview
 
@@ -38,33 +38,35 @@ Mikro.js uses [QuickJS-NG](https://github.com/quickjs-ng/quickjs), which passes 
 
 ## vs Arduino (C/C++)
 
-Arduino is one of the most popular microcontroller platforms with a large library ecosystem. The development cycle is edit, compile, flash, test. A simple change can take 30+ seconds to verify.
+Arduino's development cycle is edit, compile, flash, test, and a one-line change can take 30+ seconds to verify. Mikro.js replaces that with live reload: save the file and the device is running the new code seconds later, with TypeScript checking it on the way.
 
-Mikro.js uses live reload (save and see results in seconds), TypeScript type checking, and automatic memory management. Arduino gives you native performance, lower memory overhead, broad hardware support, and access to a very large library ecosystem.
+Arduino compiles to native code with no runtime overhead, runs on far more hardware than ESP32, and has a library for almost every sensor on the market. If your project is mostly combining existing libraries, that ecosystem is worth more than the faster loop.
 
 ## vs MicroPython
 
-MicroPython runs a subset of Python 3 on microcontrollers with broad hardware support and a REPL for interactive development.
+MicroPython runs a subset of Python 3 on microcontrollers, with a mature REPL and support for chip families Mikro.js does not target: STM32, RP2040, nRF. Its community and driver library are both considerably larger.
 
-Mikro.js has full TypeScript type checking (MicroPython's type hints are optional), typed error handling via Results, and live reload over serial. MicroPython supports more hardware (STM32, RP2040, nRF, etc.), has a larger community, more driver libraries, and a mature REPL.
+The difference that matters day to day is the type system. MicroPython's type hints are optional and unenforced at runtime; Mikro.js checks types at build time and puts expected failures in the signature via `Result`. Pick MicroPython if your board isn't an ESP32, or the driver you need only exists there.
 
 ## vs CircuitPython
 
-CircuitPython builds on MicroPython and is focused on beginner-friendliness. Code lives on a USB drive; save a file and it runs immediately.
+CircuitPython builds on MicroPython and optimizes for getting started quickly. Code lives on a USB drive: save a file and it runs immediately, with no toolchain to install.
 
-Mikro.js has TypeScript type checking and typed Results. CircuitPython has 260+ curated Adafruit libraries, drag-and-drop workflow via USB mass storage, excellent beginner documentation, and broad board support (Adafruit, RP2040, nRF).
+For a first project that is faster to get running than the Mikro.js setup, and the 260+ curated Adafruit libraries mean most sensors work without writing a driver. Mikro.js asks you to install Node and run a CLI, and gives you type checking and typed `Result` errors in return. Which of those weighs more depends on what you're already familiar with: CircuitPython has less to learn if you know Python, Mikro.js if you know TypeScript.
 
 ## vs Espruino
 
 Espruino runs a custom JavaScript engine on microcontrollers. Development is REPL-driven: type code, see it execute immediately.
 
-Mikro.js has TypeScript type checking, ES2024 support via QuickJS-NG, standard ES modules, and typed Results. Espruino has a true interactive REPL, runs on very small devices (128KB flash, 8KB RAM), and has a Bluetooth/wearable focus (Puck.js, Bangle.js).
+Espruino runs on much smaller hardware than Mikro.js supports: down to 128 KB flash and 8 KB RAM, including Bluetooth and wearable boards like Puck.js and Bangle.js. Working at the prompt also means no build step between making a change and seeing it run.
+
+Mikro.js requires an ESP32 and a build step on your computer. In exchange you get ES2024 via QuickJS-NG, standard ES modules, TypeScript checking, and typed `Result` errors, against Espruino's older custom dialect.
 
 ## vs Moddable SDK (XS)
 
-Moddable provides a full SDK with the XS JavaScript engine, targeting IoT products.
+Moddable provides a full SDK with the XS JavaScript engine, targeting shipping IoT products.
 
-Mikro.js has first-class TypeScript (Moddable has [experimental TypeScript support](https://moddable.com/blog/typescript/)), live reload, and typed Result errors. Moddable has an integrated source-level debugger (xsbug) and a more mature network protocol stack (MQTT, mDNS, BLE).
+It is the more complete product toolchain: xsbug is a source-level debugger with breakpoints and inspection, which Mikro.js has no equivalent for, and the network stack covers MQTT and mDNS out of the box. Mikro.js offers first-class TypeScript against Moddable's [experimental support](https://moddable.com/blog/typescript/), live reload, and typed `Result` errors. For a product going to manufacturing, the debugger alone may be reason enough to choose Moddable.
 
 ## vs Embedded Rust, MicroZig, Embedded Swift
 
@@ -76,4 +78,4 @@ These are compiled-to-native languages targeting microcontrollers. They prioriti
 
 **Embedded Swift** brings Swift to bare-metal targets with familiar Apple-ecosystem tooling.
 
-All three produce native binaries with minimal runtime overhead. Mikro.js trades some of that for a faster development loop: live reload and one of the most popular programming languages in the world.
+All three produce native binaries with minimal runtime overhead, and all three require learning a language most web and app developers do not already know. Mikro.js gives up the native performance in exchange for a shorter edit-test loop and a familiar language.

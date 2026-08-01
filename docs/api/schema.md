@@ -160,7 +160,7 @@ The discriminator field (`type` above) is injected into each branch's inferred t
 
 ## Validation
 
-### parse(schema, value)
+### parse(schema, value) {#parse}
 
 Validates `value` against `schema`. Returns a `Result`: `ok` with the typed value, or `err` with a `SchemaError` describing what went wrong and where.
 

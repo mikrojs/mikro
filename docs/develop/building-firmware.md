@@ -5,7 +5,7 @@ description: Build Mikro.js firmware from the monorepo using ESP-IDF
 
 # Building from Source
 
-This page covers building firmware from the mikrojs monorepo. You need this if you are contributing to the core runtime or working with native (C/C++) drivers.
+This page covers building firmware from the Mikro.js monorepo. You need this if you are contributing to the core runtime or working with native (C/C++) drivers.
 
 For building custom firmware from npm packages without cloning the monorepo, see [Custom Firmware](./custom-firmware).
 

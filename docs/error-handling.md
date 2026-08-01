@@ -208,7 +208,7 @@ The distinction:
 
 If you see an exception in Mikro.js, it means something is broken, not that a sensor read failed.
 
-Note that some standard JavaScript functions can still throw, such as `JSON.parse()` with invalid input, `atob()` with a malformed string, or `decodeURIComponent()` with invalid sequences. These are not Mikro.js APIs, so they follow standard JavaScript behavior. Use `try`/`catch` around these if the input is untrusted.
+Note that some standard JavaScript functions can still throw, such as `JSON.parse()` with invalid input, `atob()` with a malformed string, or `decodeURIComponent()` with invalid sequences. These are not Mikro.js APIs, so they follow standard JavaScript behavior. Catch them at the call site and return a `Result`: see [`no-try-catch`](/eslint-rules#no-try-catch) for the pattern and the lint disable it needs.
 
 When you need to intentionally crash (e.g. missing required configuration), use `env.require` from [`mikro/env`](/api/env) or `panic` from [`mikro/sys`](/api/sys):
 

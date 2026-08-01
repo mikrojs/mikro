@@ -27,7 +27,7 @@ features:
   - title: Host simulator
     details: Run your code on your computer with <code>mikro sim dev</code>. No microcontroller needed.
   - title: No exceptions
-    details: Typed Result errors instead of try/catch. Every failure is visible in the type signature.
+    details: Typed Result errors instead of try/catch. Every expected failure is visible in the type signature.
   - title: Built-in testing
     details: Test suites with resource leak detection and more. Run in the simulator or on a real device.
 ---

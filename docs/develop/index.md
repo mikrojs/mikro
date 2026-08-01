@@ -25,7 +25,7 @@ This section covers building Mikro.js firmware from source, creating driver pack
 
 ```sh
 git clone --recurse-submodules https://github.com/mikrojs/mikro.git
-cd mikrojs
+cd mikro
 pnpm install
 ```
 
@@ -40,8 +40,8 @@ This installs all workspace dependencies and builds the `qjsc` bytecode compiler
 
 ## What's next
 
-- [Custom Firmware](./custom-firmware) -- Build and distribute custom firmware from npm packages
-- [Building from Source](./building-firmware) -- Set up ESP-IDF and build firmware from the monorepo
-- [Creating Drivers](./creating-drivers) -- Build a native driver package for a peripheral
-- [Creating Boards](./creating-boards) -- Define a board package with pin maps and sdkconfig
-- [Architecture](./architecture) -- How the build system, module registration, and bytecode pipeline work
+- [Custom Firmware](./custom-firmware): build and distribute custom firmware from npm packages
+- [Building from Source](./building-firmware): set up ESP-IDF and build firmware from the monorepo
+- [Creating Drivers](./creating-drivers): build a native driver package for a peripheral
+- [Creating Boards](./creating-boards): define a board package with pin maps and sdkconfig
+- [Architecture](./architecture): how the build system, module registration, and bytecode pipeline work
