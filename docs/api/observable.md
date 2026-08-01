@@ -255,6 +255,7 @@ declare function handleError(err: {name: 'NetworkError'}): void
 - `unsubscribe()` is idempotent. Subsequent calls are no-ops.
 - `unsubscribe()` is silent: it does **not** call `observer.complete()`. Only natural producer-driven completion fires `complete()`.
 - Teardowns registered via `subscriber.addTeardown()` run in reverse insertion order, on both natural completion and `unsubscribe()`.
+- If the producer callback throws part way through setup, the teardowns it already registered still run. Nothing else could release them: no `Subscription` is returned, so there is nobody left to unsubscribe.
 - A throw inside a teardown panics, but the remaining teardowns still run.
 
 ## Types

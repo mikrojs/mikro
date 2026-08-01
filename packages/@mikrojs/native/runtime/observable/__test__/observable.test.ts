@@ -137,6 +137,37 @@ describe('Observable primitive', () => {
     captured.restore()
   })
 
+  test('producer setup throw runs the teardowns it already registered', () => {
+    const log: string[] = []
+    expect(() =>
+      new Observable<number>((subscriber) => {
+        subscriber.addTeardown(() => log.push('td1'))
+        subscriber.addTeardown(() => log.push('td2'))
+        throw new Error('setup-fail')
+      }).subscribe(),
+    ).toThrow('setup-fail')
+    // Reverse insertion order, so what the producer acquired last is released first.
+    expect(log).toEqual(['td2', 'td1'])
+  })
+
+  test('a teardown that throws during setup cleanup does not lose the setup error', () => {
+    const captured = captureScheduledThrows()
+    const log: string[] = []
+    expect(() =>
+      new Observable<number>((subscriber) => {
+        subscriber.addTeardown(() => log.push('td'))
+        subscriber.addTeardown(() => {
+          throw new Error('cleanup')
+        })
+        throw new Error('setup-fail')
+      }).subscribe(),
+    ).toThrow('setup-fail')
+    expect(log).toEqual(['td'])
+    expect(captured.calls).toHaveLength(1)
+    expect(() => captured.calls[0]!.fn()).toThrow('cleanup')
+    captured.restore()
+  })
+
   test('producer setup throw bubbles to subscribe caller', () => {
     expect(() =>
       new Observable<number>(() => {

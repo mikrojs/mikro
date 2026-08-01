@@ -20,7 +20,9 @@
  *
  * Producer-setup throws inside the subscribe callback bubble synchronously
  * to the .subscribe() caller — that's a bug in the producer factory itself,
- * not a runtime dispatch event.
+ * not a runtime dispatch event. Teardowns registered before the throw still
+ * run: no Subscription reaches the caller, so nothing else could ever
+ * release what the producer already acquired.
  *
  * Dispatch trampoline: next/complete invoked while a dispatch is already
  * active (i.e. from inside a handler) enqueue onto a per-runtime FIFO
@@ -465,13 +467,19 @@ static JSValue subscribe_with_callback(JSContext* ctx, JSValueConst subscribe_cb
      * unsubscribe handles it. */
     JSValue cb_result = JS_Call(ctx, subscribe_cb, JS_UNDEFINED, 1, &subscriber_val);
     if (JS_IsException(cb_result)) {
-        /* Producer setup threw — bubble up. Mark closed so any deferred
-         * dispatch back to this subscriber is silently dropped, unless a
-         * completion is already queued: that entry owns the close and still
-         * has to run complete_fn + teardowns (the resource-release path).
-         * complete_pending already blocks further next(). */
+        /* Producer setup threw — bubble up, but release whatever it already
+         * acquired first. No Subscription reaches the caller, so a teardown
+         * skipped here can never run: the handle it would close is
+         * unreachable for the rest of the runtime's life. Park the pending
+         * exception while the teardowns run, since they are JS calls and
+         * must not inherit it, then restore it for the caller.
+         * A queued completion is different: that entry owns the close and
+         * runs the teardowns when it drains. */
         if (!d->complete_pending) {
             d->closed = true;
+            JSValue pending = JS_GetException(ctx);
+            run_teardowns(ctx, d);
+            JS_Throw(ctx, pending);
         }
         JS_FreeValue(ctx, subscriber_val);
         return cb_result;
