@@ -1,6 +1,6 @@
-# Contributing to mikrojs
+# Contributing to Mikro.js
 
-Thanks for your interest in contributing to mikrojs! All contributions are welcome, whether it's a bug fix, a new feature, improved docs, or just a question.
+Thanks for your interest in contributing to Mikro.js! All contributions are welcome, whether it's a bug fix, a new feature, improved docs, or just a question.
 
 This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold it.
 
@@ -14,7 +14,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ```sh
 git clone --recurse-submodules https://github.com/mikrojs/mikro
-cd mikrojs
+cd mikro
 pnpm install
 ```
 

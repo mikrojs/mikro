@@ -81,6 +81,21 @@ try {
 }
 ```
 
+Standard JavaScript functions still throw: `JSON.parse()` on invalid input, `atob()` on a malformed string, `decodeURIComponent()` on invalid sequences. These aren't Mikro.js APIs and have no `Result` equivalent, so catching them is the correct thing to do. Disable the rule at the call site and convert to a `Result` immediately:
+
+```typescript
+function parseJson(text: string): Result<unknown, {name: 'InvalidJson'}> {
+  // eslint-disable-next-line @mikrojs/no-try-catch -- JSON.parse has no Result form
+  try {
+    return ok(JSON.parse(text))
+  } catch {
+    return err({name: 'InvalidJson'})
+  }
+}
+```
+
+The same applies at a native module boundary, where a C function throws instead of returning a `Result`. See [What about exceptions?](/error-handling#what-about-exceptions).
+
 ### `@mikrojs/no-promise-reject` {#no-promise-reject}
 
 **Severity:** error

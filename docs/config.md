@@ -61,7 +61,7 @@ Amount of system heap to keep out of QuickJS's reach, reserved for native subsys
 - **Keep the default** (64 KB) for anything with WiFi + HTTPS. TLS handshakes need contiguous multi-KB buffers.
 - **Don't go below ~8 KB** unless you know exactly what your native side does. If system heap hits 0 while QuickJS still thinks it has budget left, that's a hard crash rather than a catchable JS OOM.
 
-Use `/mem` in the REPL to verify: the **System** line should have a comfortable cushion over the **QuickJS** line. See [Tuning memReserved](/developing-for-microcontrollers#tuning-memreserved) for more guidance.
+Use `/mem` in the REPL to verify: the **System** line should have a comfortable cushion over the **QuickJS** line. See [Configuring memReserved](/developing-for-microcontrollers#configuring-memreserved) for more guidance.
 
 ### `wifi.country`
 

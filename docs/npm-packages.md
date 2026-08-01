@@ -47,7 +47,7 @@ Set [`build.bundle: true`](/config#buildbundle) to ship a single bundle instead.
 
 Every package you import adds to your program's memory footprint. With only 80-150 KB of free heap on most ESP32s, that adds up fast.
 
-- Prefer small, focused packages over large utility libraries. Many popular npm packages are designed for servers or browsers and are simply too large for a microcontroller.
+- Prefer small, focused packages over large utility libraries. Many popular npm packages are designed for servers or browsers and are too large for a microcontroller.
 - Check `memoryUsage()` after importing a package to understand its impact
 - When in doubt, vendor the specific function you need instead of pulling in a whole package
 

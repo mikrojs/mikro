@@ -9,7 +9,7 @@ Writing TypeScript for an ESP32 is different from writing it for Node.js or a br
 
 ## Memory
 
-The chips Mikro.js targets have 384-520 KB of internal SRAM, all of it shared between WiFi/BLE stacks, the QuickJS runtime, your app, and any loaded modules. How much you have free after boot depends on the chip and which radios are active. An ESP32-C3 leaves significantly less than an ESP32-C6 or ESP32-S3 with the same radios up. Some boards include PSRAM (2-8 MB of external RAM), which lets larger apps allocate beyond the SRAM budget.
+The chips Mikro.js targets have 384-520 KB of internal SRAM, all of it shared between WiFi/BLE stacks, the QuickJS runtime, your app, and any loaded modules. How much you have free after boot depends on the chip and which radios are active, so measure your own board with `/mem` rather than budgeting from the chip's datasheet total. Some boards include PSRAM (2-8 MB of external RAM), which lets larger apps allocate beyond the SRAM budget.
 
 ### Check your usage
 
@@ -40,10 +40,10 @@ WiFi + HTTPS is the biggest consumer. A simple blinky barely makes a dent, but a
 
 ### Practical tips
 
-- **Connect to WiFi once** and stay connected. Don't reconnect repeatedly.
-- **Use HTTP for local endpoints** when RAM is scarce. TLS is expensive.
-- **Build strings with arrays.** Concatenating in a loop creates a new string each time. Build an array and `.join()` once.
-- **Use dynamic imports** to load modules only when needed:
+- Connect to WiFi once and stay connected, rather than reconnecting per request.
+- Talk to local endpoints over plain HTTP when RAM is scarce. TLS costs 40-50 KB per handshake.
+- Concatenating strings in a loop allocates a new string every iteration. Push to an array and `.join()` once.
+- Load modules only when you need them, with a dynamic import:
 
 ```ts
 if (sensorConnected) {
@@ -123,10 +123,10 @@ Place calls before and after suspect operations. The `systemMinFree` field is es
 
 Once you've found the hot spot, the fix is usually one of:
 
-- **Build data incrementally** instead of holding the full result + source in memory simultaneously
-- **Reduce payload size** (fewer fields, shorter keys, less history)
-- **Lower `memReserved`** if your native subsystems don't need the full reservation
-- **Free references early** by scoping variables tightly or nulling them before the next big allocation (QuickJS uses reference counting, so memory is freed immediately when the last reference is dropped)
+- Build data incrementally, instead of holding the full result and its source in memory at once.
+- Shrink the payload: fewer fields, shorter keys, less history.
+- Lower `memReserved` if your native subsystems don't need the full reservation.
+- Free references early by scoping variables tightly, or nulling them before the next big allocation. QuickJS is reference counted, so the memory comes back the moment the last reference drops.
 
 ## Deep sleep for battery projects
 
@@ -168,7 +168,7 @@ Flash memory has limited write cycles (~100,000 per sector), so avoid writing on
 
 On a server, an unhandled exception crashes the process and a supervisor restarts it. On a microcontroller, an unhandled exception can leave your device stuck, potentially miles from anyone who can reset it.
 
-This is why Mikro.js uses [typed Results](/error-handling) instead of exceptions. Every failure is visible in the type signature.
+This is why Mikro.js uses [typed Results](/error-handling) instead of exceptions. Every expected failure is visible in the type signature.
 
 ```ts twoslash
 import {wifi} from 'mikro/wifi'

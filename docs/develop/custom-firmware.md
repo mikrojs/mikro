@@ -5,7 +5,7 @@ description: Build custom mikrojs firmware without cloning the monorepo
 
 # Custom Firmware
 
-You can build custom firmware projects by depending on `@mikrojs/firmware` from npm, without forking or cloning the mikrojs repository. This is the recommended way to create firmware with custom native modules, board-specific drivers, or modified initialization.
+You can build custom firmware projects by depending on `@mikrojs/firmware` from npm, without forking or cloning the Mikro.js repository. This is the recommended way to create firmware with custom native modules, board-specific drivers, or modified initialization.
 
 ## Prerequisites
 
