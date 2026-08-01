@@ -99,7 +99,7 @@ describe('Observable primitive', () => {
     expect(count).toBe(1)
   })
 
-  test('observer.next throw is scheduled to re-throw async, dispatch continues', () => {
+  test('observer.next throw panics and stops delivery', () => {
     const captured = captureScheduledThrows()
     const seen: number[] = []
     new Observable<number>((sub) => {
@@ -111,16 +111,16 @@ describe('Observable primitive', () => {
       seen.push(v)
       if (v === 1) throw new Error('boom')
     })
-    /* Synchronous behavior: all values delivered, subscription stayed alive. */
-    expect(seen).toEqual([1, 2, 3])
-    /* Async behavior: exactly one setTimeout(0) scheduled, and running it throws. */
+    /* The crash stops delivery; 2 and 3 never arrive. */
+    expect(seen).toEqual([1])
+    /* The host sees the error as an uncaught throw on the next tick. */
     expect(captured.calls).toHaveLength(1)
     expect(captured.calls[0]!.ms).toBe(0)
     expect(() => captured.calls[0]!.fn()).toThrow('boom')
     captured.restore()
   })
 
-  test('teardown throw schedules async re-throw, subsequent teardowns still run', () => {
+  test('teardown throw panics but the remaining teardowns still run', () => {
     const captured = captureScheduledThrows()
     const trace: string[] = []
     new Observable<number>((sub) => {
@@ -431,18 +431,19 @@ describe('pipe + operators', () => {
     expect(seen).toEqual([1, 2])
   })
 
-  test('map fn throw schedules async re-throw, that value is dropped', () => {
+  test('map fn throw panics and stops delivery', () => {
     const captured = captureScheduledThrows()
     const seen: number[] = []
     Observable.from([1, 2, 3])
       .pipe(
-        map((v) => {
-          if (v === 2) throw new Error('boom')
-          return v
+        map((value) => {
+          if (value === 2) throw new Error('boom')
+          return value
         }),
       )
-      .subscribe((v) => seen.push(v))
-    expect(seen).toEqual([1, 3])
+      .subscribe((value) => seen.push(value))
+    // 3 is never pulled: the crash stops the source mid-drain.
+    expect(seen).toEqual([1])
     expect(captured.calls).toHaveLength(1)
     expect(() => captured.calls[0]!.fn()).toThrow('boom')
     captured.restore()

@@ -254,51 +254,50 @@ TEST_CASE("unsubscribe is idempotent" * doctest::test_suite("observable")) {
     MIK_FreeRuntime(rt);
 }
 
-TEST_CASE("observer.next throw is scheduled async, dispatch continues" *
+TEST_CASE("a throwing observer stops the dispatch and panics" *
           doctest::test_suite("observable")) {
+    static int error_count;
+    error_count = 0;
+
     auto* rt = MIK_NewRuntime();
     auto* ctx = MIK_GetJSContext(rt);
+    MIK_SetErrorHandler(
+        rt, [](JSContext*, JSValue, void*) { error_count++; }, nullptr);
 
-    /* Stub setTimeout so the async-thrown error doesn't actually fire during
-     * the test (which would surface as an uncaught exception). Capture each
-     * scheduled callback and verify it throws when invoked manually. */
     JSValue rv = eval_module(
         ctx,
         "import {Observable} from 'mikro/observable'\n"
-        "const scheduled = []\n"
-        "globalThis.setTimeout = (fn, ms) => { scheduled.push({fn, ms}); return 0 }\n"
         "let count = 0\n"
         "new Observable(sub => {\n"
         "  sub.next(1); sub.next(2); sub.next(3); sub.complete()\n"
         "}).subscribe(v => { count++; if (v === 1) throw new Error('boom') })\n"
-        "globalThis.__count = count\n"
-        "globalThis.__scheduledCount = scheduled.length\n"
-        "let msg = ''\n"
-        "if (scheduled.length > 0) {\n"
-        "  try { scheduled[0].fn() } catch (e) { msg = e.message }\n"
-        "}\n"
-        "globalThis.__caughtMessage = msg\n");
+        "globalThis.__count = count\n");
     CHECK_FALSE(JS_IsException(rv));
     JS_FreeValue(ctx, rv);
 
-    /* All three values delivered synchronously; subscription stayed alive. */
-    CHECK(read_global_int(ctx, "__count") == 3);
-    /* Exactly one async re-throw was scheduled; running it surfaces 'boom'. */
-    CHECK(read_global_int(ctx, "__scheduledCount") == 1);
-    CHECK(read_global_string(ctx, "__caughtMessage") == "boom");
+    /* An application crash is an application crash: the first value reaches
+     * the handler, then nothing else is delivered. */
+    CHECK(read_global_int(ctx, "__count") == 1);
+    CHECK(error_count == 1);
+    CHECK(MIK_IsStopRequested(rt));
     MIK_FreeRuntime(rt);
 }
 
-TEST_CASE("teardown throw schedules async re-throw, subsequent teardowns still run" *
+TEST_CASE("a throwing teardown panics but the remaining teardowns still run" *
           doctest::test_suite("observable")) {
+    /* Teardowns release resources for work that is already ending, so the
+     * rest of the chain still runs even though the throw panics. */
+    static int error_count;
+    error_count = 0;
+
     auto* rt = MIK_NewRuntime();
     auto* ctx = MIK_GetJSContext(rt);
+    MIK_SetErrorHandler(
+        rt, [](JSContext*, JSValue, void*) { error_count++; }, nullptr);
 
     JSValue rv = eval_module(
         ctx,
         "import {Observable} from 'mikro/observable'\n"
-        "const scheduled = []\n"
-        "globalThis.setTimeout = (fn, ms) => { scheduled.push({fn, ms}); return 0 }\n"
         "let trace = []\n"
         "new Observable(sub => {\n"
         "  sub.addTeardown(() => trace.push('a'))\n"
@@ -306,20 +305,13 @@ TEST_CASE("teardown throw schedules async re-throw, subsequent teardowns still r
         "  sub.addTeardown(() => trace.push('c'))\n"
         "  sub.complete()\n"
         "}).subscribe()\n"
-        "globalThis.__trace = trace.join(',')\n"
-        "globalThis.__scheduledCount = scheduled.length\n"
-        "let msg = ''\n"
-        "if (scheduled.length > 0) {\n"
-        "  try { scheduled[0].fn() } catch (e) { msg = e.message }\n"
-        "}\n"
-        "globalThis.__caughtMessage = msg\n");
+        "globalThis.__trace = trace.join(',')\n");
     CHECK_FALSE(JS_IsException(rv));
     JS_FreeValue(ctx, rv);
 
-    /* Reverse-insertion order, with the throwing teardown skipped. */
     CHECK(read_global_string(ctx, "__trace") == "c,a");
-    CHECK(read_global_int(ctx, "__scheduledCount") == 1);
-    CHECK(read_global_string(ctx, "__caughtMessage") == "mid");
+    CHECK(error_count == 1);
+    CHECK(MIK_IsStopRequested(rt));
     MIK_FreeRuntime(rt);
 }
 
@@ -591,42 +583,6 @@ TEST_CASE("withEmitters: unsubscribe during dispatch doesn't break iteration" *
     MIK_FreeRuntime(rt);
 }
 
-/* A panic that cannot be scheduled (setTimeout unusable — the same shape as
- * stack exhaustion, where scheduling the deferred re-throw fails the stack
- * check the dispatch just failed) must escalate through the native error
- * handler instead of going silent. Regression for the on-device esp32s3
- * failure where a stack-exhausted pipe chain delivered an empty, cleanly
- * completed stream with no error anywhere. */
-TEST_CASE("unschedulable dispatch panic escalates to the error handler" *
-          doctest::test_suite("observable")) {
-    static int error_count;
-    error_count = 0;
-
-    auto* rt = MIK_NewRuntime();
-    auto* ctx = MIK_GetJSContext(rt);
-    MIK_SetErrorHandler(
-        rt, [](JSContext*, JSValue, void*) { error_count++; }, nullptr);
-
-    JSValue rv = eval_module(ctx,
-                             "import {Observable} from 'mikro/observable'\n"
-                             "globalThis.setTimeout = undefined\n"
-                             "const seen = []\n"
-                             "new Observable((s) => { s.next(1); s.complete() })\n"
-                             "  .subscribe({next: () => { throw new Error('boom') },\n"
-                             "              complete: () => { seen.push('done') }})\n"
-                             "globalThis.__seen = seen.length\n");
-    CHECK_FALSE(JS_IsException(rv));
-    JS_FreeValue(ctx, rv);
-
-    /* The throw from the subscriber surfaced through the handler; before the
-     * escalation existed this was 0 and the stream ended silently. */
-    CHECK(error_count == 1);
-    /* Keep-going contract: escalation reports and halts, but the producer's
-     * complete() still reached this subscriber. */
-    CHECK(read_global_int(ctx, "__seen") == 1);
-    MIK_FreeRuntime(rt);
-}
-
 /* ── Dispatch trampoline ─────────────────────────────────────────── */
 
 TEST_CASE("re-entrant emission depth does not consume stack" *
@@ -844,38 +800,36 @@ TEST_CASE("subscribing to a sync source inside a handler defers its values" *
     MIK_FreeRuntime(rt);
 }
 
-TEST_CASE("throw during a queued delivery doesn't break the drain" *
+TEST_CASE("a throw mid-drain abandons the queued deliveries" *
           doctest::test_suite("observable")) {
-    /* A mid-drain throw is isolated to the offending subscriber: later
-     * queued entries still deliver, and exactly one re-throw is scheduled. */
+    /* The queue holds deliveries for subscribers that were live when the
+     * value was emitted. Once one of them crashes the app, the rest are
+     * dropped rather than delivered against broken state. */
+    static int error_count;
+    error_count = 0;
+
     auto* rt = MIK_NewRuntime();
     auto* ctx = MIK_GetJSContext(rt);
+    MIK_SetErrorHandler(
+        rt, [](JSContext*, JSValue, void*) { error_count++; }, nullptr);
 
     JSValue rv = eval_module(
         ctx,
         "import {Observable} from 'mikro/observable'\n"
-        "const scheduled = []\n"
-        "globalThis.setTimeout = (fn, ms) => { scheduled.push(fn); return 0 }\n"
         "const {observable, next} = Observable.withEmitters()\n"
         "let cLog = []\n"
         "observable.subscribe(v => { if (v === 1) next(2) })\n"
         "observable.subscribe(v => { if (v === 2) throw new Error('boom') })\n"
         "observable.subscribe(v => cLog.push(v))\n"
         "next(1)\n"
-        "globalThis.__c = cLog.join(',')\n"
-        "globalThis.__scheduledCount = scheduled.length\n"
-        "let msg = ''\n"
-        "if (scheduled.length > 0) {\n"
-        "  try { scheduled[0]() } catch (e) { msg = e.message }\n"
-        "}\n"
-        "globalThis.__caughtMessage = msg\n");
+        "globalThis.__c = cLog.join(',')\n");
     CHECK_FALSE(JS_IsException(rv));
     JS_FreeValue(ctx, rv);
 
-    /* The re-entrant value 2 drains before the outer dispatch of value 1
-     * reaches the remaining subscribers — same order recursion produced. */
-    CHECK(read_global_string(ctx, "__c") == "2,1");
-    CHECK(read_global_int(ctx, "__scheduledCount") == 1);
-    CHECK(read_global_string(ctx, "__caughtMessage") == "boom");
+    /* The third subscriber never sees value 2 (the crash happened first) nor
+     * value 1 (its queued turn was abandoned). */
+    CHECK(read_global_string(ctx, "__c") == "");
+    CHECK(error_count == 1);
+    CHECK(MIK_IsStopRequested(rt));
     MIK_FreeRuntime(rt);
 }

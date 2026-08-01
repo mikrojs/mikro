@@ -7,12 +7,9 @@
  * Result-aware operators (`mapOk`, `filterOk`, ...) ship when a concrete
  * consumer asks. Today no module produces fallible event streams.
  *
- * Errors: throws inside operator transforms or finalize callbacks are caught
- * at the dispatch boundary, isolated to that subscriber, and re-thrown
- * asynchronously via setTimeout(0). The synchronous producer keeps going
- * (the bad value is dropped, sibling subscribers untouched), and the
- * deferred throw is reported from the timer callback without stopping the
- * runtime.
+ * Errors: a throw inside a transform or a finalize callback propagates to the
+ * dispatch boundary, which reports it and panics. Operators do not catch:
+ * an application crash is an application crash.
  *
  * See `.claude/plans/observable.md` for the full design.
  */
@@ -28,53 +25,26 @@ import type {Observable as ObservableT} from './types.js'
 const Observable = NativeObservable as unknown as typeof ObservableT
 type Observable<Ok, Err = never> = ObservableT<Ok, Err>
 
-/* Catch a thrown error and re-throw it on the next tick. The synchronous
- * caller keeps going; the error eventually surfaces as an uncaught
- * exception. */
-function panicAsync(err: unknown): void {
-  setTimeout(() => {
-    throw err
-  }, 0)
-}
-
-/* Map values through a transform. Throws inside `fn` are caught and
- * scheduled to re-throw on the next tick (panic). The bad value is dropped
- * for that subscription; sibling subscriptions are unaffected. */
+/* Map values through a transform. A throw inside `fn` panics. */
 export const map =
   <A, B>(fn: (value: A) => B) =>
   (source: Observable<A>): Observable<B> =>
     new Observable<B>((sub) => {
       const upstream = source.subscribe({
-        next: (value) => {
-          let next: B
-          try {
-            next = fn(value)
-          } catch (err) {
-            panicAsync(err)
-            return
-          }
-          sub.next(next)
-        },
+        next: (value) => sub.next(fn(value)),
         complete: () => sub.complete(),
       })
       sub.addTeardown(() => upstream.unsubscribe())
     })
 
-/* Pass through values matching `predicate`. Its errors panic asynchronously. */
+/* Pass through values matching `predicate`. A throw inside it panics. */
 export const filter =
   <A>(predicate: (value: A) => boolean) =>
   (source: Observable<A>): Observable<A> =>
     new Observable<A>((sub) => {
       const upstream = source.subscribe({
         next: (value) => {
-          let keep: boolean
-          try {
-            keep = predicate(value)
-          } catch (err) {
-            panicAsync(err)
-            return
-          }
-          if (keep) sub.next(value)
+          if (predicate(value)) sub.next(value)
         },
         complete: () => sub.complete(),
       })
@@ -123,8 +93,8 @@ export const takeUntil =
     })
 
 /* Run `fn` when the subscription ends for any reason (unsubscribe or
- * natural completion). Throws inside `fn` are caught and panic
- * asynchronously, so subsequent teardowns still run. RxJS naming. */
+ * natural completion). A throw inside `fn` panics; the remaining teardowns
+ * still run. RxJS naming. */
 export const finalize =
   (fn: () => void) =>
   <A>(source: Observable<A>): Observable<A> =>
@@ -135,10 +105,6 @@ export const finalize =
       })
       sub.addTeardown(() => {
         upstream.unsubscribe()
-        try {
-          fn()
-        } catch (err) {
-          panicAsync(err)
-        }
+        fn()
       })
     })
