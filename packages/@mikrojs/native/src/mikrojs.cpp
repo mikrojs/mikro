@@ -601,6 +601,8 @@ void mik__execute_jobs(JSContext* ctx) {
                     JS_Throw(ctx1, exc);
                 }
                 mik_dump_error(ctx1);
+                /* Same rule as every other uncaught throw: panic. */
+                if (mik_rt) MIK_Stop(mik_rt);
             }
             break;
         }
@@ -664,6 +666,7 @@ int MIK_Loop(MIKRuntime* mik_rt) {
             JS_Throw(mik_rt->ctx, exc);
         }
         mik_dump_error(mik_rt->ctx);
+        MIK_Stop(mik_rt);
         return 1;
     }
     mik__stdin_consume(mik_rt->ctx);
@@ -789,17 +792,12 @@ bool MIK_IsStopRequested(MIKRuntime* mik_rt) {
 
 void MIK_Stop(MIKRuntime* mik_rt) {
     CHECK_NOT_NULL(mik_rt);
-    /* A throw inside an interactive REPL eval is a user typo, not an app
-     * crash; the eval path already reports it. Don't request a stop or
-     * reboot. (Evaluating implies the REPL is active, so this is checked
-     * before the IsReplActive guard below.) */
-    if (mik__repl_is_evaluating()) {
-        return;
-    }
-    /* Signal the loop to halt. This is the single place stop_requested is
-     * set, so the repl-eval gate above can't be bypassed by a caller. Host
-     * embedders (Node addon) observe it via MIK_Loop's return value; the
-     * firmware test supervisor reads it via MIK_IsStopRequested. */
+    /* REPL-evaluated code gets no exemption: a typo throws synchronously and
+     * the eval path reports it without reaching here, so only async fallout
+     * from typed code panics. */
+    /* The single place stop_requested is set. Host embedders (Node addon)
+     * observe it via MIK_Loop's return value; the firmware test supervisor
+     * reads it via MIK_IsStopRequested. */
     mik_rt->stop_requested = true;
     /* Only firmware (protocol REPL attached) auto-restarts on uncaught
      * exceptions. Host embedders (Node addon, standalone tests) own their

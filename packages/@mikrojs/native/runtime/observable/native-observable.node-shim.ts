@@ -5,16 +5,22 @@
 // - subscribe() returns a Subscription with unsubscribe() (no AbortSignal)
 // - no error channel — throws inside dispatch or teardown are caught at the
 //   boundary, isolated to the offending subscriber, and re-thrown
-//   asynchronously via setTimeout(0) so the synchronous producer keeps
-//   running and the bug is reported from the timer callback
+//   asynchronously via setTimeout(0) so the synchronous producer finishes
+//   the dispatch; on device the deferred throw then panics
 // - sync emission allowed
 // - pipe-only composition (operators live in operators.ts)
 // - withEmitters() factory: {observable, next, complete}
 
-/* Catch a thrown error and re-throw it on the next tick. The synchronous
- * caller keeps going (other subscribers receive the value, remaining
- * teardowns run); the error eventually surfaces as an uncaught exception. */
-function panicAsync(err: unknown): void {
+/* A throw in a subscriber, operator, or teardown callback is an application
+ * crash. On device it stops the runtime per onPanic, so nothing further is
+ * delivered. There is no runtime to stop here, so the host sees an uncaught
+ * error on the next tick and `panicked` suppresses further delivery, which is
+ * the part a unit test can observe. It clears on the next fresh subscribe, so
+ * one test's crash cannot poison the next; on device the runtime is gone. */
+let panicked = false
+
+function panic(err: unknown): void {
+  panicked = true
   setTimeout(() => {
     throw err
   }, 0)
@@ -32,7 +38,7 @@ let dispatchActive = false
 function drainQueue(): void {
   while (queueHead < queue.length) {
     const e = queue[queueHead++]!
-    e.sub.deliverQueued(e)
+    if (!panicked) e.sub.deliverQueued(e)
   }
   queue.length = 0
   queueHead = 0
@@ -63,7 +69,7 @@ class Subscriber<T> {
   }
 
   next(value: T): void {
-    if (this.closed) return
+    if (this.closed || panicked) return
     if (dispatchActive) {
       queue.push({sub: this as Subscriber<unknown>, value, isComplete: false})
       return
@@ -75,7 +81,7 @@ class Subscriber<T> {
   }
 
   complete(): void {
-    if (this.closed) return
+    if (this.closed || panicked) return
     if (dispatchActive) {
       this.completePending = true
       queue.push({sub: this as Subscriber<unknown>, value: undefined, isComplete: true})
@@ -100,7 +106,7 @@ class Subscriber<T> {
       try {
         this.next_fn(value)
       } catch (err) {
-        panicAsync(err)
+        panic(err)
       }
     }
   }
@@ -112,7 +118,7 @@ class Subscriber<T> {
       try {
         this.complete_fn()
       } catch (err) {
-        panicAsync(err)
+        panic(err)
       }
     }
     this.runTeardowns()
@@ -126,7 +132,7 @@ class Subscriber<T> {
       try {
         fn()
       } catch (err) {
-        panicAsync(err)
+        panic(err)
       }
       return
     }
@@ -148,7 +154,7 @@ class Subscriber<T> {
       try {
         list[i]!()
       } catch (err) {
-        panicAsync(err)
+        panic(err)
       }
     }
   }
@@ -177,6 +183,7 @@ export class Observable<Ok, Err = never> {
   }
 
   subscribe(observer?: unknown): Subscription {
+    if (!dispatchActive) panicked = false
     const sub = new Subscriber<unknown>(observer)
     try {
       this.#cb(sub)
@@ -222,7 +229,7 @@ export class Observable<Ok, Err = never> {
     ) {
       return new Observable<unknown>((sub) => {
         for (const value of src as Iterable<unknown>) {
-          if (sub.closed) return
+          if (sub.closed || panicked) return
           sub.next(value)
         }
         if (!sub.closed) sub.complete()
@@ -256,6 +263,7 @@ export class Observable<Ok, Err = never> {
       // Snapshot to be resilient against mid-dispatch unsubscribes.
       const snapshot = subs.slice()
       for (const s of snapshot) {
+        if (panicked) break
         if (!s.closed) s.next(value)
       }
     }
@@ -266,6 +274,7 @@ export class Observable<Ok, Err = never> {
       const snapshot = subs.slice()
       subs.length = 0
       for (const s of snapshot) {
+        if (panicked) break
         if (!s.closed) s.complete()
       }
     }

@@ -16,7 +16,7 @@ import type {Observer, Subscriber, Subscription} from 'mikro/observable'
 The implementation tracks the [WICG Observable](https://wicg.github.io/observable/) proposal in constructor and operator naming, but not in semantics. Three differences to know about:
 
 1. **`subscribe()` returns a `Subscription` with `unsubscribe()`** instead of accepting `AbortSignal`.
-2. **No error notification channel.** Throws inside observer or operator callbacks are caught at the dispatch boundary and logged, isolated to that subscriber. Recoverable failures that are part of a stream's contract flow as `Result<Ok, Err>` values via `next`.
+2. **No error notification channel.** A throw inside an observer or operator callback panics, like any other uncaught error. Failures that are part of a stream's contract travel as `Result<Ok, Err>` values through `next` instead.
 3. **Emitting from inside a handler is queued.** WICG Observable hands each value straight to the next handler, so the call stack grows with every operator in the chain. Here the value is passed on once your handler returns, which is what lets a long chain run on a microcontroller's small stack. Code ported from WICG Observable or from RxJS behaves the same unless it emits from inside a handler; see [Writing custom operators](#writing-custom-operators).
 
 ## When to use Observable
@@ -77,7 +77,7 @@ Transform each value through `fn`.
 const map: <A, B>(fn: (value: A) => B) => (source: Observable<A>) => Observable<B>
 ```
 
-Throws inside `fn` are caught at the dispatch boundary and re-thrown asynchronously (see [Errors](#errors)); the bad value is dropped for that subscription, the subscription stays alive.
+A throw inside `fn` panics (see [Errors](#errors)).
 
 ### filter(predicate)
 
@@ -230,7 +230,9 @@ Async iterables are not currently supported.
 
 There is no `error` notification channel. Unexpected throws and failures the stream is meant to report are handled differently.
 
-A throw inside an observer, operator, or teardown callback is caught where it happens and kept to that one subscriber: the value is dropped for it, sibling subscribers still receive the value, remaining teardowns still run, and the producer carries on. The error is re-thrown on the next tick with `setTimeout(0)`, so it surfaces as an uncaught error with its stack, exactly like a throw from any other callback in your app: printed, never silently dropped, and your app keeps running. If a failing subscriber should take the app down, that is for your own code to decide.
+A throw inside an observer, operator, or teardown callback is an application crash, the same as a throw anywhere else. It is reported with its stack, and the device then does whatever [`onPanic`](/config#onpanic) says: by default it stays awake and reachable for a second, so you can deploy a fix, then restarts.
+
+Nothing else is delivered after that. Values still queued for other subscribers are dropped, a multicast fan-out stops where it is, `Observable.from(iterable)` stops pulling, and any further `next()` or `complete()` from the producer does nothing. Teardowns are the exception: the remaining ones still run, because they release handlers and timers for work that is already ending.
 
 Failures that are part of a stream's contract, such as an HTTP fetch that may fail, travel as `Result.err(...)` values through `next()`, like any other value:
 
@@ -253,7 +255,7 @@ declare function handleError(err: {name: 'NetworkError'}): void
 - `unsubscribe()` is idempotent. Subsequent calls are no-ops.
 - `unsubscribe()` is silent: it does **not** call `observer.complete()`. Only natural producer-driven completion fires `complete()`.
 - Teardowns registered via `subscriber.addTeardown()` run in reverse insertion order, on both natural completion and `unsubscribe()`.
-- Throws inside teardowns are caught and logged so subsequent teardowns still run.
+- A throw inside a teardown panics, but the remaining teardowns still run.
 
 ## Types
 

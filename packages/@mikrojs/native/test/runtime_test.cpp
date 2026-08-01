@@ -273,3 +273,80 @@ TEST_CASE("owned Uint8Array buffers support ArrayBuffer.transfer" * doctest::tes
 
     MIK_FreeRuntime(rt);
 }
+
+TEST_CASE("an uncaught throw in a timer callback panics" * doctest::test_suite("runtime")) {
+    /* Uncaught errors used to halt only when a promise was in the path: a
+     * rejected promise stopped the runtime, the same bug thrown from a
+     * callback was reported and the app carried on. One rule now, so a bug's
+     * blast radius no longer depends on how it reached the event loop. */
+    MIKRuntime* rt = MIK_NewRuntime();
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    const char* code = "setTimeout(() => { throw new Error('boom') }, 0)";
+    JSValue rv = JS_Eval(ctx, code, strlen(code), "main.js", JS_EVAL_TYPE_GLOBAL);
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    for (int i = 0; i < 50 && !MIK_IsStopRequested(rt); i++) {
+        MIK_Loop(rt);
+    }
+    CHECK(MIK_IsStopRequested(rt));
+
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("an uncaught throw in an observable handler panics" * doctest::test_suite("runtime")) {
+    /* The observable dispatch boundary defers the re-throw through
+     * setTimeout, which used to land in the one path that never halted. It
+     * now reaches the same panic as everything else. */
+    MIKRuntime* rt = MIK_NewRuntime();
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    const char* code =
+        "import {Observable} from 'mikro/observable'\n"
+        "new Observable((subscriber) => { subscriber.next(1); subscriber.complete() })\n"
+        "  .subscribe(() => { throw new Error('boom') })\n";
+    JSValue rv = JS_Eval(ctx, code, strlen(code), "main.js", JS_EVAL_TYPE_MODULE);
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    for (int i = 0; i < 50 && !MIK_IsStopRequested(rt); i++) {
+        MIK_Loop(rt);
+    }
+    CHECK(MIK_IsStopRequested(rt));
+
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("a panic stops the rest of the timers due in the same tick" *
+          doctest::test_suite("runtime")) {
+    /* Timers due together are independent work. Once one has panicked, the
+     * state the others were scheduled against may be broken, so they wait
+     * for the restart rather than running against it. */
+    MIKRuntime* rt = MIK_NewRuntime();
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    const char* code =
+        "globalThis.__ran = ''\n"
+        "setTimeout(() => { globalThis.__ran += 'a'; throw new Error('boom') }, 0)\n"
+        "setTimeout(() => { globalThis.__ran += 'b' }, 0)\n"
+        "setTimeout(() => { globalThis.__ran += 'c' }, 0)\n";
+    JSValue rv = JS_Eval(ctx, code, strlen(code), "main.js", JS_EVAL_TYPE_GLOBAL);
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    for (int i = 0; i < 50 && !MIK_IsStopRequested(rt); i++) {
+        MIK_Loop(rt);
+    }
+    CHECK(MIK_IsStopRequested(rt));
+
+    JSValue g = JS_GetGlobalObject(ctx);
+    JSValue ran = JS_GetPropertyStr(ctx, g, "__ran");
+    const char* s = JS_ToCString(ctx, ran);
+    CHECK(std::string(s ? s : "") == "a");
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, ran);
+    JS_FreeValue(ctx, g);
+
+    MIK_FreeRuntime(rt);
+}

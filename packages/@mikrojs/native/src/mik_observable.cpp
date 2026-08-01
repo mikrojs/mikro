@@ -9,16 +9,14 @@
  *                 addTeardown, closed
  *   - Subscription: unsubscribe
  *
- * Error semantics: throws inside observer or operator callbacks (and inside
- * teardown callbacks) are caught at the dispatch boundary, isolated to the
- * offending subscriber, and re-thrown asynchronously via setTimeout(0). The
- * synchronous producer keeps running (sibling subscribers receive the value,
- * remaining teardowns run); the deferred throw lands in a timer callback,
- * where mik__timers reports it (error handler + mik_dump_error) and the
- * runtime keeps going, the same as any other uncaught callback error. It is
- * NOT the unhandled-rejection halt path, which only covers rejected
- * promises. The one stop is panic_now, when the re-throw cannot be
- * scheduled at all.
+ * Error semantics: a throw inside an observer, operator, or teardown callback
+ * is caught at the dispatch boundary only to report it and apply the app's
+ * onPanic policy; it is an application crash like any other uncaught error.
+ * Nothing further is delivered: queued entries are dropped, the multicast
+ * fan-out stops, from(iterable) stops pulling, and later next/complete calls
+ * from the producer's own callback (which JS cannot interrupt mid-function)
+ * are no-ops. Teardowns are the exception, since they release resources for
+ * work that is already ending; the rest of the chain still runs.
  *
  * Producer-setup throws inside the subscribe callback bubble synchronously
  * to the .subscribe() caller — that's a bug in the producer factory itself,
@@ -106,24 +104,13 @@ struct SubscriptionData {
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 
-/* Re-throws the captured exception from func_data[0]. Used as the
- * `setTimeout(callback, 0)` payload in panic_async. */
-static JSValue throw_captured(JSContext* ctx, JSValueConst this_val, int argc,
-                              JSValueConst* argv, int magic, JSValue* func_data) {
-    (void)this_val;
-    (void)argc;
-    (void)argv;
-    (void)magic;
-    return JS_Throw(ctx, JS_DupValue(ctx, func_data[0]));
-}
-
-/* Escalation for a panic that cannot be scheduled: report through the
- * allocation-free native uncaught path and halt, mirroring the
- * unhandled-rejection flush. Scheduling fails exactly when the runtime is
- * out of stack or memory — the same conditions that caused the throw — and
- * silence here turned engine-level failures into silently dropped values.
- * Consumes `exception`. */
-static void panic_now(JSContext* ctx, JSValue exception) {
+/* An uncaught throw from a subscriber, operator, or teardown callback is an
+ * application crash like any other: report it, notify the host error handler,
+ * and apply the app's onPanic policy. Reporting happens here rather than
+ * through a deferred re-throw because MIK_Loop stops pumping timers once the
+ * panic is armed, so a deferred report would never run. Consumes
+ * `exception`. */
+static void panic(JSContext* ctx, JSValue exception) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     if (mik__report_uncaught(ctx, exception, false) && mik_rt) {
         if (mik_rt->error_handler_fn) {
@@ -134,57 +121,12 @@ static void panic_now(JSContext* ctx, JSValue exception) {
     JS_FreeValue(ctx, exception);
 }
 
-/* Catch a thrown error and re-throw it on the next event-loop tick via the
- * runtime's setTimeout. The synchronous caller keeps going (sibling
- * subscribers receive the value, remaining teardowns run); the timer
- * callback then reports the throw and the runtime continues. If the
- * deferred throw cannot be scheduled, escalate via panic_now instead of
- * going silent.
- *
- * Takes ownership of `exception` — caller must not free after this call. */
-static void panic_async(JSContext* ctx, JSValue exception) {
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue setTimeout = JS_GetPropertyStr(ctx, global, "setTimeout");
-    JS_FreeValue(ctx, global);
-    if (!JS_IsFunction(ctx, setTimeout)) {
-        JS_FreeValue(ctx, setTimeout);
-        panic_now(ctx, exception);
-        return;
-    }
-    JSValueConst data[1] = {exception};
-    JSValue thrower = JS_NewCFunctionData(ctx, throw_captured, 0, 0, 1, data);
-    if (JS_IsException(thrower)) {
-        JSValue stray = JS_GetException(ctx);
-        JS_FreeValue(ctx, stray);
-        JS_FreeValue(ctx, setTimeout);
-        panic_now(ctx, exception);
-        return;
-    }
-    JSValue zero = JS_NewInt32(ctx, 0);
-    JSValueConst call_args[2] = {thrower, zero};
-    JSValue ret = JS_Call(ctx, setTimeout, JS_UNDEFINED, 2, call_args);
-    JS_FreeValue(ctx, setTimeout);
-    JS_FreeValue(ctx, thrower);
-    JS_FreeValue(ctx, zero);
-    if (JS_IsException(ret)) {
-        /* setTimeout itself threw — under stack exhaustion it fails the
-         * same check the dispatch just failed. Escalate. */
-        JSValue stray = JS_GetException(ctx);
-        JS_FreeValue(ctx, stray);
-        panic_now(ctx, exception);
-        return;
-    }
-    JS_FreeValue(ctx, ret);
-    JS_FreeValue(ctx, exception);
-}
-
-/* Call `fn(argv...)` synchronously; if it throws, schedule the exception
- * to re-throw on the next tick. Caller is not informed of the throw. */
+/* Call `fn(argv...)` synchronously; a throw panics. Caller is not informed. */
 static void run_safely(JSContext* ctx, JSValue fn, int argc, JSValue* argv) {
     JSValue ret = JS_Call(ctx, fn, JS_UNDEFINED, argc, argv);
     if (JS_IsException(ret)) {
         JSValue exc = JS_GetException(ctx);
-        panic_async(ctx, exc);
+        panic(ctx, exc);
     } else {
         JS_FreeValue(ctx, ret);
     }
@@ -198,15 +140,15 @@ static void invoke_safely(JSContext* ctx, JSValueConst this_val, JSAtom method, 
     JSValue ret = JS_Invoke(ctx, this_val, method, argc, argv);
     if (JS_IsException(ret)) {
         JSValue exc = JS_GetException(ctx);
-        panic_async(ctx, exc);
+        panic(ctx, exc);
     } else {
         JS_FreeValue(ctx, ret);
     }
 }
 
-/* Run all registered teardowns in reverse insertion order. Throws are
- * scheduled to re-throw async via panic_async, so subsequent teardowns
- * still run synchronously. */
+/* Run all registered teardowns in reverse insertion order. A throw panics,
+ * but the remaining teardowns still run: they release resources for work
+ * that is already ending. */
 static void run_teardowns(JSContext* ctx, SubscriberData* d) {
     /* Swap into a local list. If a teardown calls addTeardown synchronously,
      * the SubscriberData.closed flag is already true so addTeardown fires the
@@ -224,6 +166,14 @@ static void run_teardowns(JSContext* ctx, SubscriberData* d) {
 static MIKObservableDispatch* dispatch_state(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     return mik_rt ? mik_rt->observable_dispatch : nullptr;
+}
+
+/* True once a panic is armed. The producer's own callback keeps running (JS
+ * cannot be stopped mid-function), so its later next/complete calls have to
+ * become no-ops rather than delivering against crashed state. */
+static bool dispatch_stopped(JSContext* ctx) {
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+    return mik_rt && MIK_IsStopRequested(mik_rt);
 }
 
 /* Deliver a value to the subscriber's next handler. `value` is borrowed. */
@@ -246,10 +196,14 @@ static void deliver_complete(JSContext* ctx, SubscriberData* d) {
  * loop keeps going until the queue is empty. Entries whose subscriber closed
  * (unsubscribed) between enqueue and drain are dropped. */
 static void drain(JSContext* ctx, MIKObservableDispatch* ds) {
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     while (ds->head < ds->queue.size()) {
         MIKObservableDispatch::Entry e = ds->queue[ds->head++];
         auto* d = static_cast<SubscriberData*>(JS_GetOpaque(e.subscriber, subscriber_class_id));
-        if (d && !d->closed) {
+        /* A panicked handler means the state these deliveries were queued
+         * against may be broken; free the rest without delivering. */
+        bool stopped = mik_rt && MIK_IsStopRequested(mik_rt);
+        if (d && !d->closed && !stopped) {
             if (e.is_complete) {
                 deliver_complete(ctx, d);
             } else {
@@ -300,6 +254,7 @@ static JSValue subscriber_next(JSContext* ctx, JSValueConst this_val, int argc, 
     auto* d = static_cast<SubscriberData*>(JS_GetOpaque2(ctx, this_val, subscriber_class_id));
     if (!d) return JS_EXCEPTION;
     if (d->closed || d->complete_pending) return JS_UNDEFINED;
+    if (dispatch_stopped(ctx)) return JS_UNDEFINED;
     JSValue arg = argc > 0 ? argv[0] : JS_UNDEFINED;
     MIKObservableDispatch* ds = dispatch_state(ctx);
     if (!ds) {
@@ -324,6 +279,7 @@ static JSValue subscriber_complete(JSContext* ctx, JSValueConst this_val, int ar
     auto* d = static_cast<SubscriberData*>(JS_GetOpaque2(ctx, this_val, subscriber_class_id));
     if (!d) return JS_EXCEPTION;
     if (d->closed || d->complete_pending) return JS_UNDEFINED;
+    if (dispatch_stopped(ctx)) return JS_UNDEFINED;
     MIKObservableDispatch* ds = dispatch_state(ctx);
     if (!ds) {
         deliver_complete(ctx, d);
@@ -683,6 +639,8 @@ static JSValue from_iterable_subscribe(JSContext* ctx, JSValueConst this_val, in
         auto* sd = static_cast<SubscriberData*>(
             JS_GetOpaque(subscriber, subscriber_class_id));
         if (!sd || sd->closed) break;
+        MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+        if (mik_rt && MIK_IsStopRequested(mik_rt)) break;
 
         JSValue value = iterator_next(ctx, iterator, &done);
         if (JS_IsException(value)) {
@@ -952,9 +910,10 @@ static JSValue multicast_emit_next(JSContext* ctx, JSValueConst this_val, int ar
 
     JSValue value = argc > 0 ? argv[0] : JS_UNDEFINED;
     JSAtom next_atom = JS_NewAtom(ctx, "next");
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     for (auto& s : snapshot) {
         auto* sd = static_cast<SubscriberData*>(JS_GetOpaque(s, subscriber_class_id));
-        if (!sd || sd->closed) {
+        if (!sd || sd->closed || (mik_rt && MIK_IsStopRequested(mik_rt))) {
             JS_FreeValue(ctx, s);
             continue;
         }
@@ -982,9 +941,10 @@ static JSValue multicast_emit_complete(JSContext* ctx, JSValueConst this_val, in
     snapshot.swap(m->subscribers);
 
     JSAtom complete_atom = JS_NewAtom(ctx, "complete");
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     for (auto& s : snapshot) {
         auto* sd = static_cast<SubscriberData*>(JS_GetOpaque(s, subscriber_class_id));
-        if (sd && !sd->closed) {
+        if (sd && !sd->closed && !(mik_rt && MIK_IsStopRequested(mik_rt))) {
             invoke_safely(ctx, s, complete_atom, 0, nullptr);
         }
         JS_FreeValue(ctx, s);

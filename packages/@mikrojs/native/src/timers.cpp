@@ -165,7 +165,17 @@ void mik__timers_consume(JSContext* ctx) {
     if (due_count == 0)
         return;
 
+    // Timers that ran (or were skipped) this pass; the one-shot cleanup below
+    // must not unschedule the ones a panic stopped us from reaching.
+    size_t handled = due_count;
+
     for (size_t i = 0; i < due_count; i++) {
+        // A panic in an earlier callback means the state these were scheduled
+        // against may be broken. Leave the rest for the restart.
+        if (MIK_IsStopRequested(mik_rt)) {
+            handled = i;
+            break;
+        }
         // Re-find the entry — a previous callback may have cleared it
         auto it = std::find_if(timers->entries.begin(), timers->entries.end(),
                                [&](const MIKTimerEntry& e) { return e.id == due_ids[i]; });
@@ -189,6 +199,9 @@ void mik__timers_consume(JSContext* ctx) {
                 JS_Throw(mik_rt->ctx, exc);
             }
             mik_dump_error(mik_rt->ctx);
+            /* Applies the app's onPanic policy; the loop above stops before
+             * the next due timer. */
+            MIK_Stop(mik_rt);
         }
         JS_FreeValue(mik_rt->ctx, ret);
         JS_FreeValue(mik_rt->ctx, func);
@@ -198,7 +211,7 @@ void mik__timers_consume(JSContext* ctx) {
     }
 
     // Remove one-shot timers that are still alive (not already cleared by a callback)
-    for (size_t i = 0; i < due_count; i++) {
+    for (size_t i = 0; i < handled; i++) {
         auto it = std::find_if(timers->entries.begin(), timers->entries.end(),
                                [&](const MIKTimerEntry& e) { return e.id == due_ids[i]; });
         if (it != timers->entries.end() && !it->is_interval) {
