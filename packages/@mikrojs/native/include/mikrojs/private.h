@@ -57,6 +57,9 @@ struct MIKRejectedPromise {
     JSValue reason;
 };
 
+/* Observable dispatch queue (defined in mik_observable.cpp). */
+struct MIKObservableDispatch;
+
 struct MIKRuntime {
     MIKRunOptions options;
     MIKConfig config;
@@ -170,6 +173,10 @@ struct MIKRuntime {
      * through the wire protocol. NULL means __testEmit is a no-op. */
     void (*test_emit_fn)(const char* json, size_t len, void* opaque) = nullptr;
     void* test_emit_opaque = nullptr;
+    /* Observable dispatch trampoline state (FIFO + active flag). Allocated by
+     * mik__observable_init, freed via mik__observable_dispatch_free. Empty
+     * outside an active dispatch, so teardown never sees live JSValues. */
+    struct MIKObservableDispatch* observable_dispatch = nullptr;
 };
 
 void mik__pub_fs_register(JSContext* ctx);
@@ -259,6 +266,7 @@ JSModuleDef* mik__udp_init(JSContext* ctx);
 
 /* Observable module (mik_observable.cpp) */
 JSModuleDef* mik__observable_init(JSContext* ctx);
+void mik__observable_dispatch_free(struct MIKRuntime* mik_rt);
 
 bool mik__repl_is_evaluating(void);
 

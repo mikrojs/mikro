@@ -235,6 +235,93 @@ describe('Observable.withEmitters', () => {
   })
 })
 
+/* The shim mirrors the C dispatch queue in mik_observable.cpp; these pin the
+ * ordering consequences so host and device cannot drift apart. Each has a
+ * counterpart in test/observable_test.cpp. */
+describe('dispatch queue', () => {
+  test('handler code after sub.next() runs before downstream delivery', () => {
+    const log: string[] = []
+    const relay = (source: Observable<number>): Observable<number> =>
+      new Observable<number>((sub) => {
+        const upstream = source.subscribe({
+          next: (v) => {
+            log.push(`before:${v}`)
+            sub.next(v)
+            log.push(`after:${v}`)
+          },
+          complete: () => sub.complete(),
+        })
+        sub.addTeardown(() => upstream.unsubscribe())
+      })
+
+    new Observable<number>((s) => {
+      s.next(1)
+      s.next(2)
+      s.complete()
+    })
+      .pipe(relay)
+      .subscribe((v) => log.push(`down:${v}`))
+
+    expect(log).toEqual(['before:1', 'after:1', 'down:1', 'before:2', 'after:2', 'down:2'])
+  })
+
+  test('queued delivery is dropped when the subscriber unsubscribes first', () => {
+    const {observable, next} = Observable.withEmitters<number>()
+    const aLog: number[] = []
+    const bLog: number[] = []
+
+    const subs: {b?: {unsubscribe: () => void}} = {}
+    observable.subscribe((v) => {
+      if (v === 1) {
+        next(2)
+        subs.b?.unsubscribe()
+      }
+      aLog.push(v)
+    })
+    subs.b = observable.subscribe((v) => bLog.push(v))
+    next(1)
+
+    expect(aLog).toEqual([1, 2])
+    expect(bLog).toEqual([])
+  })
+
+  test('subscribing to a sync source inside a handler defers its values', () => {
+    const log: string[] = []
+    new Observable<string>((s) => {
+      s.next('go')
+      s.complete()
+    }).subscribe(() => {
+      let got: number | string = 'none'
+      Observable.from([7]).subscribe((x) => {
+        got = x as number
+      })
+      log.push(`inline:${got}`)
+    })
+
+    expect(log).toEqual(['inline:none'])
+  })
+
+  test('producer that completes then throws still delivers the completion', () => {
+    const log: string[] = []
+    new Observable<string>((outer) => {
+      outer.next('go')
+      outer.complete()
+    }).subscribe(() => {
+      try {
+        new Observable<never>((sub) => {
+          sub.addTeardown(() => log.push('td'))
+          sub.complete()
+          throw new Error('setup-fail')
+        }).subscribe({complete: () => log.push('c')})
+      } catch {
+        log.push('caught')
+      }
+    })
+
+    expect(log).toEqual(['caught', 'c', 'td'])
+  })
+})
+
 describe('pipe + operators', () => {
   test('map transforms values', () => {
     const seen: number[] = []

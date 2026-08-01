@@ -416,6 +416,8 @@ void MIK_FreeRuntime(MIKRuntime* mik_rt) {
     delete mik_rt->timers;
     mik_rt->timers = nullptr;
 
+    mik__observable_dispatch_free(mik_rt);
+
     /* Destroy the JS engine. */
     JS_FreeValue(mik_rt->ctx, mik_rt->env_obj);
     mik_rt->env_obj = JS_UNDEFINED;

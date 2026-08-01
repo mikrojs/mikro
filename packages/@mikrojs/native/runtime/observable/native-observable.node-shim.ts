@@ -21,8 +21,27 @@ function panicAsync(err: unknown): void {
   }, 0)
 }
 
+/* Dispatch trampoline, mirroring mik_observable.cpp: next/complete called
+ * while a dispatch is active enqueue instead of recursing; the outermost
+ * dispatch drains in FIFO order. Handler code after sub.next() therefore
+ * runs before downstream delivery. */
+type QueueEntry = {sub: Subscriber<unknown>; value: unknown; isComplete: boolean}
+const queue: QueueEntry[] = []
+let queueHead = 0
+let dispatchActive = false
+
+function drainQueue(): void {
+  while (queueHead < queue.length) {
+    const e = queue[queueHead++]!
+    e.sub.deliverQueued(e)
+  }
+  queue.length = 0
+  queueHead = 0
+}
+
 class Subscriber<T> {
-  closed = false
+  private _closed = false
+  private completePending = false
   private next_fn: ((v: T) => void) | undefined
   private complete_fn: (() => void) | undefined
   private teardowns: Array<() => void> = []
@@ -40,8 +59,44 @@ class Subscriber<T> {
     }
   }
 
+  get closed(): boolean {
+    return this._closed || this.completePending
+  }
+
   next(value: T): void {
     if (this.closed) return
+    if (dispatchActive) {
+      queue.push({sub: this as Subscriber<unknown>, value, isComplete: false})
+      return
+    }
+    dispatchActive = true
+    this.deliverNext(value)
+    drainQueue()
+    dispatchActive = false
+  }
+
+  complete(): void {
+    if (this.closed) return
+    if (dispatchActive) {
+      this.completePending = true
+      queue.push({sub: this as Subscriber<unknown>, value: undefined, isComplete: true})
+      return
+    }
+    dispatchActive = true
+    this.deliverComplete()
+    drainQueue()
+    dispatchActive = false
+  }
+
+  /* Deliver a queued entry; entries whose subscriber closed (unsubscribed)
+   * between enqueue and drain are dropped. */
+  deliverQueued(e: QueueEntry): void {
+    if (this._closed) return
+    if (e.isComplete) this.deliverComplete()
+    else this.deliverNext(e.value as T)
+  }
+
+  private deliverNext(value: T): void {
     if (this.next_fn) {
       try {
         this.next_fn(value)
@@ -51,9 +106,9 @@ class Subscriber<T> {
     }
   }
 
-  complete(): void {
-    if (this.closed) return
-    this.closed = true
+  private deliverComplete(): void {
+    this.completePending = false
+    this._closed = true
     if (this.complete_fn) {
       try {
         this.complete_fn()
@@ -68,7 +123,7 @@ class Subscriber<T> {
     if (typeof fn !== 'function') {
       throw new TypeError('addTeardown: argument must be a function')
     }
-    if (this.closed) {
+    if (this._closed) {
       try {
         fn()
       } catch (err) {
@@ -80,9 +135,10 @@ class Subscriber<T> {
   }
 
   // Used by Subscription.unsubscribe — silent (no observer.complete call).
+  // A pending complete owns the close; its queued entry still delivers.
   closeSilently(): void {
     if (this.closed) return
-    this.closed = true
+    this._closed = true
     this.runTeardowns()
   }
 
