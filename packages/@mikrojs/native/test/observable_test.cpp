@@ -833,3 +833,94 @@ TEST_CASE("a throw mid-drain abandons the queued deliveries" *
     CHECK(MIK_IsStopRequested(rt));
     MIK_FreeRuntime(rt);
 }
+
+TEST_CASE("producer setup throw runs the teardowns it already registered" *
+          doctest::test_suite("observable")) {
+    /* A producer that acquires something, registers its release, then fails
+     * leaves that resource unreachable: no Subscription is returned, so
+     * nothing can ever unsubscribe to clean it up. */
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(ctx,
+                             "import {Observable} from 'mikro/observable'\n"
+                             "let log = []\n"
+                             "try {\n"
+                             "  new Observable(subscriber => {\n"
+                             "    subscriber.addTeardown(() => log.push('td1'))\n"
+                             "    subscriber.addTeardown(() => log.push('td2'))\n"
+                             "    throw new Error('setup-fail')\n"
+                             "  }).subscribe()\n"
+                             "} catch (err) { log.push('caught:' + err.message) }\n"
+                             "globalThis.__log = log.join(',')\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    /* Reverse insertion order, then the setup error still reaches the caller. */
+    CHECK(read_global_string(ctx, "__log") == "td2,td1,caught:setup-fail");
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("a teardown that throws during setup cleanup does not lose the setup error" *
+          doctest::test_suite("observable")) {
+    static int error_count;
+    error_count = 0;
+
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+    MIK_SetErrorHandler(
+        rt, [](JSContext*, JSValue, void*) { error_count++; }, nullptr);
+
+    JSValue rv = eval_module(ctx,
+                             "import {Observable} from 'mikro/observable'\n"
+                             "let log = []\n"
+                             "try {\n"
+                             "  new Observable(subscriber => {\n"
+                             "    subscriber.addTeardown(() => log.push('td'))\n"
+                             "    subscriber.addTeardown(() => { throw new Error('cleanup') })\n"
+                             "    throw new Error('setup-fail')\n"
+                             "  }).subscribe()\n"
+                             "} catch (err) { log.push('caught:' + err.message) }\n"
+                             "globalThis.__log = log.join(',')\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    /* The throwing teardown panics, the rest still run, and the caller still
+     * sees the original setup failure rather than the cleanup one. */
+    CHECK(read_global_string(ctx, "__log") == "td,caught:setup-fail");
+    CHECK(error_count == 1);
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("an uncaught setup throw drops the queued completion with the panic" *
+          doctest::test_suite("observable")) {
+    /* Same shape as the test above, but the caller does not catch, so the
+     * setup error reaches the outer handler and panics. The queued
+     * completion goes with it: no complete handler, no teardowns. That is
+     * the intended trade, not an oversight. The teardown would release
+     * something the restart releases anyway, and resurrecting queued
+     * completions after a panic would undo the rule that nothing runs once
+     * the app has crashed. The caught variant above is where teardowns
+     * matter, because there the app keeps running. */
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(
+        ctx,
+        "import {Observable} from 'mikro/observable'\n"
+        "let log = []\n"
+        "new Observable(outer => { outer.next(1); outer.complete() }).subscribe(() => {\n"
+        "  new Observable(inner => {\n"
+        "    inner.addTeardown(() => log.push('td'))\n"
+        "    inner.complete()\n"
+        "    throw new Error('setup-fail')\n"
+        "  }).subscribe({complete: () => log.push('c')})\n"
+        "})\n"
+        "globalThis.__log = log.join(',')\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    CHECK(read_global_string(ctx, "__log") == "");
+    CHECK(MIK_IsStopRequested(rt));
+    MIK_FreeRuntime(rt);
+}
