@@ -144,16 +144,16 @@ Every response you don't drain with `text()`, `json()`, `bytes()`, or a `for awa
 
 Returned by `request` and any custom transport built on top of `mikro/http/helpers`.
 
-| Variant           | Fields                        | Description                                                  |
-| ----------------- | ----------------------------- | ------------------------------------------------------------ |
-| `Hardware`        | `message: string`             | Underlying hardware/driver failure                           |
-| `Network`         | `message: string`             | Request failed (DNS, TLS, connection, transport error, etc.) |
-| `Timeout`         | `message: string`             | Request exceeded its deadline                                |
-| `BodyTooLarge`    | `size: number`, `cap: number` | Request body exceeded the transport's limit                  |
-| `InvalidResponse` | `message: string`             | Response was malformed or couldn't be parsed                 |
-| `Aborted`         | `message: string`             | Request was cancelled via timeout or `AbortSignal`           |
-| `TooManyPending`  | —                             | Transport's in-flight request slots are full                 |
-| `InvalidJson`     | `message: string`             | `Response.json()` drained the body but `JSON.parse` failed   |
+| Variant           | Fields                        | Description                                                |
+| ----------------- | ----------------------------- | ---------------------------------------------------------- |
+| `Hardware`        | `message: string`             | Underlying hardware/driver failure                         |
+| `Network`         | `message: string`             | Request failed (DNS, TLS, connection, or transport error)  |
+| `Timeout`         | `message: string`             | Request exceeded its deadline                              |
+| `BodyTooLarge`    | `size: number`, `cap: number` | Request body exceeded the transport's limit                |
+| `InvalidResponse` | `message: string`             | Response was malformed or couldn't be parsed               |
+| `Aborted`         | `message: string`             | Request was cancelled via timeout or `AbortSignal`         |
+| `TooManyPending`  | —                             | Transport's in-flight request slots are full               |
+| `InvalidJson`     | `message: string`             | `Response.json()` drained the body but `JSON.parse` failed |
 
 ### BodyConsumedError
 
@@ -161,7 +161,7 @@ Thrown by `Response.text()`, `json()`, `bytes()`, or a second iteration of `body
 
 ## Custom transports
 
-The default `request` is backed by a WiFi-driven HTTP client. If you're driving HTTP through something else (e.g. an LTE modem exposing an AT-command HTTP stack), write a function with the same `Request` signature using helpers from `mikro/http/helpers` for the boring parts:
+The default `request` is backed by a WiFi-driven HTTP client. If you're driving HTTP through something else (for example an LTE modem exposing an AT-command HTTP stack), write a function with the same `Request` signature using helpers from `mikro/http/helpers` for the boring parts:
 
 ```ts twoslash
 // @noErrors

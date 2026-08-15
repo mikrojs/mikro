@@ -19,10 +19,10 @@ This guide walks you through creating a Mikro.js project, flashing firmware to a
 - [Node.js](https://nodejs.org/) >= 24
 - [pnpm](https://pnpm.io/installation) recommended, but npm, yarn, and bun work too
 - An ESP32 development board
-- A USB cable matching your board's port (e.g. USB-C)
+- A USB cable matching your board's port (for example USB-C)
 
 ::: tip Which board should I use?
-Any ESP32, ESP32-S3, ESP32-C5, or ESP32-C6 board should work out of the box. We recommend the [Seeed Studio XIAO ESP32C6](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html) as the default: small, cheap (~$5), USB-C, and the primary board Mikro.js is developed and tested against.
+Any ESP32, ESP32-S3, ESP32-C5, or ESP32-C6 board works with the default setup. We recommend the [Seeed Studio XIAO ESP32C6](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C6-p-5884.html) as the default: small, cheap (~$5), USB-C, and the primary board Mikro.js is developed and tested against.
 
 For network-heavy or memory-intensive apps, the [Seeed Studio XIAO ESP32C5](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32C5-p-6609.html) is a better pick. Its 8 MB PSRAM gives you room for things like graphics with a display framebuffer, audio buffers, larger HTTP payloads, and apps that hold significant state in memory.
 :::
@@ -60,7 +60,7 @@ my-app/
 ```
 
 ::: tip Renamed from `mikrojs`
-The package and CLI were renamed from `mikrojs` to `mikro` with no compatibility shim. Use the `mikro` dependency, the `mikro` command, and `mikro/`-prefixed imports (e.g. `import {pinMode} from 'mikro/pin'`). The `@mikrojs/*` package scope is unchanged.
+The package and CLI were renamed from `mikrojs` to `mikro` with no compatibility shim. Use the `mikro` dependency, the `mikro` command, and `mikro/`-prefixed imports (for example `import {pinMode} from 'mikro/pin'`). The `@mikrojs/*` package scope is unchanged.
 :::
 
 ::: details pnpm reports "Ignored build scripts: @mikrojs/quickjs"
@@ -93,7 +93,7 @@ bunx mikro flash
 
 :::
 
-This writes the Mikro.js runtime firmware into the board's flash memory, setting up the environment your TypeScript code runs in. You only need to do this once per board (or when updating Mikro.js).
+This writes the Mikro.js runtime firmware into the board's flash memory. The firmware is the environment your TypeScript code runs in. You only need to do this once per board (or when updating Mikro.js).
 
 ## Develop
 

@@ -57,7 +57,7 @@ QuickJS C stack size. Controls how deep call stacks and recursion can go before 
 
 Amount of system heap to keep out of QuickJS's reach, reserved for native subsystems (WiFi, lwIP, TLS, HTTP client, C drivers). At runtime initialization, the QuickJS soft cap is computed as `free_heap_at_init - memReserved`.
 
-- **Lower it** (16-32 KB) if your app doesn't touch the network stack. You'll free up more of the heap for JS and module loading.
+- If your app doesn't touch the network stack, **lower it** (16-32 KB). This leaves more of the heap for JS and module loading.
 - **Keep the default** (64 KB) for anything with WiFi + HTTPS. TLS handshakes need contiguous multi-KB buffers.
 - **Don't go below ~8 KB** unless you know exactly what your native side does. If system heap hits 0 while QuickJS still thinks it has budget left, that's a hard crash rather than a catchable JS OOM.
 
@@ -65,19 +65,19 @@ Use `/mem` in the REPL to verify: the **System** line should have a comfortable 
 
 ### `wifi.country`
 
-Two-letter [ISO 3166-1](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) country code for WiFi regulatory domain. Controls which channels and power levels are available. Set this to your country to comply with local regulations and ensure optimal WiFi performance. When unset, ESP-IDF defaults to world safe mode (`"01"`, channels 1-11). The full list of supported codes is defined by the [ESP-IDF regulatory database](https://github.com/espressif/esp-idf/blob/v6.0/components/esp_wifi/regulatory/esp_wifi_regulatory.txt) (168 countries/regions).
+Two-letter [ISO 3166-1](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) country code for WiFi regulatory domain. Controls which channels and power levels are available. Set this to your country to comply with local regulations and get the best WiFi performance. When unset, ESP-IDF defaults to world safe mode (`"01"`, channels 1-11). The full list of supported codes is defined by the [ESP-IDF regulatory database](https://github.com/espressif/esp-idf/blob/v6.0/components/esp_wifi/regulatory/esp_wifi_regulatory.txt) (168 countries/regions).
 
 ### `wifi.hostname`
 
 DHCP hostname advertised by the STA interface. This is what your router shows in its client list. Must conform to RFC 1123: letters, digits and hyphens only, must not start or end with a hyphen, max 63 characters.
 
-When unset, the device's name (set with `mikro name`) is used, shaped into a valid hostname: lowercased, with `.` and `_` replaced by hyphens (e.g. `Living_Room.Sensor` becomes `living-room-sensor`). An unnamed device falls back to `mikrojs-<device-id>` (e.g. `mikrojs-abcdef0123`), where the device ID is a base32-encoded MAC.
+When unset, the device's name (set with `mikro name`) is used, shaped into a valid hostname: lowercased, with `.` and `_` replaced by hyphens (for example `Living_Room.Sensor` becomes `living-room-sensor`). An unnamed device falls back to `mikrojs-<device-id>` (for example `mikrojs-abcdef0123`), where the device ID is a base32-encoded MAC.
 
 Takes effect on the next DHCP lease. A name change applies after the WiFi stack is next brought up, typically on the next restart.
 
 ### `logFile`
 
-Persist runtime output to a rotated file on the device filesystem for post-mortem debugging. Captures JS `console.*` output, native `MIK_LOG` calls, and ESP-IDF `ESP_LOG` lines. Each entry is prefixed with an ISO 8601 wall-clock timestamp (when the RTC has been set by SNTP) or `[+SSS.fffs]` relative to boot otherwise.
+Persist runtime output to a rotated file on the device filesystem for post-mortem debugging. Captures JS `console.*` output, native `MIK_LOG` calls, and ESP-IDF `ESP_LOG` lines. Each entry is prefixed with an ISO 8601 wall-clock timestamp (after SNTP sets the RTC) or `[+SSS.fffs]` relative to boot otherwise.
 
 Set to `true` for sensible defaults, or pass an options object to override individual settings:
 
@@ -104,7 +104,7 @@ Directory on the device filesystem where the log file is stored. The file itself
 
 #### `logFile.maxSize`
 
-Maximum file size before rotation. Accepts a number of bytes or a string with K/M suffix (e.g. `'64k'`, `'1m'`). At the cap, `log.txt` is renamed to `log.txt.1` (replacing any previous generation) and a fresh `log.txt` is started. Total flash usage is bounded at **2 × maxSize**.
+Maximum file size before rotation. Accepts a number of bytes or a string with K/M suffix (for example `'64k'` or `'1m'`). At the cap, `log.txt` is renamed to `log.txt.1` (replacing any previous generation) and a fresh `log.txt` is started. Total flash usage is bounded at **2 × maxSize**.
 
 #### `logFile.flush`
 
@@ -159,8 +159,8 @@ console.log(`[mem] heap: ${m.heapUsed}`)
 
 :::
 
-::: warning Increasing log verbosity may cause OOM
-Setting a higher log level (e.g. `debug`) keeps more console calls in the bundle. Each call site adds string formatting, template literal evaluation, and argument allocation at runtime. On memory-constrained devices this extra work can push the QuickJS heap past its limit and cause `InternalError: out of memory`. If you need verbose logging on a tight device, add it incrementally and monitor heap usage with `/mem` in the REPL.
+::: warning High log verbosity can cause out-of-memory errors
+Setting a higher log level (such as `debug`) keeps more console calls in the bundle. Each call site adds string formatting, template literal evaluation, and argument allocation at runtime. On memory-constrained devices this extra work can push the QuickJS heap past its limit and cause `InternalError: out of memory`. If you need verbose logging on a tight device, add it incrementally and monitor heap usage with `/mem` in the REPL.
 :::
 
 ## Simulator options {#sim}
@@ -173,7 +173,7 @@ Simulator-specific options. These are stripped from the config before deploying 
 | `sim.fsLimit`  | `number \| string` | `'1m'`            | Virtual filesystem size limit     |
 | `sim.fsRoot`   | `string`           | `'.mikro/sim-fs'` | Filesystem sandbox root directory |
 
-All size options accept a number of bytes or a string with K/M suffix (e.g. `'300k'`, `'1m'`).
+All size options accept a number of bytes or a string with K/M suffix (for example `'300k'` or `'1m'`).
 
 ## Per-environment overrides {#env}
 

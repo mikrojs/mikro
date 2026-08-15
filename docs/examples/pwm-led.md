@@ -45,7 +45,7 @@ while (true) {
 
 2. **Hardware fading.** `led.fade(target, durationMs)` smoothly transitions the duty cycle to `target` over `durationMs` milliseconds. This runs in hardware on the ESP32's LEDC peripheral, so it does not block the event loop.
 
-3. **Error handling.** Both `fade()` calls return a `Promise<Result>` ([see Result](/api/result)). If something goes wrong (e.g., invalid pin), the loop breaks with a clear error message.
+3. **Error handling.** Both `fade()` calls return a `Promise<Result>` ([see Result](/api/result)). If something goes wrong (for example an invalid pin), the loop breaks with a clear error message.
 
 ## Create project
 
@@ -99,6 +99,6 @@ bunx mikro dev
 
 :::
 
-You should see the LED smoothly fading in and out in a continuous breathing pattern.
+The LED fades smoothly in and out in a continuous breathing pattern.
 
 [View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/pwm-led)

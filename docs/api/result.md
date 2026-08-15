@@ -173,7 +173,7 @@ import {pinMode} from 'mikro/pin'
 const value = pinMode(20, 'OUTPUT').orPanic('Failed to set pin mode')
 ```
 
-Use this when failure is truly unrecoverable (e.g., during setup).
+Use this when failure is truly unrecoverable (for example during setup).
 
 ## Types
 

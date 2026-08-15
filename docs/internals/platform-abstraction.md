@@ -5,7 +5,7 @@ description: The MIKPlatform interface that decouples the runtime from OS and ha
 
 # Platform Abstraction
 
-The runtime has no direct OS or hardware dependencies. All platform-specific operations go through the `MIKPlatform` interface, making it possible to run the same runtime on a desktop (POSIX), a microcontroller (ESP-IDF), or a new platform entirely.
+The runtime has no direct OS or hardware dependencies. All platform-specific operations go through the `MIKPlatform` interface. This makes it possible to run the same runtime on a desktop (POSIX), a microcontroller (ESP-IDF), or a new platform entirely.
 
 ## MIKPlatform interface
 

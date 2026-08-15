@@ -67,7 +67,7 @@ MIKRuntime* MIK_NewRuntimeOptions(MIKRunOptions* options);
 6. Calls init functions for any pre-registered native modules
 7. Registers `native:stdio` (after native modules, so stdin state is ready)
 8. Initializes web standard globals (`TextEncoder`, `AbortController`)
-9. Initializes timers (`setTimeout`, `setInterval`, etc.)
+9. Initializes timers (`setTimeout`, `setInterval`, and their clear functions)
 10. Initializes the `console` global
 11. Builds and freezes `import.meta.env`
 
@@ -116,7 +116,7 @@ while (MIK_Loop(mik_rt) == 0) {
 }
 ```
 
-A return value of `0` means "keep going." A non-zero return means the runtime should stop (either an unhandled exception or a stop request). See [Event Loop](/internals/event-loop) for what happens inside each iteration.
+A return value of `0` means "keep going." A non-zero return means the runtime must stop (either an unhandled exception or a stop request). See [Event Loop](/internals/event-loop) for what happens inside each iteration.
 
 ## Stopping
 
@@ -142,7 +142,7 @@ The `freeing` flag is checked before delivering promise rejection events or call
 
 ## Module data slots
 
-Stateful modules need to store persistent data on the runtime (e.g., WiFi connection state). Sixteen slots are available:
+Stateful modules need to store persistent data on the runtime (for example WiFi connection state). Sixteen slots are available:
 
 ```c
 int slot = MIK_AllocModuleSlot(mik_rt);

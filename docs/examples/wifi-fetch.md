@@ -148,6 +148,6 @@ bunx mikro dev
 
 :::
 
-You should see the WiFi connection, fetched JSON data, and memory usage in the console output.
+The console output shows the WiFi connection, the fetched JSON data, and memory usage.
 
 [View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/wifi-fetch)

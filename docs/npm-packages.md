@@ -22,13 +22,13 @@ Packages that meet all of these criteria:
 - **ESM**: the package uses ES modules (`"type": "module"` in its `package.json`, or `.mjs` files)
 - **Pure JS/TS**: no native addons (C++, Rust, WASM)
 - **No Node.js APIs**: doesn't import from `node:fs`, `node:path`, `node:crypto`, or other Node.js built-in modules
-- **No browser APIs**: doesn't use `window`, `document`, `DOM`, `Web Workers`, etc.
+- **No browser APIs**: doesn't use `window`, `document`, the DOM, Web Workers, or other browser APIs
 
 In practice, this means small utility libraries, parsers, formatters, and similar "platform-agnostic" packages can work, as long as they are no more than a few kilobytes.
 
 For example, [`pretty-ms`](https://www.npmjs.com/package/pretty-ms) works because it's a small, pure JavaScript ESM package with no platform-specific dependencies.
 
-## How it works under the hood
+## How it works
 
 By default, Mikro.js does **not** bundle your code into a single file. The CLI traces your import graph from `app/main.ts`, transforms each file, and writes the result to a deploy tree that mirrors your project's directory layout:
 

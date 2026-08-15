@@ -39,7 +39,7 @@ try {
 }
 ```
 
-`err` is `unknown`. Is it a string? An `Error`? Does it have a `.message`? A `.code`? You end up writing `if (err instanceof Error)` checks, guessing at property names, or just logging and hoping for the best.
+`err` is `unknown`. Is it a string? An `Error`? Does it have a `.message`? A `.code`? You end up writing `if (err instanceof Error)` checks, guessing at property names, or logging the raw value.
 
 And this uncertainty is **contagious**. Any function that calls `analogRead` might also throw, but there's no way to know from its signature. You either wrap everything in try/catch defensively, or you don't and hope for the best. Neither option is good.
 
@@ -76,9 +76,9 @@ if (result.ok) {
 
 The key differences:
 
-- **The type signature is honest.** `analogRead` returns `Result<number, PinError>`; you can see it might fail.
-- **The error is typed.** `PinError` is a union of specific variants. TypeScript tells you exactly which errors are possible and what data each one carries.
-- **No try/catch needed.** Errors are values you check, not exceptions you catch.
+- The type signature is honest: `analogRead` returns `Result<number, PinError>`, so you can see it might fail.
+- The error is typed: `PinError` is a union of specific variants, and TypeScript tells you exactly which errors are possible and what data each one carries.
+- No try/catch needed: errors are values you check, not exceptions you catch.
 
 ## The Result type
 
@@ -210,7 +210,7 @@ If you see an exception in Mikro.js, it means something is broken, not that a se
 
 Note that some standard JavaScript functions can still throw, such as `JSON.parse()` with invalid input, `atob()` with a malformed string, or `decodeURIComponent()` with invalid sequences. These are not Mikro.js APIs, so they follow standard JavaScript behavior. Catch them at the call site and return a `Result`: see [`no-try-catch`](/eslint-rules#no-try-catch) for the pattern and the lint disable it needs.
 
-When you need to intentionally crash (e.g. missing required configuration), use `env.require` from [`mikro/env`](/api/env) or `panic` from [`mikro/sys`](/api/sys):
+When you need to intentionally crash (for example on missing required configuration), use `env.require` from [`mikro/env`](/api/env) or `panic` from [`mikro/sys`](/api/sys):
 
 ```ts twoslash
 import {env} from 'mikro/env'

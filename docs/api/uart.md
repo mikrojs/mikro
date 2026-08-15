@@ -57,16 +57,16 @@ Creates a new UART instance. Provide at least one of `tx` or `rx`. The available
 - `port`: UART port number (0, 1, or 2 depending on chip)
 - `options`: see below
 
-| Option     | Type     | Required | Description                   |
-| ---------- | -------- | -------- | ----------------------------- |
-| `tx`       | `number` | no\*     | TX GPIO pin                   |
-| `rx`       | `number` | no\*     | RX GPIO pin                   |
-| `baudRate` | `number` | yes      | Baud rate (e.g. 9600, 115200) |
+| Option     | Type     | Required | Description                            |
+| ---------- | -------- | -------- | -------------------------------------- |
+| `tx`       | `number` | no\*     | TX GPIO pin                            |
+| `rx`       | `number` | no\*     | RX GPIO pin                            |
+| `baudRate` | `number` | yes      | Baud rate (for example 9600 or 115200) |
 
 \* At least one of `tx` or `rx` must be provided.
 
 ::: warning UART0
-UART0 is typically used for the console/REPL. On chips with USB Serial/JTAG (ESP32-C6, ESP32-S3, etc.), UART0 pins are free when the console runs over USB. If you open a port that the console is using, `begin()` will return a `DriverInstallFailed` error.
+UART0 is typically used for the console/REPL. On chips with USB Serial/JTAG (ESP32-C6, ESP32-S3, and similar), UART0 pins are free when the console runs over USB. If you open a port that the console is using, `begin()` will return a `DriverInstallFailed` error.
 :::
 
 ## Methods
@@ -103,7 +103,7 @@ Write bytes to the TX pin. Blocks until all bytes are written to the FIFO. Only 
 read(): Result<AsyncIterable<Result<Uint8Array, UartError>>, UartError>
 ```
 
-Start reading from the RX pin. The outer Result wraps the initial open. The iterable yields `Result<Uint8Array, UartError>`: ok-wrapped chunks on success, a single terminal err item if the port becomes unavailable mid-iteration (e.g. `end()` was called). Only available when `rx` was provided in the constructor.
+Start reading from the RX pin. The outer Result wraps the initial open. The iterable yields `Result<Uint8Array, UartError>`: ok-wrapped chunks on success, a single terminal err item if the port becomes unavailable mid-iteration (for example after `end()` was called). Only available when `rx` was provided in the constructor.
 
 Each yielded chunk contains whatever bytes have accumulated in the receive buffer since the last read. Chunk boundaries do not correspond to message boundaries; higher-level framing (line splitting, packet parsing) is the caller's responsibility.
 

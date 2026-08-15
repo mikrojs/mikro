@@ -96,6 +96,6 @@ bunx mikro dev
 
 :::
 
-You should see the valid readings and commands printed, and clear error messages for the invalid ones.
+The console prints the valid readings and commands, and clear error messages for the invalid ones.
 
 [View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/schema)

@@ -66,7 +66,7 @@ Mikro.js requires an ESP32 and a build step on your computer. In exchange you ge
 
 Moddable provides a full SDK with the XS JavaScript engine, targeting shipping IoT products.
 
-It is the more complete product toolchain: xsbug is a source-level debugger with breakpoints and inspection, which Mikro.js has no equivalent for, and the network stack covers MQTT and mDNS out of the box. Mikro.js offers first-class TypeScript against Moddable's [experimental support](https://moddable.com/blog/typescript/), live reload, and typed `Result` errors. For a product going to manufacturing, the debugger alone may be reason enough to choose Moddable.
+It is the more complete product toolchain: xsbug is a source-level debugger with breakpoints and inspection, which Mikro.js has no equivalent for, and the network stack includes MQTT and mDNS by default. Mikro.js offers first-class TypeScript against Moddable's [experimental support](https://moddable.com/blog/typescript/), live reload, and typed `Result` errors. For a product going to manufacturing, the debugger alone may be reason enough to choose Moddable.
 
 ## vs Embedded Rust, MicroZig, Embedded Swift
 

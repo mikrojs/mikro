@@ -58,7 +58,7 @@ console.log('Done!')
 
 3. **Writing.** `uart.write()` sends a `Uint8Array`. Use `TextEncoder` to convert strings to bytes.
 
-4. **Reading.** `uart.read()` returns an async iterator that yields [`Result<Uint8Array, UartError>`](/api/result) items. Check `.ok` before reading `.value`; a non-ok chunk (e.g. port closed mid-read) is the iterator's terminal signal. Use `TextDecoder` to convert bytes back to strings.
+4. **Reading.** `uart.read()` returns an async iterator that yields [`Result<Uint8Array, UartError>`](/api/result) items. Check `.ok` before reading `.value`; a non-ok chunk (for example when the port closed mid-read) is the iterator's terminal signal. Use `TextDecoder` to convert bytes back to strings.
 
 5. **Loopback test.** With TX wired to RX, the message you send is immediately received. This is a simple way to verify UART works before connecting to an actual peripheral.
 
@@ -114,6 +114,6 @@ bunx mikro dev
 
 :::
 
-You should see "Hello from UART!" echoed back in the console output.
+The console output shows "Hello from UART!" echoed back.
 
 [View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/uart)

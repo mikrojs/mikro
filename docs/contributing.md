@@ -26,6 +26,10 @@ See the [development guide](/develop/) for instructions on cloning the repo, bui
 - Make sure `pnpm precommit` passes before submitting
 - Add tests where it makes sense
 
+## AI-assisted contributions
+
+Mikro.js itself is built with substantial help from AI coding agents; see the [AI disclosure](/ai-disclosure). Contributions made with AI assistance are welcome, on the same terms as any other contribution. If you don't have time to review and test what the agent produced, open an issue that describes the problem instead. A good issue is often more useful than an unreviewed pull request.
+
 ## Code of conduct
 
 We are committed to providing a friendly, inclusive, and welcoming experience for everyone. See our [code of conduct](https://github.com/mikrojs/mikro/blob/main/CODE_OF_CONDUCT.md) for details.

@@ -80,7 +80,7 @@ MIK_REGISTER_MODULE(wifi, "native:wifi",
 See [Event Loop: Loop consumers](/internals/event-loop#loop-consumers) for how consume/destroy work.
 
 ::: info Why the prefix?
-The `native:` prefix marks internal C/C++ modules. User code imports public APIs from `mikro/*` (e.g., `mikro/pin`), which are TypeScript wrappers compiled to bytecode builtins around the internal `native:*` modules.
+The `native:` prefix marks internal C/C++ modules. User code imports public APIs from `mikro/*` (for example `mikro/pin`), which are TypeScript wrappers compiled to bytecode builtins around the internal `native:*` modules.
 :::
 
 ### 3. Bytecode builtins
@@ -151,4 +151,4 @@ The native layer handles hardware interaction and returns raw result objects. Th
 
 ## Sandbox
 
-Filesystem module resolution is sandboxed. Path normalization resolves `..` segments and prevents traversal outside `fs_root`. This ensures user code on the device cannot read files outside the designated partition.
+Filesystem module resolution is sandboxed. Path normalization resolves `..` segments and prevents traversal outside `fs_root`, so user code on the device cannot read files outside the designated partition.

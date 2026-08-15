@@ -111,7 +111,7 @@ mikrojs_generate_bytecode(
 When JavaScript executes an `import` statement, the module loader checks several sources in order:
 
 1. **Native modules**: Names starting with `native:` are looked up in the native module registry (the linked list populated by `MIK_REGISTER_MODULE`).
-2. **Bytecode builtins**: Names matching registered builtins (e.g., `@my-scope/bme280/sensor`, `mikro/result`) are deserialized from embedded bytecode.
+2. **Bytecode builtins**: Names matching registered builtins (for example `@my-scope/bme280/sensor` or `mikro/result`) are deserialized from embedded bytecode.
 3. **Filesystem**: Relative paths (starting with `.` or `/`) are loaded from the device filesystem (LittleFS). JSON files are auto-wrapped. `.bjs` files are loaded as pre-compiled bytecode.
 
 The module normalizer passes through `native:`, `mikro/`, and `@mikrojs/` prefixed names unchanged. Relative paths are resolved against the importing module's directory.

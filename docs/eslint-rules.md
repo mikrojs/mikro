@@ -155,4 +155,4 @@ Flags access to the `Temporal` API. The Temporal API is not available in QuickJS
 
 **Severity:** warn
 
-Flags array literals with holes (e.g., `[1,,3]`) and `delete` on array elements. Use `Array.prototype.splice()` or `filter` instead.
+Flags array literals with holes (for example `[1,,3]`) and `delete` on array elements. Use `Array.prototype.splice()` or `filter` instead.

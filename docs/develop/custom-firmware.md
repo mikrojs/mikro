@@ -159,7 +159,7 @@ mikro flash --firmware user/my-firmware@v1.0.0
 mikro flash --firmware https://example.com/my-firmware.tar.gz
 ```
 
-The firmware archive should be a `.tar.gz` containing `flasher_args.json` and the binary files (the same format that `idf.py build` produces in the `build/` directory).
+The firmware archive must be a `.tar.gz` containing `flasher_args.json` and the binary files (the same format that `idf.py build` produces in the `build/` directory).
 
 ## Overriding defaults
 

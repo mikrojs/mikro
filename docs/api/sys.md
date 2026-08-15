@@ -167,15 +167,15 @@ console.log('Features: %s', board.features.join(', '))
 console.log('Flash: %dMB', board.flash / 1024 / 1024)
 ```
 
-| Property   | Description                                                               |
-| ---------- | ------------------------------------------------------------------------- |
-| `name`     | Board name from the firmware build (e.g. `"xiao-esp32c6"`) or `"generic"` |
-| `chip`     | Chip target (e.g. `"esp32c6"`) or `"host"`                                |
-| `cores`    | Number of CPU cores                                                       |
-| `revision` | Silicon revision (major \* 100 + minor on ESP32, 0 on host)               |
-| `features` | Supported features (e.g. `["wifi", "ble"]`)                               |
-| `flash`    | Flash size in bytes (0 on host)                                           |
-| `psram`    | PSRAM size in bytes (0 if unavailable)                                    |
+| Property   | Description                                                                      |
+| ---------- | -------------------------------------------------------------------------------- |
+| `name`     | Board name from the firmware build (for example `"xiao-esp32c6"`) or `"generic"` |
+| `chip`     | Chip target (for example `"esp32c6"`) or `"host"`                                |
+| `cores`    | Number of CPU cores                                                              |
+| `revision` | Silicon revision (major \* 100 + minor on ESP32, 0 on host)                      |
+| `features` | Supported features (for example `["wifi", "ble"]`)                               |
+| `flash`    | Flash size in bytes (0 on host)                                                  |
+| `psram`    | PSRAM size in bytes (0 if unavailable)                                           |
 
 ### firmware
 
@@ -210,7 +210,7 @@ device can actually run. See the [Over-the-air Updates guide](/ota).
 const version: string
 ```
 
-The mikrojs firmware version, baked in at build time from the workspace `package.json` (e.g. `"0.1.0"`). Always a valid [semver](https://semver.org/) string. Falls back to `"0.0.0-dev"` if the build did not set `MIK_FW_VERSION`.
+The mikrojs firmware version, baked in at build time from the workspace `package.json` (for example `"0.1.0"`). Always a valid [semver](https://semver.org/) string. Falls back to `"0.0.0-dev"` if the build did not set `MIK_FW_VERSION`.
 
 ```ts twoslash
 import {version} from 'mikro/sys'
@@ -256,7 +256,7 @@ console.log('I am %s', name ?? deviceId)
 function setDeviceName(value: {rev: number; name?: string}): void
 ```
 
-Stores a name pair, replacing any previous one. This is an unconditional write; it does not compare revisions. Mainly for adopting a name handed down by a registry at check-in: the registry arbitrates, comparing the revision the device reports against its own, and the device stores whatever comes back. Every deliberate rename bumps `rev` by one, so the two sides converge without needing a clock the device may not have. Omit `name` to record that the name was cleared. The revision still has to move, or the old name comes back on the next sync.
+Stores a name pair, replacing any previous one. This is an unconditional write; it does not compare revisions. Mainly for adopting a name handed down by a registry at check-in. The registry arbitrates: it compares the revision the device reports against its own, and the device stores whatever comes back. Every deliberate rename bumps `rev` by one, so the two sides converge without needing a clock the device may not have. Omit `name` to record that the name was cleared. The revision still has to move, or the old name comes back on the next sync.
 
 ### setSystemTime(timestamp)
 

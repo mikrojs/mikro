@@ -70,7 +70,7 @@ import {lightSleep} from 'mikro/sleep'
 lightSleep(5000) // wake in 5 seconds
 ```
 
-Throws if the chip refuses to sleep. This is unrecoverable in practice and indicates a programming error: no wakeup source configured, a GPIO wakeup already in its trigger state, or a peripheral that's busy (mid-handshake WiFi, active SPI DMA, etc.). Fix the caller rather than catching the throw.
+Throws if the chip refuses to sleep. This is unrecoverable in practice and indicates a programming error: no wakeup source configured, a GPIO wakeup already in its trigger state, or a peripheral that's busy (mid-handshake WiFi or active SPI DMA, for example). Fix the caller rather than catching the throw.
 
 ::: info Light sleep drops the USB console
 On chips with built-in USB Serial/JTAG (ESP32-C3, ESP32-C6, ESP32-S3, and others), light sleep powers down the USB peripheral. The host sees the device disconnect, and `mikro dev` (or `idf.py monitor`) is left holding a port that no longer exists. Any `console.log` after the sleep won't make it through.

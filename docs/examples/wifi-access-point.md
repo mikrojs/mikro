@@ -119,6 +119,6 @@ bunx mikro dev
 
 :::
 
-After deploying, look for the "MikroJS-AP" network on your phone or laptop. Connect with password `hello1234`. You should see the connection logged in the console.
+After deploying, look for the "MikroJS-AP" network on your phone or laptop. Connect with password `hello1234`. The console logs the connection.
 
 [View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/wifi-access-point)
