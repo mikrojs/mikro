@@ -1,0 +1,59 @@
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -35939,18 +35939,24 @@
+                 for(re = ls->first_reloc; re != NULL; re = re_next) {
+                     int diff = ls->addr - re->addr;
+                     re_next = re->next;
+-                    switch (re->size) {
+-                    case 4:
+-                        put_u32(bc_out.buf + re->addr, diff);
+-                        break;
+-                    case 2:
+-                        assert(diff == (int16_t)diff);
+-                        put_u16(bc_out.buf + re->addr, diff);
+-                        break;
+-                    case 1:
+-                        assert(diff == (int8_t)diff);
+-                        put_u8(bc_out.buf + re->addr, diff);
+-                        break;
++                    /* mikrojs patch: after a dbuf OOM the recorded addresses
++                       no longer match the buffer contents (and the buffer may
++                       be NULL); skip the writes and let the dbuf_error check
++                       at the end of resolve_labels report the failure. */
++                    if (!dbuf_error(&bc_out)) {
++                        switch (re->size) {
++                        case 4:
++                            put_u32(bc_out.buf + re->addr, diff);
++                            break;
++                        case 2:
++                            assert(diff == (int16_t)diff);
++                            put_u16(bc_out.buf + re->addr, diff);
++                            break;
++                        case 1:
++                            assert(diff == (int8_t)diff);
++                            put_u8(bc_out.buf + re->addr, diff);
++                            break;
++                        }
+                     }
+                     js_free(ctx, re);
+                 }
+@@ -36635,6 +36641,11 @@
+ 
+     /* more jump optimizations */
+     patch_offsets = 0;
++    /* mikrojs patch: on dbuf OOM the recorded jump/label offsets are stale
++       relative to the buffer contents; skip the peephole passes and let the
++       dbuf_error check below report the failure. */
++    if (dbuf_error(&bc_out))
++        goto skip_peephole;
+     for (i = 0, jp = s->jump_slots; i < s->jump_count; i++, jp++) {
+         LabelSlot *ls;
+         JumpSlot *jp1;
+@@ -36708,6 +36719,7 @@
+         }
+     }
+ 
++ skip_peephole: /* mikrojs patch */
+     js_free(ctx, s->jump_slots);
+     s->jump_slots = NULL;
+     js_free(ctx, s->label_slots);
