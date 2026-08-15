@@ -57,3 +57,30 @@ jobs:
       - run: cmake -B packages/@mikrojs/native/build packages/@mikrojs/native -DBUILD_TESTING=ON
       - run: cmake --build packages/@mikrojs/native/build
       - run: ctest --test-dir packages/@mikrojs/native/build --output-on-failure
+
+  coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Init submodules
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pip install gcovr
+
+      - run: cmake -B packages/@mikrojs/native/build-coverage packages/@mikrojs/native -DBUILD_TESTING=ON -DMIKROJS_COVERAGE=ON
+      - run: cmake --build packages/@mikrojs/native/build-coverage
+      - run: ctest --test-dir packages/@mikrojs/native/build-coverage --output-on-failure
+
+      # gcovr.cfg holds the filters and the fail-under-line ratchet
+      - run: gcovr build-coverage
+        working-directory: packages/@mikrojs/native

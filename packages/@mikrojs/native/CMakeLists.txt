@@ -109,6 +109,18 @@ if(NOT MSVC)
     target_compile_options(mikrojs PRIVATE -ffunction-sections -fdata-sections)
 endif()
 
+# ── Coverage instrumentation ─────────────────────────────────────────
+# Instruments only the mikrojs sources (not QuickJS or test code) with
+# gcov-format counters. Report via gcovr, see gcovr.cfg.
+option(MIKROJS_COVERAGE "Instrument mikrojs sources for code coverage" OFF)
+if(MIKROJS_COVERAGE)
+    if(MSVC)
+        message(FATAL_ERROR "MIKROJS_COVERAGE requires GCC or Clang")
+    endif()
+    target_compile_options(mikrojs PRIVATE --coverage)
+    target_link_options(mikrojs PUBLIC --coverage)
+endif()
+
 # Version metadata for sys.version()
 execute_process(
     COMMAND node -e "import('../../../package.json',{with:{type:'json'}}).then(m=>process.stdout.write(m.default.version))"
