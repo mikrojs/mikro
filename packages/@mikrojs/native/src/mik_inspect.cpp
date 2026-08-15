@@ -31,6 +31,19 @@ static std::string stylize(const std::string& value, MikThemeToken token, const 
     return value;
 }
 
+/* User getters, proxy traps and inspect hooks can throw while inspect reads
+ * values; drain the exception so inspect never leaves one pending. */
+static void drain_exception(JSContext* ctx) {
+    JSValue exc = JS_GetException(ctx);
+    JS_FreeValue(ctx, exc);
+}
+
+/* Placeholder rendered where a property read threw */
+static std::string getter_threw(JSContext* ctx, const InspectOpts& opts) {
+    drain_exception(ctx);
+    return stylize("[getter threw]", MIK_TOKEN_ERROR, opts);
+}
+
 static std::string truncate_str(const std::string& str, int max_len) {
     if (max_len <= 0) return TRUNCATOR;
     int slen = static_cast<int>(str.size());
@@ -101,10 +114,13 @@ static bool try_custom_inspect(JSContext* ctx, JSValue value, InspectOpts& opts,
 
     bool used = false;
 
-    if (!JS_IsException(inspect_sym)) {
+    if (JS_IsException(inspect_sym)) {
+        drain_exception(ctx);
+    } else {
         JSAtom sym_atom = JS_ValueToAtom(ctx, inspect_sym);
         JSValue custom_fn = JS_GetProperty(ctx, value, sym_atom);
         JS_FreeAtom(ctx, sym_atom);
+        if (JS_IsException(custom_fn)) drain_exception(ctx);
 
         if (JS_IsFunction(ctx, custom_fn)) {
             /* Set up callback state and create the inspect helper */
@@ -119,6 +135,8 @@ static bool try_custom_inspect(JSContext* ctx, JSValue value, InspectOpts& opts,
             JS_FreeValue(ctx, args[0]);
 
             s_inspect_opts = prev_opts;
+
+            if (JS_IsException(result)) drain_exception(ctx);
 
             if (JS_IsString(result)) {
                 const char* str = JS_ToCString(ctx, result);
@@ -197,7 +215,10 @@ static std::string get_object_type(JSContext* ctx, JSValue value) {
     JSValue result = JS_Call(ctx, to_string, value, 0, nullptr);
 
     std::string type;
-    if (!JS_IsException(result)) {
+    if (JS_IsException(result)) {
+        /* A throwing Symbol.toStringTag getter or proxy trap */
+        drain_exception(ctx);
+    } else {
         const char* str = JS_ToCString(ctx, result);
         if (str) {
             /* Extract "Foo" from "[object Foo]" */
@@ -239,7 +260,11 @@ static std::string inspect_array_items(JSContext* ctx, JSValue arr, uint32_t len
     for (uint32_t i = 0; i < len; i++) {
         if (i > 0) out += ", ";
         JSValue item = JS_GetPropertyUint32(ctx, arr, i);
-        out += inspect_value(ctx, item, opts, depth);
+        if (JS_IsException(item)) {
+            out += getter_threw(ctx, opts);
+        } else {
+            out += inspect_value(ctx, item, opts, depth);
+        }
         JS_FreeValue(ctx, item);
     }
     return out;
@@ -259,6 +284,7 @@ static std::string inspect_properties(JSContext* ctx, JSValue obj, InspectOpts& 
     }
 
     if (JS_GetOwnPropertyNames(ctx, &ptab, &plen, obj, flags) != 0) {
+        drain_exception(ctx);
         return "";
     }
 
@@ -289,7 +315,11 @@ static std::string inspect_properties(JSContext* ctx, JSValue obj, InspectOpts& 
             JSValue val = JS_GetPropertyStr(ctx, obj, key);
             out += quote_key(key);
             out += ": ";
-            out += inspect_value(ctx, val, opts, depth);
+            if (JS_IsException(val)) {
+                out += getter_threw(ctx, opts);
+            } else {
+                out += inspect_value(ctx, val, opts, depth);
+            }
             JS_FreeValue(ctx, val);
         }
 
@@ -336,7 +366,8 @@ static std::string inspect_string(JSContext* ctx, JSValue value, InspectOpts& op
 
 static std::string inspect_function(JSContext* ctx, JSValue value, InspectOpts& opts) {
     JSValue name_val = JS_GetPropertyStr(ctx, value, "name");
-    const char* name = JS_ToCString(ctx, name_val);
+    if (JS_IsException(name_val)) drain_exception(ctx);
+    const char* name = JS_IsException(name_val) ? nullptr : JS_ToCString(ctx, name_val);
     std::string result;
 
     /* Check for Symbol.toStringTag */
@@ -347,6 +378,7 @@ static std::string inspect_function(JSContext* ctx, JSValue value, InspectOpts& 
     if (!JS_IsUndefined(tag_sym)) {
         JSAtom tag_atom = JS_ValueToAtom(ctx, tag_sym);
         JSValue tag_val = JS_GetProperty(ctx, value, tag_atom);
+        if (JS_IsException(tag_val)) drain_exception(ctx);
         if (JS_IsString(tag_val)) {
             const char* tag = JS_ToCString(ctx, tag_val);
             if (tag) {
@@ -405,9 +437,15 @@ static std::string inspect_bigint(JSContext* ctx, JSValue value, InspectOpts& op
 
 static std::string inspect_date(JSContext* ctx, JSValue value, InspectOpts& opts) {
     JSValue to_json = JS_GetPropertyStr(ctx, value, "toJSON");
+    if (JS_IsException(to_json)) drain_exception(ctx);
     if (JS_IsFunction(ctx, to_json)) {
         JSValue json_val = JS_Call(ctx, to_json, value, 0, nullptr);
         JS_FreeValue(ctx, to_json);
+        if (JS_IsException(json_val)) {
+            drain_exception(ctx);
+            JS_FreeValue(ctx, json_val);
+            return "Invalid Date";
+        }
         if (JS_IsNull(json_val) || JS_IsUndefined(json_val)) {
             JS_FreeValue(ctx, json_val);
             return "Invalid Date";
@@ -432,16 +470,19 @@ static std::string inspect_regexp(JSContext* ctx, JSValue value, InspectOpts& op
         JS_FreeCString(ctx, str);
         return stylize(result, MIK_TOKEN_REGEXP, opts);
     }
+    drain_exception(ctx);
     return stylize("/(?:)/", MIK_TOKEN_REGEXP, opts);
 }
 
 static std::string inspect_error(JSContext* ctx, JSValue value, InspectOpts& opts, int depth) {
     /* Get name and message */
     JSValue name_val = JS_GetPropertyStr(ctx, value, "name");
+    if (JS_IsException(name_val)) drain_exception(ctx);
     JSValue msg_val = JS_GetPropertyStr(ctx, value, "message");
+    if (JS_IsException(msg_val)) drain_exception(ctx);
 
-    const char* name = JS_ToCString(ctx, name_val);
-    const char* msg = JS_ToCString(ctx, msg_val);
+    const char* name = JS_IsException(name_val) ? nullptr : JS_ToCString(ctx, name_val);
+    const char* msg = JS_IsException(msg_val) ? nullptr : JS_ToCString(ctx, msg_val);
 
     std::string result;
     if (name) result = name;
@@ -473,7 +514,11 @@ static std::string inspect_error(JSContext* ctx, JSValue value, InspectOpts& opt
 static std::string inspect_array(JSContext* ctx, JSValue value, InspectOpts& opts, int depth) {
     JSValue len_val = JS_GetPropertyStr(ctx, value, "length");
     uint32_t len = 0;
-    JS_ToUint32(ctx, &len, len_val);
+    if (JS_IsException(len_val)) {
+        drain_exception(ctx);
+    } else {
+        JS_ToUint32(ctx, &len, len_val);
+    }
     JS_FreeValue(ctx, len_val);
 
     if (len == 0) {
@@ -490,6 +535,7 @@ static std::string inspect_array(JSContext* ctx, JSValue value, InspectOpts& opt
             js_free(ctx, ptab);
             if (!has_non_index) return "[]";
         } else {
+            drain_exception(ctx);
             return "[]";
         }
     }
@@ -508,7 +554,11 @@ static std::string inspect_array(JSContext* ctx, JSValue value, InspectOpts& opt
 static std::string inspect_map(JSContext* ctx, JSValue value, InspectOpts& opts, int depth) {
     JSValue size_val = JS_GetPropertyStr(ctx, value, "size");
     int32_t size = 0;
-    JS_ToInt32(ctx, &size, size_val);
+    if (JS_IsException(size_val)) {
+        drain_exception(ctx);
+    } else {
+        JS_ToInt32(ctx, &size, size_val);
+    }
     JS_FreeValue(ctx, size_val);
 
     if (size <= 0) return "Map{}";
@@ -521,12 +571,24 @@ static std::string inspect_map(JSContext* ctx, JSValue value, InspectOpts& opts,
     JSValue iterator = JS_Call(ctx, entries_fn, value, 0, nullptr);
     JS_FreeValue(ctx, entries_fn);
 
+    if (JS_IsException(iterator)) {
+        drain_exception(ctx);
+        JS_FreeValue(ctx, iterator);
+        opts.seen.pop_back();
+        return "Map{}";
+    }
+
     JSValue next_fn = JS_GetPropertyStr(ctx, iterator, "next");
 
     std::string items;
     bool first = true;
     for (int i = 0; i < size; i++) {
         JSValue step = JS_Call(ctx, next_fn, iterator, 0, nullptr);
+        if (JS_IsException(step)) {
+            drain_exception(ctx);
+            JS_FreeValue(ctx, step);
+            break;
+        }
         JSValue done = JS_GetPropertyStr(ctx, step, "done");
         if (JS_ToBool(ctx, done)) {
             JS_FreeValue(ctx, done);
@@ -562,7 +624,11 @@ static std::string inspect_map(JSContext* ctx, JSValue value, InspectOpts& opts,
 static std::string inspect_set(JSContext* ctx, JSValue value, InspectOpts& opts, int depth) {
     JSValue size_val = JS_GetPropertyStr(ctx, value, "size");
     int32_t size = 0;
-    JS_ToInt32(ctx, &size, size_val);
+    if (JS_IsException(size_val)) {
+        drain_exception(ctx);
+    } else {
+        JS_ToInt32(ctx, &size, size_val);
+    }
     JS_FreeValue(ctx, size_val);
 
     if (size == 0) return "Set{}";
@@ -580,10 +646,22 @@ static std::string inspect_set(JSContext* ctx, JSValue value, InspectOpts& opts,
     JS_FreeValue(ctx, values_fn);
     JS_FreeValue(ctx, for_each_fn);
 
+    if (JS_IsException(iterator)) {
+        drain_exception(ctx);
+        JS_FreeValue(ctx, iterator);
+        opts.seen.pop_back();
+        return "Set{}";
+    }
+
     JSValue next_fn = JS_GetPropertyStr(ctx, iterator, "next");
     bool first = true;
     for (int i = 0; i < size; i++) {
         JSValue step = JS_Call(ctx, next_fn, iterator, 0, nullptr);
+        if (JS_IsException(step)) {
+            drain_exception(ctx);
+            JS_FreeValue(ctx, step);
+            break;
+        }
         JSValue done = JS_GetPropertyStr(ctx, step, "done");
         if (JS_ToBool(ctx, done)) {
             JS_FreeValue(ctx, done);
@@ -614,11 +692,16 @@ static std::string inspect_typed_array(JSContext* ctx, JSValue value, const std:
     size_t byte_offset;
     size_t bytes_per_element;
     JSValue buffer = JS_GetTypedArrayBuffer(ctx, value, &byte_offset, &byte_length, &bytes_per_element);
+    if (JS_IsException(buffer)) drain_exception(ctx);
     JS_FreeValue(ctx, buffer);
 
     JSValue len_val = JS_GetPropertyStr(ctx, value, "length");
     uint32_t len = 0;
-    JS_ToUint32(ctx, &len, len_val);
+    if (JS_IsException(len_val)) {
+        drain_exception(ctx);
+    } else {
+        JS_ToUint32(ctx, &len, len_val);
+    }
     JS_FreeValue(ctx, len_val);
 
     if (len == 0) return type_name + "[]";
@@ -627,6 +710,11 @@ static std::string inspect_typed_array(JSContext* ctx, JSValue value, const std:
     for (uint32_t i = 0; i < len; i++) {
         if (i > 0) items += ", ";
         JSValue elem = JS_GetPropertyUint32(ctx, value, i);
+        if (JS_IsException(elem)) {
+            JS_FreeValue(ctx, elem);
+            items += getter_threw(ctx, opts);
+            continue;
+        }
         const char* str = JS_ToCString(ctx, elem);
         JS_FreeValue(ctx, elem);
         items += stylize(str ? str : "0", MIK_TOKEN_NUMBER, opts);
@@ -648,6 +736,7 @@ static std::string inspect_object(JSContext* ctx, JSValue value, InspectOpts& op
     }
 
     if (JS_GetOwnPropertyNames(ctx, &ptab, &plen, value, flags) != 0) {
+        drain_exception(ctx);
         return "{}";
     }
     for (uint32_t i = 0; i < plen; i++) {
@@ -671,9 +760,12 @@ static std::string inspect_class(JSContext* ctx, JSValue value, const std::strin
 
     if (name.empty() || name == "Object") {
         JSValue ctor = JS_GetPropertyStr(ctx, value, "constructor");
+        if (JS_IsException(ctor)) drain_exception(ctx);
         if (JS_IsFunction(ctx, ctor)) {
             JSValue ctor_name = JS_GetPropertyStr(ctx, ctor, "name");
-            const char* n = JS_ToCString(ctx, ctor_name);
+            if (JS_IsException(ctor_name)) drain_exception(ctx);
+            const char* n =
+                JS_IsException(ctor_name) ? nullptr : JS_ToCString(ctx, ctor_name);
             if (n && n[0] && strcmp(n, "Object") != 0) {
                 name = n;
             }
@@ -726,7 +818,11 @@ static std::string inspect_value(JSContext* ctx, JSValue value, InspectOpts& opt
         if (JS_IsArray(value)) {
             JSValue len_val = JS_GetPropertyStr(ctx, value, "length");
             uint32_t len = 0;
-            JS_ToUint32(ctx, &len, len_val);
+            if (JS_IsException(len_val)) {
+                drain_exception(ctx);
+            } else {
+                JS_ToUint32(ctx, &len, len_val);
+            }
             JS_FreeValue(ctx, len_val);
             char buf[32];
             snprintf(buf, sizeof(buf), "[Array(%u)]", len);
@@ -781,6 +877,7 @@ static std::string inspect_value(JSContext* ctx, JSValue value, InspectOpts& opt
 
     /* Plain object vs class instance */
     JSValue proto = JS_GetPrototype(ctx, value);
+    if (JS_IsException(proto)) drain_exception(ctx);
     JSValue global = JS_GetGlobalObject(ctx);
     JSValue obj_ctor = JS_GetPropertyStr(ctx, global, "Object");
     JSValue obj_proto = JS_GetPropertyStr(ctx, obj_ctor, "prototype");
@@ -822,6 +919,7 @@ static JSValue mik__inspect_js(JSContext* ctx, JSValue this_val, int argc, JSVal
 
     if (argc >= 2 && JS_IsObject(argv[1])) {
         JSValue d = JS_GetPropertyStr(ctx, argv[1], "depth");
+        if (JS_IsException(d)) drain_exception(ctx);
         if (JS_IsNumber(d)) {
             int32_t d32;
             JS_ToInt32(ctx, &d32, d);
@@ -830,11 +928,13 @@ static JSValue mik__inspect_js(JSContext* ctx, JSValue this_val, int argc, JSVal
         JS_FreeValue(ctx, d);
 
         JSValue c = JS_GetPropertyStr(ctx, argv[1], "colors");
-        if (!JS_IsUndefined(c)) colors = JS_ToBool(ctx, c);
+        if (JS_IsException(c)) drain_exception(ctx);
+        else if (!JS_IsUndefined(c)) colors = JS_ToBool(ctx, c);
         JS_FreeValue(ctx, c);
 
         JSValue h = JS_GetPropertyStr(ctx, argv[1], "showHidden");
-        if (!JS_IsUndefined(h)) show_hidden = JS_ToBool(ctx, h);
+        if (JS_IsException(h)) drain_exception(ctx);
+        else if (!JS_IsUndefined(h)) show_hidden = JS_ToBool(ctx, h);
         JS_FreeValue(ctx, h);
     }
 
