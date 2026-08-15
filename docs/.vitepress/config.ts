@@ -167,6 +167,7 @@ export default defineConfig({
             ],
           },
           {text: 'Contributing', link: '/contributing'},
+          {text: 'AI Disclosure', link: '/ai-disclosure'},
         ],
       },
       {
@@ -191,6 +192,11 @@ export default defineConfig({
 
     editLink: {
       pattern: 'https://github.com/mikrojs/mikro/edit/main/docs/:path',
+    },
+
+    footer: {
+      message:
+        'Mikro.js is built with AI assistance, code and docs alike. Read the <a href="/ai-disclosure">AI disclosure</a>.',
     },
 
     search: {provider: 'local'},

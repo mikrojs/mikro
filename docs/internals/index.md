@@ -1,6 +1,6 @@
 ---
 title: Internals Overview
-description: How the Mikro.js runtime works under the hood
+description: How the Mikro.js runtime works internally
 ---
 
 # Internals
@@ -13,7 +13,7 @@ For build system details, module registration macros, and the bytecode pipeline 
 
 **[Runtime lifecycle](/internals/runtime-lifecycle)** covers how `MIKRuntime` is created, configured, driven, and destroyed. The runtime wraps a QuickJS engine instance and owns all associated state: timers, modules, environment, and per-module data slots.
 
-**[Event loop](/internals/event-loop)** explains what happens each time `MIK_Loop()` is called. The loop processes stdin, fires due timers, polls loop consumers (WiFi, HTTP, etc.), and drains the microtask queue. There is no blocking wait; the caller drives the loop.
+**[Event loop](/internals/event-loop)** explains what happens each time `MIK_Loop()` is called. The loop processes stdin, fires due timers, polls loop consumers (WiFi, HTTP, and the rest), and drains the microtask queue. There is no blocking wait; the caller drives the loop.
 
 **[Module system](/internals/module-system)** describes how `import` statements resolve at runtime. Four sources are checked in order: virtual modules, native C modules, bytecode builtins, and the filesystem. Each has different registration and loading mechanics.
 

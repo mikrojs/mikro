@@ -105,7 +105,7 @@ if (result.ok) {
 Confirm only when the check-in actually completed. A failed request is not a signal of health,
 and it is the signal `requireConfirm` is watching for: a build whose own defect breaks
 networking will fail every check-in, so confirming regardless would keep exactly the build that
-should have been rolled back. Leave the trial unresolved instead and let it lapse.
+rollback exists to remove. Leave the trial unresolved instead and let it lapse.
 
 `ota.confirm()` does nothing when there is no trial in progress, so it needs no guard for that
 case — but it does need the one above.

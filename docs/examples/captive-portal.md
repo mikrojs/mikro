@@ -166,6 +166,6 @@ bunx mikro dev
 
 :::
 
-Join the open **MikroJS-Portal** network and a sign-in page should open. If it doesn't, browse to the AP IP printed on boot.
+Join the open **MikroJS-Portal** network, and a sign-in page opens. If it doesn't, browse to the AP IP printed on boot.
 
 [View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/captive-portal)

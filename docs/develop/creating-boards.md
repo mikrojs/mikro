@@ -11,7 +11,7 @@ Board packages come in two styles depending on their drivers:
 
 1. **Native boards** use drivers with native C code. They need `cmake.js`, ESP-IDF components, and `MIK_REGISTER_BUILTIN`. The board's runtime is compiled to firmware bytecode. Use this for QSPI displays and other peripherals that need direct hardware access.
 
-2. **Pure JS boards** use drivers that are regular JavaScript (via `mikro/spi`, `mikro/i2c`, etc.). No `cmake.js`, no ESP-IDF component. The board is bundled and deployed with the user's app. Use this when the existing core APIs are sufficient.
+2. **Pure JS boards** use drivers that are regular JavaScript (via `mikro/spi`, `mikro/i2c`, and the other core APIs). No `cmake.js`, no ESP-IDF component. The board is bundled and deployed with the user's app. Use this when the existing core APIs are sufficient.
 
 ## What a board package provides
 
@@ -188,7 +188,7 @@ mikrojs_force_include_builtins(${COMPONENT_LIB} acme_devboard)
 target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 ```
 
-Note: `REQUIRES` lists the ESP-IDF component names (directory names of the driver components, e.g., `driver_bme280`). This ensures the drivers are compiled and linked.
+Note: `REQUIRES` lists the ESP-IDF component names (directory names of the driver components, for example `driver_bme280`). This is what gets the drivers compiled and linked.
 
 ## Building with a board
 

@@ -127,14 +127,14 @@ const result = await peripheral.advertise({
 
 ### AdvertiseOptions
 
-| Field              | Type                         | Description                                                                          |
-| ------------------ | ---------------------------- | ------------------------------------------------------------------------------------ |
-| `name`             | `string`                     | Override `ble.name` for this advertisement                                           |
-| `connectable`      | `boolean`                    | Default `false`. Set to `true` with `services` for a GATT peripheral                 |
-| `services`         | `Service[]`                  | GATT services to register (first call only)                                          |
-| `interval`         | `{min: number, max: number}` | Advertising interval in milliseconds. Spec bounds: 20–10240ms                        |
-| `includeTxPower`   | `boolean`                    | Include the current TX power in the advertising packet (3 bytes)                     |
-| `manufacturerData` | `Uint8Array`                 | Manufacturer-specific data. First two bytes should be the company ID (little endian) |
+| Field              | Type                         | Description                                                                        |
+| ------------------ | ---------------------------- | ---------------------------------------------------------------------------------- |
+| `name`             | `string`                     | Override `ble.name` for this advertisement                                         |
+| `connectable`      | `boolean`                    | Default `false`. Set to `true` with `services` for a GATT peripheral               |
+| `services`         | `Service[]`                  | GATT services to register (first call only)                                        |
+| `interval`         | `{min: number, max: number}` | Advertising interval in milliseconds. Spec bounds: 20–10240ms                      |
+| `includeTxPower`   | `boolean`                    | Include the current TX power in the advertising packet (3 bytes)                   |
+| `manufacturerData` | `Uint8Array`                 | Manufacturer-specific data. First two bytes must be the company ID (little endian) |
 
 ## GATT services
 
@@ -166,7 +166,7 @@ interface Characteristic {
 type CharacteristicProperty = 'read' | 'write' | 'writeWithoutResponse' | 'notify' | 'indicate'
 ```
 
-UUIDs can be either the 4-character 16-bit shorthand (e.g. `"180f"` for Battery Service) or the 36-character canonical 128-bit form (`"6e400001-b5a3-f393-e0a9-e50e24dcca9e"`). Case-insensitive on input; normalized to lowercase internally.
+UUIDs can be either the 4-character 16-bit shorthand (for example `"180f"` for Battery Service) or the 36-character canonical 128-bit form (`"6e400001-b5a3-f393-e0a9-e50e24dcca9e"`). Case-insensitive on input; normalized to lowercase internally.
 
 ## AdvertiseHandle
 
@@ -305,7 +305,7 @@ The service and characteristic set is frozen at first `advertise()` call. To cha
 
 ### No descriptors beyond CCCD
 
-Notify and indicate characteristics automatically get a CCCD descriptor (managed by NimBLE). Other descriptors (CUD, presentation format, valid range, etc.) are not declarable from JS.
+Notify and indicate characteristics automatically get a CCCD descriptor (managed by NimBLE). Other descriptors (CUD, presentation format, valid range, and others) are not declarable from JS.
 
 ### No extended advertising
 

@@ -11,7 +11,7 @@ Drivers come in two flavors:
 
 2. **Pure JS drivers** are regular npm packages that use existing APIs like `mikro/spi` or `mikro/i2c`. No native code, no `cmake.js`, no ESP-IDF component. They're bundled and deployed with the user's app. Use this when existing APIs are sufficient.
 
-This walkthrough covers a **native driver**, published as a single package `@my-scope/bme280` (substitute your own npm scope and chip). For pure JS drivers, create a regular npm package that imports from `mikro/spi`, `mikro/i2c`, etc., and export a factory function.
+This walkthrough covers a **native driver**, published as a single package `@my-scope/bme280` (substitute your own npm scope and chip). For pure JS drivers, create a regular npm package that imports from `mikro/spi`, `mikro/i2c`, or the other core APIs, and export a factory function.
 
 ## Package structure
 
@@ -122,8 +122,8 @@ static JSValue js_bme280_read(JSContext* ctx, JSValueConst this_val,
 Key points:
 
 - `MIK_REGISTER_MODULE` uses a constructor attribute to add the module to a linked list at startup. No manual registration step needed.
-- The two trailing `nullptr` arguments are optional event-loop hooks. The first is a _consume_ callback that the runtime calls on every event loop iteration once the module has been imported; use it to drain completion queues from interrupt handlers or background tasks into JS callbacks (see `mik_http.cpp` for an example). The second is a _destroy_ callback called on runtime shutdown to release anything the module allocated. Pass `nullptr` for hooks you don't need.
-- The native module name must be package-qualified: `native:<your-package-name>/<module>` (here `native:@my-scope/bme280/sensor`). It is literally `native:` plus the builtin specifier registered in Step 4. The bare `native:mikro/*` namespace is reserved for the core runtime, so a driver reaching a core peripheral imports e.g. `native:mikro/i2c`. This rule is enforced at build time; an unqualified name fails to compile. The public API goes through the TypeScript wrapper.
+- The two trailing `nullptr` arguments are optional event-loop hooks. The first is a _consume_ callback that the runtime calls on every event loop iteration once the module is imported; use it to drain completion queues from interrupt handlers or background tasks into JS callbacks (see `mik_http.cpp` for an example). The second is a _destroy_ callback called on runtime shutdown to release anything the module allocated. Pass `nullptr` for hooks you don't need.
+- The native module name must be package-qualified: `native:<your-package-name>/<module>` (here `native:@my-scope/bme280/sensor`). It is literally `native:` plus the builtin specifier registered in Step 4. The bare `native:mikro/*` namespace is reserved for the core runtime, so a driver reaching a core peripheral imports, for example, `native:mikro/i2c`. This rule is enforced at build time; an unqualified name fails to compile. The public API goes through the TypeScript wrapper.
 
 ## Step 4: Bytecode builtin registration
 
@@ -321,5 +321,5 @@ declare module 'native:@my-scope/bme280/sensor' {
   ```
 
 - **NVS namespaces**: if your driver stores state in NVS, use your own namespace. Namespace names starting with `mik.` are reserved for the runtime.
-- **C vs C++ source files**: Vendor C libraries (like sensor SDKs) should be compiled as `.c` files. Mixing them into `.cpp` files can cause issues with `-Werror` due to C++ strictness.
-- **DMA buffers**: If your peripheral uses DMA (SPI displays, etc.), allocate buffers with `heap_caps_malloc(size, MALLOC_CAP_DMA)`. DMA requires internal SRAM; PSRAM will not work.
+- **C vs C++ source files**: Compile vendor C libraries (like sensor SDKs) as `.c` files. Mixing them into `.cpp` files can cause issues with `-Werror` due to C++ strictness.
+- **DMA buffers**: If your peripheral uses DMA (SPI displays, for example), allocate buffers with `heap_caps_malloc(size, MALLOC_CAP_DMA)`. DMA requires internal SRAM; PSRAM will not work.

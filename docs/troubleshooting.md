@@ -11,14 +11,14 @@ description: Recovering from common Mikro.js problems
 - Try flipping the cable at the board side. USB-C is reversible by spec, but some boards only wire data on one orientation.
 - Try power-cycling the device (unplug it and plug it back in).
 - Check that no other program is holding the serial port open (Arduino IDE, esp-idf monitor, screen, minicom, another `mikro` session in a different terminal).
-- If multiple serial devices are attached, `mikro` may pick the wrong one. Force a specific port with `--port`, e.g. `mikro flash --port <port>`.
+- If multiple serial devices are attached, `mikro` can pick the wrong one. Force a specific port with `--port`, for example `mikro flash --port <port>`.
 - The firmware may be out of date or missing. Run `mikro flash` to install or update it.
 - The device may be crash-looping, restarting before `mikro` can open the protocol session. See [Recovering a crash-looping device](#recovering-a-crash-looping-device).
-- Force the board into download mode: hold BOOT, tap RESET, release BOOT, then run `mikro flash` again. Useful when auto-reset wiring isn't kicking in.
+- Force the board into download mode: hold BOOT, tap RESET, release BOOT, then run `mikro flash` again. Useful when the auto-reset wiring isn't triggering.
 
 ## Recovering a crash-looping device
 
-If your deployed app crashes immediately on boot, the device restarts before you can connect a normal REPL: there's no window to send a `mikro clean` or to deploy a fix. The firmware opens a brief recovery window (~500ms) very early in boot for exactly this case. If triggered, the firmware skips autorun and drops into the protocol loop, where deploy and REPL commands work as normal.
+If your deployed app crashes immediately on boot, the device restarts before you can connect a normal REPL. There's no window to send a `mikro clean` or to deploy a fix. The firmware opens a brief recovery window (~500ms) very early in boot for exactly this case. If triggered, the firmware skips autorun and drops into the protocol loop, where deploy and REPL commands work as normal.
 
 When safe mode is active you'll see this banner in the device output:
 
@@ -32,7 +32,7 @@ In most cases the thing you actually want is to push a fixed version of your app
 mikro deploy --recover     # reset into safe mode, then deploy the current source
 ```
 
-`--recover` toggles RTS to reset the chip via the auto-reset circuit, floods the firmware's sync sequence during the boot window, and then runs the normal deploy flow over the same protocol session. After the deploy completes, the device restarts and boots into the new app, no longer in safe mode. Once it's unstuck you can resume normal work with `mikro dev` (or whatever).
+`--recover` toggles RTS to reset the chip via the auto-reset circuit and floods the firmware's sync sequence during the boot window. Then it runs the normal deploy flow over the same protocol session. After the deploy completes, the device restarts and boots into the new app, no longer in safe mode. Once the device is recovered, resume normal work with `mikro dev`.
 
 The other two variants:
 
@@ -41,9 +41,9 @@ mikro clean --recover      # wipe the broken app without redeploying anything
 mikro console --recover    # drop into the REPL on the broken device to inspect state first
 ```
 
-`clean --recover` is the "just wipe it, I'll redeploy later" path. `console --recover` is the "let me poke around before committing to a fix" diagnostic path, useful to inspect `/app`, read env vars, check heap, etc. without losing the deployed state.
+`clean --recover` is the "just wipe it, I'll redeploy later" path. `console --recover` is the "let me poke around before committing to a fix" diagnostic path, useful to inspect `/app`, read env vars, and check the heap without losing the deployed state.
 
-`mikro dev` intentionally does **not** have a `--recover` flag. Recovery is a one-shot operation; once you've used `deploy --recover` (or `clean --recover`) to unstick the device, run `mikro dev` normally and it'll work fine.
+`mikro dev` intentionally does **not** have a `--recover` flag. Recovery is a one-shot operation; once you've used `deploy --recover` (or `clean --recover`) to recover the device, run `mikro dev` normally.
 
 The options below are listed in escalating order. Try the first one. If it doesn't work, move to the next.
 
@@ -84,11 +84,11 @@ If safe mode itself is broken (firmware corruption, an early-init crash before t
 `mikro erase` is a full factory reset: it removes firmware, application code, environment variables, and all stored data. You'll need to re-flash and redeploy after.
 :::
 
-Boards with USB Serial/JTAG (ESP32-C3, ESP32-C6, ESP32-S3, etc.) usually only have a RESET button. On those, the BOOT pin is exposed as a header you can briefly tie to GND, or the board may auto-enter download mode when esptool talks to it. `mikro erase` and `mikro flash` will handle the auto-entry on most boards without needing to touch buttons.
+Boards with USB Serial/JTAG (ESP32-C3, ESP32-C6, ESP32-S3, and similar) usually only have a RESET button. On those, the BOOT pin is exposed as a header you can briefly tie to GND, or the board can auto-enter download mode when esptool talks to it. `mikro erase` and `mikro flash` will handle the auto-entry on most boards without needing to touch buttons.
 
 ## Post-mortem from logs
 
-A crash-looping device that you've unstuck (see above) leaves a useful breadcrumb behind if [file logging](/config#logfile) was enabled in the app that crashed: a rotated log file on the device filesystem with timestamped console output and ESP_LOG lines up to the moment things went sideways.
+A crash-looping device that you've recovered (see above) leaves a useful breadcrumb behind if [file logging](/config#logfile) was enabled in the app that crashed: a rotated log file on the device filesystem with timestamped console output and ESP_LOG lines up to the moment of the crash.
 
 Pull it after recovery:
 
@@ -97,7 +97,7 @@ mikro logs pull          # stream the current + rotated generations to stdout
 mikro logs pull ./logs   # archive both as separate files for later inspection
 ```
 
-The file logger uses `flush: 'error'` by default, so warn/error lines hit flash immediately and survive a hard crash. Routine `console.log` output is buffered and may be lost if the reset happens before the buffer fills — switch to `flush: 'line'` (at the cost of more flash wear) if you need every line to survive.
+The file logger uses `flush: 'error'` by default, so warn/error lines hit flash immediately and survive a hard crash. Routine `console.log` output is buffered and can be lost if the reset happens before the buffer fills. If you need every line to survive, switch to `flush: 'line'` at the cost of more flash wear.
 
 ::: tip Always-on for prod
 Enable [`logFile: true`](/config#logfile) in your production `mikro.config.ts`. It costs ~2 KB of RAM and rotates within a `2 × maxSize` flash budget, but it's the difference between "device crashed, no idea why" and "device crashed, here's what it logged."

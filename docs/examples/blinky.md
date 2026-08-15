@@ -60,7 +60,7 @@ Connect the LED's longer leg (anode) to GPIO 15 through a 220-ohm resistor. Conn
 
 1. **Memory check.** `memoryUsage()` reports heap usage at startup. Useful for spotting leaks over time.
 
-2. **Pin setup.** `pinMode(PIN, 'OUTPUT')` configures the pin for output (GPIO 15 on XIAO ESP32C6). `.orPanic()` crashes with a clear message if this fails (e.g., invalid pin number).
+2. **Pin setup.** `pinMode(PIN, 'OUTPUT')` configures the pin for output (GPIO 15 on XIAO ESP32C6). `.orPanic()` crashes with a clear message if this fails (for example on an invalid pin number).
 
 3. **Main loop.** Toggles the pin between HIGH and LOW every second. `digitalWrite` returns a [`Result`](/api/result), so the code checks `.ok` and logs the error variant name if it fails.
 
@@ -118,6 +118,6 @@ bunx mikro dev
 
 :::
 
-You should see the LED blinking and memory usage printed to the console every second.
+The LED blinks, and the console prints memory usage every second.
 
 [View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/blinky)

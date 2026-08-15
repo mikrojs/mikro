@@ -86,7 +86,7 @@ mikro flash
 | Option            | Description                                                                                                                                |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `-p, --port PORT` | Serial port (auto-detected if omitted)                                                                                                     |
-| `--target CHIP`   | Target chip (e.g. `esp32c6`). Auto-detected if omitted                                                                                     |
+| `--target CHIP`   | Target chip (for example `esp32c6`). Auto-detected if omitted                                                                              |
 | `--board BOARD`   | Board name. Discovered from `package.json` if omitted                                                                                      |
 | `--build-dir DIR` | Path to a local ESP-IDF build directory. If omitted, downloads pre-built firmware                                                          |
 | `--from REF`      | Firmware source: a release tag (`v0.2.0`), branch, commit SHA, GitHub repo (`user/repo` or `user/repo@ref`), or URL to a `.tar.gz` archive |
@@ -132,7 +132,7 @@ mikro name unset        # clear the name
 
 Because the name is written to the device, these need it connected. You can also run `/name set <name>` / `/name unset` inside `mikro console` or `mikro dev`.
 
-A device with no name set shows its device ID instead. The suggestion offered by `mikro name set` is only ever used to mint a name you then keep — nothing displays it until it has been stored, so upgrading the CLI can never rename a board behind your back.
+A device with no name set shows its device ID instead. The suggestion offered by `mikro name set` is only ever used to create a name you then keep — nothing displays it until it is stored, so upgrading the CLI can never rename a board behind your back.
 
 Devices enrolled with an update registry are always named: `mikro ota enroll` writes one if you don't pass `--name`, and thereafter a rename on either side syncs to the other at the next check-in.
 
@@ -374,7 +374,7 @@ mikro ota push
 | `--tarball FILE`    | Push a pre-packed `.tgz` instead of building                           |
 | `--release CHANNEL` | Also release the build to this channel (default: not served)           |
 | `--token TOKEN`     | Registry auth token (default: `MIKRO_OTA_TOKEN` env var)               |
-| `--note TEXT`       | Free-text note stored with the build (e.g. what changed)               |
+| `--note TEXT`       | Free-text note stored with the build (for example what changed)        |
 | `--create`          | Create the app on first push instead of failing on an unknown app      |
 | `--snapshot`        | Derive a unique version so iteration needs no version bump (see below) |
 
@@ -390,12 +390,12 @@ Point a channel at a build that is already on the registry. Uploading (`push`) a
 mikro ota release <version> <channel>
 ```
 
-| Option           | Description                                              |
-| ---------------- | -------------------------------------------------------- |
-| `VERSION`        | Version of an already-published build to serve           |
-| `CHANNEL`        | Channel to point at that build (e.g. `beta`, `main`)     |
-| `--registry URL` | Registry origin (default: `.mikro/registry.json`)        |
-| `--token TOKEN`  | Registry auth token (default: `MIKRO_OTA_TOKEN` env var) |
+| Option           | Description                                                   |
+| ---------------- | ------------------------------------------------------------- |
+| `VERSION`        | Version of an already-published build to serve                |
+| `CHANNEL`        | Channel to point at that build (for example `beta` or `main`) |
+| `--registry URL` | Registry origin (default: `.mikro/registry.json`)             |
+| `--token TOKEN`  | Registry auth token (default: `MIKRO_OTA_TOKEN` env var)      |
 
 ### mikro ota enroll
 
@@ -568,7 +568,7 @@ mikro sim profile [ENTRY]
 | `ENTRY`              | Entry file (default: `main` field in package.json)                                                      |
 | `--mem-limit BYTES`  | QuickJS heap ceiling for the profile run (default: `32M`)                                               |
 | `--memory-budget KB` | Highlight rows against an explicit budget in KB                                                         |
-| `--chip NAME`        | Preset budget for a chip (e.g. `esp32c6`, `esp32s3`)                                                    |
+| `--chip NAME`        | Preset budget for a chip (for example `esp32c6` or `esp32s3`)                                           |
 | `--top N`            | Show only the N largest modules                                                                         |
 | `--sort KEY`         | Sort by `size` (default) or `order` (load order)                                                        |
 | `--min-bytes N`      | Hide modules smaller than N bytes                                                                       |

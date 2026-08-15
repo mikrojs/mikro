@@ -80,7 +80,7 @@ const result = await socket.send('ping', {
 joinMulticastGroup(group: {address: string}): Result<void, UdpError>
 ```
 
-Joins an IPv4 or IPv6 multicast group. The socket's family determines which group type is accepted. An IPv4 interface (e.g. WiFi connected) must be up before joining an IPv4 group.
+Joins an IPv4 or IPv6 multicast group. The socket's family determines which group type is accepted. An IPv4 interface (for example connected WiFi) must be up before joining an IPv4 group.
 
 ```ts twoslash
 import {bind} from 'mikro/udp'
@@ -182,15 +182,15 @@ interface PeerAddress {
 
 ### UdpError
 
-| Variant            | Fields    | Description                                       |
-| ------------------ | --------- | ------------------------------------------------- |
-| `BindFailed`       | `message` | Generic bind failure (invalid address, etc.)      |
-| `AddressInUse`     | —         | Local port already in use                         |
-| `SendFailed`       | `message` | Generic send failure (invalid peer, etc.)         |
-| `MessageTooLarge`  | —         | Datagram exceeded the path MTU                    |
-| `NotReachable`     | —         | No route to host or interface down                |
-| `OutOfMemory`      | —         | lwIP / kernel out of buffer memory                |
-| `JoinGroupFailed`  | `message` | Multicast join failed (interface down or invalid) |
-| `LeaveGroupFailed` | `message` | Multicast leave failed                            |
-| `Closed`           | —         | Operation on a closed socket                      |
-| `NotBound`         | —         | Operation on a socket that was never bound        |
+| Variant            | Fields    | Description                                            |
+| ------------------ | --------- | ------------------------------------------------------ |
+| `BindFailed`       | `message` | Generic bind failure (an invalid address, for example) |
+| `AddressInUse`     | —         | Local port already in use                              |
+| `SendFailed`       | `message` | Generic send failure (an invalid peer, for example)    |
+| `MessageTooLarge`  | —         | Datagram exceeded the path MTU                         |
+| `NotReachable`     | —         | No route to host or interface down                     |
+| `OutOfMemory`      | —         | lwIP / kernel out of buffer memory                     |
+| `JoinGroupFailed`  | `message` | Multicast join failed (interface down or invalid)      |
+| `LeaveGroupFailed` | `message` | Multicast leave failed                                 |
+| `Closed`           | —         | Operation on a closed socket                           |
+| `NotBound`         | —         | Operation on a socket that was never bound             |

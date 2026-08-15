@@ -70,7 +70,7 @@ When `mik__timers_consume()` runs:
 5. After calling, free the duplicated values
 6. For `setTimeout` timers, unschedule after firing
 
-The re-find and duplication steps are important for correctness: a timer callback might call `clearInterval` on itself, clear other timers in the same batch, or schedule new timers. Re-finding by ID handles the case where a timer was cleared by an earlier callback. Duplicating values before calling ensures the timer entry can be safely modified or removed mid-callback.
+The re-find and duplication steps are important for correctness: a timer callback might call `clearInterval` on itself, clear other timers in the same batch, or schedule new timers. Re-finding by ID handles the case where a timer was cleared by an earlier callback. Duplicating values before calling means the timer entry can be safely modified or removed mid-callback.
 
 ### Maximum arguments
 
@@ -91,7 +91,7 @@ typedef void (*MIKLoopDestroyFn)(JSContext* ctx);
 MIK_RegisterLoopConsumer(mik_rt, consume_fn, destroy_fn);
 ```
 
-- **`consume_fn`**: Called every loop iteration. The module checks for pending events (e.g., WiFi status change, HTTP response arrival) and delivers them to JavaScript callbacks.
+- **`consume_fn`**: Called every loop iteration. The module checks for pending events (for example a WiFi status change or an HTTP response arrival) and delivers them to JavaScript callbacks.
 - **`destroy_fn`**: Called during `MIK_FreeRuntime()` to clean up module state.
 
 ### Examples
@@ -102,11 +102,11 @@ MIK_RegisterLoopConsumer(mik_rt, consume_fn, destroy_fn);
 | HTTP   | Checks pending requests, resolves fetch promises         |
 | stdin  | Reads available bytes, calls input handler               |
 
-Loop consumers are called every iteration regardless of whether they have work to do. The consume function should return quickly when idle.
+Loop consumers are called every iteration regardless of whether they have work to do. The consume function must return quickly when it has no work.
 
 ## Yield
 
-Between loop iterations, the caller should yield to prevent busy-waiting:
+Between loop iterations, the caller must yield to prevent busy-waiting:
 
 ```c
 while (MIK_Loop(mik_rt) == 0) {
@@ -114,7 +114,7 @@ while (MIK_Loop(mik_rt) == 0) {
 }
 ```
 
-On POSIX, `yield()` is `usleep(1000)` (1ms sleep). On ESP-IDF, it yields the FreeRTOS task, allowing other tasks (WiFi stack, etc.) to run.
+On POSIX, `yield()` is `usleep(1000)` (1ms sleep). On ESP-IDF, it yields the FreeRTOS task so other tasks (the WiFi stack, for example) can run.
 
 ## Promise integration
 
@@ -126,4 +126,4 @@ Unhandled promise rejections are tracked via `JS_SetHostPromiseRejectionTracker(
 2. If no handler catches it, the runtime sets `stop_requested`
 3. The next loop iteration returns `1`
 
-This ensures that forgotten `await`s or missing `.catch()` handlers surface as errors rather than silently disappearing.
+This way, forgotten `await`s or missing `.catch()` handlers surface as errors rather than disappearing silently.

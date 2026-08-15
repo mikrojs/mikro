@@ -56,7 +56,7 @@ while (true) {
 
 ## Overview
 
-The core runtime is a standalone C++ library with no ESP-IDF dependencies, making it portable across platforms.
+The core runtime is a standalone C++ library with no ESP-IDF dependencies. This makes it portable across platforms.
 
 - **Engine**: [QuickJS-NG](https://github.com/quickjs-ng/quickjs) ([near-complete ES2024 coverage](https://test262.fyi/#|qjs_ng))
 - **Runtime**: Standalone C++ library with cooperative, single-threaded event loop

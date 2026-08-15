@@ -99,6 +99,6 @@ bunx mikro dev
 
 :::
 
-You should see `Wake #0`, then after the deep sleep cycle `Wake #1`, `Wake #2`, and so on. Power-cycle the board to reset the counter.
+The console shows `Wake #0`, then after each deep sleep cycle `Wake #1`, `Wake #2`, and so on. Power-cycle the board to reset the counter.
 
 [View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/rtc-counter)

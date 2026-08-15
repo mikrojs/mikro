@@ -100,7 +100,7 @@ interface NeoPixelOptions {
 
 | Variant           | Fields    | Description             |
 | ----------------- | --------- | ----------------------- |
-| `NotActive`       | —         | Instance has been ended |
+| `NotActive`       | —         | Instance was ended      |
 | `IndexOutOfRange` | —         | Pixel index >= count    |
 | `ShowFailed`      | `message` | Failed to transmit data |
 

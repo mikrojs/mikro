@@ -137,6 +137,6 @@ bunx mikro dev
 
 :::
 
-You should see the time jump from near-epoch to the correct wall-clock time after the sync completes.
+The time jumps from near-epoch to the correct wall-clock time after the sync completes.
 
 [View source on GitHub](https://github.com/mikrojs/mikro/tree/main/examples/sntp)

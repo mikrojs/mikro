@@ -335,7 +335,7 @@ These show up as `⚠` warnings in the test output.
 
 ### Heap-baseline snapshots
 
-The first run writes each file's measured heap delta, keyed by chip, to `<name>.test.heap-baseline.json` next to the test. These should be committed. Subsequent runs compare against the stored value and warn if it's exceeded. When a refactor legitimately changes the footprint, rerun with `--update-heap-baselines` to overwrite the snapshots; the diff lands with the code change.
+The first run writes each file's measured heap delta, keyed by chip, to `<name>.test.heap-baseline.json` next to the test. Commit these files. Subsequent runs compare against the stored value and warn if it's exceeded. When a refactor legitimately changes the footprint, rerun with `--update-heap-baselines` to overwrite the snapshots; the diff lands with the code change.
 
 `beforeAll` warmup (module init, `wifi.connect`, a throwaway TLS handshake) is folded into the baseline automatically.
 

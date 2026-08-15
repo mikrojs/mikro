@@ -65,7 +65,7 @@ Direction is inferred from the pins you provide. The available methods depend on
 
 | Option          | Type                 | Required | Description                                         |
 | --------------- | -------------------- | -------- | --------------------------------------------------- |
-| `sampleRate`    | `number`             | yes      | Sample rate in Hz (e.g. 16000, 44100)               |
+| `sampleRate`    | `number`             | yes      | Sample rate in Hz (for example 16000 or 44100)      |
 | `bitsPerSample` | `16 \| 32`           | no       | Bits per sample (default 16)                        |
 | `channels`      | `'mono' \| 'stereo'` | no       | Slot mode (default `'stereo'`)                      |
 | `bclk`          | `number`             | yes      | Bit clock (SCK) pin                                 |
@@ -132,7 +132,7 @@ Stop the DMA and release the channels, and settle any pending `write()` calls. C
 write(data: I2sSamples | Uint8Array): Promise<Result<void, I2sError>>
 ```
 
-Queue samples for transmission. Resolves once the chunk has been handed to DMA. Only available when `dout` was provided.
+Queue samples for transmission. Resolves once the chunk is handed to DMA. Only available when `dout` was provided.
 
 A small bounded queue double-buffers writes so back-to-back `await`ed chunks play gapless. If you produce faster than realtime the queue fills and `write()` resolves `err(QueueFull)`; pace your writes (await the previous one, or drive from a timer). Element width must match `bitsPerSample` (`Int16Array` for 16-bit, `Int32Array` for 32-bit); a mismatch resolves `err(InvalidParam)`. A `Uint8Array` is sent as raw bytes.
 
@@ -146,7 +146,7 @@ capture(frames: number, options?: {gainBits?: number}): Result<Int16Array, I2sEr
 
 Blocking bulk read: returns exactly `frames` mono samples, already converted to 16-bit PCM in C, as one packed `Int16Array`. Requires a 32-bit mono channel (`bitsPerSample: 32, channels: 'mono'`) and a `din` pin, after `begin()`.
 
-It does the DMA read, the 24-in-32 → 16-bit conversion, the optional gain, and the packing in a single native call, with no per-chunk allocation or async machinery, so it can sustain high sample rates (e.g. streaming 48 kHz over HTTP).
+It does the DMA read, the 24-in-32 → 16-bit conversion, the optional gain, and the packing in a single native call, with no per-chunk allocation or async machinery, so it can sustain high sample rates (for example streaming 48 kHz over HTTP).
 
 The cost is that it **blocks the event loop** for roughly `frames / sampleRate` seconds while it drains the DMA, so timers and other async work stall during that window. Size `frames` to trade throughput against responsiveness: smaller frames block for less time and let the loop run more often between captures. Use it in a dedicated capture or streaming loop, not where the rest of the app must stay responsive.
 
@@ -199,13 +199,13 @@ interface I2sRx {
 
 ### I2sError
 
-| Variant             | Fields    | Description                                       |
-| ------------------- | --------- | ------------------------------------------------- |
-| `ChannelInitFailed` | `message` | Channel allocation or mode init failed            |
-| `InvalidParam`      | `message` | Invalid parameters (e.g. sample width mismatch)   |
-| `WriteFailed`       | `message` | Transmit failed                                   |
-| `ReadFailed`        | `message` | Receive failed                                    |
-| `NotStarted`        | --        | `begin()` was not called                          |
-| `QueueFull`         | --        | TX queue is full (producing faster than realtime) |
-| `NoRxPin`           | --        | `capture()` called but no `din` configured        |
-| `NoTxPin`           | --        | `write()` called but no `dout` configured         |
+| Variant             | Fields    | Description                                               |
+| ------------------- | --------- | --------------------------------------------------------- |
+| `ChannelInitFailed` | `message` | Channel allocation or mode init failed                    |
+| `InvalidParam`      | `message` | Invalid parameters (a sample width mismatch, for example) |
+| `WriteFailed`       | `message` | Transmit failed                                           |
+| `ReadFailed`        | `message` | Receive failed                                            |
+| `NotStarted`        | --        | `begin()` was not called                                  |
+| `QueueFull`         | --        | TX queue is full (producing faster than realtime)         |
+| `NoRxPin`           | --        | `capture()` called but no `din` configured                |
+| `NoTxPin`           | --        | `write()` called but no `dout` configured                 |

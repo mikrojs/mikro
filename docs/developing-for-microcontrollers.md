@@ -9,11 +9,11 @@ Writing TypeScript for an ESP32 is different from writing it for Node.js or a br
 
 ## Memory
 
-The chips Mikro.js targets have 384-520 KB of internal SRAM, all of it shared between WiFi/BLE stacks, the QuickJS runtime, your app, and any loaded modules. How much you have free after boot depends on the chip and which radios are active, so measure your own board with `/mem` rather than budgeting from the chip's datasheet total. Some boards include PSRAM (2-8 MB of external RAM), which lets larger apps allocate beyond the SRAM budget.
+The chips Mikro.js targets have 384-520 KB of internal SRAM, all of it shared between WiFi/BLE stacks, the QuickJS runtime, your app, and any loaded modules. How much you have free after boot depends on the chip and which radios are active. Measure your own board with `/mem` rather than budgeting from the chip's datasheet total. Some boards include PSRAM (2-8 MB of external RAM), which lets larger apps allocate beyond the SRAM budget.
 
 ### Check your usage
 
-Run `/mem` in the REPL to see where you stand:
+Run `/mem` in the REPL to see the current usage:
 
 ```
 Available: 239.3 KB
@@ -36,7 +36,7 @@ Usage:
 | HTTPS request (TLS handshake) | ~40-50 KB on top                        |
 | Your app code                 | Proportional to size                    |
 
-WiFi + HTTPS is the biggest consumer. A simple blinky barely makes a dent, but a WiFi app doing HTTPS might leave you with ~100KB free.
+WiFi + HTTPS is the biggest consumer. A simple blinky uses almost nothing, but a WiFi app doing HTTPS can leave you with only ~100KB free.
 
 ### Practical tips
 
@@ -78,11 +78,11 @@ In practice this can free tens of KB. One modem phase of seven modules freed abo
 
 A few things to keep in mind:
 
-- **Non-standard module behavior.** Standard JavaScript modules evaluate once and stay loaded for the life of the program; nothing in the language unloads them. `withUnload()` evicts the module from the loader cache, so a later `import` re-evaluates it from scratch. Avoid it on modules that run one-time setup or hold singleton state assuming a single evaluation.
-- **Don't return the module's exports from the callback.** Whatever the callback returns outlives the module, so returning one of its functions (or an object holding one) keeps the whole phase alive and frees little or nothing. Return plain values (numbers, strings, simple objects), or nothing.
-- **A module stays loaded if something else still imports it.** Only modules whose last importer was the disposed phase are unloaded; a shared module that another live part of your app imports is left intact.
-- **Built-in modules can't be unloaded.** If the import resolves to a `mikro/*` or `native:*` module, `withUnload()` throws.
-- **It pays off for large phases.** Unloading one or two small modules barely helps; the win comes when a phase loads a big tree of code you're done with.
+- Non-standard module behavior: standard JavaScript modules evaluate once and stay loaded for the life of the program; nothing in the language unloads them. `withUnload()` evicts the module from the loader cache, so a later `import` re-evaluates it from scratch. Avoid it on modules that run one-time setup or hold singleton state assuming a single evaluation.
+- Don't return the module's exports from the callback. Whatever the callback returns outlives the module, so returning one of its functions (or an object holding one) keeps the whole phase alive and frees little or nothing. Return plain values (numbers, strings, simple objects), or nothing.
+- A module stays loaded if something else still imports it. Only modules whose last importer was the disposed phase are unloaded; a shared module that another live part of your app imports is left intact.
+- Built-in modules can't be unloaded. If the import resolves to a `mikro/*` or `native:*` module, `withUnload()` throws.
+- It pays off for large phases. Unloading one or two small modules barely helps; the win comes when a phase loads a big tree of code you're done with.
 
 If none of this applies, just use normal dynamic imports. The runtime frees values on its own as they go out of scope. `withUnload()` is for memory-tight apps that work in phases.
 
@@ -99,7 +99,7 @@ export default defineConfig({
 ```
 
 - **64 KB** (default): good for WiFi + HTTPS apps.
-- **16-32 KB**: if your app doesn't use the network stack (e.g. sensor logger over UART, BLE-only).
+- **16-32 KB**: if your app doesn't use the network stack (for example a sensor logger over UART, or a BLE-only app).
 - **Don't go below ~8 KB.** Native subsystems always need some room.
 
 If JavaScript runs out of memory, you get an `InternalError`. It's catchable, but the handler runs with almost no memory left, so the realistic options are logging a short pre-built message and restarting. If the system heap runs out (native code), you get a hard reset. The reserve keeps these from happening at the same time.
@@ -125,7 +125,7 @@ Once you've found the hot spot, the fix is usually one of:
 
 - Build data incrementally, instead of holding the full result and its source in memory at once.
 - Shrink the payload: fewer fields, shorter keys, less history.
-- Lower `memReserved` if your native subsystems don't need the full reservation.
+- If your native subsystems don't need the full reservation, lower `memReserved`.
 - Free references early by scoping variables tightly, or nulling them before the next big allocation. QuickJS is reference counted, so the memory comes back the moment the last reference drops.
 
 ## Deep sleep for battery projects
@@ -199,7 +199,7 @@ my-project/
   package.json
 ```
 
-Each stub is a module that exports a class implementing the builtin's interface (`SimWifi`, `SimPin`, `SimI2c`, etc. from `mikro/sim`), replacing the native module in the simulator. The scaffolded stub implements every method with a sensible default; edit the bodies you care about:
+Each stub is a module that exports a class implementing the builtin's interface (`SimWifi`, `SimPin`, `SimI2c`, and the rest from `mikro/sim`), replacing the native module in the simulator. The scaffolded stub implements every method with a sensible default; edit the bodies you care about:
 
 ```ts twoslash
 // sim/pin.stub.ts

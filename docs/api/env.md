@@ -31,7 +31,7 @@ const ssid = env.require('WIFI_SSID')
 // TypeError: Required environment variable "WIFI_SSID" is not set
 ```
 
-Use this for variables your app cannot function without (WiFi credentials, API keys, etc.).
+Use this for variables your app cannot function without (for example WiFi credentials or API keys).
 
 ## env.get(key)
 

@@ -105,7 +105,7 @@ interface PwmOptions {
 
 | Variant      | Fields    | Description              |
 | ------------ | --------- | ------------------------ |
-| `NotActive`  | —         | PWM has been ended       |
+| `NotActive`  | —         | PWM was ended            |
 | `DutyFailed` | `message` | Failed to set duty cycle |
 | `FreqFailed` | `message` | Failed to set frequency  |
 | `FadeFailed` | `message` | Hardware fade failed     |

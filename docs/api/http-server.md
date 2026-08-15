@@ -48,7 +48,7 @@ Requests are handled one at a time (the underlying server blocks until your hand
 listen(options: {port: number}): Result<void, ServerError>
 ```
 
-Binds the port and starts serving. Synchronous, and returns a [`Result`](/api/result) so a bind failure (e.g. the port is taken) is handled explicitly. Only one server can listen per device; a second `listen` returns `AlreadyListening`.
+Binds the port and starts serving. Synchronous, and returns a [`Result`](/api/result) so a bind failure (for example when the port is taken) is handled explicitly. Only one server can listen per device; a second `listen` returns `AlreadyListening`.
 
 ### server.close()
 
@@ -78,7 +78,7 @@ const server = createServer((req): ServerResponse => {
 `req.text()`, `req.json()`, and `req.bytes()` each return a [`Result`](/api/result) and drain the body once; `req.body` is the underlying single-shot async iterable. The request body is buffered up to [`maxBodySize`](#serveroptions) before the handler runs; an oversized body surfaces as a [`BodyTooLarge`](/api/http-request#requesterror) error when you read it.
 
 ::: warning Header lookup is by name only
-`req.headers` exposes `get(name)` / `getAll(name)` but **no** way to list all headers. ESP-IDF's HTTP server can fetch a header by name but cannot enumerate them. Look up the headers you need (`content-type`, `authorization`, custom `x-*` headers, etc.) by name. Lookups are case-insensitive.
+`req.headers` exposes `get(name)` / `getAll(name)` but **no** way to list all headers. ESP-IDF's HTTP server can fetch a header by name but cannot enumerate them. Look up the headers you need (`content-type`, `authorization`, custom `x-*` headers, and so on) by name. Lookups are case-insensitive.
 :::
 
 ## Streaming responses
@@ -200,7 +200,7 @@ interface ServerResponse {
 }
 ```
 
-String bodies are sent as UTF-8 bytes, but the response declares no charset unless you set one. For `text/html` (or any text type) with non-ASCII content, include it explicitly: `'content-type': 'text/html; charset=utf-8'`. Otherwise browsers may decode the bytes as Latin-1 and mangle them. JSON and `text/event-stream` are UTF-8 by spec and need no charset.
+String bodies are sent as UTF-8 bytes, but the response declares no charset unless you set one. For `text/html` (or any text type) with non-ASCII content, include it explicitly: `'content-type': 'text/html; charset=utf-8'`. Otherwise browsers can decode the bytes as Latin-1 and mangle them. JSON and `text/event-stream` are UTF-8 by spec and need no charset.
 
 ### PanicHandler
 
@@ -221,7 +221,7 @@ Returned by [`listen`](#server-listen-options).
 | ------------------ | ----------------- | ------------------------------------------------- |
 | `AlreadyListening` | —                 | A server is already listening; `close()` it first |
 | `OutOfMemory`      | `message: string` | The server could not be allocated                 |
-| `StartFailed`      | `message: string` | Binding failed (e.g. the port is in use)          |
+| `StartFailed`      | `message: string` | Binding failed (the port is in use, for example)  |
 
 Request body reads (`text`/`json`/`bytes`) return a [`RequestError`](/api/http-request#requesterror), shared with the HTTP client.
 

@@ -5,7 +5,7 @@ description: Global APIs provided by the Mikro.js runtime
 
 # Globals and Built-ins
 
-These are the global APIs that Mikro.js adds on top of the standard QuickJS environment. For standard JavaScript built-ins (Array, Object, Promise, Map, Set, etc.), see the [QuickJS-NG documentation](https://quickjs-ng.github.io/quickjs/).
+These are the global APIs that Mikro.js adds on top of the standard QuickJS environment. For standard JavaScript built-ins (Array, Object, Promise, Map, Set, and the rest), see the [QuickJS-NG documentation](https://quickjs-ng.github.io/quickjs/).
 
 ## Timers
 
@@ -202,4 +202,4 @@ if (!result.ok) {
 
 ## WinterTC compatibility
 
-Mikro.js is **not** [WinterTC](https://wintertc.org/) compatible, and full compliance is not a goal. Where feasible, we align with WinterTC APIs (e.g., `TextEncoder`, `TextDecoder`, `AbortSignal`, timers), but the runtime is designed for microcontrollers, not server-side JavaScript, and some APIs don't make sense in this context.
+Mikro.js is **not** [WinterTC](https://wintertc.org/) compatible, and full compliance is not a goal. Where feasible, we align with WinterTC APIs (for example `TextEncoder`, `TextDecoder`, `AbortSignal`, and timers), but the runtime is designed for microcontrollers, not server-side JavaScript, and some APIs don't make sense in this context.
