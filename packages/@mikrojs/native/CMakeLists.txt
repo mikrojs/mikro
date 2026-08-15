@@ -178,6 +178,7 @@ if(BUILD_TESTING)
         test/virtual_modules_test.cpp
         test/ext_builtin_test.cpp
         test/text_encoding_test.cpp
+        test/inspect_symbol_test.cpp
         test/cbor_test.cpp
         test/abort_test.cpp
         test/repl_protocol_test.cpp
