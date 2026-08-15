@@ -92,6 +92,19 @@ TEST_CASE("Root-level relative import" * doctest::test_suite("modules")) {
     JS_FreeRuntime(rt);
 }
 
+TEST_CASE("Relative imports from a rooted base stay rooted" * doctest::test_suite("modules")) {
+    JSRuntime* rt = JS_NewRuntime();
+    JSContext* ctx = JS_NewContext(rt);
+
+    assert_normalizes_to(ctx, "/main.js", "./bar.js", "/bar.js");
+    /* the parent of the root is the root */
+    assert_normalizes_to(ctx, "/main.js", "../bar.js", "/bar.js");
+    assert_normalizes_to(ctx, "/app/main.js", "./bar.js", "/app/bar.js");
+
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
 TEST_CASE("Simple module eval works" * doctest::test_suite("modules")) {
     const auto mik_rt = MIK_NewRuntime();
     const auto ctx = MIK_GetJSContext(mik_rt);

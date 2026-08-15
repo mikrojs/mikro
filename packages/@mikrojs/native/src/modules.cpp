@@ -754,6 +754,8 @@ static char* mik__module_normalizer_impl(JSContext* ctx, const char* base_name,
     } else {
         len = 0;
     }
+    /* A rooted base ('/main.js') has dirname '/', not "" */
+    bool rooted = base_name[0] == MIK__PATHSEP_POSIX;
 
     filename = static_cast<char*>(js_malloc(ctx, len + strlen(name) + 1 + 1));
     if (!filename) {
@@ -771,7 +773,12 @@ static char* mik__module_normalizer_impl(JSContext* ctx, const char* base_name,
             /* remove the last path element of filename, except if "."
                or ".." */
             if (filename[0] == '\0') {
-                break;
+                if (!rooted) {
+                    break;
+                }
+                /* the parent of the root is the root */
+                r += 3;
+                continue;
             }
             p = strrchr(filename, MIK__PATHSEP);
             if (!p) {
@@ -791,7 +798,7 @@ static char* mik__module_normalizer_impl(JSContext* ctx, const char* base_name,
             break;
         }
     }
-    if (filename[0] != '\0') {
+    if (filename[0] != '\0' || rooted) {
         strcat(filename, MIK__PATHSEP_STR);
     }
     strcat(filename, r);
