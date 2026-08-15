@@ -92,6 +92,12 @@ target_include_directories(mikrojs PRIVATE "${gen_bytecode_INCLUDE_DIR}")
 
 target_link_libraries(mikrojs PUBLIC quickjs)
 
+# Allocation-fault hooks for the OOM injection tests (test/oom_inject_test.cpp).
+# Host builds only: ESP-IDF compiles the same sources without this define, so
+# the device allocator paths carry no test code. PUBLIC so test executables
+# see the hook declarations in mem.h.
+target_compile_definitions(mikrojs PUBLIC MIK_OOM_INJECT)
+
 # Note: self-registering native modules need force-include linker flags (-u symbol)
 # to prevent stripping from static libraries. These are added by consumers:
 # - ESP-IDF firmware: mikrojs_force_include_modules() in firmware CMakeLists
@@ -178,6 +184,7 @@ if(BUILD_TESTING)
         test/app_config_test.cpp
         test/app_store_test.cpp
         test/oom_test.cpp
+        test/oom_inject_test.cpp
         test/reader_test.cpp
         test/stream_test.cpp
         test/runtime_recycle_test.cpp
