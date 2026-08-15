@@ -23,6 +23,13 @@
 
 #include <doctest.h>
 
+/* Clang spells ASan detection __has_feature; GCC defines __SANITIZE_ADDRESS__. */
+#ifdef __has_feature
+#define MIK_TEST_ASAN __has_feature(address_sanitizer)
+#else
+#define MIK_TEST_ASAN 0
+#endif
+
 namespace {
 
 static JSValue eval_module(JSContext* ctx, const char* src) {
@@ -592,7 +599,14 @@ TEST_CASE("re-entrant emission depth does not consume stack" *
      * after a few dozen values. The dispatch queue makes depth O(1). */
     MIKRunOptions options;
     MIK_DefaultOptions(&options);
+#if defined(__SANITIZE_ADDRESS__) || MIK_TEST_ASAN
+    /* ASan frames are severalfold bigger; scale the deliberately tight stack
+     * so the constant-depth property stays provable under instrumentation
+     * (a per-emission depth regression would still need ~30x more). */
+    options.stack_size = 2 * 1024 * 1024;
+#else
     options.stack_size = 64 * 1024;
+#endif
     auto* rt = MIK_NewRuntimeOptions(&options);
     REQUIRE(rt != nullptr);
     auto* ctx = MIK_GetJSContext(rt);

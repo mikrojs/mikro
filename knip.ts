@@ -84,10 +84,10 @@ const config = {
     '**/*.stub.ts',
   ],
   ignoreDependencies: ['unbarrelify', 'taze'],
-  // zizmor is installed system-wide (brew/uv/pipx), not via npm.
+  // zizmor and gcovr are installed system-wide (brew/uv/pipx), not via npm.
   // `packages/` is how knip reads the `test:ota-unpack` script, which runs a
   // shell script by path rather than invoking a binary off PATH.
-  ignoreBinaries: ['cmake', 'ctest', 'zizmor', 'packages/'],
+  ignoreBinaries: ['cmake', 'ctest', 'zizmor', 'gcovr', 'packages/'],
   // Knip can't trace `import * as` namespace member access or type-only re-exports
   // through barrel files. All remaining "unused" exports/types have been manually
   // verified as used.

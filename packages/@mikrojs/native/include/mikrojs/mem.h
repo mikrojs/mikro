@@ -26,3 +26,14 @@ void* mik__js_realloc(void* ptr, size_t size);
  * the original pointer came from. */
 void mik__set_quickjs_heap_psram(bool enable);
 bool mik__is_quickjs_heap_psram(void);
+
+#ifdef MIK_OOM_INJECT
+#include <stdint.h>
+/* Host-test fault injection (standalone builds only; ESP-IDF compiles
+ * without MIK_OOM_INJECT). After `n` more mik__js_* allocations succeed,
+ * every subsequent one fails until re-armed; n < 0 disables. */
+void mik__oom_inject_fail_after(int64_t n);
+/* Net live allocations across all mem.cpp allocators, for leak checks
+ * spanning an inject/recover cycle. */
+int64_t mik__oom_inject_live_allocs(void);
+#endif

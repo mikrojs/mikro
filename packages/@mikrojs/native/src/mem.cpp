@@ -18,6 +18,34 @@
 
 #define HDR_SIZE sizeof(size_t)
 
+/* Fault injection for the host OOM tests: fail the JS-heap allocators after
+ * a countdown, and keep a net live-allocation counter across every allocator
+ * here (all of them free through mik__free, so one counter balances). */
+#ifdef MIK_OOM_INJECT
+static int64_t g_oom_countdown = -1; /* -1 = disabled */
+static int64_t g_live_allocs = 0;
+
+void mik__oom_inject_fail_after(int64_t n) {
+    g_oom_countdown = n;
+}
+
+int64_t mik__oom_inject_live_allocs(void) {
+    return g_live_allocs;
+}
+
+static bool oom_inject_should_fail(void) {
+    if (g_oom_countdown < 0) return false;
+    if (g_oom_countdown == 0) return true;
+    g_oom_countdown--;
+    return false;
+}
+#define OOM_INJECT_FAIL() oom_inject_should_fail()
+#define LIVE_ALLOCS_ADD(d) (g_live_allocs += (d))
+#else
+#define OOM_INJECT_FAIL() false
+#define LIVE_ALLOCS_ADD(d) ((void)0)
+#endif
+
 static inline size_t hdr_read(void* user) {
     size_t sz;
     memcpy(&sz, static_cast<char*>(user) - HDR_SIZE, sizeof(sz));
@@ -37,6 +65,7 @@ void* mik__malloc(size_t size) {
     void* raw = malloc(size + HDR_SIZE);
     if (!raw) return nullptr;
     hdr_write(raw, size);
+    LIVE_ALLOCS_ADD(1);
     return static_cast<char*>(raw) + HDR_SIZE;
 }
 
@@ -48,11 +77,13 @@ void* mik__calloc(size_t count, size_t size) {
     void* raw = calloc(1, total + HDR_SIZE);
     if (!raw) return nullptr;
     hdr_write(raw, total);
+    LIVE_ALLOCS_ADD(1);
     return static_cast<char*>(raw) + HDR_SIZE;
 }
 
 void mik__free(void* ptr) {
     if (!ptr) return;
+    LIVE_ALLOCS_ADD(-1);
     free(static_cast<char*>(ptr) - HDR_SIZE);
 }
 
@@ -61,6 +92,7 @@ void* mik__realloc(void* ptr, size_t size) {
     raw = realloc(raw, size + HDR_SIZE);
     if (!raw) return nullptr;
     hdr_write(raw, size);
+    if (!ptr) LIVE_ALLOCS_ADD(1);
     return static_cast<char*>(raw) + HDR_SIZE;
 }
 
@@ -82,6 +114,7 @@ bool mik__is_quickjs_heap_psram(void) {
 }
 
 void* mik__js_malloc(size_t size) {
+    if (OOM_INJECT_FAIL()) return nullptr;
     void* raw = nullptr;
     if (g_quickjs_heap_psram) {
         const MIKPlatform* p = MIK_GetPlatform();
@@ -92,10 +125,12 @@ void* mik__js_malloc(size_t size) {
     if (!raw) raw = malloc(size + HDR_SIZE);
     if (!raw) return nullptr;
     hdr_write(raw, size);
+    LIVE_ALLOCS_ADD(1);
     return static_cast<char*>(raw) + HDR_SIZE;
 }
 
 void* mik__js_calloc(size_t count, size_t size) {
+    if (OOM_INJECT_FAIL()) return nullptr;
     if (size && count > SIZE_MAX / size) return nullptr;
     size_t total = count * size;
     void* raw = nullptr;
@@ -108,10 +143,12 @@ void* mik__js_calloc(size_t count, size_t size) {
     if (!raw) raw = calloc(1, total + HDR_SIZE);
     if (!raw) return nullptr;
     hdr_write(raw, total);
+    LIVE_ALLOCS_ADD(1);
     return static_cast<char*>(raw) + HDR_SIZE;
 }
 
 void* mik__js_realloc(void* ptr, size_t size) {
+    if (OOM_INJECT_FAIL()) return nullptr;
     void* raw = ptr ? static_cast<char*>(ptr) - HDR_SIZE : nullptr;
     void* new_raw = nullptr;
     if (g_quickjs_heap_psram) {
@@ -123,5 +160,6 @@ void* mik__js_realloc(void* ptr, size_t size) {
     if (!new_raw) new_raw = realloc(raw, size + HDR_SIZE);
     if (!new_raw) return nullptr;
     hdr_write(new_raw, size);
+    if (!ptr) LIVE_ALLOCS_ADD(1);
     return static_cast<char*>(new_raw) + HDR_SIZE;
 }

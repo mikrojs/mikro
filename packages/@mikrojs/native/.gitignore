@@ -1,3 +1,5 @@
 build/
+build-asan/
+build-coverage/
 dist/
 compare-minifiers.html
