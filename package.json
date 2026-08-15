@@ -30,7 +30,7 @@
     "clean": "run-p clean:*",
     "clean:dist": "pnpm -r exec rm -rf dist",
     "clean:examples": "pnpm --filter './examples/*' exec rm -rf build",
-    "clean:lib": "rm -rf packages/@mikrojs/native/build packages/@mikrojs/native/build-test packages/@mikrojs/native/build-coverage",
+    "clean:lib": "rm -rf packages/@mikrojs/native/build packages/@mikrojs/native/build-test packages/@mikrojs/native/build-coverage packages/@mikrojs/native/build-asan",
     "clean:native": "pnpm --filter @mikrojs/native clean",
     "clean:qjsc": "rm -rf packages/@mikrojs/quickjs/bin",
     "coverage:lib": "command -v gcovr >/dev/null 2>&1 || { echo 'gcovr not found. Install it: https://gcovr.com/en/stable/installation.html'; exit 1; }; cmake -B packages/@mikrojs/native/build-coverage -DBUILD_TESTING=ON -DMIKROJS_COVERAGE=ON packages/@mikrojs/native && cmake --build packages/@mikrojs/native/build-coverage && ctest --test-dir packages/@mikrojs/native/build-coverage --output-on-failure && cd packages/@mikrojs/native && gcovr build-coverage",

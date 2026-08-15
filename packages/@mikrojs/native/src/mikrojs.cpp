@@ -16,7 +16,16 @@
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+#if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
+/* ASan inflates native frames severalfold; the regular default overflows
+ * on shallow JS recursion in instrumented builds. Never active on device. */
+#define MIK__DEFAULT_STACK_SIZE 8 * 1024 * 1024
+#else
 #define MIK__DEFAULT_STACK_SIZE 1024 * 1024  // 1 MB
+#endif
 
 /* JS malloc functions. Routed through the mik__js_* family so the QuickJS
  * heap can be relocated to PSRAM on chips with both internal SRAM and PSRAM,
