@@ -374,14 +374,20 @@ static std::string inspect_function(JSContext* ctx, JSValue value, InspectOpts& 
 }
 
 static std::string inspect_symbol(JSContext* ctx, JSValue value, InspectOpts& opts) {
-    const char* str = JS_ToCString(ctx, value);
-    std::string result;
-    if (str) {
-        result = str;
-        JS_FreeCString(ctx, str);
-    } else {
-        result = "Symbol()";
+    /* ToString throws on symbols; read the boxed description getter instead */
+    JSValue desc_val = JS_GetPropertyStr(ctx, value, "description");
+    std::string result = "Symbol(";
+    if (JS_IsString(desc_val)) {
+        const char* desc = JS_ToCString(ctx, desc_val);
+        if (desc) {
+            result += desc;
+            JS_FreeCString(ctx, desc);
+        }
+    } else if (JS_IsException(desc_val)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
     }
+    result += ")";
+    JS_FreeValue(ctx, desc_val);
     return stylize(result, MIK_TOKEN_SYMBOL, opts);
 }
 
