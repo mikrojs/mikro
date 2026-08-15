@@ -383,6 +383,9 @@ static JSValue mik__file_stat(JSContext* ctx, JSValue this_val, int argc, JSValu
         return mik__fs_err_result(ctx, EBADF, nullptr);
     }
 
+    /* Push buffered writes to the OS so fstat sees the true size */
+    fflush(fh->file);
+
     struct stat st;
     if (fstat(fileno(fh->file), &st) != 0) {
         return mik__fs_err_result(ctx, errno, nullptr);

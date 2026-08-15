@@ -191,6 +191,7 @@ if(BUILD_TESTING)
         test/udp_test.cpp
         test/observable_test.cpp
         test/unhandled_rejection_test.cpp
+        test/fs_stat_test.cpp
     )
 
     target_link_libraries(mikrojs_tests PRIVATE mikrojs)
