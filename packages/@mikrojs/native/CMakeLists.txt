@@ -180,6 +180,7 @@ if(BUILD_TESTING)
         test/text_encoding_test.cpp
         test/inspect_symbol_test.cpp
         test/cbor_test.cpp
+        test/cbor_truncation_test.cpp
         test/abort_test.cpp
         test/repl_protocol_test.cpp
         test/app_config_test.cpp
