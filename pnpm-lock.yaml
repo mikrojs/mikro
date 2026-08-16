@@ -518,7 +518,7 @@ importers:
         version: 1.0.2
       '@optique/run':
         specifier: ^1.0.2
-        version: 1.0.2
+        version: 1.2.0
       conventional-changelog-conventionalcommits:
         specifier: ^9.1.0
         version: 9.3.1
@@ -555,7 +555,7 @@ importers:
         version: 1.0.2
       '@optique/run':
         specifier: ^1.0.2
-        version: 1.0.2
+        version: 1.2.0
       type-fest:
         specifier: ^5.6.0
         version: 5.8.0
@@ -607,7 +607,7 @@ importers:
         version: 1.0.2
       '@optique/run':
         specifier: ^1.0.2
-        version: 1.0.2
+        version: 1.2.0
       cbor2:
         specifier: ^2.3.0
         version: 2.3.0
@@ -1520,8 +1520,12 @@ packages:
     resolution: {integrity: sha512-znsqMmjAdeOgSJzdJlpZpgAscojwQmeQYXzYnuEKllz5VCj6WyEkdzU4QuvJQtWQY3ve2taXwudEBRur0VHBOQ==}
     engines: {bun: '>=1.2.0', deno: '>=2.3.0', node: '>=20.0.0'}
 
-  '@optique/run@1.0.2':
-    resolution: {integrity: sha512-0Wc+zC8SLGV8zXQX+pk+o0c6wE/ddx/36CHZ0toTh5lApsjruUuGhqbxvljerAAG5un1xQbOLxzksBVC6UPgSg==}
+  '@optique/core@1.2.0':
+    resolution: {integrity: sha512-h3gHGe8BCo5iVpOt4CcWCmTnPDYdyys0XqOCCc5ZPA2A2S+GmupMkqYNeI57+SildteuGEgBrGP+MlwRlWdzPA==}
+    engines: {bun: '>=1.2.0', deno: '>=2.3.0', node: '>=20.0.0'}
+
+  '@optique/run@1.2.0':
+    resolution: {integrity: sha512-4H+sJbpKlB0DsFYyJmyTj2atDdF+9j14MbH99zPTK7YGQysWQ4Vo8UR1O91+ssIDUnKkMNoss7zMvaMf6A52Jw==}
     engines: {bun: '>=1.2.0', deno: '>=2.3.0', node: '>=20.0.0'}
 
   '@oxc-parser/binding-android-arm-eabi@0.133.0':
@@ -6491,9 +6495,11 @@ snapshots:
 
   '@optique/core@1.0.2': {}
 
-  '@optique/run@1.0.2':
+  '@optique/core@1.2.0': {}
+
+  '@optique/run@1.2.0':
     dependencies:
-      '@optique/core': 1.0.2
+      '@optique/core': 1.2.0
 
   '@oxc-parser/binding-android-arm-eabi@0.133.0':
     optional: true
