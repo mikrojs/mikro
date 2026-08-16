@@ -136,9 +136,12 @@ static JSValue mik__cbor_encode(JSContext* ctx, JSValue this_val, int argc, JSVa
 
     JSValue val = argv[0];
 
-    /* Pass 1: compute size with NULL buffer */
+    /* Pass 1: compute size with a zero-capacity buffer. The base pointer
+     * must be non-null: zero-length appends (empty strings) still reach
+     * memcpy, and memcpy(NULL, ..., 0) is undefined behavior. */
+    static uint8_t measure_base;
     nanocbor_encoder_t enc;
-    nanocbor_encoder_init(&enc, nullptr, 0);
+    nanocbor_encoder_init(&enc, &measure_base, 0);
     if (mik__cbor_encode_value(ctx, &enc, val, 0) < 0) {
         return mik__result_err_named(
             ctx, "EncodeFailed",

@@ -366,3 +366,112 @@ TEST_CASE("TextEncoder.encode handles multibyte UTF-8" * doctest::test_suite("te
     CHECK_EQ(0xA9, b1);
     teardown();
 }
+
+/* ── Edge coverage: streaming decode, invalid UTF-8, btoa/atob ───── */
+
+static void te_run(const char* src) {
+    JSValue rv = eval(src);
+    if (JS_IsException(rv)) {
+        JSValue exc = JS_GetException(ctx);
+        const char* s = JS_ToCString(ctx, exc);
+        if (s) {
+            fprintf(stderr, "[te eval] %s\n", s);
+            JS_FreeCString(ctx, s);
+        }
+        JS_FreeValue(ctx, exc);
+        FAIL("eval threw");
+    }
+    JS_FreeValue(ctx, rv);
+}
+
+static std::string te_global(const char* name) {
+    JSValue g = JS_GetGlobalObject(ctx);
+    JSValue v = JS_GetPropertyStr(ctx, g, name);
+    JS_FreeValue(ctx, g);
+    const char* s = JS_ToCString(ctx, v);
+    std::string out = s ? s : "";
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, v);
+    return out;
+}
+
+TEST_CASE("decoder labels and argument validation" * doctest::test_suite("text_encoding")) {
+    setup();
+    te_run("const attempt = (fn) => { try { fn(); return 'ok' } catch (e) { return e.name } }\n"
+           "globalThis.__utf8 = attempt(() => new TextDecoder('utf-8'))\n"
+           "globalThis.__upper = attempt(() => new TextDecoder('UTF-8'))\n"
+           "globalThis.__latin = attempt(() => new TextDecoder('latin1'))\n"
+           "globalThis.__noArg = attempt(() => new TextDecoder())\n"
+           "globalThis.__badData = attempt(() => new TextDecoder().decode('str'))\n");
+    CHECK(te_global("__utf8") == "ok");
+    CHECK(te_global("__upper") == "ok");
+    CHECK(te_global("__latin") == "RangeError");
+    CHECK(te_global("__noArg") == "ok");
+    CHECK(te_global("__badData") == "TypeError");
+    teardown();
+}
+
+TEST_CASE("streaming decode splits multi-byte sequences" * doctest::test_suite("text_encoding")) {
+    setup();
+    te_run("const dec = new TextDecoder()\n"
+           /* 'é' = C3 A9, split across chunks; '✓' = E2 9C 93, split 1+2 */
+           "let out = dec.decode(new Uint8Array([104, 0xC3]), {stream: true})\n"
+           "out += dec.decode(new Uint8Array([0xA9, 0xE2]), {stream: true})\n"
+           "out += dec.decode(new Uint8Array([0x9C, 0x93]), {stream: true})\n"
+           "out += dec.decode()\n" /* flush */
+           "globalThis.__streamed = out\n"
+           /* a lone lead byte pending at final flush becomes U+FFFD */
+           "const dec2 = new TextDecoder()\n"
+           "let out2 = dec2.decode(new Uint8Array([0xC3]), {stream: true})\n"
+           "out2 += dec2.decode()\n"
+           "globalThis.__pendingFlush = out2\n");
+    CHECK(te_global("__streamed") == "hé✓");
+    CHECK(te_global("__pendingFlush") == "�");
+    teardown();
+}
+
+TEST_CASE("invalid UTF-8 becomes replacement characters" * doctest::test_suite("text_encoding")) {
+    setup();
+    te_run("const d = (bytes) => new TextDecoder().decode(new Uint8Array(bytes))\n"
+           "globalThis.__cont = d([0x80, 65])\n"           /* stray continuation */
+           "globalThis.__overlong2 = d([0xC0, 0xAF])\n"    /* overlong 2-byte */
+           "globalThis.__overlong3 = d([0xE0, 0x80, 0xAF])\n"
+           "globalThis.__surrogate = d([0xED, 0xA0, 0x80])\n"
+           "globalThis.__tooBig = d([0xF4, 0x90, 0x80, 0x80])\n"
+           "globalThis.__badLead = d([0xFF, 66])\n"
+           "globalThis.__truncated = d([0xE2, 0x9C])\n"    /* incomplete at end */
+           "globalThis.__valid4 = d([0xF0, 0x9F, 0x98, 0x80])\n" /* 😀 */);
+    CHECK(te_global("__cont") == "�A");
+    CHECK(te_global("__overlong2").find("�") == 0);
+    CHECK(te_global("__overlong3").find("�") == 0);
+    CHECK(te_global("__surrogate").find("�") == 0);
+    CHECK(te_global("__tooBig").find("�") == 0);
+    CHECK(te_global("__badLead") == "�B");
+    CHECK(te_global("__truncated") == "��"); /* one U+FFFD per consumed byte */
+    CHECK(te_global("__valid4") == "😀");
+    teardown();
+}
+
+TEST_CASE("btoa and atob round-trip and reject bad input" * doctest::test_suite("text_encoding")) {
+    setup();
+    te_run("const attempt = (fn) => { try { return fn() } catch (e) { return e.name } }\n"
+           "globalThis.__b64 = btoa('hello')\n"
+           "globalThis.__back = atob(btoa('hello'))\n"
+           "globalThis.__emptyB = btoa('')\n"
+           "globalThis.__emptyA = atob('')\n"
+           /* embedded NUL survives; compare via char codes (C strings truncate) */
+           "globalThis.__latin1 = atob(btoa('\\xff\\x00\\x7f')).split('')"
+           ".map((c) => c.charCodeAt(0)).join(',')\n"
+           "globalThis.__nonLatin = attempt(() => btoa('smile 😀'))\n"
+           "globalThis.__badB64 = attempt(() => atob('!!!not-base64!!!'))\n"
+           "globalThis.__oddLen = attempt(() => atob('abcde'))\n");
+    CHECK(te_global("__b64") == "aGVsbG8=");
+    CHECK(te_global("__back") == "hello");
+    CHECK(te_global("__emptyB") == "");
+    CHECK(te_global("__emptyA") == "");
+    CHECK(te_global("__latin1") == "255,0,127");
+    CHECK(te_global("__nonLatin") == "RangeError");
+    CHECK(te_global("__badB64") == "SyntaxError");
+    CHECK(te_global("__oddLen") == "SyntaxError");
+    teardown();
+}

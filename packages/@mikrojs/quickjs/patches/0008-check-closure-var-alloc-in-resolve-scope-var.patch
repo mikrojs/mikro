@@ -1,0 +1,53 @@
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -34111,6 +34190,14 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
+             idx = get_closure_var(ctx, s, fd, JS_CLOSURE_LOCAL,
+                                   fd->var_object_idx, vd->var_name,
+                                   false, false, JS_VAR_NORMAL);
++            /* mikrojs patch: get_closure_var fails under OOM; the -1 index
++               would be emitted as var_ref 65535 (or dereference
++               closure_var[-1] at has_idx). Poison the dbuf so
++               resolve_variables reports the error. */
++            if (idx < 0) {
++                dbuf_set_error(bc);
++                goto done;
++            }
+             dbuf_putc(bc, OP_get_var_ref);
+             dbuf_put_u16(bc, idx);
+             var_object_test(ctx, s, var_name, op, bc, &label_done, 0);
+@@ -34123,6 +34210,11 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
+             idx = get_closure_var(ctx, s, fd, JS_CLOSURE_LOCAL,
+                                   fd->arg_var_object_idx, vd->var_name,
+                                   false, false, JS_VAR_NORMAL);
++            /* mikrojs patch: see the eval object case above */
++            if (idx < 0) {
++                dbuf_set_error(bc);
++                goto done;
++            }
+             dbuf_putc(bc, OP_get_var_ref);
+             dbuf_put_u16(bc, idx);
+             var_object_test(ctx, s, var_name, op, bc, &label_done, 0);
+@@ -34150,6 +34242,11 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
+                 } else {
+                     idx = idx1;
+                 }
++                /* mikrojs patch: see the eval object case above */
++                if (idx < 0) {
++                    dbuf_set_error(bc);
++                    goto done;
++                }
+                 goto has_idx;
+             } else if ((cv->var_name == JS_ATOM__var_ ||
+                         cv->var_name == JS_ATOM__arg_var_ ||
+@@ -34164,6 +34261,11 @@ static int resolve_scope_var(JSContext *ctx, JSFunctionDef *s,
+                 } else {
+                     idx = idx1;
+                 }
++                /* mikrojs patch: see the eval object case above */
++                if (idx < 0) {
++                    dbuf_set_error(bc);
++                    goto done;
++                }
+                 dbuf_putc(bc, OP_get_var_ref);
+                 dbuf_put_u16(bc, idx);
+                 var_object_test(ctx, s, var_name, op, bc, &label_done, is_with);

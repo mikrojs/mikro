@@ -319,3 +319,169 @@ TEST_CASE("onMessage that finalizes a sibling socket does not corrupt iteration"
 
     MIK_FreeRuntime(rt);
 }
+
+/* ── Extended coverage: IPv6, dual-stack, multicast, validation ────
+ * Multicast group membership and link-local sends are asserted loosely
+ * where the outcome is environment-dependent; parse and error mapping
+ * paths are exercised either way. */
+
+namespace {
+
+struct UdpFixture {
+    MIKRuntime* rt = nullptr;
+    JSContext* ctx = nullptr;
+
+    UdpFixture() {
+        rt = MIK_NewRuntime();
+        REQUIRE(rt != nullptr);
+        ctx = MIK_GetJSContext(rt);
+    }
+
+    ~UdpFixture() { MIK_FreeRuntime(rt); }
+
+    void run_async(const char* body) {
+        std::string src = "import {bind} from 'mikro/udp'\n"
+                          "globalThis.__done = ''\n"
+                          "const main = async () => {\n" +
+                          std::string(body) +
+                          "}\n"
+                          "main().then(() => { if (!globalThis.__done) globalThis.__done = 'ok' },\n"
+                          "  (e) => { globalThis.__done = 'rejected:' + e })\n";
+        JSValue rv = eval_module(ctx, src.c_str());
+        REQUIRE(!JS_IsException(rv));
+        JS_FreeValue(ctx, rv);
+        bool finished =
+            pump_until(rt, 2000, [&] { return !read_global_string(ctx, "__done").empty(); });
+        REQUIRE(finished);
+        REQUIRE(read_global_string(ctx, "__done") == "ok");
+    }
+};
+
+}  // namespace
+
+TEST_CASE_FIXTURE(UdpFixture, "ipv6 loopback roundtrip" * doctest::test_suite("udp")) {
+    run_async(
+        /* pin on globalThis: locals are refcount-freed (and the finalizer
+         * closes the socket) as soon as main() resolves, before delivery */
+        "  const a = globalThis.__a = (await bind({family: 'ipv6', address: '::1', port: 0})).value\n"
+        "  const b = globalThis.__b = (await bind({family: 'ipv6', address: '::1', port: 0})).value\n"
+        "  b.onMessage.subscribe(({msg, from}) => {\n"
+        "    globalThis.__text = String.fromCharCode(...msg)\n"
+        "    globalThis.__fam = from.family\n"
+        "    globalThis.__addr = from.address\n"
+        "  })\n"
+        "  const r = await a.send(new Uint8Array([104, 105]), {address: '::1', port: b.port})\n"
+        "  globalThis.__sent = r.ok ? 'ok' : r.error.name\n");
+    CHECK(read_global_string(ctx, "__sent") == "ok");
+    bool got = pump_until(rt, 2000, [&] { return !read_global_string(ctx, "__text").empty(); });
+    REQUIRE(got);
+    CHECK(read_global_string(ctx, "__text") == "hi");
+    CHECK(read_global_string(ctx, "__fam") == "ipv6");
+    CHECK(read_global_string(ctx, "__addr") == "::1");
+}
+
+TEST_CASE_FIXTURE(UdpFixture, "dual-stack sockets exchange with ipv4 peers" *
+                                  doctest::test_suite("udp")) {
+    run_async(
+        "  const dual = globalThis.__dualSock = (await bind({port: 0})).value\n"
+        "  globalThis.__dualFam = dual.family\n"
+        "  const v4 = globalThis.__v4Sock = (await bind({family: 'ipv4', address: '127.0.0.1', port: 0})).value\n"
+        "  dual.onMessage.subscribe(({from}) => {\n"
+        "    globalThis.__fromFam = from.family\n"
+        "    globalThis.__fromAddr = from.address\n"
+        "  })\n"
+        "  v4.onMessage.subscribe(({msg}) => { globalThis.__v4got = String.fromCharCode(...msg) })\n"
+        "  await v4.send(new Uint8Array([112]), {address: '127.0.0.1', port: dual.port})\n"
+        /* dual socket sending to a v4 peer takes the v4-mapped conversion */
+        "  const back = await dual.send(new Uint8Array([113]), {address: '127.0.0.1', port: v4.port})\n"
+        "  globalThis.__back = back.ok ? 'ok' : back.error.name\n");
+    CHECK(read_global_string(ctx, "__dualFam") == "dual");
+    CHECK(read_global_string(ctx, "__back") == "ok");
+    bool got = pump_until(rt, 2000, [&] {
+        return !read_global_string(ctx, "__fromFam").empty() &&
+               !read_global_string(ctx, "__v4got").empty();
+    });
+    REQUIRE(got);
+    /* v4-mapped source normalizes back to plain ipv4 */
+    CHECK(read_global_string(ctx, "__fromFam") == "ipv4");
+    CHECK(read_global_string(ctx, "__fromAddr") == "127.0.0.1");
+    CHECK(read_global_string(ctx, "__v4got") == "q");
+}
+
+TEST_CASE_FIXTURE(UdpFixture, "send validates its arguments" * doctest::test_suite("udp")) {
+    run_async(
+        "  const s = (await bind({family: 'ipv4', port: 0})).value\n"
+        "  const attempt = (fn) => { try { fn(); return 'no-throw' } catch (e) { return e.name } }\n"
+        "  globalThis.__oneArg = attempt(() => s.send(new Uint8Array(1)))\n"
+        "  const str = await s.send('text', {address: '127.0.0.1', port: s.port})\n"
+        "  globalThis.__strSend = str.ok ? 'ok' : str.error.name\n"
+        "  globalThis.__badPeer = attempt(() => s.send(new Uint8Array(1), {address: 123}))\n"
+        "  const r = await s.send(new Uint8Array(1), {address: 'not an ip', port: 9})\n"
+        "  globalThis.__badAddr = r.ok ? 'ok' : r.error.name\n"
+        "  s.close()\n");
+    CHECK(read_global_string(ctx, "__oneArg") == "TypeError");
+    CHECK(read_global_string(ctx, "__strSend") == "ok"); /* wrapper converts strings */
+    CHECK(read_global_string(ctx, "__badPeer") == "TypeError");
+    CHECK(read_global_string(ctx, "__badAddr") == "SendFailed");
+}
+
+TEST_CASE_FIXTURE(UdpFixture, "multicast join and leave" * doctest::test_suite("udp")) {
+    run_async(
+        "  const name = (r) => r.ok ? 'ok' : r.error.name\n"
+        "  const attempt = (fn) => { try { fn(); return 'no-throw' } catch (e) { return e.name } }\n"
+        "  const v4 = (await bind({family: 'ipv4', port: 0})).value\n"
+        "  globalThis.__join = name(v4.joinMulticastGroup({address: '224.0.0.251'}))\n"
+        "  globalThis.__leave = name(v4.leaveMulticastGroup({address: '224.0.0.251'}))\n"
+        "  globalThis.__joinBad = name(v4.joinMulticastGroup({address: 'abc'}))\n"
+        "  globalThis.__leaveBad = name(v4.leaveMulticastGroup({address: 'abc'}))\n"
+        "  globalThis.__joinNum = attempt(() => v4.joinMulticastGroup({address: 42}))\n"
+        "  v4.close()\n"
+        "  globalThis.__joinClosed = name(v4.joinMulticastGroup({address: '224.0.0.251'}))\n"
+        "  const v6 = (await bind({family: 'ipv6', port: 0})).value\n"
+        "  globalThis.__join6 = name(v6.joinMulticastGroup({address: 'ff02::fb'}))\n"
+        "  globalThis.__join6Bad = name(v6.joinMulticastGroup({address: 'zzz'}))\n"
+        "  v6.close()\n");
+    /* group membership needs a multicast-capable interface; both outcomes
+     * still walk the parse + setsockopt path */
+    std::string join4 = read_global_string(ctx, "__join");
+    CHECK((join4 == "ok" || join4 == "JoinGroupFailed"));
+    std::string leave4 = read_global_string(ctx, "__leave");
+    CHECK((leave4 == "ok" || leave4 == "LeaveGroupFailed"));
+    CHECK(read_global_string(ctx, "__joinBad") == "JoinGroupFailed");
+    CHECK(read_global_string(ctx, "__leaveBad") == "LeaveGroupFailed");
+    CHECK(read_global_string(ctx, "__joinNum") == "TypeError");
+    CHECK(read_global_string(ctx, "__joinClosed") == "Closed");
+    /* v6 group membership depends on interface config; both outcomes hit
+     * the v6 parse + setsockopt path */
+    std::string join6 = read_global_string(ctx, "__join6");
+    CHECK((join6 == "ok" || join6 == "JoinGroupFailed"));
+    CHECK(read_global_string(ctx, "__join6Bad") == "JoinGroupFailed");
+}
+
+TEST_CASE_FIXTURE(UdpFixture, "bind reports bad addresses and reuse conflicts" *
+                                  doctest::test_suite("udp")) {
+    run_async(
+        "  const name = (r) => r.ok ? 'ok' : r.error.name\n"
+        "  globalThis.__bad4 = name(await bind({family: 'ipv4', address: 'nope', port: 0}))\n"
+        "  globalThis.__bad6 = name(await bind({family: 'ipv6', address: 'nope', port: 0}))\n"
+        "  const first = (await bind({family: 'ipv4', address: '127.0.0.1', port: 0})).value\n"
+        "  const second = await bind({family: 'ipv4', address: '127.0.0.1', port: first.port})\n"
+        "  globalThis.__inUse = name(second)\n"
+        "  first.close()\n");
+    CHECK(read_global_string(ctx, "__bad4") == "BindFailed");
+    CHECK(read_global_string(ctx, "__bad6") == "BindFailed");
+    CHECK(read_global_string(ctx, "__inUse") == "AddressInUse");
+}
+
+TEST_CASE_FIXTURE(UdpFixture, "link-local scope ids parse on send" *
+                                  doctest::test_suite("udp")) {
+    run_async(
+        "  const s = (await bind({family: 'ipv6', port: 0})).value\n"
+        /* the %99 scope must parse; delivery is environment-dependent, so
+         * only require a well-formed Result either way */
+        "  const r = await s.send(new Uint8Array([1]), {address: 'fe80::1%99', port: 9})\n"
+        "  globalThis.__scope = r.ok ? 'ok' : (typeof r.error.name === 'string' ? 'err' : 'bad')\n"
+        "  s.close()\n");
+    std::string outcome = read_global_string(ctx, "__scope");
+    CHECK((outcome == "ok" || outcome == "err"));
+}

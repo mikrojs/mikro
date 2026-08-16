@@ -852,9 +852,12 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
     const char* argv[1] = {partial};
     completion_callback(cb, 1, argv);
 
-    /* Two-pass CBOR encode: {"prefix": tstr, "items": [tstr, ...]} */
+    /* Two-pass CBOR encode: {"prefix": tstr, "items": [tstr, ...]}. The
+     * measuring pass needs a non-null base: zero-length appends still hit
+     * memcpy, and memcpy(NULL, ..., 0) is undefined behavior. */
+    static uint8_t measure_base;
     nanocbor_encoder_t enc;
-    nanocbor_encoder_init(&enc, nullptr, 0);
+    nanocbor_encoder_init(&enc, &measure_base, 0);
     nanocbor_fmt_map(&enc, 2);
     nanocbor_put_tstr(&enc, "prefix");
     nanocbor_put_tstrn(&enc, partial, len);
@@ -904,8 +907,11 @@ static void refresh_ready(MIKReplTransport* transport);
  * the length the encoding needs, which exceeds cap when it did not fit. */
 static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const char* id,
                            const char* version, const char* fw, const char* name) {
+    /* Measuring calls pass buf=NULL; substitute a non-null base so
+     * zero-length appends never hand memcpy a null pointer (UB). */
+    static uint8_t measure_base;
     nanocbor_encoder_t enc;
-    nanocbor_encoder_init(&enc, buf, cap);
+    nanocbor_encoder_init(&enc, buf ? buf : &measure_base, buf ? cap : 0);
     nanocbor_fmt_map(&enc, 3 + (fw ? 1 : 0) + (name ? 1 : 0));
     nanocbor_put_tstr(&enc, "chip");
     nanocbor_put_tstr(&enc, chip);

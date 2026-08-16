@@ -112,6 +112,8 @@ ESP-IDF (>= 6.0.1) is a prerequisite for firmware builds. Install via [EIM](http
 ```sh
 pnpm run build:lib               # CMake build of libmikrojs.a (includes bytecode generation)
 pnpm run test:lib                # Run host-side C++ tests (ctest)
+pnpm run coverage:lib            # Instrumented build + tests + gcovr report; enforces the
+                                 # line/branch ratchet floors in packages/@mikrojs/native/gcovr.cfg
 pnpm run clean:lib               # Remove CMake build directory
 ```
 

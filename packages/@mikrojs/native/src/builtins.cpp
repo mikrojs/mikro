@@ -52,15 +52,14 @@ static JSModuleDef* mik__deserialize_builtin(JSContext* ctx, const char* name,
         return NULL;
     }
 
-    /* Initialize import.meta (url, env, etc.) for the builtin module */
+    /* Initialize import.meta (url, env, etc.) for the builtin module.
+     * Binding resolution is deliberately NOT done here: this runs inside
+     * the module loader, and a failing JS_ResolveModule frees every
+     * not-yet-resolved module in the context — including whatever
+     * partially-read module an outer JS_ReadModule frame still holds.
+     * The root resolve covers loader-returned modules; direct consumers
+     * (the abort lazy-loader) resolve before evaluating. */
     js_module_set_import_meta(ctx, obj, false, false);
-
-    /* Resolve imports so the module loader is called for dependencies */
-    if (JS_ResolveModule(ctx, obj) < 0) {
-        platform->log(MIK_LOG_ERROR, "mikrojs", "Failed to resolve imports for builtin '%s'", name);
-        JS_FreeValue(ctx, obj);
-        return NULL;
-    }
 
     JSModuleDef* m = static_cast<JSModuleDef*>(JS_VALUE_GET_PTR(obj));
     JS_FreeValue(ctx, obj);

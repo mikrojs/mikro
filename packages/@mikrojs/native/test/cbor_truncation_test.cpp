@@ -158,7 +158,11 @@ TEST_CASE_FIXTURE(CborTruncFixture,
         "  ok.ok && ok.value.length === 2 && ok.value[0] === 1 && ok.value[1] === 2 ? 1 : 0\n"
         "/* same array truncated before the break byte: must fail */\n"
         "const cut = decode(new Uint8Array([0x9F, 0x01, 0x02]))\n"
-        "globalThis.__indefCut = !cut.ok && cut.error.name === 'DecodeFailed' ? 1 : 0\n");
+        "globalThis.__indefCut = !cut.ok && cut.error.name === 'DecodeFailed' ? 1 : 0\n"
+        "/* indefinite map 0xBF 'a' 1 with no break byte: must fail too */\n"
+        "const mapCut = decode(new Uint8Array([0xBF, 0x61, 0x61, 0x01]))\n"
+        "globalThis.__indefMapCut = !mapCut.ok && mapCut.error.name === 'DecodeFailed' ? 1 : 0\n");
     CHECK_EQ(1, read_global_int(ctx, "__indefOk"));
     CHECK_EQ(1, read_global_int(ctx, "__indefCut"));
+    CHECK_EQ(1, read_global_int(ctx, "__indefMapCut"));
 }

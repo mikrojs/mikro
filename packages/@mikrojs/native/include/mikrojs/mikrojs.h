@@ -141,7 +141,8 @@ void MIK_SetErrorHandler(MIKRuntime* mik_rt, MIKErrorHandlerFn fn, void* opaque)
 /* Module source preprocessor — called on source files before compilation.
  * The callback receives filename, source, and source_len. It should return
  * a malloc'd string and set *out_len, or return NULL to use the original source.
- * The caller frees the returned string with free(). */
+ * The returned buffer must be null-terminated (JS_Eval reads buf[len]) and
+ * *out_len excludes the terminator. The caller frees it with free(). */
 typedef char* (*MIKPreprocessFn)(const char* filename, const char* source, size_t source_len,
                                  size_t* out_len, void* opaque);
 void MIK_SetPreprocessor(MIKRuntime* mik_rt, MIKPreprocessFn fn, void* opaque);
