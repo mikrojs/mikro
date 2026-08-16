@@ -178,7 +178,8 @@ if(BUILD_TESTING)
         test/virtual_modules_test.cpp
         test/ext_builtin_test.cpp
         test/text_encoding_test.cpp
-        test/inspect_symbol_test.cpp
+        test/inspect_test.cpp
+        test/platform_posix_test.cpp
         test/cbor_test.cpp
         test/cbor_truncation_test.cpp
         test/abort_test.cpp
@@ -187,14 +188,21 @@ if(BUILD_TESTING)
         test/app_store_test.cpp
         test/oom_test.cpp
         test/oom_inject_test.cpp
+        test/fs_test.cpp
+        test/console_stdio_test.cpp
+        test/cbor_js_test.cpp
+        test/eval_bytecode_test.cpp
+        test/result_utils_test.cpp
+        test/modules_fs_test.cpp
+        test/sys_test.cpp
+        test/runtime_entry_test.cpp
+        test/timers_test.cpp
         test/reader_test.cpp
         test/stream_test.cpp
         test/runtime_recycle_test.cpp
         test/udp_test.cpp
         test/observable_test.cpp
         test/unhandled_rejection_test.cpp
-        test/fs_stat_test.cpp
-        test/inspect_getter_test.cpp
     )
 
     target_link_libraries(mikrojs_tests PRIVATE mikrojs)
