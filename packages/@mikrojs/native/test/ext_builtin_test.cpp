@@ -162,3 +162,54 @@ TEST_CASE("a driver may import another package's native: modules" *
                   "cross-package native: import was wrongly rejected: " << msg);
     MIK_FreeRuntime(rt);
 }
+
+TEST_CASE("Builtin whose bytecode is not a module fails cleanly" *
+          doctest::test_suite("ext_builtin")) {
+    /* A registry entry pointing at serialized plain data (not module
+     * bytecode) must fail the tag check, not crash or half-load. */
+    ExtBuiltin bad("@acme/notmodule/x");
+    {
+        MIKRuntime* scratch = MIK_NewRuntime();
+        JSContext* sctx = MIK_GetJSContext(scratch);
+        JSValue val = JS_ParseJSON(sctx, "{\"a\":1}", 7, "<v>");
+        REQUIRE(!JS_IsException(val));
+        size_t size = 0;
+        uint8_t* buf = JS_WriteObject(sctx, &size, val, 0);
+        JS_FreeValue(sctx, val);
+        REQUIRE(buf != nullptr);
+        bad.bytecode.assign(buf, buf + size);
+        js_free(sctx, buf);
+        MIK_FreeRuntime(scratch);
+        bad.entry.data = bad.bytecode.data();
+        bad.entry.data_size = (uint32_t)bad.bytecode.size();
+    }
+
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+    const char* code = "import '@acme/notmodule/x'\n";
+    JSValue ret = MIK_EvalModuleContent(ctx, "/app/main.js", code, strlen(code));
+    CHECK(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JSValue exc = JS_GetException(ctx);
+    JS_FreeValue(ctx, exc);
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("Builtin importing a missing export fails at resolve" *
+          doctest::test_suite("ext_builtin")) {
+    /* The dependency deserializes fine; binding resolution then fails on
+     * the nonexistent export name. The real resolve error must propagate. */
+    ExtBuiltin bad("@acme/badbind/x");
+    bad.compile("import {definitely_not_exported} from 'mikro/result'\n"
+                "export const y = definitely_not_exported\n");
+
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+    const char* code = "import '@acme/badbind/x'\n";
+    JSValue ret = MIK_EvalModuleContent(ctx, "/app/main.js", code, strlen(code));
+    CHECK(JS_IsException(ret));
+    JS_FreeValue(ctx, ret);
+    JSValue exc = JS_GetException(ctx);
+    JS_FreeValue(ctx, exc);
+    MIK_FreeRuntime(rt);
+}
