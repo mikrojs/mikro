@@ -452,7 +452,19 @@ static const char* mik__resolve_export_condition(JSContext* ctx, JSValue exp) {
  *
  * TODO: check publishConfig.exports before exports
  */
-static const char* mik__resolve_pkg_entry(JSContext* ctx, JSValue pkg_json, const char* subpath) {
+/* Copy a JS_ToCString result into a js_malloc'd buffer, so every return
+ * from mik__resolve_pkg_entry uses one allocator — the "./index.js"
+ * fallback has no JSString to borrow, and mixing JS_FreeCString with
+ * js_strdup'd pointers walks back to a fake string header. */
+static char* mik__dup_cstring(JSContext* ctx, const char* cstr) {
+    if (!cstr) return NULL;
+    char* copy = js_strdup(ctx, cstr);
+    JS_FreeCString(ctx, cstr);
+    return copy;
+}
+
+/* Returns a js_malloc'd entry path (caller frees with js_free), or NULL. */
+static char* mik__resolve_pkg_entry(JSContext* ctx, JSValue pkg_json, const char* subpath) {
     JSValue exports = JS_GetPropertyStr(ctx, pkg_json, "exports");
 
     if (JS_IsUndefined(exports)) {
@@ -460,7 +472,7 @@ static const char* mik__resolve_pkg_entry(JSContext* ctx, JSValue pkg_json, cons
         /* No exports field — fall back to "main", then "./index.js" */
         JSValue main_val = JS_GetPropertyStr(ctx, pkg_json, "main");
         if (JS_IsString(main_val)) {
-            const char* result = JS_ToCString(ctx, main_val);
+            char* result = mik__dup_cstring(ctx, JS_ToCString(ctx, main_val));
             JS_FreeValue(ctx, main_val);
             return result;
         }
@@ -470,7 +482,7 @@ static const char* mik__resolve_pkg_entry(JSContext* ctx, JSValue pkg_json, cons
 
     /* exports is a plain string — use it directly */
     if (JS_IsString(exports)) {
-        const char* result = JS_ToCString(ctx, exports);
+        char* result = mik__dup_cstring(ctx, JS_ToCString(ctx, exports));
         JS_FreeValue(ctx, exports);
         return result;
     }
@@ -479,7 +491,7 @@ static const char* mik__resolve_pkg_entry(JSContext* ctx, JSValue pkg_json, cons
     if (JS_IsObject(exports)) {
         JSValue subpath_val = JS_GetPropertyStr(ctx, exports, subpath);
         if (!JS_IsUndefined(subpath_val) && !JS_IsException(subpath_val)) {
-            const char* result = mik__resolve_export_condition(ctx, subpath_val);
+            char* result = mik__dup_cstring(ctx, mik__resolve_export_condition(ctx, subpath_val));
             JS_FreeValue(ctx, subpath_val);
             JS_FreeValue(ctx, exports);
             return result;
@@ -490,7 +502,7 @@ static const char* mik__resolve_pkg_entry(JSContext* ctx, JSValue pkg_json, cons
          * itself as a conditions object. This handles the common shorthand where
          * exports is {"default": "./index.js"} instead of {".": {"default": ...}} */
         if (strcmp(subpath, ".") == 0) {
-            const char* result = mik__resolve_export_condition(ctx, exports);
+            char* result = mik__dup_cstring(ctx, mik__resolve_export_condition(ctx, exports));
             JS_FreeValue(ctx, exports);
             return result;
         }
@@ -593,7 +605,7 @@ static char* mik__try_resolve_pkg(JSContext* ctx, const char* dir, const MIKPkgS
         return NULL;
     }
 
-    const char* entry = mik__resolve_pkg_entry(ctx, pkg_json, spec->subpath);
+    char* entry = mik__resolve_pkg_entry(ctx, pkg_json, spec->subpath);
     JS_FreeValue(ctx, pkg_json);
 
     if (!entry) {
@@ -608,7 +620,7 @@ static char* mik__try_resolve_pkg(JSContext* ctx, const char* dir, const MIKPkgS
     char result[PATH_MAX];
     snprintf(result, sizeof(result), "%s/node_modules/%.*s/%s", dir, spec->pkg_name_len,
              spec->pkg_name, entry_path);
-    JS_FreeCString(ctx, entry);
+    js_free(ctx, entry);
     return js_strdup(ctx, result);
 }
 
