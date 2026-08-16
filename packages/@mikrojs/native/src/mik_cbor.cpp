@@ -166,6 +166,17 @@ static JSValue mik__cbor_encode(JSContext* ctx, JSValue this_val, int argc, JSVa
 
 /* ── Decoder ────────────────────────────────────────────────────────── */
 
+/* nanocbor_at_end also reports true when the buffer runs out mid-container,
+ * so a truncated container must be caught explicitly: a definite-length
+ * container with items still remaining, or an indefinite-length one whose
+ * buffer ended before the break byte (`remaining` stays 0 for indefinite). */
+static bool mik__cbor_container_truncated(const nanocbor_value_t* container) {
+    if (nanocbor_container_indefinite(container)) {
+        return container->cur >= container->end;
+    }
+    return nanocbor_container_remaining(container) != 0;
+}
+
 JSValue mik__cbor_decode_value(JSContext* ctx, nanocbor_value_t* val, int depth) {
     if (depth > MIK_CBOR_MAX_DEPTH) {
         return JS_EXCEPTION;
@@ -218,6 +229,10 @@ JSValue mik__cbor_decode_value(JSContext* ctx, nanocbor_value_t* val, int depth)
                 }
                 JS_SetPropertyUint32(ctx, result, idx++, elem);
             }
+            if (mik__cbor_container_truncated(&arr)) {
+                JS_FreeValue(ctx, result);
+                return JS_EXCEPTION;
+            }
             nanocbor_leave_container(val, &arr);
             return result;
         }
@@ -250,6 +265,10 @@ JSValue mik__cbor_decode_value(JSContext* ctx, nanocbor_value_t* val, int depth)
                     JS_NewAtomLen(ctx, reinterpret_cast<const char*>(key_buf), key_len);
                 JS_SetProperty(ctx, result, atom, prop_val);
                 JS_FreeAtom(ctx, atom);
+            }
+            if (mik__cbor_container_truncated(&map)) {
+                JS_FreeValue(ctx, result);
+                return JS_EXCEPTION;
             }
             nanocbor_leave_container(val, &map);
             return result;
