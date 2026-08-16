@@ -1,0 +1,17 @@
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -37116,6 +37116,14 @@
+         printf("\n");
+     }
+ #endif
++
++    /* mikrojs patch: a dbuf error during emission leaves byte_code truncated
++       relative to its opcode structure; the resolve passes would then read
++       past the end of the buffer. Fail before walking it. */
++    if (dbuf_error(&fd->byte_code)) {
++        JS_ThrowOutOfMemory(ctx);
++        goto fail;
++    }
+ 
+     if (resolve_variables(ctx, fd))
+         goto fail;
