@@ -114,6 +114,7 @@ pnpm run build:lib               # CMake build of libmikrojs.a (includes bytecod
 pnpm run test:lib                # Run host-side C++ tests (ctest)
 pnpm run coverage:lib            # Instrumented build + tests + gcovr report; enforces the
                                  # line/branch ratchet floors in packages/@mikrojs/native/gcovr.cfg
+pnpm run coverage:lib:open       # Same, then opens the HTML details report in the browser
 pnpm run clean:lib               # Remove CMake build directory
 ```
 
