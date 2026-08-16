@@ -1,0 +1,52 @@
+--- a/quickjs.c
++++ b/quickjs.c
+@@ -30364,27 +30364,36 @@
+ 
+     JS_FreeAtom(ctx, m->module_name);
+ 
+-    for(i = 0; i < m->req_module_entries_count; i++) {
+-        JSReqModuleEntry *rme = &m->req_module_entries[i];
+-        JS_FreeAtom(ctx, rme->module_name);
+-        JS_FreeValue(ctx, rme->attributes);
++    /* mikrojs patch: a partially-deserialized module (JS_ReadModule OOM
++       mid-read) can carry a non-zero entry count with a NULL array — the
++       count is decoded before the array allocation. Guard each loop. */
++    if (m->req_module_entries) {
++        for(i = 0; i < m->req_module_entries_count; i++) {
++            JSReqModuleEntry *rme = &m->req_module_entries[i];
++            JS_FreeAtom(ctx, rme->module_name);
++            JS_FreeValue(ctx, rme->attributes);
++        }
+     }
+     js_free(ctx, m->req_module_entries);
+ 
+-    for(i = 0; i < m->export_entries_count; i++) {
+-        JSExportEntry *me = &m->export_entries[i];
+-        if (me->export_type == JS_EXPORT_TYPE_LOCAL)
+-            free_var_ref(ctx->rt, me->u.local.var_ref);
+-        JS_FreeAtom(ctx, me->export_name);
+-        JS_FreeAtom(ctx, me->local_name);
++    if (m->export_entries) {
++        for(i = 0; i < m->export_entries_count; i++) {
++            JSExportEntry *me = &m->export_entries[i];
++            if (me->export_type == JS_EXPORT_TYPE_LOCAL)
++                free_var_ref(ctx->rt, me->u.local.var_ref);
++            JS_FreeAtom(ctx, me->export_name);
++            JS_FreeAtom(ctx, me->local_name);
++        }
+     }
+     js_free(ctx, m->export_entries);
+ 
+     js_free(ctx, m->star_export_entries);
+ 
+-    for(i = 0; i < m->import_entries_count; i++) {
+-        JSImportEntry *mi = &m->import_entries[i];
+-        JS_FreeAtom(ctx, mi->import_name);
++    if (m->import_entries) {
++        for(i = 0; i < m->import_entries_count; i++) {
++            JSImportEntry *mi = &m->import_entries[i];
++            JS_FreeAtom(ctx, mi->import_name);
++        }
+     }
+     js_free(ctx, m->import_entries);
+     js_free(ctx, m->async_parent_modules);
