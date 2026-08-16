@@ -288,14 +288,22 @@ static void* fake_realloc_psram(void* ptr, size_t size) {
 
 }  // namespace
 
+/* Restores the global platform even when a doctest assertion unwinds. */
+struct PlatformGuard {
+    const MIKPlatform* saved;
+    explicit PlatformGuard(const MIKPlatform* fake) : saved(MIK_GetPlatform()) {
+        MIK_SetPlatform(fake);
+    }
+    ~PlatformGuard() { MIK_SetPlatform(saved); }
+};
+
 TEST_CASE("PSRAM heap routes JS allocations through the platform" *
           doctest::test_suite("utils")) {
-    const MIKPlatform* orig = MIK_GetPlatform();
-    MIKPlatform fake = *orig;
+    MIKPlatform fake = *MIK_GetPlatform();
     fake.malloc_psram = fake_malloc_psram;
     fake.calloc_psram = fake_calloc_psram;
     fake.realloc_psram = fake_realloc_psram;
-    MIK_SetPlatform(&fake);
+    PlatformGuard guard(&fake);
     g_psram_allocs = 0;
     g_psram_exhausted = false;
 
@@ -320,5 +328,4 @@ TEST_CASE("PSRAM heap routes JS allocations through the platform" *
 
     MIK_FreeRuntime(rt);
     mik__set_quickjs_heap_psram(false);
-    MIK_SetPlatform(orig);
 }

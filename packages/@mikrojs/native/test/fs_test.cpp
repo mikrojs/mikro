@@ -331,11 +331,15 @@ TEST_CASE_FIXTURE(FsFixture, "handle misuse and OS permission errors map to FSEr
     CHECK((write_on_r == "ok" || write_on_r == "Unknown" || write_on_r == "BadFileDescriptor"));
     /* reading a write-only stream must not fabricate data */
     CHECK(read_global_string(ctx, "__readOnW") != "data");
-    CHECK(read_global_string(ctx, "__wLocked") == "AccessDenied");
-    CHECK(read_global_string(ctx, "__rLocked") == "AccessDenied");
-    CHECK(read_global_string(ctx, "__lsLocked") == "AccessDenied");
-    CHECK(read_global_string(ctx, "__rmLocked") == "AccessDenied");
-    CHECK(read_global_string(ctx, "__mvLocked") == "AccessDenied");
+    if (geteuid() != 0) {
+        CHECK(read_global_string(ctx, "__wLocked") == "AccessDenied");
+        CHECK(read_global_string(ctx, "__rLocked") == "AccessDenied");
+        CHECK(read_global_string(ctx, "__lsLocked") == "AccessDenied");
+        CHECK(read_global_string(ctx, "__rmLocked") == "AccessDenied");
+        CHECK(read_global_string(ctx, "__mvLocked") == "AccessDenied");
+    } else {
+        MESSAGE("running as root: chmod cannot deny access, EACCES checks skipped");
+    }
     CHECK(read_global_string(ctx, "__appended") == "seed+more");
 }
 

@@ -143,6 +143,10 @@ TEST_CASE("mik__app_commit reports SWAP_FAILED when the swap rename fails" *
  * the power-cut-during-deploy protection in its pure form. */
 TEST_CASE("mik__app_commit rolls back the stashed app when the swap fails" *
           doctest::test_suite("app_store")) {
+    if (geteuid() == 0) {
+        MESSAGE("running as root: chmod cannot block the swap rename, skipping");
+        return;
+    }
     auto base = make_temp_dir();
     make_dir(base + "/app");
     write_file(base + "/app/live.txt", "v1");

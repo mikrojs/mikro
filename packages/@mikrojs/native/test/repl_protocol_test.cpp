@@ -1298,13 +1298,21 @@ static bool uptime_fs_info(const char* label, size_t* total, size_t* used) {
 
 }  // namespace
 
+/* Restores the global platform even when a doctest assertion unwinds. */
+struct PlatformGuard {
+    const MIKPlatform* saved;
+    explicit PlatformGuard(const MIKPlatform* fake) : saved(MIK_GetPlatform()) {
+        MIK_SetPlatform(fake);
+    }
+    ~PlatformGuard() { MIK_SetPlatform(saved); }
+};
+
 TEST_CASE("Uptime formats scale and /df uses platform fs info" *
           doctest::test_suite("repl_protocol")) {
-    const MIKPlatform* orig = MIK_GetPlatform();
-    MIKPlatform fake = *orig;
+    MIKPlatform fake = *MIK_GetPlatform();
     fake.get_boot_us = uptime_boot_us;
     fake.get_fs_info = uptime_fs_info;
-    MIK_SetPlatform(&fake);
+    PlatformGuard guard(&fake);
 
     proto_setup();
 
@@ -1331,7 +1339,6 @@ TEST_CASE("Uptime formats scale and /df uses platform fs info" *
     CHECK(hours.second.find("1024 / 4096 bytes used") != std::string::npos);
 
     proto_teardown();
-    MIK_SetPlatform(orig);
 }
 
 TEST_CASE("Eval reports GC reclaim and rewrites let declarations" *
@@ -1433,10 +1440,9 @@ static const char* ready_name_hook(void) {
 
 TEST_CASE("READY includes the device name and drops one that cannot fit" *
           doctest::test_suite("repl_protocol")) {
-    const MIKPlatform* orig = MIK_GetPlatform();
-    MIKPlatform fake = *orig;
+    MIKPlatform fake = *MIK_GetPlatform();
     fake.get_device_name = ready_name_hook;
-    MIK_SetPlatform(&fake);
+    PlatformGuard guard(&fake);
     proto_setup();
 
     auto hello = [&]() {
@@ -1462,7 +1468,6 @@ TEST_CASE("READY includes the device name and drops one that cannot fit" *
 
     g_ready_name = nullptr;
     proto_teardown();
-    MIK_SetPlatform(orig);
 }
 
 TEST_CASE("stdout.write routes to LOG frames while the protocol serves" *

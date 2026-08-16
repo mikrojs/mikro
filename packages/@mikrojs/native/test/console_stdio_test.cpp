@@ -204,9 +204,9 @@ TEST_CASE_FIXTURE(CaptureFixture, "inspect handles cycles, depth, and class inst
         "console.log({a: {b: {c: {d: 'buried'}}}})\n"
         "class Point { constructor() { this.x = 1 } }\n"
         "console.log(new Point())\n"
-        "console.log([[..." /* nested array elision at depth */
-        "[1]]])\n");
+        "console.log([[1]])\n"); /* nested arrays within the depth limit */
     std::string out = strip_ansi(g_stdout);
+    CHECK(contains(out, "[ [ 1 ] ]"));
     CHECK(contains(out, "loop"));
     CHECK(contains(out, "Circular"));
     CHECK_FALSE(contains(out, "buried")); /* depth 2 elides the innermost */

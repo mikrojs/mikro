@@ -179,11 +179,11 @@ TEST_CASE_FIXTURE(ModFixture, "missing and malformed modules reject" *
 
     write("/app/bad.json", "{not json at all");
     std::string bad = eval_main(ctx, "import bad from './bad.json'\n", "/app/main2.js");
-    CHECK(bad != "ok");
+    CHECK(bad.find("SyntaxError") != std::string::npos);
 
     write("/app/syntax.js", "export const = broken\n");
     std::string syn = eval_main(ctx, "import './syntax.js'\n", "/app/main3.js");
-    CHECK(syn != "ok");
+    CHECK(syn.find("SyntaxError") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(ModFixture, "precompiled .bjs modules load and shadow source" *
@@ -229,8 +229,8 @@ TEST_CASE_FIXTURE(ModFixture, "corrupt and missing precompiled modules reject" *
     write("/app/bad.bjs", garbage, sizeof(garbage));
     write("/app/bad.bjson", garbage, sizeof(garbage));
 
-    CHECK(eval_main(ctx, "import './bad.bjs'\n") != "ok");
-    CHECK(eval_main(ctx, "import './bad.bjson'\n", "/app/main2.js") != "ok");
+    CHECK(eval_main(ctx, "import './bad.bjs'\n").find("invalid version") != std::string::npos);
+    CHECK(eval_main(ctx, "import './bad.bjson'\n", "/app/main2.js").find("invalid version") != std::string::npos);
 
     std::string no_bjs = eval_main(ctx, "import './absent.bjs'\n", "/app/main3.js");
     CHECK(no_bjs.find("Failed to resolve module specifier") != std::string::npos);
@@ -243,7 +243,7 @@ TEST_CASE_FIXTURE(ModFixture, "corrupt and missing precompiled modules reject" *
         "export const y = definitely_not_exported\n",
         "/app/badbind.bjs");
     write("/app/badbind.bjs", badbind.data(), badbind.size());
-    CHECK(eval_main(ctx, "import './badbind.bjs'\n", "/app/main5.js") != "ok");
+    CHECK(eval_main(ctx, "import './badbind.bjs'\n", "/app/main5.js").find("definitely_not_exported") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(ModFixture, "node_modules resolution covers entry styles" *
@@ -289,19 +289,19 @@ TEST_CASE_FIXTURE(ModFixture, "package resolution rejects unusable specifiers an
     /* exports with neither "import" nor "default" condition */
     write("/node_modules/reqonly/package.json", "{\"exports\": {\"require\": \"./r.js\"}}");
     write("/node_modules/reqonly/r.js", "export const id = 'nope'\n");
-    CHECK(eval_main(ctx, "import 'reqonly'\n") != "ok");
+    CHECK(eval_main(ctx, "import 'reqonly'\n").find("Failed to resolve module specifier") != std::string::npos);
 
     /* a scope without a package name is not a valid specifier */
-    CHECK(eval_main(ctx, "import '@justscope'\n", "/app/main2.js") != "ok");
+    CHECK(eval_main(ctx, "import '@justscope'\n", "/app/main2.js").find("Failed to resolve module specifier") != std::string::npos);
 
     /* subpath not present in the exports map */
     write("/node_modules/subonly/package.json", "{\"exports\": {\"./there\": \"./t.js\"}}");
     write("/node_modules/subonly/t.js", "export const id = 't'\n");
-    CHECK(eval_main(ctx, "import 'subonly/elsewhere'\n", "/app/main3.js") != "ok");
+    CHECK(eval_main(ctx, "import 'subonly/elsewhere'\n", "/app/main3.js").find("Failed to resolve module specifier") != std::string::npos);
 
     /* malformed package.json fails resolution instead of crashing */
     write("/node_modules/badjson/package.json", "{not json");
-    CHECK(eval_main(ctx, "import 'badjson'\n", "/app/main4.js") != "ok");
+    CHECK(eval_main(ctx, "import 'badjson'\n", "/app/main4.js").find("Failed to resolve module specifier") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(ModFixture, "package metadata variants: package.bjson and large manifests" *
@@ -354,7 +354,7 @@ TEST_CASE_FIXTURE(ModFixture, "node_modules resolution walks up from nested impo
     CHECK(read_global_string(ctx, "__got") == "found-above");
 
     std::string missing = eval_main(ctx, "import 'no-such-pkg'\n", "/app/main2.js");
-    CHECK(missing != "ok");
+    CHECK(missing.find("Failed to resolve module specifier") != std::string::npos);
 }
 
 TEST_CASE_FIXTURE(ModFixture, "virtual modules take priority" *

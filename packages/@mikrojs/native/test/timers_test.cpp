@@ -176,14 +176,16 @@ TEST_CASE_FIXTURE(TimerFixture, "an interval can clear itself mid-callback" *
 
 TEST_CASE_FIXTURE(TimerFixture, "a callback can clear a sibling due in the same pass" *
                                     doctest::test_suite("timers")) {
+    /* due timers run in scheduling order, so the clearing callback goes
+     * first: its sibling is unscheduled before the pass reaches it and the
+     * cleared-entry skip branch must fire */
     eval("globalThis.__log = ''\n"
-         "globalThis.__second = setTimeout(() => { globalThis.__log += 'B' }, 5)\n"
-         "setTimeout(() => { globalThis.__log += 'A'; clearTimeout(globalThis.__second) }, 4)\n");
-    advance_ms(10); /* both due in one pass; first-scheduled has the later id */
+         "setTimeout(() => { globalThis.__log += 'A'; clearTimeout(globalThis.__second) }, 4)\n"
+         "globalThis.__second = setTimeout(() => { globalThis.__log += 'B' }, 5)\n");
+    advance_ms(10); /* both due in the same pass */
     MIK_Loop(rt);
-    /* exactly one of them ran the clear before the other executed */
-    std::string log = global_str("__log");
-    CHECK((log == "A" || log == "BA"));
+    CHECK(global_str("__log") == "A");
+    CHECK(rt->timers->entries.empty());
 }
 
 TEST_CASE_FIXTURE(TimerFixture, "more than MIK_MAX_DUE_TIMERS due timers drain across passes" *

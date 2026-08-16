@@ -371,14 +371,22 @@ static void grace_write(const void*, size_t, void*) {}
 
 }  // namespace
 
+/* Restores the global platform even when a doctest assertion unwinds. */
+struct PlatformGuard {
+    const MIKPlatform* saved;
+    explicit PlatformGuard(const MIKPlatform* fake) : saved(MIK_GetPlatform()) {
+        MIK_SetPlatform(fake);
+    }
+    ~PlatformGuard() { MIK_SetPlatform(saved); }
+};
+
 TEST_CASE("MIK_Stop arms a grace window; the deadline triggers the panic action" *
           doctest::test_suite("entry")) {
-    const MIKPlatform* orig = MIK_GetPlatform();
-    MIKPlatform fake = *orig;
+    MIKPlatform fake = *MIK_GetPlatform();
     fake.get_boot_us = grace_boot_us;
     fake.restart = grace_restart;
     fake.deep_sleep_us = grace_deep_sleep;
-    MIK_SetPlatform(&fake);
+    PlatformGuard guard(&fake);
     g_grace_now_us = 1000;
     g_grace_restarts = 0;
     g_grace_sleeps = 0;
@@ -452,6 +460,4 @@ TEST_CASE("MIK_Stop arms a grace window; the deadline triggers the panic action"
         MIK_ProtocolClose();
         MIK_FreeRuntime(rt);
     }
-
-    MIK_SetPlatform(orig);
 }
