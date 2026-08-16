@@ -61,10 +61,10 @@ static JSModuleDef* mik__load_bjs_module(JSContext* ctx, const char* module_name
         JS_FreeValue(ctx, func_val);
         return NULL;
     }
-    if (JS_ResolveModule(ctx, func_val) < 0) {
-        JS_FreeValue(ctx, func_val);
-        return NULL;
-    }
+    /* No JS_ResolveModule here: this runs inside the module loader, and its
+     * failure path frees every unresolved module in the context — including
+     * a partially-read parent an outer JS_ReadModule frame still holds. The
+     * root resolve covers loader-returned modules. */
     js_module_set_import_meta(ctx, func_val, true, false);
     JSModuleDef* m = static_cast<JSModuleDef*>(JS_VALUE_GET_PTR(func_val));
     JS_FreeValue(ctx, func_val);

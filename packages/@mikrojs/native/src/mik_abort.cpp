@@ -58,7 +58,14 @@ static JSValue mik__abort_lazy_get(JSContext* ctx, JSValue this_val, int magic) 
         JS_FreeValue(ctx, global_obj);
         return JS_EXCEPTION;
     }
-    JSValue ret = JS_EvalFunction(ctx, JS_DupValue(ctx, JS_MKPTR(JS_TAG_MODULE, m)));
+    /* The loader no longer resolves bindings (unsafe when nested); this is
+     * a direct evaluation, so resolve here before running the module. */
+    JSValue mod_val = JS_MKPTR(JS_TAG_MODULE, m);
+    if (JS_ResolveModule(ctx, mod_val) < 0) {
+        JS_FreeValue(ctx, global_obj);
+        return JS_EXCEPTION;
+    }
+    JSValue ret = JS_EvalFunction(ctx, JS_DupValue(ctx, mod_val));
     if (JS_IsException(ret)) {
         JS_FreeValue(ctx, global_obj);
         return JS_EXCEPTION;
