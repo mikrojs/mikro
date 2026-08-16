@@ -128,6 +128,26 @@ TEST_CASE_FIXTURE(CborTruncFixture,
 }
 
 TEST_CASE_FIXTURE(CborTruncFixture,
+                  "strings truncated at the buffer tail fail with DecodeFailed" *
+                      doctest::test_suite("cbor")) {
+    run(ctx,
+        "import {decode} from 'mikro/cbor'\n"
+        "const failsDecode = (bytes) => {\n"
+        "  const r = decode(new Uint8Array(bytes))\n"
+        "  return !r.ok && r.error.name === 'DecodeFailed' ? 1 : 0\n"
+        "}\n"
+        "/* tstr(5) with only 4 payload bytes after the header */\n"
+        "globalThis.__tstrCut = failsDecode([0x65, 0x61, 0x62, 0x63, 0x64])\n"
+        "/* bstr(5) with only 4 payload bytes after the header */\n"
+        "globalThis.__bstrCut = failsDecode([0x45, 0x01, 0x02, 0x03, 0x04])\n"
+        "/* map(1) whose key is a truncated tstr */\n"
+        "globalThis.__keyCut = failsDecode([0xA1, 0x65, 0x61, 0x62, 0x63, 0x64])\n");
+    CHECK_EQ(1, read_global_int(ctx, "__tstrCut"));
+    CHECK_EQ(1, read_global_int(ctx, "__bstrCut"));
+    CHECK_EQ(1, read_global_int(ctx, "__keyCut"));
+}
+
+TEST_CASE_FIXTURE(CborTruncFixture,
                   "indefinite-length containers: break byte required, not spurious" *
                       doctest::test_suite("cbor")) {
     run(ctx,

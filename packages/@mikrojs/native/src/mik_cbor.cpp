@@ -177,6 +177,15 @@ static bool mik__cbor_container_truncated(const nanocbor_value_t* container) {
     return nanocbor_container_remaining(container) != 0;
 }
 
+/* Vendored nanocbor's _get_str checks the declared length against the bytes
+ * remaining before the length-prefix header, but returns a span starting after
+ * it, so a string truncated at the buffer tail passes the check with a span
+ * that overruns `end` by up to the header size. Reject such spans before
+ * handing them to QuickJS. */
+static bool mik__cbor_str_in_bounds(const nanocbor_value_t* val, const uint8_t* buf, size_t len) {
+    return buf != nullptr && buf <= val->end && static_cast<size_t>(val->end - buf) >= len;
+}
+
 JSValue mik__cbor_decode_value(JSContext* ctx, nanocbor_value_t* val, int depth) {
     if (depth > MIK_CBOR_MAX_DEPTH) {
         return JS_EXCEPTION;
@@ -204,14 +213,20 @@ JSValue mik__cbor_decode_value(JSContext* ctx, nanocbor_value_t* val, int depth)
         case NANOCBOR_TYPE_BSTR: {
             const uint8_t* buf = nullptr;
             size_t len = 0;
-            if (nanocbor_get_bstr(val, &buf, &len) < 0) return JS_EXCEPTION;
+            if (nanocbor_get_bstr(val, &buf, &len) < 0 ||
+                !mik__cbor_str_in_bounds(val, buf, len)) {
+                return JS_EXCEPTION;
+            }
             return JS_NewUint8ArrayCopy(ctx, buf, len);
         }
 
         case NANOCBOR_TYPE_TSTR: {
             const uint8_t* buf = nullptr;
             size_t len = 0;
-            if (nanocbor_get_tstr(val, &buf, &len) < 0) return JS_EXCEPTION;
+            if (nanocbor_get_tstr(val, &buf, &len) < 0 ||
+                !mik__cbor_str_in_bounds(val, buf, len)) {
+                return JS_EXCEPTION;
+            }
             return JS_NewStringLen(ctx, reinterpret_cast<const char*>(buf), len);
         }
 
@@ -250,7 +265,8 @@ JSValue mik__cbor_decode_value(JSContext* ctx, nanocbor_value_t* val, int depth)
                 }
                 const uint8_t* key_buf = nullptr;
                 size_t key_len = 0;
-                if (nanocbor_get_tstr(&map, &key_buf, &key_len) < 0) {
+                if (nanocbor_get_tstr(&map, &key_buf, &key_len) < 0 ||
+                    !mik__cbor_str_in_bounds(&map, key_buf, key_len)) {
                     JS_FreeValue(ctx, result);
                     return JS_EXCEPTION;
                 }
