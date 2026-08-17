@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.18.1 (2026-08-17)
+
+### Bug fixes
+
+- **firmware:** stop repeated TLS handshakes running out of memory ([#329](https://github.com/mikrojs/mikro/pull/329))
+- **native:** bound CBOR string spans against the buffer end ([#326](https://github.com/mikrojs/mikro/pull/326))
+- **native:** reject truncated CBOR containers ([#325](https://github.com/mikrojs/mikro/pull/325))
+- **native:** stop inspect leaving getter exceptions pending ([#323](https://github.com/mikrojs/mikro/pull/323))
+- **fs:** flush before fstat so File.stat sees unflushed writes ([#322](https://github.com/mikrojs/mikro/pull/322))
+- **native:** render symbol descriptions without leaving an exception ([#321](https://github.com/mikrojs/mikro/pull/321))
+- **native:** resolve relative imports from root-level main modules ([#320](https://github.com/mikrojs/mikro/pull/320))
+
+### Other
+
+- **repo:** add coverage:lib:open for browsing the html coverage report ([#328](https://github.com/mikrojs/mikro/pull/328))
+- **native:** add host test suite for the portable library ([#327](https://github.com/mikrojs/mikro/pull/327))
+- raise vitest timeouts for flaky tests under full-suite load ([#324](https://github.com/mikrojs/mikro/pull/324))
+- **native:** C++ coverage gate, OOM injection harness, sanitizer CI ([#319](https://github.com/mikrojs/mikro/pull/319))
+- drop vendored generic skills ([#318](https://github.com/mikrojs/mikro/pull/318))
+- improve writing, add ai disclosure ([#316](https://github.com/mikrojs/mikro/pull/316))
+
 ## 0.18.0 (2026-08-12)
 
 ### Breaking changes
