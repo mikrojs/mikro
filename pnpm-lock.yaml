@@ -203,6 +203,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/mikro
 
+  dev/tls-churn:
+    dependencies:
+      mikro:
+        specifier: workspace:*
+        version: link:../../packages/mikro
+
   docs:
     devDependencies:
       '@shikijs/vitepress-twoslash':
