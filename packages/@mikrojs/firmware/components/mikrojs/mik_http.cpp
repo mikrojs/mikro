@@ -162,10 +162,10 @@ static bool mik__task_cancelled(MIKHttpTaskArgs* args) {
  * fragmentation that is NOT a leak in this code — it's mbedTLS scatter-alloc
  * during handshake plus lwIP holding socket TCBs in TIME_WAIT for 2*MSL
  * (CONFIG_LWIP_TCP_MSL). Both reclaim over time; sysFree recovers after the
- * TIME_WAIT window. The UAF fix in commit [UAF fix] removed the real bug;
- * remaining drift is expected platform behavior, not worth chasing without
- * a broader evaluation of CONFIG_MBEDTLS_DYNAMIC_BUFFER, session tickets,
- * or moving to a custom esp-tls-direct HTTP implementation. */
+ * TIME_WAIT window. The UAF fix in commit [UAF fix] removed the real bug.
+ * CONFIG_MBEDTLS_DYNAMIC_BUFFER and a shorter MSL are now both in
+ * sdkconfig.defaults, and the RX buffer goes static post-handshake below.
+ * Still unexplored: session reuse, or an esp-tls-direct implementation. */
 static void mik__http_task(void* arg) {
     auto* args = static_cast<MIKHttpTaskArgs*>(arg);
 
@@ -188,6 +188,15 @@ static void mik__http_task(void* arg) {
     config.event_handler = mik__http_event_handler;
     config.user_data = &event_data;
     config.crt_bundle_attach = esp_crt_bundle_attach;
+#if CONFIG_MBEDTLS_DYNAMIC_BUFFER
+    // Stop the per-record RX alloc/free churn once the handshake is done.
+    // Costs a resident ~16.6 KB RX buffer for the life of the connection, so
+    // at MIK_HTTP_MAX_PENDING=4 concurrent requests pin ~66 KB. Serial
+    // check-ins (the case this targets) win; concurrent long-lived downloads
+    // lose. The switch can also fail with ESP_ERR_NO_MEM under pressure, which
+    // esp-tls reports as a handshake failure even though the handshake landed.
+    config.tls_dyn_buf_strategy = HTTP_TLS_DYN_BUF_RX_STATIC;
+#endif
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) {
