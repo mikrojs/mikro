@@ -65,8 +65,13 @@ const config = {
       // bundle-runtime.js + generate-symbol-map.js are invoked by CMake during
       // the firmware build (see @mikrojs/firmware/components/mikrojs/CMakeLists.txt
       // for the symbol-map invocation), not via JS imports — so knip can't
-      // see them and we declare them as entries explicitly.
-      entry: ['scripts/bundle-runtime.js', 'scripts/generate-symbol-map.js'],
+      // see them and we declare them as entries explicitly. gen-checkin-fixtures.js
+      // is the same: CMakeLists.txt runs it for the host test build.
+      entry: [
+        'scripts/bundle-runtime.js',
+        'scripts/generate-symbol-map.js',
+        'scripts/gen-checkin-fixtures.js',
+      ],
       ignore: ['runtime/**'],
       // node-addon-api, @mikrojs/quickjs: resolved by CMake/node-gyp, not by JS imports
       // terser, @swc/core: optional minifiers loaded dynamically in bundle-runtime.js
@@ -80,6 +85,9 @@ const config = {
     'packages/create-mikro/src/templates/**',
     // mikro.config.ts is discovered at runtime by the CLI, not imported
     '**/mikro.config.ts',
+    // config schemas are value-imported only by mikro.config.ts (ignored
+    // above) and type-imported by app code, so knip sees no consumer
+    'examples/*/app/ota.config.ts',
     // sim stubs are loaded dynamically by mikro sim dev, not imported
     '**/*.stub.ts',
   ],

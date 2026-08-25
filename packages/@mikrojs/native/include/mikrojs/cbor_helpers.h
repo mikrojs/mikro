@@ -22,3 +22,23 @@ int mik__cbor_encode_value(JSContext* ctx, nanocbor_encoder_t* enc, JSValue val,
  * Returns JS_EXCEPTION on error.
  */
 JSValue mik__cbor_decode_value(JSContext* ctx, nanocbor_value_t* val, int depth);
+
+/**
+ * Skip the value at the iterator, treating it as ONE item of the container the
+ * iterator is walking.
+ *
+ * nanocbor_skip() cannot be used directly for that: it walks a nested container
+ * on the same iterator and decrements `remaining` once per inner item, so
+ * skipping a container value underflows the outer container's count and every
+ * later key reads as "end of map". Lifting the count for the duration keeps the
+ * walk bounded by the buffer end, which is the bound that matters.
+ *
+ * Returns what nanocbor_skip() returned.
+ */
+static inline int mik__cbor_skip_value(nanocbor_value_t* it) {
+    uint64_t remaining = it->remaining;
+    it->remaining = UINT64_MAX;
+    int res = nanocbor_skip(it);
+    it->remaining = remaining > 0 ? remaining - 1 : 0;
+    return res;
+}

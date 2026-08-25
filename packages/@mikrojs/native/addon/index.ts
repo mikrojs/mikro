@@ -156,6 +156,28 @@ export function jsonToBjson(json: string): Buffer {
   return bindings.jsonToBjson(json)
 }
 
+/** An update offer, as the device validates it. */
+export interface ParsedOffer {
+  url: string
+  checksum: string
+  size: number
+}
+
+/**
+ * Validate a check-in response body into an offer, using the device's own
+ * validator (src/mik_ota_client.cpp). Returns undefined when there is no usable
+ * offer — which includes the registry's "nothing newer" answer.
+ *
+ * Exposed so the check-in wire can be tested against the implementation that
+ * actually runs on a device, rather than a second one written for the test.
+ */
+export function parseOffer(
+  body: unknown,
+  options?: {allowInsecure?: boolean},
+): ParsedOffer | undefined {
+  return bindings.parseOffer(body, options) as ParsedOffer | undefined
+}
+
 /** Compile a JS module to QuickJS bytecode. External imports must be declared to avoid resolution errors. */
 export function compileBytecode(source: string, moduleName: string, externals?: string[]): Buffer {
   return bindings.compileBytecode(source, moduleName, externals)

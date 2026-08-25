@@ -10,6 +10,7 @@ import {lastValueFrom, tap} from 'rxjs'
 
 import {agentEmit, agentError, agentResult, isAgentMode} from '../../lib/agent.js'
 import {build} from '../../lib/build.js'
+import {writeDevManifest} from '../../lib/configSchema.js'
 import {collectFiles, loadEnvFiles} from '../../lib/deploy.js'
 import {formatDeployEvent} from '../../lib/deployProgress.js'
 import {openSim} from '../../lib/openSim.js'
@@ -90,6 +91,9 @@ export async function run(config: RunConfig): Promise<void> {
       {defaultValue: undefined},
     )
 
+    // Same as `mikro deploy`/`mikro dev`: the manifest rides the file sync, so
+    // ota.config() reads the same defaults in the simulator.
+    await writeDevManifest({projectRoot: resolveProjectRoot(), buildDir})
     const files = await collectFiles(buildDir)
     const totalBytes = files.reduce((sum, f) => sum + f.data.length, 0)
     log(`Built ${files.length} file(s), ${totalBytes} bytes total`)

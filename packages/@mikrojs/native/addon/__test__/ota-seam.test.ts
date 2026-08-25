@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto'
 import {createRegistry, memoryStorage} from '@mikrojs/registry'
 import {describe, expect, it, vi} from 'vitest'
 
-import {parseOffer} from '../../runtime/ota/policy.js'
+import {parseOffer} from '../index.js'
 
 // The two halves of the check-in protocol meet on the wire: the reference
 // registry (`@mikrojs/registry`, `handleCheckin`) assembles a response, and the

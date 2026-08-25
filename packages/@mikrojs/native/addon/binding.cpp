@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "mikrojs/ota_client.h"
 #include "runtime_wrap.h"
 
 /**
@@ -166,10 +167,66 @@ static Napi::Value CompileBytecode(const Napi::CallbackInfo& info) {
     return result;
 }
 
+/* parseOffer(body, {allowInsecure}) -> Offer | undefined
+ *
+ * The device's real offer validator, reachable from Node. Exposed so the
+ * check-in wire can be tested against the implementation that actually runs on
+ * a device rather than a second one written for the test — the point of that
+ * test being that both sides' unit tests stay green while the wire between them
+ * breaks. */
+Napi::Value ParseOffer(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "parseOffer(body) requires a body").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    bool allow_insecure = false;
+    if (info.Length() > 1 && info[1].IsObject()) {
+        Napi::Value flag = info[1].As<Napi::Object>().Get("allowInsecure");
+        allow_insecure = flag.IsBoolean() && flag.As<Napi::Boolean>().Value();
+    }
+
+    /* The validator reads a JS object, so the body crosses through JSON into a
+     * throwaway QuickJS context rather than being rebuilt field by field. */
+    Napi::Object json = env.Global().Get("JSON").As<Napi::Object>();
+    Napi::Function stringify = json.Get("stringify").As<Napi::Function>();
+    Napi::Value encoded = stringify.Call(json, {info[0]});
+    std::string text = encoded.IsString() ? encoded.As<Napi::String>().Utf8Value() : "null";
+
+    JSRuntime* rt = JS_NewRuntime();
+    if (!rt) {
+        Napi::Error::New(env, "Failed to create QuickJS runtime").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    JSContext* ctx = JS_NewContext(rt);
+    if (!ctx) {
+        JS_FreeRuntime(rt);
+        Napi::Error::New(env, "Failed to create QuickJS context").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    JSValue body = JS_ParseJSON(ctx, text.c_str(), text.size(), "<checkin>");
+    mikrojs::MIKOtaOffer offer;
+    bool ok = !JS_IsException(body) &&
+              mikrojs::mik__ota_parse_offer_js(ctx, body, allow_insecure, &offer);
+    if (JS_IsException(body)) JS_FreeValue(ctx, JS_GetException(ctx));
+    JS_FreeValue(ctx, body);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+
+    if (!ok) return env.Undefined();
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("url", Napi::String::New(env, offer.url));
+    result.Set("checksum", Napi::String::New(env, offer.checksum));
+    result.Set("size", Napi::Number::New(env, static_cast<double>(offer.size)));
+    return result;
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     RuntimeWrap::Init(env, exports);
     exports.Set("jsonToBjson", Napi::Function::New(env, JsonToBjson));
     exports.Set("compileBytecode", Napi::Function::New(env, CompileBytecode));
+    exports.Set("parseOffer", Napi::Function::New(env, ParseOffer));
     return exports;
 }
 

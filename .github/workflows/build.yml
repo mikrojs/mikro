@@ -54,6 +54,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The test build generates check-in wire fixtures from
+      # @mikrojs/registry, which it imports from that package's built dist.
+      - run: pnpm build:ts
+
       - run: cmake -B packages/@mikrojs/native/build packages/@mikrojs/native -DBUILD_TESTING=ON
       - run: cmake --build packages/@mikrojs/native/build
       - run: ctest --test-dir packages/@mikrojs/native/build --output-on-failure
@@ -74,6 +78,10 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # The test build generates check-in wire fixtures from
+      # @mikrojs/registry, which it imports from that package's built dist.
+      - run: pnpm build:ts
 
       - run: >
           cmake -B packages/@mikrojs/native/build-asan packages/@mikrojs/native
@@ -104,6 +112,10 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # The test build generates check-in wire fixtures from
+      # @mikrojs/registry, which it imports from that package's built dist.
+      - run: pnpm build:ts
 
       - run: pip install gcovr
 

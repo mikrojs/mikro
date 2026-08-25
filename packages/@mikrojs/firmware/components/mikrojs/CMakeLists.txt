@@ -69,6 +69,7 @@ idf_component_register(
     "${MIK_SRC_DIR}/mik_sys.cpp"
     "${MIK_SRC_DIR}/mik_text_encoding.cpp"
     "${MIK_SRC_DIR}/mik_cbor.cpp"
+    "${MIK_SRC_DIR}/mik_sys_codec.cpp"
     "${MIK_SRC_DIR}/mik_result.cpp"
     "${MIK_SRC_DIR}/mik_udp.cpp"
     "${MIK_SRC_DIR}/mik_observable.cpp"
@@ -97,6 +98,15 @@ idf_component_register(
     "mik_pwm.cpp"
     "mik_nvs_kv.cpp"
     "mik_ota.cpp"
+    # The OTA check-in client and config reader: policy, state machine and slot
+    # store in the portable library, platform seam and JS surface here.
+    "${MIK_SRC_DIR}/mik_ota_policy.cpp"
+    "${MIK_SRC_DIR}/mik_ota_slots.cpp"
+    "${MIK_SRC_DIR}/mik_ota_config.cpp"
+    "${MIK_SRC_DIR}/mik_ota_js_hooks.cpp"
+    "${MIK_SRC_DIR}/mik_ota_client.cpp"
+    "mik_ota_env.cpp"
+    "mik_ota_client_module.cpp"
     "mik_recovery.cpp"
     "mik_rtc.cpp"
     "mik_serial_io.cpp"
@@ -182,7 +192,8 @@ include("${MIK_BYTECODE_CMAKE}")
 
 # Force linker to include self-registering native modules
 set(_MIK_MODULES cbor pin i2c i2s spi http http_server wifi rtc nvs_kv sntp sleep neopixel pwm uart ota)
-set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/helpers http/request http/server i2c i2s kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi)
+list(APPEND _MIK_MODULES ota_client)
+set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/helpers http/request http/server i2c i2s kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi)
 if(CONFIG_BT_ENABLED)
     list(APPEND _MIK_MODULES ble)
     list(APPEND _MIK_BYTECODE_MODULES ble)

@@ -223,26 +223,47 @@ bool mik__handle_config_command(MIKReplTransport* transport, uint8_t cmd_type,
             uint16_t val_len = vl[0] | (vl[1] << 8);
             consumed += 2;
 
-            char value[512];
-            if (val_len >= sizeof(value) || consumed + (uint32_t)val_len > payload_len) {
+            /* Sized to carry a 4 KiB config document plus its {version, doc}
+             * envelope (a config seed is the largest value this path sees);
+             * mirrored as KV_VALUE_MAX_BYTES in the CLI/sim protocol — keep
+             * the two in sync. Heap, not stack: the value and its CBOR blob
+             * together would not fit a task stack. */
+            constexpr uint32_t kValueMax = 4608;
+            if (val_len >= kValueMax || consumed + (uint32_t)val_len > payload_len) {
                 mik__proto_drain(transport, payload_len - consumed);
                 mik__proto_send_err(transport, "value too long");
                 return true;
             }
-            if (!mik__proto_read_exact(transport, value, val_len)) return false;
+            char* value = (char*)malloc((size_t)val_len + 1);
+            uint8_t* blob = (uint8_t*)malloc((size_t)val_len + 8);
+            if (value == NULL || blob == NULL) {
+                free(value);
+                free(blob);
+                mik__proto_drain(transport, payload_len - consumed);
+                mik__proto_send_err(transport, "out of memory");
+                return true;
+            }
+            if (!mik__proto_read_exact(transport, value, val_len)) {
+                free(value);
+                free(blob);
+                return false;
+            }
             value[val_len] = '\0';
             consumed += val_len;
             if (payload_len > consumed) mik__proto_drain(transport, payload_len - consumed);
 
             if (key_len == 0 || key_len > 15) {
+                free(value);
+                free(blob);
                 mik__proto_send_err(transport, "key exceeds NVS 15-char limit");
                 return true;
             }
 
             nanocbor_encoder_t enc;
-            uint8_t blob[sizeof(value) + 4];
-            nanocbor_encoder_init(&enc, blob, sizeof(blob));
+            nanocbor_encoder_init(&enc, blob, (size_t)val_len + 8);
             if (nanocbor_put_tstrn(&enc, value, val_len) < 0) {
+                free(value);
+                free(blob);
                 mik__proto_send_err(transport, "cbor encode failed");
                 return true;
             }
@@ -255,6 +276,8 @@ bool mik__handle_config_command(MIKReplTransport* transport, uint8_t cmd_type,
                 if (err == ESP_OK) err = nvs_commit(handle);
                 nvs_close(handle);
             }
+            free(value);
+            free(blob);
             if (err == ESP_OK) {
                 mik__proto_send_ok(transport);
             } else {

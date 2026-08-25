@@ -217,21 +217,21 @@ describe('delete()', () => {
 })
 
 describe('onReadError', () => {
-  it('without schema, error is KVError', () => {
+  it('without schema, error is KVError or a raw thrown Error', () => {
     rtcStorage.createValue('key', {
       onReadError: (error) => {
-        assertType<KVError>(error)
+        assertType<KVError | Error>(error)
         return undefined
       },
     })
   })
 
-  it('with schema, error is KVError | SchemaError', () => {
+  it('with schema, error is KVError | SchemaError | Error', () => {
     rtcStorage.createValue('key', {
       schema: object({temp: number()}),
       initialValue: {temp: 0},
       onReadError: (error) => {
-        assertType<KVError | SchemaError>(error)
+        assertType<KVError | SchemaError | Error>(error)
         return {temp: 0}
       },
     })

@@ -403,9 +403,10 @@ describe('schema', () => {
 
     it('replaces wholesale nodes without filling inside them', () => {
       const schema = object({
-        items: array(object({name: string(), size: number({default: 1})})),
+        items: array(object({name: string(), size: number()}), {default: [{name: 'a', size: 1}]}),
       })
-      // element defaults are form hints; a present array is taken verbatim
+      // a present array is taken verbatim: the whole-value default is replaced,
+      // never merged into the elements
       expect(applyDefaults(schema, {items: [{name: 'a'}]})).toEqual({items: [{name: 'a'}]})
       const parsed = parse(schema, applyDefaults(schema, {items: [{name: 'a'}]}))
       expect(parsed.ok).toBe(false)

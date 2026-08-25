@@ -16,8 +16,9 @@ export default [
       'packages/@mikrojs/analyze-imports/test/**',
       'packages/@mikrojs/firmware/index.d.ts',
       '**/dist/**',
-      '**/build/**',
-      '**/build-test/**',
+      // Any CMake build directory: `-B <dir>` is the normal way to keep a
+      // second configuration around, and they all hold generated bundles.
+      '**/build*/**',
       '**/.mikro/**',
       '**/node_modules/**',
       'packages/create-mikro/src/templates/**',

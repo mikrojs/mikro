@@ -1,3 +1,5 @@
+import type {Schema as MikroSchema} from '@mikrojs/native/runtime/schema/types'
+
 export type WifiCountryCode =
   | 'AT'
   | 'AU'
@@ -140,6 +142,14 @@ export interface MikroJSConfig {
   /** Behavior after an uncaught exception. Default:
    * `{mode: 'restart', delay: 1000}`. */
   onPanic?: MikroJSPanicAction
+  /** The app's OTA config schema, built with `mikro/schema`. Serialized into
+   * `mikro.app.json` at `mikro ota pack` and sent to the registry at push, so
+   * a registry can render a config form and validate what it serves. Import
+   * it from app source (`import {ConfigSchema} from './src/config.js'`) so
+   * the app's `ota.config()` reads are typed by the same definition; the
+   * schema itself never enters the app bundle. Must be an `object()` without
+   * `unknown()` or `optional()` around objects/arrays. */
+  otaConfigSchema?: MikroSchema
   stackSize?: number
   memReserved?: number
   /** Maximum size in bytes for a single readFile() call. Files larger than

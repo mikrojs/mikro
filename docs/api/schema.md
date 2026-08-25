@@ -120,7 +120,7 @@ Missing required fields cause a validation error. To make a field optional, wrap
 
 ### optional(schema)
 
-Marks an object field as optional. The key may be absent from the object. If the key is present, its value must match the inner schema — except `undefined`, which reads the same as an absent key (JSON and CBOR cannot represent it, so the two cases are indistinguishable after a round trip anyway).
+Marks an object field as optional. The key may be absent from the object. If the key is present, its value must match the inner schema, except `undefined`, which reads the same as an absent key (JSON and CBOR cannot represent it, so the two cases are indistinguishable after a round trip anyway).
 
 ```ts twoslash
 import {object, string, optional} from 'mikro/schema'
@@ -154,7 +154,7 @@ import {union, string, number} from 'mikro/schema'
 union([string(), number()]) // string | number
 ```
 
-When no member matches, the error reports "value did not match any union member".
+When no member matches, the error reports "value did not match any union member". A union with no members matches nothing at all, so the config-schema check the CLI and the registry run rejects an empty one outright.
 
 ### taggedUnion(key, branches)
 
@@ -190,9 +190,29 @@ object({
 
 ### default
 
-Available on every node except `object()` (objects are structure; their fields carry the defaults) and `unknown()`. The default must itself match the node; a mismatch throws a `TypeError` where the schema is written. `optional()` and `default` are mutually exclusive, since both define what absence means.
+Available on every node except `object()` (objects are structure; their fields carry the defaults), `unknown()` and `optional()`. The default must itself match the node; a mismatch throws a `TypeError` where the schema is written. `optional()` and `default` are mutually exclusive, since both define what absence means.
 
-`parse()` ignores defaults entirely: it validates, nothing else. Defaults take effect through [`applyDefaults`](#applydefaults), which builds the effective value for a partial input. This is what device config uses: the [OTA registry](/registry-spec) stores only deviations from the defaults, merges and validates on every serve, and the device receives one complete document.
+Defaults come in two tiers, matching how [`applyDefaults`](#applydefaults) builds a value:
+
+- **Plain objects compose.** An object materializes field by field, so its fields carry the defaults. Passing a default to `object()` itself throws a `TypeError`.
+- **Arrays, tuples and unions (tagged or plain) are wholesale.** A present value replaces the node whole, so a default on one of them is a complete value or nothing. A union has nothing to compose from anyway: no rule can pick a member.
+
+A default written anywhere below a wholesale unit would never fill anything, so it throws a `TypeError` where it is written:
+
+```ts twoslash
+import {number, object, taggedUnion} from 'mikro/schema'
+// ---cut---
+// throws: a default under a taggedUnion never applies; give the union itself a
+// whole-value default instead (found at .a.x)
+taggedUnion('kind', {a: object({x: number({default: 1})})})
+
+// the supported form: one whole value on the unit
+taggedUnion('kind', {a: object({x: number()})}, {default: {kind: 'a', x: 1}})
+```
+
+The rule holds through nested objects and `optional()`, and it rejects a nested unit's own whole-value default too, since that one never applies either.
+
+`parse()` ignores defaults entirely: it validates, nothing else. Defaults take effect through [`applyDefaults`](#applydefaults), which builds the effective value for a partial input. This is what device config uses: the [OTA registry](/registry-spec) validates the effective config on every serve and sends the deviation overlay, which the device spreads over its own manifest defaults.
 
 Annotations serialize with the schema (`JSON.stringify` of a schema node is its wire form), and consumers ignore annotation properties they don't recognize.
 
@@ -221,7 +241,7 @@ Validation is fail-fast: it stops at the first error.
 
 ### applyDefaults(schema, value) {#applydefaults}
 
-Builds the effective value for a partial input: schema defaults with `value` layered over them. Objects always materialize, recursing per field and dropping keys the schema doesn't know. Every other node is replaced wholesale by a present value, so a default inside an array element or union branch fills nothing; it's a hint for form-rendering tools. An absent array reads as its default, or `[]` without one.
+Builds the effective value for a partial input: schema defaults with `value` layered over them. Objects materialize, recursing per field and dropping keys the schema doesn't know (a present value that is not an object passes through untouched, so `parse()` still reports it). Every other node is replaced wholesale by a present value, which is why only a whole-value default on a unit applies (a default written below one is [rejected where it is written](#default)). An absent array reads as its default, or `[]` without one.
 
 ```ts twoslash
 import {applyDefaults, number, object, string} from 'mikro/schema'
@@ -279,6 +299,27 @@ type Device = Infer<typeof Device>
 
 This is purely a compile-time operation. No runtime cost.
 
+### InferRead: the read type
+
+`Infer<S>` is the write type: everything an operator has to supply for a document to validate. `InferRead<S>` is the read type, what a document rebuilt from defaults can hand back, so a field defaults cannot fill is optional there. This is the shape device config is read as:
+
+```ts twoslash
+import {number, object, string} from 'mikro/schema'
+import type {Infer, InferRead} from 'mikro/schema'
+// ---cut---
+const Config = object({
+  interval: number({default: 60}),
+  apiKey: string(),
+})
+
+type Write = Infer<typeof Config>
+//   ^?
+type Read = InferRead<typeof Config>
+//   ^?
+```
+
+A field stays required in the read type when the materialized defaults always contain it: any node carrying a default, or a plain object whose fields all fill (or are `optional()`), which `InferRead` recurses into. The rest read as optional: a defaultless leaf, a defaultless array, a wholesale unit with no whole-value default, and a plain object with any unfillable field, which is omitted whole. `optional()` fields are optional in both types.
+
 ## Types
 
 ### Schema
@@ -295,6 +336,7 @@ type Schema =
   | ArraySchema
   | ObjectSchema
   | OptionalSchema
+  | TupleSchema
   | UnionSchema
   | TaggedUnionSchema
 ```

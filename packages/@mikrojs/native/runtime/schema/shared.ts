@@ -4,7 +4,7 @@
  * overlay. Imports core.ts only, so hosts load it without resolving mikro/*
  * builtins; results are plain {ok} shapes for the same reason. */
 
-import {applyDefaults, type Schema, SchemaError, validate} from './core.js'
+import {applyDefaults, type ObjectSchema, type Schema, SchemaError, validate} from './core.js'
 
 export type SchemaCheck<T> = {ok: true; value: T} | {ok: false; error: SchemaError}
 
@@ -54,6 +54,49 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/* A default below a wholesale unit never applies: applyDefaults replaces the
+ * unit whole, so only the unit's own whole-value default fills anything. The
+ * constructors reject it where it is written (core.ts, rejectInnerDefaults);
+ * a schema that arrived as JSON ran none of them, so the same rule is enforced
+ * here. The whole subtree is walked, not just the plain-object path, because
+ * nothing checked a nested unit's contents on the way in. Structure is already
+ * validated by `walk`, so a non-node here is left for it to report. */
+function rejectInnerDefaults(
+  value: unknown,
+  path: string,
+  unit: string,
+  self: string,
+): ReturnType<typeof fail> | null {
+  if (!isPlainObject(value)) return null
+  if (value.default !== undefined) {
+    return fail(
+      `a default under ${unit} never applies; give ${self} itself a whole-value default instead`,
+      path,
+    )
+  }
+  const children: [unknown, string][] = []
+  for (const key of ['shape', 'branches'] as const) {
+    const map = value[key]
+    if (isPlainObject(map)) {
+      for (const name of Object.keys(map)) children.push([map[name], `${path}.${name}`])
+    }
+  }
+  for (const key of ['element', 'inner'] as const) {
+    if (value[key] !== undefined) children.push([value[key], path])
+  }
+  for (const key of ['elements', 'members'] as const) {
+    const items = value[key]
+    if (Array.isArray(items)) {
+      for (let i = 0; i < items.length; i++) children.push([items[i], `${path}[${i}]`])
+    }
+  }
+  for (const [child, childPath] of children) {
+    const result = rejectInnerDefaults(child, childPath, unit, self)
+    if (result !== null) return result
+  }
+  return null
+}
+
 function walk(value: unknown, path: string, depth: number): ReturnType<typeof fail> | null {
   if (depth > MAX_DEPTH) return fail(`nesting deeper than ${MAX_DEPTH} levels`, path)
   if (!isPlainObject(value)) return fail('expected a schema node', path)
@@ -75,6 +118,8 @@ function walk(value: unknown, path: string, depth: number): ReturnType<typeof fa
     case 'array': {
       const result = walk(node.element, `${path}.element`, depth + 1)
       if (result !== null) return result
+      const inner = rejectInnerDefaults(node.element, `${path}.element`, 'an array', 'the array')
+      if (inner !== null) return inner
       break
     }
     case 'object': {
@@ -117,6 +162,9 @@ function walk(value: unknown, path: string, depth: number): ReturnType<typeof fa
       for (let i = 0; i < items.length; i++) {
         const result = walk(items[i], `${path}[${i}]`, depth + 1)
         if (result !== null) return result
+        const unit = kind === 'tuple' ? 'a tuple' : 'a union'
+        const inner = rejectInnerDefaults(items[i], `${path}[${i}]`, unit, `the ${kind}`)
+        if (inner !== null) return inner
       }
       break
     }
@@ -135,6 +183,8 @@ function walk(value: unknown, path: string, depth: number): ReturnType<typeof fa
         }
         const result = walk(branch, `${path}.${tag}`, depth + 1)
         if (result !== null) return result
+        const inner = rejectInnerDefaults(branch, `${path}.${tag}`, 'a taggedUnion', 'the union')
+        if (inner !== null) return inner
       }
       break
     }
@@ -242,6 +292,48 @@ export function parseEffective(schema: Schema, overlay: unknown): SchemaCheck<un
   const effective = applyDefaults(schema, overlay)
   const result = validate(schema, effective, '')
   return result !== null ? result : {ok: true, value: effective}
+}
+
+/**
+ * The partial defaults a schema materializes with no overrides: every field a
+ * default covers, and nothing else. Unlike parseEffective it never fails on a
+ * required defaultless field, it omits it. This is what pack bakes into the
+ * manifest and what a device reads when it holds no served document.
+ *
+ * Plain objects compose, so a nested one is included only when defaults fill
+ * it completely: a half-filled object would not validate, and the read type
+ * makes that field optional anyway. Wholesale units (array, tuple, union,
+ * taggedUnion) need a whole-value default on the node itself, matching
+ * applyDefaults, where a default inside an element or branch is a form hint.
+ * Optional fields rest on absence, so they are omitted too.
+ */
+export function materializeDefaults(schema: Schema): Record<string, unknown> {
+  return schema.kind === 'object' ? fillObject(schema).value : {}
+}
+
+/** What defaults cover in an object shape. `complete` (every field covered or
+ *  optional) is what makes a NESTED object safe to include. */
+function fillObject(node: ObjectSchema): {value: Record<string, unknown>; complete: boolean} {
+  const out: Record<string, unknown> = {}
+  let complete = true
+  for (const key of Object.keys(node.shape)) {
+    const field = node.shape[key]!
+    if (field.kind === 'optional') continue
+    const filled = fillField(field)
+    if (filled === undefined) complete = false
+    else out[key] = filled.value
+  }
+  return {value: out, complete}
+}
+
+/** The value defaults give one field, or undefined when nothing covers it. */
+function fillField(node: Schema): {value: unknown} | undefined {
+  if (node.kind === 'object') {
+    const filled = fillObject(node)
+    return filled.complete ? {value: filled.value} : undefined
+  }
+  const fallback = (node as {default?: unknown}).default
+  return fallback === undefined ? undefined : {value: fallback}
 }
 
 /** A node with its annotations removed, recursively, so two schemas can be

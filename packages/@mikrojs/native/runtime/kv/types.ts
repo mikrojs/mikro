@@ -64,7 +64,7 @@ export type KVOptions<S> =
       /** Called when reading stored data fails (decode error, schema mismatch).
        *  On decode failure, corrupt data is deleted. On schema mismatch, stored data is kept.
        *  Return a fallback value, or undefined. Default: `() => undefined`. */
-      onReadError: (error: KVError | SchemaError) => Infer<S>
+      onReadError: (error: KVError | SchemaError | Error) => Infer<S>
     }
   | {
       schema: OptionalSchema
@@ -72,7 +72,7 @@ export type KVOptions<S> =
       /** Called when reading stored data fails (decode error, schema mismatch).
        *  On decode failure, corrupt data is deleted. On schema mismatch, stored data is kept.
        *  Return a fallback value, or undefined. Default: `() => undefined`. */
-      onReadError?: (error: KVError | SchemaError) => Infer<S>
+      onReadError?: (error: KVError | SchemaError | Error) => Infer<S>
     }
   | {
       schema?: never
@@ -80,7 +80,7 @@ export type KVOptions<S> =
       /** Called when reading stored data fails (decode error, schema mismatch).
        *  On decode failure, corrupt data is deleted. On schema mismatch, stored data is kept.
        *  Return a fallback value, or undefined. Default: `() => undefined`. */
-      onReadError: (error: KVError) => unknown
+      onReadError: (error: KVError | Error) => unknown
     }
   | {
       schema?: never
@@ -88,7 +88,7 @@ export type KVOptions<S> =
       /** Called when reading stored data fails (decode error, schema mismatch).
        *  On decode failure, corrupt data is deleted. On schema mismatch, stored data is kept.
        *  Return a fallback value, or undefined. Default: `() => undefined`. */
-      onReadError?: (error: KVError) => unknown
+      onReadError?: (error: KVError | Error) => unknown
     }
 
 export interface KVValue<T> {

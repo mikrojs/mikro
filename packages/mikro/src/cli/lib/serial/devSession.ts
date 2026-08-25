@@ -22,6 +22,7 @@ import {exhaustMapWithTrailing} from 'rxjs-exhaustmap-with-trailing'
 
 import type {LogLevel, Minifier, MinifyLevel} from '../../../_exports/index.js'
 import {build} from '../build.js'
+import {writeDevManifest} from '../configSchema.js'
 import {collectFiles, loadEnvFiles, validateNvsKeys} from '../deploy.js'
 import {formatDeployEvent} from '../deployProgress.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
@@ -190,6 +191,8 @@ export function createDevSession(options: {
 
       // Deploy phase
       defer(async () => {
+        // The manifest (for ota.config()'s defaults) rides the file sync.
+        await writeDevManifest({projectRoot, buildDir})
         const files = await collectFiles(buildDir)
         const envVars = [
           {key: 'MIKRO_ENV', value: mode, secret: false},

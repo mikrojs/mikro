@@ -1,3 +1,11 @@
+import {applyDefaults, type Schema} from '@mikrojs/native/runtime/schema/core'
+import {
+  deriveOverlay,
+  diffConfigSchemas,
+  parseConfigSchema,
+  parseEffective,
+  structuralEquals,
+} from '@mikrojs/native/runtime/schema/shared'
 import semver from 'semver'
 
 import {decodeCbor} from './cbor.js'
@@ -30,6 +38,25 @@ import {
 } from './util.js'
 
 const CHECKSUM_RE = /^[0-9a-f]{64}$/
+
+/** Both config caps are byte caps — the device parses the overlay out of a
+ *  fixed response buffer — so they are measured on encoded UTF-8, not on
+ *  string length, which undercounts non-Latin text by up to 3x. */
+const UTF8 = new TextEncoder()
+
+/** Publish cap on the serialized config schema (spec, "The config schema"). */
+const MAX_CONFIG_SCHEMA_BYTES = 16 * 1024
+/** Cap on the encoded EFFECTIVE config document: the device materializes it
+ *  by spreading the served overlay over its manifest defaults, and it is what
+ *  its JS heap then holds (spec, "Serving safely"). Enforced where the
+ *  effective document is computed: at PUT, and again per serve, since the
+ *  same stored overlay serves every release the device might run. The served
+ *  overlay needs no cap of its own: it is a subset of the effective
+ *  document's top-level entries, so this bound covers it. */
+const MAX_CONFIG_DOC_BYTES = 4 * 1024
+const MAX_CONFIG_REV_LENGTH = 64
+const MAX_CONFIG_MESSAGE_LENGTH = 256
+const MAX_CONFIG_PATH_LENGTH = 64
 
 const LOGIN_SESSION_TTL_MS = 10 * 60 * 1000
 /** Live browser logins held at once. Creating one is unauthenticated, so
@@ -66,6 +93,14 @@ const MAX_APPROVE_BUCKETS = 10_000
  *  before anything can validate it. Publish is exempt: it carries a build, and
  *  the host adapter caps that one. Generous next to a session or approve form. */
 const MAX_LOGIN_BODY_BYTES = 64 * 1024
+
+/** Ceiling for the authenticated JSON/CBOR routes (enroll, release, the config
+ *  PUT, and check-in). They buffer a body before anything can validate it, and
+ *  only the `serve` adapter caps that: a bare `{fetch}` export deployed to
+ *  another host has no ceiling of its own. Generous next to what any of them
+ *  legitimately carries: a check-in report is a few hundred bytes, and config
+ *  values are bounded by the 4 KiB effective-document cap plus its envelope. */
+const MAX_BODY_BYTES = 16 * 1024
 
 /** Caps on device-reported strings; a device must not be able to grow its own
  *  record without bound. Generous next to real values. */
@@ -176,6 +211,28 @@ export function createRegistry(options: RegistryOptions): Registry {
     }
   }
 
+  /** Token writes run one at a time, so a revocation cannot be undone by a
+   *  `lastUsedAt` refresh that read the record before the delete landed and
+   *  writes it back afterwards, expiry and all. Its own queue, not the device
+   *  one: the device handlers call grantFor from inside that queue, so sharing
+   *  a queue would deadlock. Single-process only, like the login flow. */
+  let tokenWriteQueue: Promise<unknown> = Promise.resolve()
+  function serializeTokenWrite<T>(run: () => Promise<T>): Promise<T> {
+    const next = tokenWriteQueue.then(run, run)
+    tokenWriteQueue = next.catch(() => undefined)
+    return next
+  }
+
+  /** Refresh a token's `lastUsedAt`, unless it was revoked in the meantime:
+   *  re-read inside the queue and write only what is still there. */
+  function touchToken(tokenHash: string, now: number): Promise<void> {
+    return serializeTokenWrite(async () => {
+      const current = await storage.getTokenByHash(tokenHash)
+      if (current === undefined) return
+      await storage.putToken({...current, lastUsedAt: new Date(now).toISOString()})
+    })
+  }
+
   async function grantFor(request: Request): Promise<Grant | undefined> {
     if (options.verifyAdmin) {
       return (await options.verifyAdmin(request)) ? {admin: true} : undefined
@@ -197,7 +254,7 @@ export function createRegistry(options: RegistryOptions): Registry {
       if (!Number.isFinite(expiresAt) || expiresAt <= now) return undefined
       const lastUsedAt = Date.parse(minted.lastUsedAt ?? '')
       if (!Number.isFinite(lastUsedAt) || now - lastUsedAt >= TOKEN_USE_WRITE_INTERVAL_MS) {
-        await storage.putToken({...minted, lastUsedAt: new Date(now).toISOString()})
+        await touchToken(minted.tokenHash, now)
       }
       return minted.app === undefined ? {admin: false} : {app: minted.app, admin: false}
     }
@@ -392,6 +449,45 @@ export function createRegistry(options: RegistryOptions): Registry {
     if (!Number.isInteger(bytecodeVersion)) return error('Invalid bytecodeVersion', 400)
     if (!(file instanceof Blob)) return error('Missing build file', 400)
 
+    // The app's config schema, when it declares one. Rejected here, at
+    // publish, rather than stored and failed at serve time: this is where the
+    // author can still rename a field or add a default (spec, "The config
+    // schema").
+    const configSchemaText = text('configSchema')
+    let configSchema: Schema | undefined
+    if (configSchemaText !== undefined) {
+      if (UTF8.encode(configSchemaText).byteLength > MAX_CONFIG_SCHEMA_BYTES) {
+        return error(`configSchema must be at most ${MAX_CONFIG_SCHEMA_BYTES} bytes`, 400)
+      }
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(configSchemaText)
+      } catch {
+        return error('configSchema must be JSON', 400)
+      }
+      const checked = parseConfigSchema(parsed)
+      if (!checked.ok) {
+        const where = checked.error.path === '' ? '' : ` at ${checked.error.path}`
+        return error(`Invalid configSchema${where}: ${checked.error.message}`, 400)
+      }
+      configSchema = checked.value
+      // Defaults alone over the served-document cap means nothing could ever
+      // be served for this release: every authored config would be rejected
+      // and rule 5 would pause every rollout, discovered one device at a
+      // time. Reject at publish, where the schema author can trim.
+      const defaults = parseEffective(configSchema, undefined)
+      if (defaults.ok) {
+        const bytes = UTF8.encode(JSON.stringify(defaults.value)).byteLength
+        if (bytes > MAX_CONFIG_DOC_BYTES) {
+          return error(
+            `configSchema defaults alone encode to ${bytes} bytes, over the ` +
+              `${MAX_CONFIG_DOC_BYTES}-byte served-document cap`,
+            400,
+          )
+        }
+      }
+    }
+
     // Release immutability: same (app, version, firmwareRange) with the
     // same checksum is an idempotent success (CI retry-safe); a different
     // checksum is a conflict, so bump the version instead. The range, not the
@@ -407,6 +503,19 @@ export function createRegistry(options: RegistryOptions): Registry {
     const owned = builds.find((b) => b.checksum === checksum && b.app !== app)
     if (owned !== undefined) {
       return error(`This build is already published under ${owned.app}`, 409)
+    }
+
+    // The schema belongs to the release, not the build: every variant of
+    // (app, version) is packed from the same source, so a differing schema is
+    // a conflict exactly like a differing checksum. An absent field on a later
+    // variant (an older CLI) asserts nothing and keeps the stored one.
+    const storedSchema = await storage.getConfigSchema(app, version)
+    if (
+      configSchema !== undefined &&
+      storedSchema !== undefined &&
+      !structuralEquals(storedSchema.schema, configSchema)
+    ) {
+      return error(`Release ${app}@${version} already exists with a different config schema`, 409)
     }
 
     // Store the build without serving it. A build is only served once a channel
@@ -464,11 +573,25 @@ export function createRegistry(options: RegistryOptions): Registry {
       created = true
     }
 
+    // Advisory (spec, "Schema changes between releases"): diff a newly stored
+    // schema against the app's latest prior release and tell the publisher in
+    // the response, while a rename or a new default is still cheap.
+    const warnings: string[] = []
+    if (configSchema !== undefined && storedSchema === undefined) {
+      const previous = await latestConfigSchema(app, version)
+      if (previous !== undefined) warnings.push(...diffConfigSchemas(previous, configSchema))
+      // Written on the first publish of the release and never rewritten.
+      await storage.putConfigSchema({app, version, schema: configSchema})
+    }
+
     // Serve it only when a channel is named. main promotes the build record; a
     // named channel gets a pointer.
-    if (channel !== undefined) await pointChannel(record, channel)
+    if (channel !== undefined) {
+      await pointChannel(record, channel)
+      warnings.push(...(await configCompatWarnings(app, channel, version)))
+    }
 
-    return json({ok: true}, created ? 201 : 200)
+    return json({ok: true, ...(warnings.length > 0 ? {warnings} : {})}, created ? 201 : 200)
   }
 
   // ── Release ──────────────────────────────────────────────────────
@@ -480,9 +603,11 @@ export function createRegistry(options: RegistryOptions): Registry {
     const grant = await grantFor(request)
     if (grant === undefined) return error('Unauthorized', 401)
 
+    const raw = await readCappedBody(request, MAX_BODY_BYTES)
+    if (raw === undefined) return error('Request body too large', 413)
     let body: {app?: unknown; version?: unknown; channel?: unknown}
     try {
-      body = (await request.json()) as typeof body
+      body = JSON.parse(new TextDecoder().decode(raw)) as typeof body
     } catch {
       return error('Expected a JSON body', 400)
     }
@@ -508,7 +633,12 @@ export function createRegistry(options: RegistryOptions): Registry {
       return error(`No build ${app}@${version} to release`, 404)
     }
     for (const build of matches) await pointChannel(build, channel)
-    return json({ok: true, released: matches.length})
+    const warnings = await configCompatWarnings(app, channel, version)
+    return json({
+      ok: true,
+      released: matches.length,
+      ...(warnings.length > 0 ? {warnings} : {}),
+    })
   }
 
   // ── Download ─────────────────────────────────────────────────────
@@ -633,9 +763,11 @@ export function createRegistry(options: RegistryOptions): Registry {
     const grant = await grantFor(request)
     if (grant === undefined) return error('Unauthorized', 401)
 
+    const raw = await readCappedBody(request, MAX_BODY_BYTES)
+    if (raw === undefined) return error('Request body too large', 413)
     let body: {deviceId?: unknown; name?: unknown; app?: unknown; channel?: unknown}
     try {
-      body = (await request.json()) as typeof body
+      body = JSON.parse(new TextDecoder().decode(raw)) as typeof body
     } catch {
       return error('Expected a JSON body', 400)
     }
@@ -704,6 +836,82 @@ export function createRegistry(options: RegistryOptions): Registry {
     return json({credential: updateKey})
   }
 
+  /**
+   * Set (or clear) a device's config overlay. Reference-registry authoring:
+   * how operators author config is a registry's own business (spec, "Out of
+   * scope"), and this is the minimal version of it. The body's `values` are
+   * derived to an overlay against one release's schema — unknown keys
+   * dropped, defaults stripped, empty containers pruned — so what is stored
+   * is only deviations, and clearing is deriving nothing. Saving values that
+   * do not produce a valid effective config is a 400, message and path
+   * included, rather than something stored and withheld later.
+   */
+  async function handleSetConfig(request: Request, deviceId: string): Promise<Response> {
+    const grant = await grantFor(request)
+    if (grant === undefined) return error('Unauthorized', 401)
+    const device = await deviceForGrant(grant, deviceId)
+    if (device === undefined) return error('Unknown device', 404)
+    if (device.app === undefined) {
+      return error('Device has no app binding; re-enroll it with one', 400)
+    }
+    const raw = await readCappedBody(request, MAX_BODY_BYTES)
+    if (raw === undefined) return error('Request body too large', 413)
+    let body: {values?: unknown; version?: unknown}
+    try {
+      body = JSON.parse(new TextDecoder().decode(raw)) as {values?: unknown; version?: unknown}
+    } catch {
+      return error('Expected a JSON body', 400)
+    }
+    if (body.version !== undefined && typeof body.version !== 'string') {
+      return error('Invalid version', 400)
+    }
+    // Author against the named release, or the one the device is running: the
+    // schema the values will actually be validated against at serve time.
+    const version = body.version ?? device.runningVersion
+    if (version === undefined) {
+      return error('Pass a version: the device has not reported one yet', 400)
+    }
+    const record = await storage.getConfigSchema(device.app, version)
+    if (record === undefined) {
+      return error(`No config schema for ${device.app}@${version}`, 404)
+    }
+    const schema = record.schema as Schema
+    const overrides = deriveOverlay(schema, body.values)
+    const effective = parseEffective(schema, overrides)
+    if (!effective.ok) {
+      const where = effective.error.path === '' ? '' : ` at ${effective.error.path}`
+      return error(`Invalid config${where}: ${effective.error.message}`, 400)
+    }
+    // The document cap, enforced at authoring and measured on the EFFECTIVE
+    // document (defaults folded in), which is what the device's JS heap ends
+    // up holding once it spreads the served overlay over its defaults. An
+    // oversized save accepted here would be withheld at every check-in with
+    // only a server log line, and rule 5 would silently pause this device's
+    // rollout with it.
+    if (overrides !== undefined) {
+      const bytes = UTF8.encode(JSON.stringify(effective.value)).byteLength
+      if (bytes > MAX_CONFIG_DOC_BYTES) {
+        return error(
+          `The effective config encodes to ${bytes} bytes, over the ${MAX_CONFIG_DOC_BYTES}-byte cap`,
+          400,
+        )
+      }
+    }
+    const updated: DeviceRecord = {...device, configAuthoredFor: version}
+    if (overrides === undefined) {
+      delete updated.configOverrides
+      delete updated.configAuthoredFor
+    } else {
+      updated.configOverrides = overrides
+    }
+    await storage.putDevice(updated)
+    return json({
+      ok: true,
+      version,
+      ...(overrides === undefined ? {} : {overrides}),
+    })
+  }
+
   /** Clear a device's failure list, so a build that failed for a reason since
    *  fixed (a full filesystem, a bad network) can be offered again. */
   async function handleClearFailures(request: Request, deviceId: string): Promise<Response> {
@@ -737,11 +945,16 @@ export function createRegistry(options: RegistryOptions): Registry {
     const grant = await grantFor(request)
     if (grant === undefined) return error('Unauthorized', 401)
     if (!grant.admin) return error('Only the registry secret may manage tokens', 403)
-    if ((await storage.getTokenByHash(tokenHash)) === undefined) {
-      return error('Unknown token', 404)
-    }
-    await storage.deleteToken(tokenHash)
-    return json({ok: true})
+    // Queued with the `lastUsedAt` refreshes, so the delete is the last write:
+    // a refresh already holding the record either lands before it or, finding
+    // the record gone on its re-read, writes nothing.
+    return serializeTokenWrite(async () => {
+      if ((await storage.getTokenByHash(tokenHash)) === undefined) {
+        return error('Unknown token', 404)
+      }
+      await storage.deleteToken(tokenHash)
+      return json({ok: true})
+    })
   }
 
   // ── Browser login (spec §5) ──────────────────────────────────────
@@ -1060,8 +1273,15 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
     /** Bytes free to download and stage one build. */
     free?: unknown
     lastInstall?: unknown
+    /** `{checksum, reason, detail?}`: why the last offered build was not taken. */
+    lastDecline?: unknown
     /** `[rev, name?]`; absent means firmware without name sync. */
     name?: unknown
+    /** Opaque token of the config the device holds; absent means none held
+     *  (or firmware without config sync). */
+    configRev?: unknown
+    /** `{rev, message, path?}`: the app rejected the held config. */
+    configError?: unknown
   }
 
   /** A `[rev, name?]` pair from a check-in, or undefined if malformed. */
@@ -1090,9 +1310,115 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
     return {reason, detail}
   }
 
+  /** `{checksum, reason, detail?}` per the spec's Declined offers section.
+   *  Carries its own checksum, so unlike lastInstall it needs no attribution
+   *  against whatever was offered last. */
+  function parseLastDecline(
+    value: unknown,
+  ): {checksum: string; reason: string; detail?: string} | undefined {
+    if (typeof value !== 'object' || value === null) return undefined
+    const {checksum, reason, detail} = value as {
+      checksum?: unknown
+      reason?: unknown
+      detail?: unknown
+    }
+    if (typeof checksum !== 'string' || !/^[0-9a-f]{64}$/.test(checksum)) return undefined
+    if (typeof reason !== 'string' || reason === '' || reason.length > MAX_REASON_LENGTH) {
+      return undefined
+    }
+    if (detail === undefined) return {checksum, reason}
+    if (typeof detail !== 'string' || detail.length > MAX_DETAIL_LENGTH) return undefined
+    return {checksum, reason, detail}
+  }
+
   function namePair(record: {name?: string; nameRev?: number}): [number, string?] {
     const rev = record.nameRev ?? 0
     return record.name === undefined ? [rev] : [rev, record.name]
+  }
+
+  /** `{rev, message, path?}` per the spec's Config sync section. Rejected
+   *  rather than trimmed, like lastInstall: device-supplied, stored, shown. */
+  function parseConfigError(
+    value: unknown,
+  ): {rev: string; message: string; path?: string} | undefined {
+    if (typeof value !== 'object' || value === null) return undefined
+    const {rev, message, path} = value as {rev?: unknown; message?: unknown; path?: unknown}
+    if (typeof rev !== 'string' || rev === '' || rev.length > MAX_CONFIG_REV_LENGTH) {
+      return undefined
+    }
+    if (
+      typeof message !== 'string' ||
+      message === '' ||
+      message.length > MAX_CONFIG_MESSAGE_LENGTH
+    ) {
+      return undefined
+    }
+    if (path === undefined) return {rev, message}
+    if (typeof path !== 'string' || path.length > MAX_CONFIG_PATH_LENGTH) return undefined
+    return {rev, message, path}
+  }
+
+  /**
+   * The config to serve a device for one target release, or undefined when the
+   * release has no schema. Per-serve adaptation of the stored overlay (filter,
+   * strip, prune via deriveOverlay), then merge-validate: validation happens
+   * here or nowhere, since the device does none. An overlay that does not
+   * produce a valid effective config is withheld, never sent (spec, "Serving
+   * safely"), which is also what offer rule 5 gates on.
+   *
+   * What is SERVED is the deviation overlay against the target release's
+   * defaults, which the device resolves with one top-level spread. `rev`
+   * stays the identity of the EFFECTIVE document, so two overlays that mean
+   * the same config share a token and a value moved back onto its default is
+   * not re-served. Nothing deviating serves nothing at all: the defaults
+   * baked into the build's own manifest already cover that device.
+   */
+  async function configForRelease(
+    device: DeviceRecord,
+    version: string,
+  ): Promise<{valid: boolean; reason?: string; rev?: string; doc?: unknown} | undefined> {
+    if (device.app === undefined) return undefined
+    const record = await storage.getConfigSchema(device.app, version)
+    if (record === undefined) return undefined
+    const schema = record.schema as Schema
+    const overrides = deriveOverlay(schema, device.configOverrides)
+    const effective = parseEffective(schema, overrides)
+    if (!effective.ok) {
+      const reason = `${effective.error.message} at ${effective.error.path || '(root)'}`
+      // eslint-disable-next-line no-console
+      console.warn(
+        `checkin: withholding config for ${device.deviceId} (${device.app}@${version}): ${reason}`,
+      )
+      return {valid: false, reason}
+    }
+    if (overrides === undefined) return {valid: true}
+    const doc = effective.value
+    const bytes = UTF8.encode(JSON.stringify(doc)).byteLength
+    if (bytes > MAX_CONFIG_DOC_BYTES) {
+      const reason = `effective config is ${bytes} bytes, over the ${MAX_CONFIG_DOC_BYTES}-byte cap`
+      // eslint-disable-next-line no-console
+      console.warn(
+        `checkin: withholding config for ${device.deviceId} (${device.app}@${version}): ${reason}`,
+      )
+      return {valid: false, reason}
+    }
+    // The token identifies the EFFECTIVE document for the version it was
+    // validated against, not the overlay that expresses it: a save that moves
+    // a value back onto its default changes the overlay and must not read as
+    // a new config. The device never computes one, it echoes this. Hashed
+    // over a key-sorted encoding so a storage backend that normalizes key
+    // order (jsonb, CBOR maps) does not churn revs for identical documents.
+    // Truncated to 64 bits: the token is an identity compared against one
+    // device's echo, never a proof, and the full digest costs 48 extra bytes
+    // in every check-in and in each device NVS slot that stores it.
+    const rev = (await sha256Hex(`${version}\u0000${stableStringify(doc)}`)).slice(0, 16)
+    // What travels is only what deviates from this release's defaults; the
+    // device resolves it with one top-level spread over its manifest copy.
+    const overlay = deviationOverlay(applyDefaults(schema, undefined), doc)
+    // Nothing deviates: the device should hold no document at all, the same
+    // state as holding no overrides above.
+    if (Object.keys(overlay).length === 0) return {valid: true}
+    return {valid: true, rev, doc: overlay}
   }
 
   /** The build a channel currently serves for `(app, firmware range)`, or
@@ -1160,6 +1486,53 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
     return current
   }
 
+  /** The most recent prior release of `app` that stored a config schema,
+   *  for the publish-time diff. Recency by build creation, newest first. */
+  async function latestConfigSchema(
+    app: string,
+    excludeVersion: string,
+  ): Promise<Schema | undefined> {
+    const builds = (await storage.listBuilds())
+      .filter((b) => b.app === app && b.version !== excludeVersion)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    const seen = new Set<string>()
+    for (const build of builds) {
+      if (seen.has(build.version)) continue
+      seen.add(build.version)
+      const record = await storage.getConfigSchema(app, build.version)
+      if (record !== undefined) return record.schema as Schema
+    }
+    return undefined
+  }
+
+  /**
+   * The release-time compat report (spec, "Schema changes between releases"):
+   * which devices on this channel hold config that will not validate under
+   * `version`, so rule 5 will withhold the release from them. Advisory — the
+   * serve pipeline stays safe without it — but it is what explains a paused
+   * rollout before anyone asks.
+   */
+  async function configCompatWarnings(
+    app: string,
+    channel: string,
+    version: string,
+  ): Promise<string[]> {
+    if ((await storage.getConfigSchema(app, version)) === undefined) return []
+    const warnings: string[] = []
+    for (const device of await storage.listDevices()) {
+      if (device.app !== app) continue
+      if ((device.channel ?? DEFAULT_CHANNEL) !== channel) continue
+      const state = await configForRelease(device, version)
+      if (state !== undefined && !state.valid) {
+        warnings.push(
+          `device ${device.deviceId}: ${state.reason ?? 'config does not validate'}; ` +
+            `not offered ${version} until fixed`,
+        )
+      }
+    }
+    return warnings
+  }
+
   async function handleCheckin(request: Request): Promise<Response> {
     const deviceId = await deviceIdFor(request)
     if (deviceId === undefined) return error('Unauthorized', 401)
@@ -1172,11 +1545,13 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
     // devices act on the status alone and never parse them.
     const isCbor = (request.headers.get('content-type') ?? '').includes('application/cbor')
     const respond = isCbor ? cbor : json
+    const raw = await readCappedBody(request, MAX_BODY_BYTES)
+    if (raw === undefined) return error('Request body too large', 413)
     let body: CheckinBody
     try {
       body = isCbor
-        ? (decodeCbor(new Uint8Array(await request.arrayBuffer())) as CheckinBody)
-        : ((await request.json()) as CheckinBody)
+        ? (decodeCbor(raw) as CheckinBody)
+        : (JSON.parse(new TextDecoder().decode(raw)) as CheckinBody)
     } catch {
       return error(isCbor ? 'Expected a CBOR body' : 'Expected a JSON body', 400)
     }
@@ -1250,6 +1625,42 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
         return bad('free')
       }
       updated.lastFree = body.free
+    }
+    // Config sync intake mirrors the wire exactly: an echoed token stands for
+    // "this is what I hold", absence for "I hold nothing" (or firmware without
+    // config sync), and a configError is present exactly while the device
+    // holds a document its app rejects.
+    if (body.configRev !== undefined) {
+      if (typeof body.configRev !== 'string' || body.configRev.length > MAX_CONFIG_REV_LENGTH) {
+        return bad('configRev')
+      }
+      updated.lastConfigRev = body.configRev
+    } else {
+      delete updated.lastConfigRev
+    }
+    if (body.configError !== undefined) {
+      const configError = parseConfigError(body.configError)
+      if (configError === undefined) return bad('configError')
+      updated.configError = configError
+    } else {
+      delete updated.configError
+    }
+    if (body.lastDecline !== undefined && body.lastDecline !== null) {
+      const lastDecline = parseLastDecline(body.lastDecline)
+      if (lastDecline === undefined) return bad('lastDecline')
+      updated.lastDecline = lastDecline
+      // Only `abandoned` is evidence about the bytes. A device on poor wifi
+      // produces `exhausted` and `download-failed` for a build that is fine
+      // everywhere else, and withholding it from the whole fleet on that basis
+      // would turn one flaky device into a stalled rollout.
+      if (lastDecline.reason === 'abandoned') {
+        updated.failedChecksums = [
+          ...(updated.failedChecksums ?? []).filter(
+            (checksum: string) => checksum !== lastDecline.checksum,
+          ),
+          lastDecline.checksum,
+        ].slice(-MAX_FAILED_CHECKSUMS)
+      }
     }
     if (body.lastInstall !== undefined && body.lastInstall !== null) {
       const lastInstall = parseLastInstall(body.lastInstall)
@@ -1330,13 +1741,57 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
       }
     }
 
-    const offer = await selectOffer(updated)
+    let offer = await selectOffer(updated)
+
+    // Offer rule 5: the offer and its config are a pair, so a device is never
+    // booted into a release whose config cannot exist. A schema that adds a
+    // required field pauses this device's rollout, visibly, until an operator
+    // supplies the value.
+    let offerConfig: Awaited<ReturnType<typeof configForRelease>>
+    if (offer !== undefined) {
+      offerConfig = await configForRelease(updated, offer.version)
+      if (offerConfig !== undefined && !offerConfig.valid) offer = undefined
+    }
     if (offer !== undefined) updated.lastOfferedChecksum = offer.checksum
+
+    // The config to send, per the spec's pairing rule: for the offered release
+    // when there is an offer, for the running release otherwise. Sent only
+    // when the device's echoed token differs from what it should hold; a
+    // registry-side clear is `config` with no `doc` key.
+    let config: {rev?: string; version: string; doc?: unknown} | undefined
+    const target =
+      offer !== undefined
+        ? {version: offer.version, state: offerConfig}
+        : updated.runningVersion !== undefined
+          ? {
+              version: updated.runningVersion,
+              state: await configForRelease(updated, updated.runningVersion),
+            }
+          : undefined
+    if (target?.state !== undefined && target.state.valid) {
+      const {rev, doc} = target.state
+      if (rev === undefined) {
+        // Nothing deviates from the defaults: the device should hold no
+        // document at all (its manifest defaults stand in). Clear one it
+        // still echoes.
+        if (updated.lastConfigRev !== undefined) config = {version: target.version}
+      } else if (updated.lastConfigRev !== rev) {
+        config = {rev, version: target.version, doc}
+      }
+    }
+
     await storage.putDevice(updated)
 
-    // A name to hand back still has to reach the device when there's no update,
-    // and `parseOffer` reads a body with no offer fields as "no update".
-    if (offer === undefined) return respond(respondName === undefined ? null : {name: respondName})
+    // A name or config to hand back still has to reach the device when there's
+    // no update, and `parseOffer` reads a body with no offer fields as "no
+    // update"; devices ignore fields they do not know.
+    const extras = {
+      ...(respondName === undefined ? {} : {name: respondName}),
+      ...(config === undefined ? {} : {config}),
+    }
+    if (offer === undefined) {
+      return respond(Object.keys(extras).length === 0 ? null : extras)
+    }
     const origin = options.baseUrl ?? new URL(request.url).origin
     return respond({
       // What to fetch and how to verify it, and nothing the device would have to
@@ -1347,7 +1802,7 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
       checksum: offer.checksum,
       size: offer.size,
       version: offer.version,
-      ...(respondName === undefined ? {} : {name: respondName}),
+      ...extras,
     })
   }
 
@@ -1404,6 +1859,14 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
         : serializeDeviceWrite(() => handleClearFailures(request, id))
     }
 
+    const deviceConfig = /^\/api\/v1\/devices\/([^/]+)\/config$/.exec(path)
+    if (deviceConfig && request.method === 'PUT') {
+      const id = deviceIdFromPath(deviceConfig[1]!)
+      return id === undefined
+        ? error('Unknown device', 404)
+        : serializeDeviceWrite(() => handleSetConfig(request, id))
+    }
+
     if (path === '/api/v1/checkin' && request.method === 'POST') {
       return serializeDeviceWrite(() => handleCheckin(request))
     }
@@ -1426,4 +1889,49 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
   }
 
   return {fetch: handle}
+}
+
+// ── Config helpers ─────────────────────────────────────────────────
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * The overlay to serve: the top-level entries of the effective document that
+ * deviate from the release's defaults, each carried WHOLE. The device merges
+ * with one top-level spread and holds no schema, so granularity is top-level
+ * throughout: a deviating leaf inside a nested plain object ships its whole
+ * top-level value, and a wholesale unit (taggedUnion, array, tuple) is either
+ * equal to its default as a unit and omitted, or present in full.
+ *
+ * Nothing is ever pruned inside a value. With a default `{mode: {kind: 'a',
+ * x: 1}}` and an effective `{mode: {kind: 'b', x: 1}}`, dropping the
+ * equal-looking `x` would leave the device spreading branch a's `x` into
+ * branch b: they are different schema nodes, so "equal to default" is not
+ * defined across them.
+ */
+function deviationOverlay(defaults: unknown, doc: unknown): Record<string, unknown> {
+  // Both come from applyDefaults over a schema whose root is an object(), and
+  // `doc` has already validated against it.
+  if (!isPlainObject(doc)) return {}
+  const base = isPlainObject(defaults) ? defaults : {}
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(doc)) {
+    if (Object.hasOwn(base, key) && structuralEquals(doc[key], base[key])) continue
+    out[key] = doc[key]
+  }
+  return out
+}
+
+/** JSON with object keys sorted, for hashing only — never for the wire. */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (isPlainObject(value)) {
+    const parts = Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+    return `{${parts.join(',')}}`
+  }
+  return JSON.stringify(value)
 }

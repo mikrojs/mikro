@@ -1,19 +1,15 @@
 # Over-the-air updates on a wake cycle
 
-A deep-sleep device that checks for updates once per wake: connect, `ota.check()`, restart
-if a build was staged, do the cycle's work, and sleep again. The companion
-[`ota` example](../ota) is the always-on variant (`ota.watch()`) and ships the registry
+A deep-sleep device that checks for updates once per wake: connect, `otaClient.check()`,
+restart if a build was staged, do the cycle's work, and sleep again. The companion
+[`ota` example](../ota) is the always-on variant (`otaClient.watch()`) and ships the registry
 server this one talks to.
-
-```sh
-pn create mikro -- --template ota-wake-cycle
-```
 
 ## How it works
 
 `app/main.ts` runs one cycle per wake:
 
-1. Connect WiFi and call `ota.check()` from `mikro/ota/client`. One call does the whole
+1. Connect WiFi and call `otaClient.check()` from `mikro/ota/client`. One call does the whole
    check: it reconciles the previous update, checks in with the registry (confirming a
    build installed on the previous cycle), and downloads and stages any offered build.
 2. On `{status: 'staged'}`, restart. The firmware installs the staged build and the next
@@ -30,17 +26,17 @@ to reach the registry before the firmware reverts it.
 ## Registry, enrollment, and environment
 
 Identical to the [`ota` example](../ota#the-registry): run its registry
-(`pn registry` there), point the CLI at it with `pn mikro ota setup`, set `WIFI_SSID`
-and `WIFI_PASSPHRASE`, and enroll the device once with `pn mikro ota enroll`.
+(`npm run registry` there), point the CLI at it with `npx mikro ota setup`, set `WIFI_SSID`
+and `WIFI_PASSPHRASE`, and enroll the device once with `npx mikro ota enroll`.
 
 ## Run
 
 ```sh
-pn mikro deploy    # build and deploy to device (establishes the rollback baseline)
+npx mikro deploy    # build and deploy to device (establishes the rollback baseline)
 ```
 
 Then publish a change from this directory and watch it land on a later wake:
 
 ```sh
-pn mikro ota push --release main
+npx mikro ota push --release main
 ```

@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -166,7 +167,7 @@ static bool mik__task_cancelled(MIKHttpTaskArgs* args) {
  * (CONFIG_LWIP_TCP_MSL). Both reclaim over time; sysFree recovers after the
  * TIME_WAIT window. The UAF fix in commit [UAF fix] removed the real bug.
  * CONFIG_MBEDTLS_DYNAMIC_BUFFER and a shorter MSL are now both in
- * sdkconfig.defaults, and the RX buffer goes static post-handshake below.
+ * sdkconfig.defaults.
  * Still unexplored: session reuse, or an esp-tls-direct implementation. */
 static void mik__http_task(void* arg) {
     auto* args = static_cast<MIKHttpTaskArgs*>(arg);
@@ -192,15 +193,13 @@ static void mik__http_task(void* arg) {
     config.event_handler = mik__http_event_handler;
     config.user_data = &event_data;
     config.crt_bundle_attach = esp_crt_bundle_attach;
-#if CONFIG_MBEDTLS_DYNAMIC_BUFFER
-    // Stop the per-record RX alloc/free churn once the handshake is done.
-    // Costs a resident ~16.6 KB RX buffer for the life of the connection, so
-    // at MIK_HTTP_MAX_PENDING=4 concurrent requests pin ~66 KB. Serial
-    // check-ins (the case this targets) win; concurrent long-lived downloads
-    // lose. The switch can also fail with ESP_ERR_NO_MEM under pressure, which
-    // esp-tls reports as a handshake failure even though the handshake landed.
-    config.tls_dyn_buf_strategy = HTTP_TLS_DYN_BUF_RX_STATIC;
-#endif
+    // No HTTP_TLS_DYN_BUF_RX_STATIC: converting the RX buffer to a static
+    // ~16.6 KB allocation right after the handshake demands a contiguous
+    // block exactly when the heap is most fragmented, and the failure is
+    // silent (esp-tls records no error code and its log line compiles out) —
+    // observed live on a c6 as a connect failure with empty TLS slots. For
+    // check-in-sized exchanges dynamic RX allocates per record (~2 KB), which
+    // is strictly lighter than pinning the full buffer.
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) {
@@ -493,6 +492,104 @@ static bool mik__enqueue_msg(MIKHttpPending* p, const MIKHttpMsg& m) {
         p->queue_head = p->queue_tail = q;
     }
     return true;
+}
+
+/* ── Native requests ───────────────────────────────────────────────── */
+/* Native code (the OTA client) shares this module's task, TLS setup, inflight
+ * ceiling and chunk budget rather than standing up a second esp_http_client
+ * path: one TLS client on the device is what keeps the handshake heap spike
+ * bounded and tuned in one place. */
+
+uint32_t mik__http_start_native(MIKRuntime* rt, const MIKHttpNativeRequest* spec,
+                                const MIKHttpNativeSink* sink) {
+    if (!rt || !spec || !sink || !sink->done) return 0;
+    if (mik__http_slot < 0 || !mik__http_st(rt)) return 0;
+    MIKHttpState* state = mik__http_st(rt);
+    if (state->pending_count >= MIK_HTTP_MAX_PENDING) return 0;
+
+    MIKHttpRequest req = {};
+    req.url = strdup(spec->url ? spec->url : "");
+    if (!req.url) return 0;
+    req.method = mik__method_from_string(spec->method);
+
+    if (spec->body && spec->body_len > 0) {
+        req.body = static_cast<uint8_t*>(malloc(spec->body_len));
+        if (!req.body) {
+            mik__http_free_request(&req);
+            return 0;
+        }
+        memcpy(req.body, spec->body, spec->body_len);
+        req.body_len = spec->body_len;
+    }
+
+    if (spec->header_count > 0) {
+        req.headers =
+            static_cast<MIKHttpHeader*>(calloc(spec->header_count, sizeof(MIKHttpHeader)));
+        if (!req.headers) {
+            mik__http_free_request(&req);
+            return 0;
+        }
+        for (size_t i = 0; i < spec->header_count; i++) {
+            char* key = strdup(spec->header_keys[i]);
+            char* value = strdup(spec->header_values[i]);
+            if (!key || !value) {
+                free(key);
+                free(value);
+                mik__http_free_request(&req);
+                return 0;
+            }
+            req.headers[req.header_count].key = key;
+            req.headers[req.header_count].value = value;
+            req.header_count++;
+        }
+    }
+
+    MIKHttpPending pending = {};
+    pending.id = state->next_id++;
+    pending.sink = *sink;
+    pending.deadline_us =
+        spec->timeout_ms > 0
+            ? esp_timer_get_time() + static_cast<int64_t>(spec->timeout_ms) * 1000
+            : 0;
+
+    auto* cancelled = new std::atomic<bool>(false);
+    pending.cancelled = cancelled;
+
+    auto* task_args = static_cast<MIKHttpTaskArgs*>(malloc(sizeof(MIKHttpTaskArgs)));
+    if (!task_args) {
+        mik__http_free_request(&req);
+        delete cancelled;
+        return 0;
+    }
+    task_args->id = pending.id;
+    task_args->req = req;
+    task_args->result_queue = state->result_queue;
+    task_args->inflight = state->inflight;
+    task_args->cancelled = cancelled;
+
+    if (xTaskCreate(mik__http_task, "mik_http", MIK_HTTP_TASK_STACK_SIZE, task_args,
+                    tskIDLE_PRIORITY + 1, nullptr) != pdPASS) {
+        mik__http_free_request(&task_args->req);
+        free(task_args);
+        delete cancelled;
+        return 0;
+    }
+
+    state->pending[state->pending_count++] = pending;
+    return pending.id;
+}
+
+void mik__http_cancel_native(MIKRuntime* rt, uint32_t id) {
+    if (!rt || mik__http_slot < 0 || !mik__http_st(rt)) return;
+    MIKHttpState* state = mik__http_st(rt);
+    MIKHttpPending* p = mik__find_pending(state, id);
+    if (!p || !p->sink.done) return;
+    if (p->cancelled) p->cancelled->store(true, std::memory_order_relaxed);
+    /* Stop delivering entirely: the task still emits a terminal message, which
+     * the consume loop then drops along with the pending entry. */
+    p->sink.headers = nullptr;
+    p->sink.data = nullptr;
+    p->js_cancelled = true;
 }
 
 static JSValue mik__http_request(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
@@ -793,6 +890,18 @@ static void mik__ensure_netif_initialized() {
     }
 }
 
+/* Bring the transport up for a native consumer — the OTA client, which uses this
+ * module's task and queue from C rather than importing it from JS.
+ *
+ * Without this the module is only ever initialized by an import, so a firmware
+ * whose only HTTP user is native would have no slot, no state and no loop
+ * consumer: every request would fail to start and no response would ever be
+ * drained. Idempotent, and safe either side of a JS import — the loop consumer
+ * registration de-duplicates. */
+void mik__http_ensure_native(JSContext* ctx);
+void mik__http_consume(JSContext* ctx);
+void mik__http_destroy(JSContext* ctx);
+
 static void mik__http_ensure_initialized(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     CHECK_NOT_NULL(mik_rt);
@@ -811,6 +920,14 @@ static void mik__http_ensure_initialized(JSContext* ctx) {
     mik__http_st(mik_rt) = state;
 }
 
+void mik__http_ensure_native(JSContext* ctx) {
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+    if (!mik_rt) return;
+    if (mik__http_slot < 0) mik__http_slot = MIK_AllocModuleSlot(mik_rt);
+    mik__http_ensure_initialized(ctx);
+    MIK_RegisterLoopConsumer(mik_rt, mik__http_consume, mik__http_destroy);
+}
+
 static int mik__http_module_init(JSContext* ctx, JSModuleDef* m) {
     mik__http_ensure_initialized(ctx);
     JS_SetModuleExport(ctx, m, "request",
@@ -825,7 +942,9 @@ static int mik__http_module_init(JSContext* ctx, JSModuleDef* m) {
 
 static JSModuleDef* mik__http_init(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    mik__http_slot = MIK_AllocModuleSlot(mik_rt);
+    /* The slot may already exist: a native consumer can bring the transport up
+     * before anything imports the JS module. */
+    if (mik__http_slot < 0) mik__http_slot = MIK_AllocModuleSlot(mik_rt);
 
     JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/http", mik__http_module_init);
     if (!m) return nullptr;
@@ -844,6 +963,26 @@ void mik__http_consume(JSContext* ctx) {
     if (!mik__http_st(mik_rt)) return;
 
     MIKHttpState* state = mik__http_st(mik_rt);
+
+    /* Time out native requests before draining, so a request whose deadline
+     * passed reports it even when the transport has gone quiet. The socket
+     * timeout bounds one read; this bounds the request. */
+    int64_t now_us = esp_timer_get_time();
+    for (size_t i = 0; i < state->pending_count; i++) {
+        MIKHttpPending* p = &state->pending[i];
+        if (!p->sink.done || p->deadline_us == 0 || now_us < p->deadline_us) continue;
+        MIKHttpNativeSink sink = p->sink;
+        /* Stop delivering and let the task's terminal message drop the entry;
+         * the sink hears about it once, here. */
+        p->sink.headers = nullptr;
+        p->sink.data = nullptr;
+        p->sink.done = nullptr;
+        p->js_cancelled = true;
+        p->deadline_us = 0;
+        if (p->cancelled) p->cancelled->store(true, std::memory_order_relaxed);
+        sink.done(sink.user_data, 0, "timeout");
+    }
+
     MIKHttpMsg msg;
     while (xQueueReceive(state->result_queue, &msg, 0) == pdTRUE) {
         MIKHttpPending* p = mik__find_pending(state, msg.id);
@@ -856,6 +995,38 @@ void mik__http_consume(JSContext* ctx) {
                 free(msg.error_message);
             } else if (msg.kind == MIK_HTTP_MSG_HEADERS) {
                 mik__http_free_headers(msg.headers, msg.header_count);
+            }
+            continue;
+        }
+
+        if (p->sink.done) {
+            /* Native consumer: hand the message over and free the payload here,
+             * since nothing is queued for a later JS read. */
+            size_t idx = static_cast<size_t>(p - state->pending);
+            if (msg.kind == MIK_HTTP_MSG_HEADERS) {
+                if (p->sink.headers) p->sink.headers(p->sink.user_data, msg.status);
+                mik__http_free_headers(msg.headers, msg.header_count);
+            } else if (msg.kind == MIK_HTTP_MSG_CHUNK) {
+                if (p->sink.data) p->sink.data(p->sink.user_data, msg.chunk_data, msg.chunk_len);
+                xSemaphoreGive(state->inflight);
+                free(msg.chunk_data);
+            } else {
+                const char* error = msg.kind == MIK_HTTP_MSG_ERROR
+                                        ? (msg.error_message ? msg.error_message : "HTTP error")
+                                        : nullptr;
+                /* A cancelled request never calls back, whatever the task ended
+                 * up reporting. The consumer cancels on its way out, so calling
+                 * `done` here would reach a destroyed object. */
+                if (!p->js_cancelled) {
+                    MIKHttpNativeSink sink = p->sink;
+                    /* Drop first: the callback may start the next request, and
+                     * that would reuse this slot. */
+                    mik__pending_drop(state, idx);
+                    sink.done(sink.user_data, msg.status, error);
+                } else {
+                    mik__pending_drop(state, idx);
+                }
+                if (msg.kind == MIK_HTTP_MSG_ERROR) free(msg.error_message);
             }
             continue;
         }
@@ -985,6 +1156,7 @@ void mik__http_destroy(JSContext* ctx) {
             mik__free_queued_msg(m);
             m = next;
         }
+        if (p->sink.done) continue;  /* native pending: no promises to free */
         if (!p->headers_resolved) MIK_FreePromise(ctx, &p->headers_promise);
         if (p->next_promise_active) MIK_FreePromise(ctx, &p->next_promise);
     }

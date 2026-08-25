@@ -1,9 +1,20 @@
 import {describe, expect, it} from 'vitest'
 
-import {array, literal, number, object, optional, string, taggedUnion, union} from '../schema.js'
+import {
+  array,
+  boolean,
+  literal,
+  number,
+  object,
+  optional,
+  string,
+  taggedUnion,
+  union,
+} from '../schema.js'
 import {
   deriveOverlay,
   diffConfigSchemas,
+  materializeDefaults,
   parseConfigSchema,
   parseEffective,
   structuralEquals,
@@ -114,6 +125,99 @@ describe('parseConfigSchema', () => {
     const result = parseConfigSchema(ast)
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.message).toContain('optional() cannot carry a default')
+  })
+
+  // The constructors reject these where they are written, so a schema can only
+  // arrive in this shape as JSON: a hand-written wire schema, or one built by a
+  // registry that never ran the constructors.
+  it('rejects a default below a wholesale unit (hand-built AST)', () => {
+    const underUnion = parseConfigSchema({
+      kind: 'object',
+      shape: {
+        net: {
+          kind: 'taggedUnion',
+          key: 'mode',
+          branches: {static: {kind: 'object', shape: {port: {kind: 'number', default: 80}}}},
+        },
+      },
+    })
+    expect(underUnion.ok).toBe(false)
+    if (!underUnion.ok) {
+      expect(underUnion.error.message).toContain('a default under a taggedUnion never applies')
+      expect(underUnion.error.path).toBe('.net.static.port')
+    }
+
+    const underArray = parseConfigSchema({
+      kind: 'object',
+      shape: {tags: {kind: 'array', element: {kind: 'string', default: 'x'}}},
+    })
+    expect(underArray.ok).toBe(false)
+    if (!underArray.ok) {
+      expect(underArray.error.message).toContain('a default under an array never applies')
+      expect(underArray.error.path).toBe('.tags.element')
+    }
+
+    const underTuple = parseConfigSchema({
+      kind: 'object',
+      shape: {
+        pair: {
+          kind: 'tuple',
+          elements: [{kind: 'number'}, {kind: 'number', default: 1}],
+        },
+      },
+    })
+    expect(underTuple.ok).toBe(false)
+    if (!underTuple.ok) {
+      expect(underTuple.error.message).toContain('a default under a tuple never applies')
+      expect(underTuple.error.path).toBe('.pair[1]')
+    }
+  })
+
+  it('rejects a container default on a plain object (hand-built AST)', () => {
+    const result = parseConfigSchema({
+      kind: 'object',
+      shape: {
+        net: {kind: 'object', shape: {host: {kind: 'string'}}, default: {host: 'mqtt.local'}},
+      },
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.message).toContain('object() cannot carry a default')
+      expect(result.error.path).toBe('.net')
+    }
+  })
+
+  it('rejects a default inside a plain union member', () => {
+    const underUnion = parseConfigSchema({
+      kind: 'object',
+      shape: {
+        net: {
+          kind: 'union',
+          members: [
+            {kind: 'object', shape: {x: {kind: 'number', default: 1}}},
+            {kind: 'object', shape: {}},
+          ],
+        },
+      },
+    })
+    expect(underUnion.ok).toBe(false)
+    if (!underUnion.ok) {
+      expect(underUnion.error.message).toContain('a default under a union never applies')
+      expect(underUnion.error.path).toBe('.net[0].x')
+    }
+  })
+
+  it('accepts a whole-value default on the unit itself', () => {
+    const accepted = object({
+      net: taggedUnion(
+        'mode',
+        {dhcp: object({}), static: object({ip: string()})},
+        {default: {mode: 'static', ip: '10.0.0.2'}},
+      ),
+      tags: array(string(), {default: ['a']}),
+    })
+    const result = parseConfigSchema(JSON.parse(JSON.stringify(accepted)))
+    expect(result.ok).toBe(true)
   })
 
   it('rejects nesting deeper than 8 levels', () => {
@@ -313,5 +417,70 @@ describe('structuralEquals', () => {
     expect(structuralEquals({a: [1]}, {a: [1, 2]})).toBe(false)
     expect(structuralEquals(1, '1')).toBe(false)
     expect(structuralEquals(undefined, undefined)).toBe(true)
+  })
+})
+
+describe('materializeDefaults', () => {
+  it('fills every field a default covers', () => {
+    const schema = object({
+      interval: number({default: 60}),
+      url: string({default: 'mqtt://localhost'}),
+      on: boolean({default: true}),
+    })
+    expect(materializeDefaults(schema)).toEqual({
+      interval: 60,
+      url: 'mqtt://localhost',
+      on: true,
+    })
+  })
+
+  it('omits defaultless leaves and optional fields', () => {
+    const schema = object({
+      interval: number({default: 60}),
+      apiKey: string(),
+      mqttUrl: string(),
+      label: optional(string()),
+    })
+    expect(materializeDefaults(schema)).toEqual({interval: 60})
+  })
+
+  it('includes a nested object only when defaults fill it completely', () => {
+    const schema = object({
+      full: object({host: string({default: 'h'}), port: number({default: 1883})}),
+      partial: object({host: string({default: 'h'}), port: number()}),
+    })
+    expect(materializeDefaults(schema)).toEqual({full: {host: 'h', port: 1883}})
+  })
+
+  it('counts an optional field as covered when deciding a nested object', () => {
+    const schema = object({
+      net: object({host: string({default: 'h'}), label: optional(string())}),
+    })
+    expect(materializeDefaults(schema)).toEqual({net: {host: 'h'}})
+  })
+
+  it('includes a wholesale unit only with a whole-value default', () => {
+    const schema = object({
+      tags: array(string(), {default: ['a']}),
+      hosts: array(string()),
+      mode: taggedUnion(
+        'kind',
+        {dhcp: object({}), static: object({ip: string()})},
+        {default: {kind: 'dhcp'}},
+      ),
+      other: taggedUnion('kind', {dhcp: object({})}),
+      level: union([literal('debug'), literal('info')], {default: 'info'}),
+      bare: union([literal('debug'), literal('info')]),
+    })
+    expect(materializeDefaults(schema)).toEqual({
+      tags: ['a'],
+      mode: {kind: 'dhcp'},
+      level: 'info',
+    })
+  })
+
+  it('returns an empty object for a schema no default covers', () => {
+    expect(materializeDefaults(object({mqttUrl: string(), port: number()}))).toEqual({})
+    expect(materializeDefaults(object({}))).toEqual({})
   })
 })

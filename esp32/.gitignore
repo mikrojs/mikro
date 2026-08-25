@@ -1,5 +1,5 @@
-build/
-test/build/
+build*/
+test/build*/
 managed_components/
 dependencies.lock
 sdkconfig

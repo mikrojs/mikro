@@ -13,6 +13,7 @@ import {lastValueFrom, tap} from 'rxjs'
 import {DevicePicker} from '../components/DevicePicker.js'
 import type {PortInfo} from '../hooks/useDevices.js'
 import {agentEmit, agentResult, isAgentMode} from '../lib/agent.js'
+import {clearStaleConfigState} from '../lib/configSchema.js'
 import {loadEnvFiles, validateNvsKeys} from '../lib/deploy.js'
 import {formatDeployEvent} from '../lib/deployProgress.js'
 import {FirmwareIncompatibleError} from '../lib/firmwareCompat.js'
@@ -185,6 +186,12 @@ export async function run(
   const {session, devicePath} = handles
 
   try {
+    // A cable deploy replaces the install cycle the config-pairing state
+    // describes, and the trial accounting is not version-aware: a leftover
+    // trial would burn boots (and roll a document back) under the new app.
+    // The delivered document itself stays: its version stamp makes it inert
+    // across a version bump, and a registry re-serves it either way.
+    await clearStaleConfigState(session.kv)
     const last = await lastValueFrom(
       session
         .deployBuild(artifact.outPath, artifact.checksum, {

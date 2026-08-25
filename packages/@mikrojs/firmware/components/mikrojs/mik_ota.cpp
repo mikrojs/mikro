@@ -28,6 +28,7 @@
 
 #include "mikrojs/app_store.h"
 #include "mikrojs/mikrojs.h"
+#include "mikrojs/ota_env.h"
 #include "mikrojs/platform.h"
 #include "mikrojs_esp32.h"
 #include "quickjs.h"
@@ -1004,49 +1005,45 @@ bool valid_checksum(const char* s) {
     return i == 64;
 }
 
-// stageBegin(checksum, size) -> { ok, resumeOffset } | { ok:false, error }
-JSValue js_stage_begin(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
-    if (argc < 2) return err_obj(ctx, "missing checksum/size");
-    const char* checksum = JS_ToCString(ctx, argv[0]);
-    if (!checksum) {
-        // JS_ToCString throws on a value with a throwing toString. Clear it
-        // rather than strand it on the context for some unrelated later
-        // operation to surface, the same way the size path below does.
-        JS_FreeValue(ctx, JS_GetException(ctx));
-        return err_obj(ctx, "checksum not a string");
+// ── Staging cores ────────────────────────────────────────────────────────────
+// The install machinery, with no JSContext in sight. Two callers sit on top: the
+// native:mikro/ota JS bindings below, and the MIKOtaEnv install ops the native
+// OTA client drives (mik__ota_fill_install_ops). One implementation, so the two
+// can never drift on something as unforgiving as install safety.
+
+struct CoreErr {
+    const char* msg = nullptr;
+    OtaErr kind = OtaErr::kTransient;
+};
+
+bool core_fail(CoreErr* e, const char* msg, OtaErr kind = OtaErr::kTransient) {
+    if (e) {
+        e->msg = msg;
+        e->kind = kind;
     }
+    return false;
+}
+
+bool core_stage_begin(const char* checksum, int64_t size, int64_t* out_resume, CoreErr* e) {
+    if (!checksum) return core_fail(e, "checksum not a string");
     if (!valid_checksum(checksum)) {
-        JS_FreeCString(ctx, checksum);
         // kTransient, not the default: the build is fine, the offer is
         // malformed, so this must not count against the build's retry budget.
-        return err_obj_kind(ctx, "checksum must be 64 lowercase hex characters",
-                            OtaErr::kTransient);
+        return core_fail(e, "checksum must be 64 lowercase hex characters", OtaErr::kTransient);
     }
-    int64_t size = 0;
-    if (JS_ToInt64(ctx, &size, argv[1]) || size <= 0) {
-        JS_FreeCString(ctx, checksum);
-        // JS_ToInt64 throws on a value with a throwing valueOf. We report through
-        // the result object, so clear it rather than strand it on the context for
-        // some unrelated later operation to surface.
-        JS_FreeValue(ctx, JS_GetException(ctx));
-        return err_obj(ctx, "invalid size");
-    }
-    // Reject an impossible size here, while it is still int64: stgSize is u32,
-    // so a bogus offer above 4 GB would otherwise truncate into a small cap.
+    if (size <= 0) return core_fail(e, "invalid size");
+    // Reject an impossible size while it is still int64: stgSize is u32, so a
+    // bogus offer above 4 GB would otherwise truncate into a small cap.
     long fs_total = 0;
     long fs_free = 0;
     if (fs_space(&fs_total, &fs_free) && size > fs_total) {
-        JS_FreeCString(ctx, checksum);
-        return err_obj(ctx, "offered build is larger than the filesystem");
+        return core_fail(e, "offered build is larger than the filesystem");
     }
 
     stage_close();  // flush any prior staging file before stat/unlink below
 
     nvs_handle_t h;
-    if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) {
-        JS_FreeCString(ctx, checksum);
-        return err_obj(ctx, "nvs open failed");
-    }
+    if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) return core_fail(e, "nvs open failed");
 
     // Resume only if the in-progress staging file is for the same checksum+size
     // and hasn't already grown past the declared size.
@@ -1064,35 +1061,25 @@ JSValue js_stage_begin(JSContext* ctx, JSValueConst, int argc, JSValueConst* arg
         nvs_commit(h);
     }
     nvs_close(h);
-    JS_FreeCString(ctx, checksum);
 
     g_stage_cap = (uint32_t)size;
     g_stage_have = resume;
-
-    JSValue o = ok_obj(ctx);
-    JS_SetPropertyStr(ctx, o, "resumeOffset", JS_NewInt64(ctx, resume));
-    return o;
+    if (out_resume) *out_resume = resume;
+    return true;
 }
 
-// stageWrite(bytes) -> { ok } | { ok:false, error, kind? }
-JSValue js_stage_write(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
-    if (argc < 1) return err_obj(ctx, "missing bytes");
-    size_t len = 0;
-    const uint8_t* data = JS_GetUint8Array(ctx, &len, argv[0]);
-    if (!data) {
-        JS_FreeValue(ctx, JS_GetException(ctx));  // JS_GetUint8Array throws; we report via err_obj
-        return err_obj(ctx, "bytes not a Uint8Array");
-    }
-    if (len == 0) return ok_obj(ctx);
+bool core_stage_write(const uint8_t* data, size_t len, CoreErr* e) {
+    if (!data) return core_fail(e, "bytes not a Uint8Array");
+    if (len == 0) return true;
 
     // Enforce the size cap from stageBegin so a runaway download can't fill flash.
     if (g_stage_cap > 0 && (uint64_t)g_stage_have + len > g_stage_cap) {
-        return err_obj_kind(ctx, "staged write exceeds declared size", OtaErr::kTransient);
+        return core_fail(e, "staged write exceeds declared size", OtaErr::kTransient);
     }
 
     if (!g_stage_file) {
         g_stage_file = fopen(kStaging, "ab");
-        if (!g_stage_file) return err_obj_kind(ctx, "open staging file", OtaErr::kTransient);
+        if (!g_stage_file) return core_fail(e, "open staging file", OtaErr::kTransient);
     }
     size_t wrote = fwrite(data, 1, len, g_stage_file);
     if (wrote != len) {
@@ -1105,27 +1092,13 @@ JSValue js_stage_write(JSContext* ctx, JSValueConst, int argc, JSValueConst* arg
         stage_close();
         long actual = file_size(kStaging);
         g_stage_have = actual < 0 ? g_stage_have + (long)wrote : actual;
-        return err_obj_kind(ctx, "write staging file (disk full?)", OtaErr::kTransient);
+        return core_fail(e, "write staging file (disk full?)", OtaErr::kTransient);
     }
     g_stage_have += (long)len;
-    return ok_obj(ctx);
+    return true;
 }
 
-// stageFinish(trialBoots, requireConfirm, installNow)
-//   -> { ok } | { ok:false, error, kind }
-// Verifies SHA-256 + size over the whole staged file, then either installs in
-// place now (installNow) or marks a verified build staged-for-install so the
-// next boot's reconcile installs it on a clean heap.
-JSValue js_stage_finish(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
-    int64_t trial_boots = 1;
-    if (argc >= 1 && JS_ToInt64(ctx, &trial_boots, argv[0])) {
-        // A throwing valueOf leaves trial_boots indeterminate and an exception
-        // pending; we report through the result object, so clear it and default.
-        JS_FreeValue(ctx, JS_GetException(ctx));
-        trial_boots = 1;
-    }
-    bool require_confirm = argc >= 2 && JS_ToBool(ctx, argv[1]);
-    bool install_now = argc >= 3 && JS_ToBool(ctx, argv[2]);
+bool core_stage_finish(int64_t trial_boots, bool require_confirm, bool install_now, CoreErr* e) {
     if (trial_boots < 0) trial_boots = 0;
     // A confirm-gated trial needs at least one boot to run in. Boot reconcile
     // evaluates the trial before the app loads, so trialBoots:0 with confirm set
@@ -1135,12 +1108,12 @@ JSValue js_stage_finish(JSContext* ctx, JSValueConst, int argc, JSValueConst* ar
     if (trial_boots > 255) trial_boots = 255;
 
     if (!stage_close()) {
-        return err_obj_kind(ctx, "write staging file (disk full?)", OtaErr::kTransient);
+        return core_fail(e, "write staging file (disk full?)", OtaErr::kTransient);
     }
 
     nvs_handle_t h;
     if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) {
-        return err_obj_kind(ctx, "nvs open failed", OtaErr::kTransient);
+        return core_fail(e, "nvs open failed", OtaErr::kTransient);
     }
     char want_chk[96];
     bool has_chk = nvs_str(h, kKeyStgChk, want_chk, sizeof(want_chk));
@@ -1148,32 +1121,32 @@ JSValue js_stage_finish(JSContext* ctx, JSValueConst, int argc, JSValueConst* ar
 
     if (!has_chk) {
         nvs_close(h);
-        return err_obj_kind(ctx, "no staged build", OtaErr::kTransient);
+        return core_fail(e, "no staged build", OtaErr::kTransient);
     }
     long have = file_size(kStaging);
     if (have < 0) {
         nvs_close(h);
-        return err_obj_kind(ctx, "staging file missing", OtaErr::kTransient);
+        return core_fail(e, "staging file missing", OtaErr::kTransient);
     }
     if ((uint32_t)have != want_size) {
         nvs_close(h);
-        return err_obj_kind(ctx, "staged size mismatch", OtaErr::kCorrupt);
+        return core_fail(e, "staged size mismatch", OtaErr::kCorrupt);
     }
     char got_chk[65];
     if (!sha256_file(kStaging, got_chk)) {
         nvs_close(h);
-        return err_obj_kind(ctx, "read staging file", OtaErr::kTransient);
+        return core_fail(e, "read staging file", OtaErr::kTransient);
     }
     if (strcmp(got_chk, want_chk) != 0) {
         nvs_close(h);
-        return err_obj_kind(ctx, "checksum mismatch (corrupt download)", OtaErr::kCorrupt);
+        return core_fail(e, "checksum mismatch (corrupt download)", OtaErr::kCorrupt);
     }
 
     // Verified. Promote the staging file to the pending build.
     unlink(kPending);
     if (rename(kStaging, kPending) != 0) {
         nvs_close(h);
-        return err_obj_kind(ctx, "stage pending build", OtaErr::kTransient);
+        return core_fail(e, "stage pending build", OtaErr::kTransient);
     }
     g_stage_cap = 0;
     g_stage_have = 0;
@@ -1202,7 +1175,7 @@ JSValue js_stage_finish(JSContext* ctx, JSValueConst, int argc, JSValueConst* ar
             }
             nvs_commit(h);
             nvs_close(h);
-            return err_obj_kind(ctx, err, kind);
+            return core_fail(e, err, kind);
         }
         // New app is live but unproven: enter the trial. The caller restarts.
         nvs_set_u8(h, kKeyState, kStateTrial);
@@ -1214,7 +1187,7 @@ JSValue js_stage_finish(JSContext* ctx, JSValueConst, int argc, JSValueConst* ar
         clear_trial_failure(h);  // fresh trial: this build has not failed yet
         nvs_commit(h);
         nvs_close(h);
-        return ok_obj(ctx);
+        return true;
     }
 
     // Defer: install at the next boot on a clean heap.
@@ -1222,11 +1195,10 @@ JSValue js_stage_finish(JSContext* ctx, JSValueConst, int argc, JSValueConst* ar
     nvs_set_u8(h, kKeyInstLeft, kInstallBudget);
     nvs_commit(h);
     nvs_close(h);
-    return ok_obj(ctx);
+    return true;
 }
 
-// stageAbort() -> void
-JSValue js_stage_abort(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+void core_stage_abort(void) {
     stage_close();
     g_stage_cap = 0;
     g_stage_have = 0;
@@ -1238,14 +1210,13 @@ JSValue js_stage_abort(JSContext* ctx, JSValueConst, int, JSValueConst*) {
         nvs_commit(h);
         nvs_close(h);
     }
-    return JS_UNDEFINED;
 }
 
-// markValid() -> void. Confirm the running trial: promote it to GOOD and make
-// the pending build the new revert target.
-JSValue js_mark_valid(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+// Confirm the running trial: promote it to GOOD and make the pending build the
+// new revert target.
+void core_mark_valid(void) {
     nvs_handle_t h;
-    if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) return JS_UNDEFINED;
+    if (nvs_open(kNs, NVS_READWRITE, &h) != ESP_OK) return;
     if (nvs_u8(h, kKeyState, kStateGood) == kStateTrial) {
         // Stay in the trial if the promotion failed: going GOOD anyway would
         // point instChk at a build that has no .tgz left to revert to.
@@ -1263,15 +1234,13 @@ JSValue js_mark_valid(JSContext* ctx, JSValueConst, int, JSValueConst*) {
         nvs_commit(h);
     }
     nvs_close(h);
-    return JS_UNDEFINED;
 }
 
-// revert() -> { ok } | { ok:false, error }. Re-install the last-good build.
-JSValue js_revert(JSContext* ctx, JSValueConst, int, JSValueConst*) {
-    if (!path_exists(kLastGood)) return err_obj(ctx, "no last-good build to revert to");
+bool core_revert(CoreErr* e) {
+    if (!path_exists(kLastGood)) return core_fail(e, "no last-good build to revert to");
     const char* err = nullptr;
     OtaErr kind = OtaErr::kTransient;
-    if (!install_build(kLastGood, &err, &kind)) return err_obj(ctx, err);
+    if (!install_build(kLastGood, &err, &kind)) return core_fail(e, err, kind);
     nvs_handle_t h;
     if (nvs_open(kNs, NVS_READWRITE, &h) == ESP_OK) {
         nvs_set_u8(h, kKeyState, kStateGood);
@@ -1282,40 +1251,36 @@ JSValue js_revert(JSContext* ctx, JSValueConst, int, JSValueConst*) {
         nvs_commit(h);
         nvs_close(h);
     }
-    return ok_obj(ctx);
+    return true;
 }
 
-// running() -> { checksum?, trial }
-JSValue js_running(JSContext* ctx, JSValueConst, int, JSValueConst*) {
-    JSValue o = JS_NewObject(ctx);
+void core_running(char* chk, size_t chk_len, bool* out_trial) {
     bool trial = false;
-    char chk[96] = {0};
+    if (chk && chk_len) chk[0] = '\0';
     nvs_handle_t h;
     if (nvs_open(kNs, NVS_READONLY, &h) == ESP_OK) {
         trial = nvs_u8(h, kKeyState, kStateGood) == kStateTrial;
-        nvs_str(h, trial ? kKeyPendChk : kKeyInstChk, chk, sizeof(chk));
+        if (chk && chk_len) nvs_str(h, trial ? kKeyPendChk : kKeyInstChk, chk, chk_len);
         nvs_close(h);
     }
-    if (chk[0]) JS_SetPropertyStr(ctx, o, "checksum", JS_NewString(ctx, chk));
-    JS_SetPropertyStr(ctx, o, "trial", JS_NewBool(ctx, trial));
-    return o;
+    if (out_trial) *out_trial = trial;
 }
 
-// reconcile() -> { installed?, reverted, diagnostic? }. Returns the outcome the
-// boot-time reconcile recorded, then clears it so a second call reads empty.
-JSValue js_reconcile(JSContext* ctx, JSValueConst, int, JSValueConst*) {
-    JSValue o = JS_NewObject(ctx);
+// Read the outcome the boot-time reconcile recorded, then clear it so a second
+// call reads empty.
+void core_reconcile(char* installed, size_t installed_len, bool* out_reverted, char* reason,
+                    size_t reason_len, char* detail, size_t detail_len) {
+    if (installed && installed_len) installed[0] = '\0';
+    if (reason && reason_len) reason[0] = '\0';
+    if (detail && detail_len) detail[0] = '\0';
     bool reverted = false;
-    char installed[96] = {0};
-    char reason[96] = {0};
-    char detail[160] = {0};
 
     nvs_handle_t h;
     if (nvs_open(kNs, NVS_READWRITE, &h) == ESP_OK) {
         reverted = nvs_u8(h, kKeyORevert, 0) != 0;
-        nvs_str(h, kKeyOInst, installed, sizeof(installed));
-        nvs_str(h, kKeyORsn, reason, sizeof(reason));
-        nvs_str(h, kKeyODetail, detail, sizeof(detail));
+        if (installed && installed_len) nvs_str(h, kKeyOInst, installed, installed_len);
+        if (reason && reason_len) nvs_str(h, kKeyORsn, reason, reason_len);
+        if (detail && detail_len) nvs_str(h, kKeyODetail, detail, detail_len);
         nvs_erase_key(h, kKeyOInst);
         nvs_erase_key(h, kKeyORevert);
         nvs_erase_key(h, kKeyORsn);
@@ -1323,6 +1288,125 @@ JSValue js_reconcile(JSContext* ctx, JSValueConst, int, JSValueConst*) {
         nvs_commit(h);
         nvs_close(h);
     }
+    if (out_reverted) *out_reverted = reverted;
+}
+
+// ── JS bindings ──────────────────────────────────────────────────────────────
+// Argument coercion and result shaping only; the work is in the cores above.
+
+JSValue core_err_obj(JSContext* ctx, const CoreErr& e) {
+    return err_obj_kind(ctx, e.msg ? e.msg : "ota error", e.kind);
+}
+
+// stageBegin(checksum, size) -> { ok, resumeOffset } | { ok:false, error }
+JSValue js_stage_begin(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+    if (argc < 2) return err_obj(ctx, "missing checksum/size");
+    const char* checksum = JS_ToCString(ctx, argv[0]);
+    if (!checksum) {
+        // JS_ToCString throws on a value with a throwing toString. Clear it
+        // rather than strand it on the context for some unrelated later
+        // operation to surface, the same way the size path below does.
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        return err_obj(ctx, "checksum not a string");
+    }
+    int64_t size = 0;
+    if (JS_ToInt64(ctx, &size, argv[1])) {
+        JS_FreeCString(ctx, checksum);
+        // JS_ToInt64 throws on a value with a throwing valueOf. We report through
+        // the result object, so clear it rather than strand it on the context.
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        return err_obj(ctx, "invalid size");
+    }
+
+    CoreErr e;
+    int64_t resume = 0;
+    bool ok = core_stage_begin(checksum, size, &resume, &e);
+    JS_FreeCString(ctx, checksum);
+    if (!ok) return core_err_obj(ctx, e);
+
+    JSValue o = ok_obj(ctx);
+    JS_SetPropertyStr(ctx, o, "resumeOffset", JS_NewInt64(ctx, resume));
+    return o;
+}
+
+// stageWrite(bytes) -> { ok } | { ok:false, error, kind? }
+JSValue js_stage_write(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+    if (argc < 1) return err_obj(ctx, "missing bytes");
+    size_t len = 0;
+    const uint8_t* data = JS_GetUint8Array(ctx, &len, argv[0]);
+    if (!data) {
+        JS_FreeValue(ctx, JS_GetException(ctx));  // JS_GetUint8Array throws; we report via err_obj
+        return err_obj(ctx, "bytes not a Uint8Array");
+    }
+    CoreErr e;
+    if (!core_stage_write(data, len, &e)) return core_err_obj(ctx, e);
+    return ok_obj(ctx);
+}
+
+// stageFinish(trialBoots, requireConfirm, installNow)
+//   -> { ok } | { ok:false, error, kind }
+// Verifies SHA-256 + size over the whole staged file, then either installs in
+// place now (installNow) or marks a verified build staged-for-install so the
+// next boot's reconcile installs it on a clean heap.
+JSValue js_stage_finish(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+    int64_t trial_boots = 1;
+    if (argc >= 1 && JS_ToInt64(ctx, &trial_boots, argv[0])) {
+        // A throwing valueOf leaves trial_boots indeterminate and an exception
+        // pending; we report through the result object, so clear it and default.
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        trial_boots = 1;
+    }
+    bool require_confirm = argc >= 2 && JS_ToBool(ctx, argv[1]);
+    bool install_now = argc >= 3 && JS_ToBool(ctx, argv[2]);
+
+    CoreErr e;
+    if (!core_stage_finish(trial_boots, require_confirm, install_now, &e)) {
+        return core_err_obj(ctx, e);
+    }
+    return ok_obj(ctx);
+}
+
+// stageAbort() -> void
+JSValue js_stage_abort(JSContext*, JSValueConst, int, JSValueConst*) {
+    core_stage_abort();
+    return JS_UNDEFINED;
+}
+
+// markValid() -> void
+JSValue js_mark_valid(JSContext*, JSValueConst, int, JSValueConst*) {
+    core_mark_valid();
+    return JS_UNDEFINED;
+}
+
+// revert() -> { ok } | { ok:false, error }. Re-install the last-good build.
+JSValue js_revert(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+    CoreErr e;
+    // Historically reported without a kind, and the policy maps every revert
+    // failure to transient anyway.
+    if (!core_revert(&e)) return err_obj(ctx, e.msg ? e.msg : "revert failed");
+    return ok_obj(ctx);
+}
+
+// running() -> { checksum?, trial }
+JSValue js_running(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+    JSValue o = JS_NewObject(ctx);
+    char chk[96] = {0};
+    bool trial = false;
+    core_running(chk, sizeof(chk), &trial);
+    if (chk[0]) JS_SetPropertyStr(ctx, o, "checksum", JS_NewString(ctx, chk));
+    JS_SetPropertyStr(ctx, o, "trial", JS_NewBool(ctx, trial));
+    return o;
+}
+
+// reconcile() -> { installed?, reverted, diagnostic? }
+JSValue js_reconcile(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+    JSValue o = JS_NewObject(ctx);
+    char installed[96] = {0};
+    char reason[96] = {0};
+    char detail[160] = {0};
+    bool reverted = false;
+    core_reconcile(installed, sizeof(installed), &reverted, reason, sizeof(reason), detail,
+                   sizeof(detail));
 
     if (installed[0]) JS_SetPropertyStr(ctx, o, "installed", JS_NewString(ctx, installed));
     JS_SetPropertyStr(ctx, o, "reverted", JS_NewBool(ctx, reverted));
@@ -1334,6 +1418,109 @@ JSValue js_reconcile(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     }
     return o;
 }
+
+// ── MIKOtaEnv install ops ────────────────────────────────────────────────────
+// The native OTA client reaches the staging machinery through these. They are
+// the same cores the JS bindings above call, so nothing can drift between the
+// two implementations while both are in the tree.
+
+namespace {
+
+int env_err_kind(OtaErr kind) {
+    switch (kind) {
+        case OtaErr::kCorrupt:
+            return MIK_OTA_ERR_CORRUPT;
+        case OtaErr::kOom:
+            return MIK_OTA_ERR_OOM;
+        case OtaErr::kTransient:
+            break;
+    }
+    return MIK_OTA_ERR_TRANSIENT;
+}
+
+void env_copy_err(const CoreErr& e, char* err_buf, size_t err_len) {
+    if (err_buf && err_len) snprintf(err_buf, err_len, "%s", e.msg ? e.msg : "ota error");
+}
+
+bool env_stage_begin(void*, const char* checksum, size_t size, size_t* out_resume, char* err_buf,
+                     size_t err_len) {
+    CoreErr e;
+    int64_t resume = 0;
+    if (!core_stage_begin(checksum, (int64_t)size, &resume, &e)) {
+        env_copy_err(e, err_buf, err_len);
+        return false;
+    }
+    if (out_resume) *out_resume = (size_t)resume;
+    return true;
+}
+
+bool env_stage_write(void*, const uint8_t* data, size_t len, char* err_buf, size_t err_len) {
+    CoreErr e;
+    if (!core_stage_write(data, len, &e)) {
+        env_copy_err(e, err_buf, err_len);
+        return false;
+    }
+    return true;
+}
+
+bool env_stage_finish(void*, int trial_boots, bool require_confirm, bool install_now, char* err_buf,
+                      size_t err_len, int* out_err_kind) {
+    CoreErr e;
+    if (!core_stage_finish(trial_boots, require_confirm, install_now, &e)) {
+        env_copy_err(e, err_buf, err_len);
+        if (out_err_kind) *out_err_kind = env_err_kind(e.kind);
+        return false;
+    }
+    return true;
+}
+
+void env_stage_abort(void*) { core_stage_abort(); }
+void env_mark_valid(void*) { core_mark_valid(); }
+
+bool env_revert(void*, char* err_buf, size_t err_len) {
+    CoreErr e;
+    if (!core_revert(&e)) {
+        env_copy_err(e, err_buf, err_len);
+        return false;
+    }
+    return true;
+}
+
+bool env_running(void*, MIKOtaRunningBuild* out) {
+    if (!out) return false;
+    *out = {};
+    char chk[96] = {0};
+    bool trial = false;
+    core_running(chk, sizeof(chk), &trial);
+    // The checksum field is a 64-hex digest plus its terminator; a longer value
+    // could only come from corrupted NVS, and truncating it is what the JS path
+    // effectively did too.
+    snprintf(out->checksum, sizeof(out->checksum), "%s", chk);
+    out->trial = trial;
+    // version is left empty on purpose: the policy fills it from the app's
+    // package.json through read_app_version.
+    return true;
+}
+
+void env_reconcile(void*, MIKOtaReconcileOutcome* out) {
+    if (!out) return;
+    *out = {};
+    char installed[96] = {0};
+    char reason[96] = {0};
+    char detail[160] = {0};
+    bool reverted = false;
+    core_reconcile(installed, sizeof(installed), &reverted, reason, sizeof(reason), detail,
+                   sizeof(detail));
+    snprintf(out->installed, sizeof(out->installed), "%s", installed);
+    out->reverted = reverted;
+    if (reason[0]) {
+        out->has_diagnostic = true;
+        snprintf(out->diagnostic.reason, sizeof(out->diagnostic.reason), "%s", reason);
+        snprintf(out->diagnostic.detail, sizeof(out->diagnostic.detail), "%s", detail);
+    }
+}
+
+}  // namespace
 
 // ── module registration ──────────────────────────────────────────────────────
 int mik__ota_module_init(JSContext* ctx, JSModuleDef* m) {
@@ -1481,6 +1668,18 @@ void adopt_fail(nvs_handle_t h, const char* chk, const char* reason, const char*
 }
 
 }  // namespace
+
+void mik__ota_fill_install_ops(MIKOtaEnv* env) {
+    if (!env) return;
+    env->stage_begin = env_stage_begin;
+    env->stage_write = env_stage_write;
+    env->stage_finish = env_stage_finish;
+    env->stage_abort = env_stage_abort;
+    env->mark_valid = env_mark_valid;
+    env->revert = env_revert;
+    env->running = env_running;
+    env->reconcile = env_reconcile;
+}
 
 // Stage a streamed .tgz for adopt install at the next boot (the cable-deploy
 // path, distinct from an OTA download which runs a trial). The install itself

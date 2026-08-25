@@ -5,12 +5,13 @@ import * as pathlib from 'node:path'
 import type {
   BuildRecord,
   ChannelRecord,
+  ConfigSchemaRecord,
   DeviceRecord,
   Registry,
   RegistryStorage,
   TokenRecord,
 } from './types.js'
-import {channelKey, CLIENT_IP_HEADER} from './util.js'
+import {channelKey, CLIENT_IP_HEADER, configSchemaKey} from './util.js'
 
 /** Publish is the only route with a large body; everything else is a small
  *  JSON document. Bodies are buffered before routing, so this is what keeps an
@@ -27,6 +28,7 @@ export function fileStorage(dir: string): RegistryStorage {
   mkdirSync(buildsDir, {recursive: true})
   const buildsPath = pathlib.join(dir, 'builds.json')
   const channelsPath = pathlib.join(dir, 'channels.json')
+  const configSchemasPath = pathlib.join(dir, 'config-schemas.json')
   const devicesPath = pathlib.join(dir, 'devices.json')
   const tokensPath = pathlib.join(dir, 'tokens.json')
 
@@ -125,6 +127,14 @@ export function fileStorage(dir: string): RegistryStorage {
       const index = readIndex<ChannelRecord>(channelsPath)
       index[channelKey(record.app, record.channel, record.firmwareRange)] = record
       writeIndex(channelsPath, index)
+    },
+    async getConfigSchema(app, version) {
+      return readIndex<ConfigSchemaRecord>(configSchemasPath)[configSchemaKey(app, version)]
+    },
+    async putConfigSchema(record) {
+      const index = readIndex<ConfigSchemaRecord>(configSchemasPath)
+      index[configSchemaKey(record.app, record.version)] = record
+      writeIndex(configSchemasPath, index)
     },
     async getDevice(deviceId) {
       return readIndex<DeviceRecord>(devicesPath)[deviceId]

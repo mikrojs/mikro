@@ -1,20 +1,15 @@
-import {decode, encode} from 'mikro/cbor'
-import {request} from 'mikro/http/request'
-import {ota} from 'mikro/ota'
-import {sleep} from 'mikro/sleep'
-import {
-  deviceId,
-  deviceName,
-  firmware,
-  restart,
-  setDeviceName,
-  storageUsage,
-  version,
-} from 'mikro/sys'
+// The OTA check-in client. The state machine lives in C
+// (src/mik_ota_client.cpp); this is the app-facing surface over it.
+//
+// There is deliberately no logic here. Every decision — the retry budget, the
+// trial gates, the config slots, the jittered cadence, the download pump with
+// its resume — is in the portable library, where host tests drive it against a
+// fake platform.
 
-import {type ClientIo, createOtaClient, type LogLevel} from './client-impl.js'
+import {check as nativeCheck, watch as nativeWatch} from 'native:mikro/ota_client'
 
 export type {
+  BeforeCheckResult,
   CheckError,
   CheckOptions,
   CheckResult,
@@ -22,41 +17,7 @@ export type {
   Teardown,
   Watcher,
   WatchOptions,
-} from './client-impl.js'
-
-/* eslint-disable no-console -- serial diagnostics are the client's only output channel */
-const consoleFor: Record<LogLevel, (format: string, ...args: unknown[]) => void> = {
-  debug: (format, ...args) => console.debug(format, ...args),
-  info: (format, ...args) => console.log(format, ...args),
-  warn: (format, ...args) => console.warn(format, ...args),
-  error: (format, ...args) => console.error(format, ...args),
-}
-/* eslint-enable no-console */
-
-/** The real device. Every runtime symbol the client uses is bound here and
- *  nowhere else; `ota` members go through arrows because they are methods on
- *  the builtin singleton. */
-const deviceIo: ClientIo = {
-  sleep,
-  request,
-  random: Math.random,
-  log: (level, format, ...args) => consoleFor[level](format, ...args),
-  encode,
-  decode,
-  ota,
-  identity: () => ({
-    deviceId,
-    firmware: version,
-    firmwareHash: firmware.hash,
-    bytecode: firmware.bytecodeVersion,
-  }),
-  storageFree: () => storageUsage()?.free,
-  deviceName,
-  setDeviceName,
-  restart,
-}
-
-const client = createOtaClient(deviceIo)
+} from './types.js'
 
 /**
  * One-shot update check for wake-cycle apps: check in with the registry,
@@ -65,7 +26,7 @@ const client = createOtaClient(deviceIo)
  * in-flight work is done. Connectivity is the app's business: call this with
  * the network already up.
  */
-export const check = client.check
+export const check = nativeCheck
 
 /**
  * Periodic update checks for always-on apps: a detached background loop that
@@ -74,4 +35,4 @@ export const check = client.check
  * per round (its returned teardown runs after the round). Do not combine with
  * `check()` — the two modes are alternatives, one per app.
  */
-export const watch = client.watch
+export const watch = nativeWatch

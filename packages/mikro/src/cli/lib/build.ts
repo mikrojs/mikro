@@ -199,8 +199,19 @@ const DEFAULT_LOG_DIR = '/appfs/logs'
 // without a nested-object pass.
 function serializeRuntimeConfig(config: MikroJSConfig): Record<string, unknown> {
   // `env` is resolved away at load time; drop it defensively so the override
-  // map can never leak into the device JSON.
-  const {sim: _sim, build: _build, env: _env, wifi, logFile, fsReadMax, onPanic, ...rest} = config
+  // map can never leak into the device JSON. `otaConfigSchema` is host-only
+  // (the config schema ships in the manifest, not here).
+  const {
+    sim: _sim,
+    build: _build,
+    env: _env,
+    otaConfigSchema: _otaConfigSchema,
+    wifi,
+    logFile,
+    fsReadMax,
+    onPanic,
+    ...rest
+  } = config
   const out: Record<string, unknown> = {...rest}
   if (fsReadMax !== undefined) out.fsReadMax = parseSize(fsReadMax)
   if (wifi?.country) out['wifi.country'] = wifi.country

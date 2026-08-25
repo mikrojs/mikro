@@ -102,6 +102,16 @@ describe('buildUploadRequest', () => {
     expect(fields.dirty).toBe('1')
   })
 
+  it('serializes the manifest config schema as a JSON field, omitted when absent', () => {
+    const schema = {kind: 'object', shape: {interval: {kind: 'number', default: 60}}}
+    const req = buildUploadRequest(
+      {...input, manifest: {...manifest, configSchema: schema}},
+      'secret-key',
+    )
+    expect(req.fields.configSchema).toBe(JSON.stringify(schema))
+    expect(buildUploadRequest(input, 'secret-key').fields.configSchema).toBeUndefined()
+  })
+
   it('omits the dirty flag for a clean tree even with a commit', () => {
     const clean: PublishInput = {...input, manifest: {...manifest, commit: 'a1b2c3d4e5f6'}}
     const {fields} = buildUploadRequest(clean, 'k')
@@ -122,6 +132,21 @@ describe('publishBuild', () => {
 
   afterEach(() => {
     rmSync(dir, {recursive: true, force: true})
+  })
+
+  it('surfaces the registry advisory warnings, empty when the body has none', async () => {
+    const withWarnings: FetchLike = async () => ({
+      ok: true,
+      status: 201,
+      text: async () =>
+        JSON.stringify({ok: true, warnings: ['note: default of .interval changed']}),
+    })
+    const first = await publishBuild(input, buildPath, 'k', withWarnings)
+    expect(first.warnings).toEqual(['note: default of .interval changed'])
+
+    const bare: FetchLike = async () => ({ok: true, status: 200, text: async () => ''})
+    const second = await publishBuild(input, buildPath, 'k', bare)
+    expect(second.warnings).toEqual([])
   })
 
   it('uploads the build with bearer auth and metadata', async () => {
@@ -238,7 +263,7 @@ describe('releaseBuild', () => {
       status: 200,
       text: async () => JSON.stringify({ok: true, released: 4}),
     }))
-    expect(await releaseBuild(releaseInput, 't', fetchImpl)).toEqual({released: 4})
+    expect(await releaseBuild(releaseInput, 't', fetchImpl)).toEqual({released: 4, warnings: []})
   })
 
   it('defaults released to 0 when the response omits it', async () => {
@@ -247,7 +272,7 @@ describe('releaseBuild', () => {
       status: 200,
       text: async () => JSON.stringify({ok: true}),
     }))
-    expect(await releaseBuild(releaseInput, 't', fetchImpl)).toEqual({released: 0})
+    expect(await releaseBuild(releaseInput, 't', fetchImpl)).toEqual({released: 0, warnings: []})
   })
 
   it('throws with the registry status and body on failure', async () => {

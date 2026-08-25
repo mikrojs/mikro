@@ -1,5 +1,5 @@
 import {env} from 'mikro/env'
-import * as ota from 'mikro/ota/client'
+import * as otaClient from 'mikro/ota/client'
 import {deepSleep} from 'mikro/sleep'
 import {getWakeupCause, restart, uptime} from 'mikro/sys'
 import {wifi} from 'mikro/wifi'
@@ -28,7 +28,7 @@ if (!connected.ok) {
   // the default of 1, a single wake without WiFi would roll back a perfectly
   // healthy build; three wakes of grace lets it ride out a flaky network while
   // a build that can never check in still reverts.
-  const checked = await ota.check({trialBoots: 3})
+  const checked = await otaClient.check({trialBoots: 3})
   if (checked.status === 'staged') {
     // Restarting installs the staged build and runs the next cycle on it.
     // If the cycle had work in flight, you would finish it first and restart

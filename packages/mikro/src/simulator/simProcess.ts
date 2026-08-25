@@ -62,6 +62,7 @@ import {
   ENV_FLAG_SECRET,
   type Frame,
   HEADER_SIZE,
+  KV_VALUE_MAX_BYTES,
   MSG_CHECKSUM_RESULT,
   MSG_COMPLETIONS,
   MSG_CONFIG_ENTRIES,
@@ -845,6 +846,17 @@ function handleKvSet(payload: Buffer): void {
   const keyLen = payload.readUInt16LE(1)
   const key = payload.subarray(3, 3 + keyLen).toString('utf-8')
   const valLen = payload.readUInt16LE(3 + keyLen)
+  // Same limits and messages as the firmware handler: a value the sim
+  // accepts but a real cable rejects would make `sim deploy` mask a
+  // `mikro deploy` failure.
+  if (valLen >= KV_VALUE_MAX_BYTES) {
+    sendErr('value too long')
+    return
+  }
+  if (keyLen === 0 || keyLen > 15) {
+    sendErr('key exceeds NVS 15-char limit')
+    return
+  }
   const value = payload.subarray(5 + keyLen, 5 + keyLen + valLen).toString('utf-8')
 
   const path = kvStorePath(ns)

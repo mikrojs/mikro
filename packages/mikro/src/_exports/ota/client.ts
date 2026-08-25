@@ -4,6 +4,7 @@
 // the on-device wiring.
 
 import type {
+  BeforeCheckResult,
   CheckError,
   CheckOptions,
   CheckResult,
@@ -11,9 +12,18 @@ import type {
   Teardown,
   Watcher,
   WatchOptions,
-} from '@mikrojs/native/runtime/ota/client-impl'
+} from '@mikrojs/native/runtime/ota/types'
 
 export declare function check(options?: CheckOptions): Promise<CheckResult>
 export declare function watch(options?: WatchOptions): Watcher
 
-export type {CheckError, CheckOptions, CheckResult, DeclineReason, Teardown, Watcher, WatchOptions}
+export type {
+  BeforeCheckResult,
+  CheckError,
+  CheckOptions,
+  CheckResult,
+  DeclineReason,
+  Teardown,
+  Watcher,
+  WatchOptions,
+}

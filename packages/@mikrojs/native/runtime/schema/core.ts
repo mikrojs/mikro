@@ -150,6 +150,44 @@ type InferTaggedUnion<Key extends string, Branches> = {
   [Tag in keyof Branches & string]: {[K in Key]: Tag} & Infer<Branches[Tag]>
 }[keyof Branches & string]
 
+/* The read type: what applyDefaults alone can hand back. A field defaults
+ * cannot fill is optional here, while Infer keeps it required: Infer is the
+ * write type, where an operator must supply it. */
+export type InferRead<S> =
+  S extends ObjectSchema<infer Shape>
+    ? ObjectSchema extends S
+      ? object
+      : Simplify<InferReadObject<Shape>>
+    : Infer<S>
+
+/* What the materialized defaults always contain: a node carrying its own
+ * default, or a plain object whose fields ALL fill (or are optional). A
+ * defaultless array and a partially fillable object are omitted whole, so
+ * their fields read as absent until a document supplies them. Must stay in
+ * lockstep with materializeDefaults in shared.ts. */
+type Filled<S> = S extends {default: unknown}
+  ? true
+  : S extends OptionalSchema
+    ? false
+    : S extends ObjectSchema<infer Shape>
+      ? ObjectSchema extends S
+        ? false
+        : AllFilled<Shape>
+      : false
+
+/* Every field fills or is optional; an empty shape fills as {}. */
+type AllFilled<Shape> = false extends {
+  [K in keyof Shape]: Shape[K] extends OptionalSchema ? true : Filled<Shape[K]>
+}[keyof Shape]
+  ? false
+  : true
+
+type InferReadObject<Shape> = {
+  [K in keyof Shape as Filled<Shape[K]> extends true ? K : never]: InferRead<Shape[K]>
+} & {
+  [K in keyof Shape as Filled<Shape[K]> extends true ? never : K]?: InferRead<Shape[K]>
+}
+
 // ── Schema constructors ─────────────────────────────────────────────
 
 export interface ScalarOptions<T> {
@@ -158,6 +196,36 @@ export interface ScalarOptions<T> {
 
 export interface DefaultOption<T> {
   readonly default?: T
+}
+
+/* A node interface types `default` as optional, so a defaulted node and a bare
+ * one are the same type; the constructors record the annotation in their
+ * return type instead, which is what lets InferRead see it. D is the inferred
+ * type of the `default` option, undefined when none was written. */
+type Defaulted<S, D> = [D] extends [undefined] ? S : S & {readonly default: unknown}
+
+/* Defaults below a wholesale unit never fill: applyDefaults replaces the unit
+ * whole, so only a unit-level default applies. Rejected where they are written
+ * rather than at the validation that later misses the field. The walk stops at
+ * a nested unit's own default, since that unit's constructor already cleared
+ * everything under it. */
+function rejectInnerDefaults(node: Schema, path: string, unit: string, self: string): void {
+  if ((node as {default?: unknown}).default !== undefined) {
+    throw new TypeError(
+      `a default under ${unit} never applies; give ${self} itself a whole-value ` +
+        `default instead (found at ${path})`,
+    )
+  }
+  if (node.kind === 'object') {
+    const keys = Object.keys(node.shape)
+    for (let i = 0; i < keys.length; i++) {
+      rejectInnerDefaults(node.shape[keys[i]!]!, `${path}.${keys[i]!}`, unit, self)
+    }
+  } else if (node.kind === 'optional') {
+    // optional() rejects an inner default itself, so this only reaches what it
+    // wraps without reporting the same node twice.
+    rejectInnerDefaults(node.inner, path, unit, self)
+  }
 }
 
 /* Copies the annotation onto the node and rejects a `default` the node itself
@@ -175,45 +243,69 @@ function annotate<S extends Schema>(node: S, options?: {default?: unknown}): S {
   return node
 }
 
-export function string(options?: ScalarOptions<string>): StringSchema {
-  return annotate({kind: 'string'}, options)
+export function string<D extends string | undefined = undefined>(
+  options?: ScalarOptions<D>,
+): Defaulted<StringSchema, D> {
+  return annotate<StringSchema>({kind: 'string'}, options) as Defaulted<StringSchema, D>
 }
 
-export function number(options?: ScalarOptions<number>): NumberSchema {
-  return annotate({kind: 'number'}, options)
+export function number<D extends number | undefined = undefined>(
+  options?: ScalarOptions<D>,
+): Defaulted<NumberSchema, D> {
+  return annotate<NumberSchema>({kind: 'number'}, options) as Defaulted<NumberSchema, D>
 }
 
-export function boolean(options?: ScalarOptions<boolean>): BooleanSchema {
-  return annotate({kind: 'boolean'}, options)
+export function boolean<D extends boolean | undefined = undefined>(
+  options?: ScalarOptions<D>,
+): Defaulted<BooleanSchema, D> {
+  return annotate<BooleanSchema>({kind: 'boolean'}, options) as Defaulted<BooleanSchema, D>
 }
 
 export function unknown(): UnknownSchema {
   return {kind: 'unknown'}
 }
 
-export function literal<T extends Primitive>(
+export function literal<T extends Primitive, D extends T | undefined = undefined>(
   value: T,
-  options?: ScalarOptions<T>,
-): LiteralSchema<T> {
-  return annotate({kind: 'literal', value}, options)
+  options?: ScalarOptions<D>,
+): Defaulted<LiteralSchema<T>, D> {
+  return annotate<LiteralSchema<T>>({kind: 'literal', value}, options) as Defaulted<
+    LiteralSchema<T>,
+    D
+  >
 }
 
-export function array<S extends Schema>(
+export function array<S extends Schema, D extends NoInfer<Infer<S>>[] | undefined = undefined>(
   element: S,
-  options?: DefaultOption<NoInfer<Infer<S>>[]>,
-): ArraySchema<S> {
-  return annotate({kind: 'array', element}, options)
+  options?: DefaultOption<D>,
+): Defaulted<ArraySchema<S>, D> {
+  rejectInnerDefaults(element, '[]', 'an array', 'the array')
+  return annotate<ArraySchema<S>>({kind: 'array', element}, options) as Defaulted<ArraySchema<S>, D>
 }
 
-export function object<Shape extends Record<string, Schema>>(shape: Shape): ObjectSchema<Shape> {
+export function object<Shape extends Record<string, Schema>>(
+  shape: Shape,
+  options?: DefaultOption<never>,
+): ObjectSchema<Shape> {
+  if (options?.default !== undefined) {
+    throw new TypeError(
+      "an object's defaults compose from its fields; declare defaults on the fields",
+    )
+  }
   return {kind: 'object', shape}
 }
 
-export function tuple<Elements extends readonly Schema[]>(
-  elements: [...Elements],
-  options?: DefaultOption<NoInfer<Infer<TupleSchema<Elements>>>>,
-): TupleSchema<Elements> {
-  return annotate({kind: 'tuple', elements}, options)
+export function tuple<
+  Elements extends readonly Schema[],
+  D extends NoInfer<Infer<TupleSchema<Elements>>> | undefined = undefined,
+>(elements: [...Elements], options?: DefaultOption<D>): Defaulted<TupleSchema<Elements>, D> {
+  for (let i = 0; i < elements.length; i++) {
+    rejectInnerDefaults(elements[i]!, `[${i}]`, 'a tuple', 'the tuple')
+  }
+  return annotate<TupleSchema<Elements>>({kind: 'tuple', elements}, options) as Defaulted<
+    TupleSchema<Elements>,
+    D
+  >
 }
 
 export function optional<S extends Schema>(inner: S): OptionalSchema<S> {
@@ -223,19 +315,36 @@ export function optional<S extends Schema>(inner: S): OptionalSchema<S> {
   return {kind: 'optional', inner}
 }
 
-export function union<Members extends readonly Schema[]>(
-  members: [...Members],
-  options?: DefaultOption<NoInfer<Infer<UnionSchema<Members>>>>,
-): UnionSchema<Members> {
-  return annotate({kind: 'union', members}, options)
+export function union<
+  Members extends readonly Schema[],
+  D extends NoInfer<Infer<UnionSchema<Members>>> | undefined = undefined,
+>(members: [...Members], options?: DefaultOption<D>): Defaulted<UnionSchema<Members>, D> {
+  for (let i = 0; i < members.length; i++) {
+    rejectInnerDefaults(members[i]!, `[${i}]`, 'a union', 'the union')
+  }
+  return annotate<UnionSchema<Members>>({kind: 'union', members}, options) as Defaulted<
+    UnionSchema<Members>,
+    D
+  >
 }
 
-export function taggedUnion<Key extends string, Branches extends Record<string, ObjectSchema>>(
+export function taggedUnion<
+  Key extends string,
+  Branches extends Record<string, ObjectSchema>,
+  D extends NoInfer<Infer<TaggedUnionSchema<Key, Branches>>> | undefined = undefined,
+>(
   key: Key,
   branches: Branches,
-  options?: DefaultOption<NoInfer<Infer<TaggedUnionSchema<Key, Branches>>>>,
-): TaggedUnionSchema<Key, Branches> {
-  return annotate({kind: 'taggedUnion', key, branches}, options)
+  options?: DefaultOption<D>,
+): Defaulted<TaggedUnionSchema<Key, Branches>, D> {
+  const tags = Object.keys(branches)
+  for (let i = 0; i < tags.length; i++) {
+    rejectInnerDefaults(branches[tags[i]!]!, `.${tags[i]!}`, 'a taggedUnion', 'the union')
+  }
+  return annotate<TaggedUnionSchema<Key, Branches>>(
+    {kind: 'taggedUnion', key, branches},
+    options,
+  ) as Defaulted<TaggedUnionSchema<Key, Branches>, D>
 }
 
 // ── Defaults ────────────────────────────────────────────────────────

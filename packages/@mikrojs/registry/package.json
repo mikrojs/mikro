@@ -48,6 +48,7 @@
     "watch": "tsc -p tsconfig.build.json --watch --preserveWatchOutput"
   },
   "dependencies": {
+    "@mikrojs/native": "workspace:*",
     "semver": "^7.7.4"
   },
   "devDependencies": {
