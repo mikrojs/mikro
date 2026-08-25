@@ -3,9 +3,11 @@
 
 #include "esp_crt_bundle.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -172,7 +174,9 @@ static void mik__http_task(void* arg) {
     MIKHttpEventData event_data = {};
     bool headers_posted = false;
     bool cancelled = false;
-    char error_buf[256] = {0};
+    /* 384: a build URL (64-hex checksum path) plus full TLS detail and heap
+     * figures overruns 256, and truncation eats the trailing heap figures. */
+    char error_buf[384] = {0};
     bool have_error = false;
 
     esp_http_client_config_t config = {};
@@ -234,12 +238,18 @@ static void mik__http_task(void* arg) {
              * keep the plain connect error (no heap-level guessing). */
             bool out_of_memory = err == ESP_ERR_NO_MEM || last_tls_err == ESP_ERR_NO_MEM ||
                                  tls_code == 0x008d || tls_code == 0x7f00;
+            /* Heap figures settle ambiguous codes: -0x3000 (X509 fatal) is
+             * both "CA not in bundle" and "calloc failed in the bundle verify
+             * callback" — a starved largest block names the second. */
             snprintf(error_buf, sizeof(error_buf),
                      "fetch failed: %s %s (%s, errno=%d, "
-                     "esp_tls=%s, mbedtls=-0x%04x, flags=0x%x)",
+                     "esp_tls=%s, mbedtls=-0x%04x, flags=0x%x, "
+                     "sysFree=%u, largestBlock=%u)",
                      out_of_memory ? "out of memory connecting to" : "could not connect to",
                      args->req.url, esp_err_to_name(err), sock_errno,
-                     esp_err_to_name(last_tls_err), tls_code, tls_flags);
+                     esp_err_to_name(last_tls_err), tls_code, tls_flags,
+                     static_cast<unsigned>(esp_get_free_heap_size()),
+                     static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
             have_error = true;
             goto cleanup;
         }

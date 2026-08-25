@@ -86,7 +86,9 @@ JSValue mik__result_err(JSContext* ctx, int code, int platform_errno, const char
 JSValue mik__result_err_named(JSContext* ctx, const char* name, const char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    char msg[256];
+    /* 384 matches the HTTP task's error_buf: fetch errors pass through here
+     * verbatim, and a smaller buffer truncates their trailing heap figures. */
+    char msg[384];
     vsnprintf(msg, sizeof(msg), fmt, ap);
     va_end(ap);
 
