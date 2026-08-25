@@ -16,6 +16,7 @@ import {
   array,
   object,
   optional,
+  tuple,
   union,
   taggedUnion,
 } from 'mikro/schema'
@@ -38,7 +39,7 @@ Schemas are for data whose shape you can't verify at compile time. If you're jus
 
 - **Internal data:** Values your code just created don't need validation. Use `satisfies Infer<typeof schema>` for compile-time type checking without runtime cost.
 - **Hot loops:** Validation has overhead (typeof checks, property lookups per field). For high-frequency data, validate once at the boundary, then pass typed values through.
-- **Complex transforms:** This library validates shapes. It does not transform, coerce, or default values. If you need to reshape data, do that separately.
+- **Complex transforms:** `parse()` validates shapes and nothing else: no transforms, no coercion. Defaults apply only through the separate [`applyDefaults`](#applydefaults). If you need to reshape data, do that separately.
 
 ## Defining schemas
 
@@ -119,7 +120,7 @@ Missing required fields cause a validation error. To make a field optional, wrap
 
 ### optional(schema)
 
-Marks an object field as optional. The key may be absent from the object. If the key is present, its value must match the inner schema. A key present with value `undefined` is rejected (consistent with JSON semantics where `undefined` values are omitted during serialization).
+Marks an object field as optional. The key may be absent from the object. If the key is present, its value must match the inner schema — except `undefined`, which reads the same as an absent key (JSON and CBOR cannot represent it, so the two cases are indistinguishable after a round trip anyway).
 
 ```ts twoslash
 import {object, string, optional} from 'mikro/schema'
@@ -129,6 +130,19 @@ object({
   label: optional(string()), // key may be absent, but if present must be a string
 })
 ```
+
+### tuple(elements)
+
+Matches an array of exactly the given length, each position validated against its own schema.
+
+```ts twoslash
+import {tuple, string, number} from 'mikro/schema'
+// ---cut---
+tuple([number(), number()]) // [number, number]
+tuple([string(), number()]) // [string, number]
+```
+
+A wrong length reports "expected N elements"; a wrong element reports at its index.
 
 ### union(members)
 
@@ -158,6 +172,30 @@ const Message = taggedUnion('type', {
 
 The discriminator field (`type` above) is injected into each branch's inferred type automatically. You don't need to include it in the branch schemas.
 
+## Annotations
+
+Constructors take an optional trailing options object for annotations: properties stored on the schema node that don't change what validates. Structural arguments stay positional; annotations trail.
+
+```ts twoslash
+import {array, boolean, literal, number, object, string, union} from 'mikro/schema'
+// ---cut---
+object({
+  mqttUrl: string(),
+  interval: number({default: 60}),
+  logLevel: union([literal('debug'), literal('info')], {default: 'info'}),
+  tags: array(string(), {default: []}),
+  enabled: boolean({default: false}),
+})
+```
+
+### default
+
+Available on every node except `object()` (objects are structure; their fields carry the defaults) and `unknown()`. The default must itself match the node; a mismatch throws a `TypeError` where the schema is written. `optional()` and `default` are mutually exclusive, since both define what absence means.
+
+`parse()` ignores defaults entirely: it validates, nothing else. Defaults take effect through [`applyDefaults`](#applydefaults), which builds the effective value for a partial input. This is what device config uses: the [OTA registry](/registry-spec) stores only deviations from the defaults, merges and validates on every serve, and the device receives one complete document.
+
+Annotations serialize with the schema (`JSON.stringify` of a schema node is its wire form), and consumers ignore annotation properties they don't recognize.
+
 ## Validation
 
 ### parse(schema, value) {#parse}
@@ -180,6 +218,28 @@ if (result.ok) {
 ```
 
 Validation is fail-fast: it stops at the first error.
+
+### applyDefaults(schema, value) {#applydefaults}
+
+Builds the effective value for a partial input: schema defaults with `value` layered over them. Objects always materialize, recursing per field and dropping keys the schema doesn't know. Every other node is replaced wholesale by a present value, so a default inside an array element or union branch fills nothing; it's a hint for form-rendering tools. An absent array reads as its default, or `[]` without one.
+
+```ts twoslash
+import {applyDefaults, number, object, string} from 'mikro/schema'
+// ---cut---
+const schema = object({host: string({default: 'mqtt.local'}), port: number({default: 1883})})
+
+applyDefaults(schema, {port: 9000}) // {host: 'mqtt.local', port: 9000}
+applyDefaults(schema, undefined) // {host: 'mqtt.local', port: 1883}
+```
+
+The result is unvalidated. A required field with no default and no supplied value stays missing, so run the result through `parse()` to get a typed value:
+
+```ts twoslash
+import {applyDefaults, number, object, parse, string} from 'mikro/schema'
+const schema = object({host: string({default: 'mqtt.local'}), port: number({default: 1883})})
+// ---cut---
+const config = parse(schema, applyDefaults(schema, {port: 9000}))
+```
 
 ## Error reporting
 

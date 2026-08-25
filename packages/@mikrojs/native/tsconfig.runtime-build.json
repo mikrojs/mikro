@@ -1,0 +1,20 @@
+{
+  // Compiles the host-consumed runtime files (schema core/shared, the result
+  // node shim) to dist so installed packages can import them at runtime: Node
+  // refuses to type-strip .ts under a real node_modules, so the .ts targets in
+  // the exports map only work inside the workspace ("development" condition).
+  "extends": "./tsconfig.runtime.json",
+  "include": [
+    "runtime/schema/core.ts",
+    "runtime/schema/shared.ts",
+    "runtime/result/native-result.node-shim.ts",
+    "runtime/result/types.ts"
+  ],
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "rootDir": ".",
+    "outDir": "dist"
+  }
+}

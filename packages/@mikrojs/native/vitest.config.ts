@@ -21,6 +21,10 @@ export default defineConfig({
         replacement: path.resolve(import.meta.dirname, 'runtime/result/result.ts'),
       },
       {
+        find: 'mikro/schema',
+        replacement: path.resolve(import.meta.dirname, 'runtime/schema/schema.ts'),
+      },
+      {
         find: 'mikro/http/helpers',
         replacement: path.resolve(import.meta.dirname, 'runtime/http/helpers.ts'),
       },
