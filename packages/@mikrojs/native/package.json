@@ -72,7 +72,19 @@
     "./runtime/pin/types": "./runtime/pin/types.ts",
     "./runtime/pwm/types": "./runtime/pwm/types.ts",
     "./runtime/reader/types": "./runtime/reader/types.ts",
+    "./runtime/result/native-result.node-shim": {
+      "development": "./runtime/result/native-result.node-shim.ts",
+      "import": "./dist/runtime/result/native-result.node-shim.js"
+    },
     "./runtime/result/types": "./runtime/result/types.ts",
+    "./runtime/schema/core": {
+      "development": "./runtime/schema/core.ts",
+      "import": "./dist/runtime/schema/core.js"
+    },
+    "./runtime/schema/shared": {
+      "development": "./runtime/schema/shared.ts",
+      "import": "./dist/runtime/schema/shared.js"
+    },
     "./runtime/schema/types": "./runtime/schema/types.ts",
     "./runtime/sleep/types": "./runtime/sleep/types.ts",
     "./runtime/sntp/types": "./runtime/sntp/types.ts",
@@ -112,7 +124,10 @@
       "./runtime/pin/types": "./runtime/pin/types.ts",
       "./runtime/pwm/types": "./runtime/pwm/types.ts",
       "./runtime/reader/types": "./runtime/reader/types.ts",
+      "./runtime/result/native-result.node-shim": "./dist/runtime/result/native-result.node-shim.js",
       "./runtime/result/types": "./runtime/result/types.ts",
+      "./runtime/schema/core": "./dist/runtime/schema/core.js",
+      "./runtime/schema/shared": "./dist/runtime/schema/shared.js",
       "./runtime/schema/types": "./runtime/schema/types.ts",
       "./runtime/sleep/types": "./runtime/sleep/types.ts",
       "./runtime/sntp/types": "./runtime/sntp/types.ts",
@@ -130,7 +145,7 @@
     "bench": "cmake -B build -DBUILD_TESTING=ON && cmake --build build --target memory_bench &&./build/memory_bench",
     "build:native": "cmake-js compile --directory addon && node scripts/copy-prebuild.js",
     "build:native:debug": "cmake-js compile --debug --directory addon && node scripts/copy-prebuild.js",
-    "build:ts": "tsc -p tsconfig.build.json",
+    "build:ts": "tsc -p tsconfig.build.json && tsc -p tsconfig.runtime-build.json",
     "clean": "cmake-js clean --directory addon && rm -rf prebuilds",
     "compare-minifiers": "node scripts/compare-minifiers.js --open",
     "publint": "publint",

@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest'
 
 import {
+  applyDefaults,
   array,
   boolean,
   literal,
@@ -284,6 +285,12 @@ describe('schema', () => {
       }
     })
 
+    it('rejects a tag that only exists on the branches prototype', () => {
+      const result = parse(schema, {type: 'constructor'})
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.message).toBe('unknown tag "constructor"')
+    })
+
     it('rejects missing discriminator', () => {
       const result = parse(schema, {message: 'no type'})
       expect(result.ok).toBe(false)
@@ -338,6 +345,94 @@ describe('schema', () => {
       if (!result.ok) {
         expect(result.error.path).toBe('.items[0].tags[1]')
       }
+    })
+  })
+
+  describe('annotations', () => {
+    it('stores default as a node property', () => {
+      expect(string({default: 'foo'})).toEqual({kind: 'string', default: 'foo'})
+      expect(number({default: 60})).toEqual({kind: 'number', default: 60})
+      // cast: vitest's deep matcher type recurses forever into the Schema union
+      expect(array(string(), {default: ['a']}) as unknown).toEqual({
+        kind: 'array',
+        element: {kind: 'string'},
+        default: ['a'],
+      })
+    })
+
+    it('serializes to JSON as-is', () => {
+      const schema = object({interval: number({default: 60}), key: string()})
+      expect(JSON.parse(JSON.stringify(schema))).toEqual(schema)
+    })
+
+    it('rejects a default that does not match the node', () => {
+      expect(() => number({default: 'x' as never})).toThrow(TypeError)
+      expect(() => array(string(), {default: [1] as never})).toThrow(TypeError)
+      expect(() => union([literal('a'), literal('b')], {default: 'c' as never})).toThrow(TypeError)
+    })
+
+    it('rejects optional() around a default', () => {
+      expect(() => optional(string({default: 'x'}))).toThrow(TypeError)
+    })
+  })
+
+  describe('applyDefaults', () => {
+    it('materializes objects from leaf defaults', () => {
+      const schema = object({
+        mqtt: object({host: string({default: 'mqtt.local'}), port: number({default: 1883})}),
+      })
+      expect(applyDefaults(schema, undefined)).toEqual({
+        mqtt: {host: 'mqtt.local', port: 1883},
+      })
+    })
+
+    it('layers an overlay over defaults and drops unknown keys', () => {
+      const schema = object({host: string({default: 'a'}), port: number({default: 1})})
+      expect(applyDefaults(schema, {port: 9, junk: true})).toEqual({host: 'a', port: 9})
+    })
+
+    it('materializes absent arrays as their default or empty', () => {
+      expect(applyDefaults(object({tags: array(string())}), {})).toEqual({tags: []})
+      expect(applyDefaults(object({tags: array(string(), {default: ['x']})}), {})).toEqual({
+        tags: ['x'],
+      })
+      expect(
+        applyDefaults(object({tags: array(string(), {default: ['x']})}), {tags: ['y']}),
+      ).toEqual({tags: ['y']})
+    })
+
+    it('replaces wholesale nodes without filling inside them', () => {
+      const schema = object({
+        items: array(object({name: string(), size: number({default: 1})})),
+      })
+      // element defaults are form hints; a present array is taken verbatim
+      expect(applyDefaults(schema, {items: [{name: 'a'}]})).toEqual({items: [{name: 'a'}]})
+      const parsed = parse(schema, applyDefaults(schema, {items: [{name: 'a'}]}))
+      expect(parsed.ok).toBe(false)
+    })
+
+    // Replacing it with {} would make `{mqtt: 42}` validate clean against
+    // pure defaults and never record a configError.
+    it('keeps a present non-object at an object position for parse to reject', () => {
+      const schema = object({mqtt: object({host: string({default: 'a'})})})
+      expect(applyDefaults(schema, {mqtt: 42})).toEqual({mqtt: 42})
+      expect(parse(schema, applyDefaults(schema, {mqtt: 42})).ok).toBe(false)
+      expect(parse(schema, applyDefaults(schema, 42)).ok).toBe(false)
+    })
+
+    it('leaves required fields missing for parse to report', () => {
+      const schema = object({key: string(), interval: number({default: 60})})
+      const effective = applyDefaults(schema, undefined)
+      expect(effective).toEqual({interval: 60})
+      const result = parse(schema, effective)
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.path).toBe('.key')
+    })
+
+    it('keeps optional fields absent unless present', () => {
+      const schema = object({label: optional(string())})
+      expect(applyDefaults(schema, undefined)).toEqual({})
+      expect(applyDefaults(schema, {label: 'x'})).toEqual({label: 'x'})
     })
   })
 })

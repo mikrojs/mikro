@@ -4,14 +4,17 @@ type Primitive = string | number | boolean
 
 export interface StringSchema {
   readonly kind: 'string'
+  readonly default?: string
 }
 
 export interface NumberSchema {
   readonly kind: 'number'
+  readonly default?: number
 }
 
 export interface BooleanSchema {
   readonly kind: 'boolean'
+  readonly default?: boolean
 }
 
 export interface UnknownSchema {
@@ -21,11 +24,13 @@ export interface UnknownSchema {
 export interface LiteralSchema<T extends Primitive = Primitive> {
   readonly kind: 'literal'
   readonly value: T
+  readonly default?: T
 }
 
 export interface ArraySchema<S extends Schema = Schema> {
   readonly kind: 'array'
   readonly element: S
+  readonly default?: unknown
 }
 
 export interface ObjectSchema<Shape extends Record<string, Schema> = Record<string, Schema>> {
@@ -41,11 +46,13 @@ export interface OptionalSchema<S extends Schema = Schema> {
 export interface TupleSchema<Elements extends readonly Schema[] = readonly Schema[]> {
   readonly kind: 'tuple'
   readonly elements: Elements
+  readonly default?: unknown
 }
 
 export interface UnionSchema<Members extends readonly Schema[] = readonly Schema[]> {
   readonly kind: 'union'
   readonly members: Members
+  readonly default?: unknown
 }
 
 export interface TaggedUnionSchema<
@@ -55,6 +62,7 @@ export interface TaggedUnionSchema<
   readonly kind: 'taggedUnion'
   readonly key: Key
   readonly branches: Branches
+  readonly default?: unknown
 }
 
 export type Schema =
@@ -122,26 +130,46 @@ type InferTaggedUnion<Key extends string, Branches> = {
 
 export type SchemaError = {name: 'ValidationFailed'; message: string; path: string}
 
-export declare function string(): StringSchema
-export declare function number(): NumberSchema
-export declare function boolean(): BooleanSchema
+export interface ScalarOptions<T> {
+  readonly default?: T
+}
+export interface DefaultOption<T> {
+  readonly default?: T
+}
+
+export declare function string(options?: ScalarOptions<string>): StringSchema
+export declare function number(options?: ScalarOptions<number>): NumberSchema
+export declare function boolean(options?: ScalarOptions<boolean>): BooleanSchema
 export declare function unknown(): UnknownSchema
-export declare function literal<T extends Primitive>(value: T): LiteralSchema<T>
-export declare function array<S extends Schema>(element: S): ArraySchema<S>
+export declare function literal<T extends Primitive>(
+  value: T,
+  options?: ScalarOptions<T>,
+): LiteralSchema<T>
+export declare function array<S extends Schema>(
+  element: S,
+  options?: DefaultOption<NoInfer<Infer<S>>[]>,
+): ArraySchema<S>
 export declare function object<Shape extends Record<string, Schema>>(
   shape: Shape,
 ): ObjectSchema<Shape>
 export declare function tuple<Elements extends readonly Schema[]>(
   elements: [...Elements],
+  options?: DefaultOption<NoInfer<Infer<TupleSchema<Elements>>>>,
 ): TupleSchema<Elements>
 export declare function optional<S extends Schema>(inner: S): OptionalSchema<S>
 export declare function union<Members extends readonly Schema[]>(
   members: [...Members],
+  options?: DefaultOption<NoInfer<Infer<UnionSchema<Members>>>>,
 ): UnionSchema<Members>
 export declare function taggedUnion<
   Key extends string,
   Branches extends Record<string, ObjectSchema>,
->(key: Key, branches: Branches): TaggedUnionSchema<Key, Branches>
+>(
+  key: Key,
+  branches: Branches,
+  options?: DefaultOption<NoInfer<Infer<TaggedUnionSchema<Key, Branches>>>>,
+): TaggedUnionSchema<Key, Branches>
+export declare function applyDefaults(schema: Schema, value: unknown): unknown
 export declare function parse<S extends Schema>(
   schema: S,
   value: unknown,
