@@ -107,19 +107,35 @@ static JSValue mik__nvs_kv_get(JSContext* ctx, JSValue this_val, int argc, JSVal
         return JS_UNDEFINED;
     }
 
+    /* Absence is the only silent outcome: a missing namespace (nothing ever
+     * stored) or a missing key reads as undefined. Every other failure throws,
+     * so a read starved by heap pressure (nvs_open allocates its handle) is
+     * never mistaken for "not stored". */
     nvs_handle_t handle;
-    if (nvs_open(mik__nvs_ns(magic), NVS_READONLY, &handle) != ESP_OK) {
+    esp_err_t err = nvs_open(mik__nvs_ns(magic), NVS_READONLY, &handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
         JS_FreeCString(ctx, key);
         return JS_UNDEFINED;
+    }
+    if (err != ESP_OK) {
+        JS_ThrowPlainError(ctx, "nvs open failed reading \"%s\": %s", key, esp_err_to_name(err));
+        JS_FreeCString(ctx, key);
+        return JS_EXCEPTION;
     }
 
     /* Query size first */
     size_t len = 0;
-    esp_err_t err = nvs_get_blob(handle, key, nullptr, &len);
-    if (err != ESP_OK || len == 0) {
+    err = nvs_get_blob(handle, key, nullptr, &len);
+    if (err == ESP_ERR_NVS_NOT_FOUND || (err == ESP_OK && len == 0)) {
         JS_FreeCString(ctx, key);
         nvs_close(handle);
         return JS_UNDEFINED;
+    }
+    if (err != ESP_OK) {
+        JS_ThrowPlainError(ctx, "nvs read failed for \"%s\": %s", key, esp_err_to_name(err));
+        JS_FreeCString(ctx, key);
+        nvs_close(handle);
+        return JS_EXCEPTION;
     }
 
     /* Read blob */
@@ -136,7 +152,7 @@ static JSValue mik__nvs_kv_get(JSContext* ctx, JSValue this_val, int argc, JSVal
 
     if (err != ESP_OK) {
         js_free(ctx, buf);
-        return JS_UNDEFINED;
+        return JS_ThrowPlainError(ctx, "nvs read failed: %s", esp_err_to_name(err));
     }
 
     /* Decode CBOR */
@@ -145,7 +161,14 @@ static JSValue mik__nvs_kv_get(JSContext* ctx, JSValue this_val, int argc, JSVal
     JSValue result = mik__cbor_decode_value(ctx, &decoder, 0);
     js_free(ctx, buf);
 
-    if (JS_IsException(result)) return JS_UNDEFINED;
+    /* A stored blob that does not decode is corruption, not absence. The
+     * decoder signals malformed input by value with no pending exception
+     * (only allocation failures inside it carry one). TypeError marks it as
+     * corruption: the kv layer deletes and heals on TypeError only, never on
+     * the transient (plain Error) failures above. */
+    if (JS_IsException(result) && !JS_HasException(ctx)) {
+        return JS_ThrowTypeError(ctx, "stored nvs value is not valid CBOR");
+    }
     return result;
 }
 

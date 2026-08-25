@@ -71,11 +71,17 @@ export function makeCreateValue(native: NativeKvFns) {
         }
         return v
       } catch (e) {
-        // Decode failure: corrupt data, delete it
-        native.remove(key)
-        const fallback = onReadError(e)
-        if (fallback !== undefined) native.set(key, fallback)
-        return fallback
+        // TypeError is the native's corruption marker (stored bytes that do
+        // not decode): delete and heal. Anything else is a transient read
+        // failure (nvs open/read starved of heap) — the stored value is
+        // intact, so surface the error without touching it.
+        if (e instanceof TypeError) {
+          native.remove(key)
+          const fallback = onReadError(e)
+          if (fallback !== undefined) native.set(key, fallback)
+          return fallback
+        }
+        return onReadError(e)
       }
     }
 
