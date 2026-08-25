@@ -93,9 +93,14 @@ echo "== corrupt/truncated rejection =="
 head -c "$(( $(wc -c < "$BUILD/small.tgz") - 16 ))" "$BUILD/small.tgz" > "$BUILD/trunc.tgz"
 "$TEST" expect-fail "$BUILD/trunc.tgz" "$BUILD/out_trunc" >/dev/null && echo "  truncated rejected ✓" \
     || { echo "FAIL: truncated build was accepted"; exit 1; }
-# Corrupt: flip a byte in the deflate body.
+# Corrupt: flip a byte in the deflate body. XOR rather than overwrite: the
+# fixture's compressed bytes shift with the host's gzip, and overwriting with a
+# constant is a no-op whenever the byte already holds that value, which turns
+# this case into "valid build rejected as accepted" on some runner images.
 cp "$BUILD/large.tgz" "$BUILD/corrupt.tgz"
-printf '\xff' | dd of="$BUILD/corrupt.tgz" bs=1 seek=64 count=1 conv=notrunc 2>/dev/null
+orig=$(dd if="$BUILD/corrupt.tgz" bs=1 skip=64 count=1 2>/dev/null | od -An -tu1 | tr -d ' ')
+printf "\\$(printf '%03o' $((orig ^ 0x5a)))" \
+    | dd of="$BUILD/corrupt.tgz" bs=1 seek=64 count=1 conv=notrunc 2>/dev/null
 "$TEST" expect-fail "$BUILD/corrupt.tgz" "$BUILD/out_corrupt" >/dev/null && echo "  corrupt rejected ✓" \
     || { echo "FAIL: corrupt build was accepted"; exit 1; }
 # Not gzip at all.
