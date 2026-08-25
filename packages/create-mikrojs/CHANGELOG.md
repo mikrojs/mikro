@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.18.1 (2026-08-25)
+
+### Features
+
+- **ota:** app-defined device config ([#334](https://github.com/mikrojs/mikro/pull/334))
+- **schema:** annotations, applyDefaults, and config helpers ([#332](https://github.com/mikrojs/mikro/pull/332))
+
+### Bug fixes
+
+- **http:** report heap figures in fetch connect errors ([#333](https://github.com/mikrojs/mikro/pull/333))
+- **kv:** distinguish absent keys from failed reads ([#330](https://github.com/mikrojs/mikro/pull/330))
+- **firmware:** stop repeated TLS handshakes running out of memory ([#329](https://github.com/mikrojs/mikro/pull/329))
+- **native:** bound CBOR string spans against the buffer end ([#326](https://github.com/mikrojs/mikro/pull/326))
+- **native:** reject truncated CBOR containers ([#325](https://github.com/mikrojs/mikro/pull/325))
+- **native:** stop inspect leaving getter exceptions pending ([#323](https://github.com/mikrojs/mikro/pull/323))
+- **fs:** flush before fstat so File.stat sees unflushed writes ([#322](https://github.com/mikrojs/mikro/pull/322))
+- **native:** render symbol descriptions without leaving an exception ([#321](https://github.com/mikrojs/mikro/pull/321))
+- **native:** resolve relative imports from root-level main modules ([#320](https://github.com/mikrojs/mikro/pull/320))
+
+### Other
+
+- **ota:** corrupt the unpack fixture by xor so the flip cannot be no-op ([#331](https://github.com/mikrojs/mikro/pull/331))
+- **repo:** add coverage:lib:open for browsing the html coverage report ([#328](https://github.com/mikrojs/mikro/pull/328))
+- **native:** add host test suite for the portable library ([#327](https://github.com/mikrojs/mikro/pull/327))
+- raise vitest timeouts for flaky tests under full-suite load ([#324](https://github.com/mikrojs/mikro/pull/324))
+- **native:** C++ coverage gate, OOM injection harness, sanitizer CI ([#319](https://github.com/mikrojs/mikro/pull/319))
+- drop vendored generic skills ([#318](https://github.com/mikrojs/mikro/pull/318))
+- improve writing, add ai disclosure ([#316](https://github.com/mikrojs/mikro/pull/316))
+
 ## 0.18.0 (2026-08-12)
 
 ### Breaking changes
