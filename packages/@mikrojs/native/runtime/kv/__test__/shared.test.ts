@@ -12,6 +12,66 @@ function fakeNative(setResult: ReturnType<NativeKvFns['set']>): NativeKvFns {
   }
 }
 
+describe('read failures', () => {
+  function recordingNative(getImpl: () => unknown) {
+    const removed: string[] = []
+    const written: Array<[string, unknown]> = []
+    const native: NativeKvFns = {
+      get: getImpl,
+      set: (key, value) => {
+        written.push([key, value])
+        return {ok: true}
+      },
+      remove: (key) => {
+        removed.push(key)
+        return true
+      },
+      clear: () => {},
+      info: () => ({entries: 0, used: 0, total: 0, free: 0}),
+    }
+    return {native, removed, written}
+  }
+
+  it('deletes and heals on TypeError (the corruption marker)', () => {
+    const {native, removed, written} = recordingNative(() => {
+      throw new TypeError('stored nvs value is not valid CBOR')
+    })
+    const createValue = makeCreateValue(native)
+    const v = createValue('k', {onReadError: () => 'fallback'}) as {get: () => unknown}
+    expect(v.get()).toBe('fallback')
+    expect(removed).toEqual(['k'])
+    expect(written).toEqual([['k', 'fallback']])
+  })
+
+  it('keeps the stored value intact on a transient read failure', () => {
+    const seen: unknown[] = []
+    const {native, removed, written} = recordingNative(() => {
+      throw new Error('nvs open failed reading "k": ESP_ERR_NO_MEM')
+    })
+    const createValue = makeCreateValue(native)
+    const v = createValue('k', {
+      onReadError: (e: unknown) => {
+        seen.push(e)
+        return 'stand-in'
+      },
+    }) as {get: () => unknown}
+    expect(v.get()).toBe('stand-in')
+    expect(removed).toEqual([])
+    expect(written).toEqual([])
+    expect(seen).toHaveLength(1)
+  })
+
+  it('returns undefined on a transient failure with no onReadError', () => {
+    const {native, removed} = recordingNative(() => {
+      throw new Error('nvs read failed: ESP_FAIL')
+    })
+    const createValue = makeCreateValue(native)
+    const v = createValue('k') as {get: () => unknown}
+    expect(v.get()).toBeUndefined()
+    expect(removed).toEqual([])
+  })
+})
+
 describe('mapKvError', () => {
   // mapKvError is internal; exercise it via the set() path on a createValue.
   it('maps unknown native error codes to KVError.Unknown', () => {

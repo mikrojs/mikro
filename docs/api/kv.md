@@ -172,11 +172,13 @@ Remove the key from storage.
 
 ## onReadError
 
-Called when stored data can't be read ([CBOR](/api/cbor) decode failure, [schema](/api/schema) mismatch). Receives a `KVError` (or `KVError` | [`SchemaError`](/api/schema#parse) when a schema is provided).
+Called when stored data can't be read ([CBOR](/api/cbor) decode failure, [schema](/api/schema) mismatch, or a storage read failure). Receives a `KVError` (or `KVError` | [`SchemaError`](/api/schema#parse) when a schema is provided).
 
 On decode failure (corrupt data), the key is deleted before calling the handler. Return a fallback to write back, or `undefined` to leave it empty.
 
 On schema mismatch, the stored data is left intact (it decoded fine, just doesn't match the current schema). The handler will be called again on every subsequent read until the data is overwritten or deleted.
+
+On a storage read failure (the flash read itself failed, usually starved of memory), the stored data is also left intact: the value is still there, this read just couldn't retrieve it. A later read that succeeds returns it unchanged.
 
 Default: `() => undefined`.
 
