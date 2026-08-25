@@ -52,6 +52,12 @@ set(MIKROJS_CORE_SOURCES
     src/mik_app_store.cpp
     src/mik_udp.cpp
     src/mik_observable.cpp
+    src/mik_ota_policy.cpp
+    src/mik_ota_slots.cpp
+    src/mik_ota_config.cpp
+    src/mik_ota_js_hooks.cpp
+    src/mik_ota_client.cpp
+    src/mik_sys_codec.cpp
 )
 
 add_library(mikrojs STATIC
@@ -82,7 +88,7 @@ endif()
 include(cmake/mikrojs_bytecode.cmake)
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
-    MODULES abort cbor env result schema fs http/helpers http/request i2c kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi
+    MODULES abort cbor env result schema fs http/helpers http/request i2c kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi
     MODULE_PREFIX "mikro"
     SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode
@@ -203,9 +209,33 @@ if(BUILD_TESTING)
         test/udp_test.cpp
         test/observable_test.cpp
         test/unhandled_rejection_test.cpp
+        test/ota_policy_test.cpp
+        test/ota_client_test.cpp
+        test/ota_config_test.cpp
+        test/ota_js_hooks_test.cpp
+        test/ota_wire_fixtures_test.cpp
+        test/sys_codec_test.cpp
     )
 
+    # ── Check-in wire fixtures ───────────────────────────────────────
+    # Response bodies captured from the reference registry (@mikrojs/registry)
+    # and replayed through the client in test/ota_wire_fixtures_test.cpp. Always
+    # regenerated (it takes well under a second) so the fixtures cannot lag the
+    # registry they came from. Needs the registry's built dist: run
+    # `pnpm build:ts` before `pnpm test:lib` on a fresh checkout.
+    set(_CHECKIN_FIXTURE_DIR "${CMAKE_CURRENT_BINARY_DIR}/gen/checkin-fixtures")
+    add_custom_target(gen_checkin_fixtures
+        COMMAND node "${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen-checkin-fixtures.js"
+            "${_CHECKIN_FIXTURE_DIR}"
+        COMMENT "Generating check-in wire fixtures from @mikrojs/registry"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        VERBATIM
+    )
+    add_dependencies(mikrojs_tests gen_checkin_fixtures)
+
     target_link_libraries(mikrojs_tests PRIVATE mikrojs)
+    target_compile_definitions(mikrojs_tests PRIVATE
+        "MIK_CHECKIN_FIXTURE_DIR=\"${_CHECKIN_FIXTURE_DIR}\"")
     target_include_directories(mikrojs_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/test"
         "${CMAKE_CURRENT_SOURCE_DIR}/deps/nanocbor/include"

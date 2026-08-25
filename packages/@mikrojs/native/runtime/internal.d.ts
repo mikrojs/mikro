@@ -11,6 +11,10 @@ declare module 'mikro/kv/shared' {
   export {KVError, makeCreateValue, mapKvError, type NativeKvFns} from './kv/shared.js'
 }
 
+declare module 'mikro/ota/config' {
+  export {config} from './ota/config.js'
+}
+
 declare module 'mikro/observable/lazy' {
   export {lazyEvent} from './observable/lazy.js'
 }
@@ -528,22 +532,24 @@ declare module 'native:mikro/udp' {
   export function bind(opts: BindOptions): Promise<Result<NativeUdpSocket, UdpError>>
 }
 
-declare module 'native:mikro/ota' {
-  import type {NativeOta} from './ota/policy.js'
+declare module 'native:mikro/ota_client' {
+  import type {CheckOptions, CheckResult, Ota, Watcher, WatchOptions} from './ota/types.js'
 
-  // The native module exports the NativeOta contract's methods directly.
-  export function stageBegin(checksum: string, size: number): ReturnType<NativeOta['stageBegin']>
-  export function stageWrite(bytes: Uint8Array): ReturnType<NativeOta['stageWrite']>
-  export function stageFinish(
-    trialBoots: number,
-    requireConfirm: boolean,
-    installNow: boolean,
-  ): ReturnType<NativeOta['stageFinish']>
-  export function stageAbort(): void
-  export function markValid(): void
-  export function revert(): ReturnType<NativeOta['revert']>
-  export function running(): ReturnType<NativeOta['running']>
-  export function reconcile(): ReturnType<NativeOta['reconcile']>
+  // Backed by src/mik_ota_client.cpp, src/mik_ota_config.cpp and
+  // src/mik_ota_policy.cpp.
+  export function check(options?: CheckOptions): Promise<CheckResult>
+  export function watch(options?: WatchOptions): Watcher
+  export function config(): unknown
+
+  // The mikro/ota policy surface.
+  export const reconcile: Ota['reconcile']
+  export const running: Ota['running']
+  export const parseOffer: Ota['parseOffer']
+  export const applyOffer: Ota['applyOffer']
+  export const confirm: Ota['confirm']
+  export const revert: Ota['revert']
+  export const bearer: Ota['bearer']
+  export const registry: Ota['registry']
 }
 
 declare module 'native:mikro/i2s' {

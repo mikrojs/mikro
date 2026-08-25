@@ -70,6 +70,13 @@ STUB_FUNCS(http, "native:mikro/http", "request", "nextMessage", "cancel", "pendi
 STUB_FUNCS(nvs_kv, "native:mikro/nvs_kv", "set", "get", "remove", "clear", "sysSet", "sysGet",
            "sysRemove", "sysClear", "info")
 STUB_FUNCS(rtc, "native:mikro/rtc", "set", "get", "remove", "clear", "info")
+/* The OTA staging surface and the native client, so the two OTA implementations
+ * can both be loaded in the memory bench and compared. */
+STUB_FUNCS(ota, "native:mikro/ota", "stageBegin", "stageWrite", "stageFinish", "stageAbort",
+           "markValid", "revert", "running", "reconcile")
+STUB_FUNCS(ota_client, "native:mikro/ota_client", "check", "watch", "config",
+           "reconcile", "running", "parseOffer", "applyOffer", "confirm", "revert", "bearer",
+           "registry")
 
 STUB_CLASS(wifi, "native:mikro/wifi", "Wifi")
 STUB_CLASS(pwm, "native:mikro/pwm", "Pwm")

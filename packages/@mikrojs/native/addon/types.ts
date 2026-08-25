@@ -47,4 +47,8 @@ export interface NativeBindings {
   MikroRuntime: new (options?: MikroRuntimeOptions) => NativeMikroRuntime
   jsonToBjson(json: string): Buffer
   compileBytecode(source: string, moduleName: string, externals?: string[]): Buffer
+  parseOffer(
+    body: unknown,
+    options?: {allowInsecure?: boolean},
+  ): {url: string; checksum: string; size: number} | undefined
 }

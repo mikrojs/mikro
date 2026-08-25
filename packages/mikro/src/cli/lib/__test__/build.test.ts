@@ -99,6 +99,23 @@ describe('build', () => {
     ])
   })
 
+  // The schema ships in the manifest (app/mikro.app.json); leaking the ota
+  // group here would put a copy of it in device RAM on every boot.
+  it('strips the host-only ota group from the deployed runtime config', async () => {
+    writeFileSync(
+      pathlib.join(tempDir, 'mikro.config.ts'),
+      `export default {wifi: {country: 'NO'}, otaConfigSchema: {kind: 'object', shape: {}}}\n`,
+    )
+    const buildDir = pathlib.join(tempDir, 'out-ota')
+    await runBuild('app/main.ts', buildDir)
+
+    const runtime = JSON.parse(
+      readFileSync(pathlib.join(buildDir, 'app', 'mikro.config.json'), 'utf-8'),
+    )
+    expect(runtime.ota).toBeUndefined()
+    expect(runtime['wifi.country']).toBe('NO')
+  })
+
   it('builds the same tree for ./-prefixed and bare entry paths', async () => {
     const bareDir = pathlib.join(tempDir, 'out-bare')
     const dotDir = pathlib.join(tempDir, 'out-dot')

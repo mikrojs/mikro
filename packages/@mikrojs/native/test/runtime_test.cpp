@@ -3,6 +3,7 @@
 
 #include <mikrojs/mikrojs.h>
 #include <mikrojs/platform.h>
+#include <mikrojs/private.h>
 /* utils.h ships C-side CHECK helper macros; drop them so doctest's own
  * CHECK/CHECK_EQ definitions below win without redefinition warnings. */
 #include <mikrojs/utils.h>
@@ -349,4 +350,29 @@ TEST_CASE("a panic stops the rest of the timers due in the same tick" *
     JS_FreeValue(ctx, g);
 
     MIK_FreeRuntime(rt);
+}
+
+/* A module can be brought up twice: once by native code that uses its machinery
+ * directly, once by the loader when JS imports it. The OTA client is the first
+ * such consumer — it drives HTTP from C and never imports native:mikro/http —
+ * and a double registration would run that module's destroy twice at teardown. */
+TEST_CASE("Registering the same loop consumer twice registers it once" *
+          doctest::test_suite("runtime")) {
+    auto rt = MIK_NewRuntime();
+    REQUIRE(rt != nullptr);
+
+    static int consumed = 0;
+    static int destroyed = 0;
+    consumed = 0;
+    destroyed = 0;
+    auto consume = [](JSContext*) { consumed++; };
+    auto destroy = [](JSContext*) { destroyed++; };
+
+    size_t before = rt->loop_consumers.size();
+    MIK_RegisterLoopConsumer(rt, consume, destroy);
+    MIK_RegisterLoopConsumer(rt, consume, destroy);
+    CHECK(rt->loop_consumers.size() == before + 1);
+
+    MIK_FreeRuntime(rt);
+    CHECK(destroyed == 1);
 }

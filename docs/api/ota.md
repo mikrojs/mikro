@@ -16,7 +16,7 @@ other module in the API.
 
 Most apps never call this module directly: the built-in
 [`mikro/ota/client`](/api/ota-client) drives it, wire included. This page is the reference
-for the policy layer underneath, for apps that bring their own transport. The
+for apps that bring their own transport. The
 [Over-the-air Updates guide](/ota) walks through a full update cycle.
 
 ## Methods
@@ -32,9 +32,11 @@ at startup. The actual install, trial check, and rollback run in the firmware be
 loads; this returns their result so you can forward it to the registry.
 
 One side effect: it hands the per-boot retry budget back, since a reboot is the only signal
-available that a transient failure (out of memory, a truncated download) may have cleared.
-Call it once, at startup — calling it inside a polling loop resets the budget every pass and
-defeats the retry limit.
+available that a transient failure (out of memory, a truncated download) may have cleared. An
+attempt that took the device down while it was running is the exception: that one keeps its
+count, so a build that crash-loops the device still runs out of tries. Call it once, at
+startup. Calling it inside a polling loop resets the budget every pass and defeats the retry
+limit.
 
 ### ota.running()
 
@@ -62,7 +64,7 @@ registry.
 
 `parseOffer` does not check the download URL's host. The offer arrives in an authenticated
 check-in response from the enrolled registry, so the registry is trusted to name where the
-build lives — its own host, a CDN or object store on another host, or a signed URL with the
+build lives: its own host, a CDN or object store on another host, or a signed URL with the
 signature in its query. Integrity comes from the checksum, verified over the whole download
 before install, so a wrong or hostile host yields a failed install rather than a bad one. Send
 the update key only to the registry's own origin (the reference client checks this before
@@ -83,8 +85,10 @@ applyOffer(
 ): Promise<Result<ApplyOutcome, OtaError>>
 ```
 
-Runs the full update policy: the skip checks below, compatibility, the retry limit, the `download` callback to
-fetch the bytes, and verification against the checksum and size before staging.
+Runs the full update policy: the skip checks below, the retry limit, the `download` callback to
+fetch the bytes, and verification against the checksum and size before staging. Compatibility
+is not re-checked here. The registry picks a build that fits the firmware and bytecode version
+the device reported, and the offer carries neither field.
 
 Only `'staged'` means bytes landed; restart to apply it. The rest are the policy working as
 intended, reported separately because your next move differs:
@@ -99,7 +103,7 @@ intended, reported separately because your next move differs:
 
 `'trial-pending'` is the one that needs care. It means the device is still on trial for the
 build it is running, and that build has to be settled before another can be taken. Confirm
-the running build on its own merits — a completed check-in, your own health check — rather
+the running build on its own merits (a completed check-in, your own health check) rather
 than treating the new offer as the thing to handle. Confirming first also lets the offer be
 taken on the same pass, since a resolved trial no longer blocks it. See
 [the update guide](/ota) for the shape.
@@ -147,6 +151,98 @@ registry(): string | undefined
 The registry origin the device was enrolled against, written next to the update key by
 [`mikro ota enroll`](/cli#mikro-ota-enroll), or `undefined` on an un-enrolled device. The
 check-in url is `${ota.registry()}/api/v1/checkin`.
+
+### ota.config()
+
+```ts
+config<T = RegisteredConfig>(): T // RegisteredConfig is your registered `OtaConfig`,
+                                 // or `unknown` until you register one
+```
+
+The app's effective config, always an object. The device resolves it in one step: the defaults
+materialized into the running build's manifest, with the document a registry delivered spread
+over them at the top level. Nothing merges deeper, and the device validates nothing: the
+registry that wrote the document validated it against the
+[config schema](/api/schema#annotations) for this exact release, and it is the same party that
+ships the code the device runs. Every call hands back a fresh object, so mutating what you read
+never reaches the cached defaults.
+
+Absence is per field, not for the config as a whole. A field the schema gives a default always
+has a value; a field with no default is present only once an operator has supplied one.
+`InferRead` is the type of exactly that shape, so register it once next to the schema
+definition and every call is typed with no parameter:
+
+```ts
+// app/ota.config.ts
+export const ConfigSchema = object({interval: number({default: 60}), endpoint: string()})
+
+declare global {
+  interface OtaConfig extends InferRead<typeof ConfigSchema> {}
+}
+```
+
+```ts
+import {ota} from 'mikro/ota'
+
+const config = ota.config() // {interval: number; endpoint?: string}
+```
+
+Use `InferRead`, not `Infer`, in that registration. `Infer` is the write type, everything an
+operator must supply for a document to validate; `InferRead` is what a read can hand back, with
+the fields defaults cannot fill marked optional. See
+[InferRead](/api/schema#inferread-the-read-type).
+
+An explicit type parameter also works, wins over the registration, and suits a quick script:
+`ota.config<Config>()`. (The registration is a global interface rather than a
+`declare module 'mikro/ota'` augmentation because module augmentation does not merge through
+re-exported types.)
+
+Either way the type holds because every writer validated the document against the schema
+serialized from the same definition the type derives from, in the same build. No schema and no
+schema machinery is on the device: a read spreads a stored document over a small defaults object
+parsed once out of the manifest.
+
+`config()` throws in one case: a build that carries no readable manifest and holds no stored
+document. That is a build that never went through the tooling, so there is nothing to serve and
+nothing to branch on. Deploy it with `mikro deploy`, or run `mikro dev`.
+
+Two things are held between calls. The manifest defaults are parsed once, on the first call that
+needs them, and kept. The last document that read successfully is kept too, and served while,
+and only while, the store cannot answer: a read allocates, so it can fail under heap pressure
+with a TLS handshake in flight, and dropping a live app onto the defaults for a beat would
+re-configure its hardware mid-handshake. A document that was genuinely cleared removes the key
+and reads back as an honest absence, so a clear is never mistaken for a failed read.
+
+Before any read has succeeded this runtime there is no last-good document to hold on to, and a
+failing store then reads as the defaults. This is a deliberate choice: under a storage failure
+the app runs on its defaults rather than idling. For an app where idling is the safer response,
+check the values you care about yourself.
+
+A stored document that will not decode, and one stamped for a version other than the one
+running, are not store failures at all. Both read as the defaults, because a document the
+device cannot use is no different from none stored. Neither is discarded: the device keeps
+echoing the `rev` it holds, and the registry decides from that whether to send a document
+again.
+
+Every call reads current state. Stored config changes when a check-in completes, so a
+wake-cycle app that runs `await check()` before its work reads fresh values at the end of the
+cycle; the check result's `configUpdated` says whether a re-read is worth it.
+
+What the registry serves is a deviation overlay: only the top-level values that differ from this
+release's defaults, each one complete. The device resolves it with the single top-level spread
+above, which is why a deviating value inside a nested object or a union ships whole rather than
+in pieces. Delivery is otherwise unchanged: a document goes on trial, is rolled back on a
+failure, and its `rev` is echoed on the next check-in.
+[The registry spec](/registry-spec#config-sync) carries the normative rules.
+
+The first read of each boot also accounts the config trial: a freshly delivered document that
+is never followed by a completed check-in (say it names a GPIO this board does not have and
+the app crashes on it) is rolled back by the read itself once the trial boots run out, the
+previous document restored, and the failure reported to the registry as `configError` on the
+next check-in. This lives in the read because a config-caused crash can fire before any
+check-in runs, but never before the app reads the config that causes it. Only a read that
+actually serves the stored document is charged: a boot that runs on the defaults never spends a
+trial boot.
 
 ## Types
 

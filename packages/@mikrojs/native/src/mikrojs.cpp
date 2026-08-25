@@ -506,6 +506,12 @@ void MIK_RegisterNativeModuleInit(MIKRuntime* mik_rt, const char* name,
 
 void MIK_RegisterLoopConsumer(MIKRuntime* mik_rt, MIKLoopConsumeFn consume_fn,
                               MIKLoopDestroyFn destroy_fn) {
+    /* Idempotent: a module can be brought up twice — once by native code that
+     * uses its machinery directly, once by the loader when JS imports it — and
+     * registering the pair twice would run its destroy twice at teardown. */
+    for (const auto& consumer : mik_rt->loop_consumers) {
+        if (consumer.consume_fn == consume_fn && consumer.destroy_fn == destroy_fn) return;
+    }
     mik_rt->loop_consumers.push_back({consume_fn, destroy_fn});
 }
 

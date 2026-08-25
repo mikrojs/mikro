@@ -8,6 +8,7 @@ export type {
   BooleanSchema,
   DefaultOption,
   Infer,
+  InferRead,
   LiteralSchema,
   NumberSchema,
   ObjectSchema,

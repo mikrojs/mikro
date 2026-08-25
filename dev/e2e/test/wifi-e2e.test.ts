@@ -19,13 +19,21 @@ const m = memoryUsage()
 const fitsFetch = m.heapTotal - m.heapUsed > 48 * 1024
 
 describe.runIf(hasWifi)('wifi e2e', () => {
-  test('connect to wifi', async () => {
-    const {wifi} = await import('mikro/wifi')
-    const result = await wifi.connect({ssid: WIFI_SSID!, passphrase: WIFI_PASSPHRASE!})
-    assert.equal(result.ok, true)
-    assert.truthy(result.ok && result.value.ip, 'should have an IP address')
-    if (result.ok) console.log(`connected: ${result.value.ip}`)
-  })
+  // A failed first attempt costs the attempt (~4-6s) plus the 2s retry
+  // backoff before the second try, so a single radio hiccup overruns the
+  // 10s default and cascades into the dependent tests below. 25s covers
+  // one full retry cycle.
+  test(
+    'connect to wifi',
+    async () => {
+      const {wifi} = await import('mikro/wifi')
+      const result = await wifi.connect({ssid: WIFI_SSID!, passphrase: WIFI_PASSPHRASE!})
+      assert.equal(result.ok, true)
+      assert.truthy(result.ok && result.value.ip, 'should have an IP address')
+      if (result.ok) console.log(`connected: ${result.value.ip}`)
+    },
+    {timeout: 25_000},
+  )
 
   test.runIf(fitsFetch)('http request', async () => {
     const {request} = await import('mikro/http/request')
@@ -35,14 +43,20 @@ describe.runIf(hasWifi)('wifi e2e', () => {
     if (result.ok) await result.value.close()
   })
 
-  test.runIf(fitsFetch)('sntp sync', async () => {
-    const {sntp} = await import('mikro/sntp')
-    const result = await sntp.sync({servers: ['pool.ntp.org']})
-    assert.ok(result)
-    const now = Date.now()
-    assert.truthy(now > 1735689600000, `Date.now() looks wrong after sync: ${now}`)
-    console.log(`time synced: ${new Date(now).toISOString()}`)
-  })
+  // 20s: NTP over UDP retries on loss, and a slow DNS answer for the pool
+  // hostname eats into the budget before the first packet leaves.
+  test.runIf(fitsFetch)(
+    'sntp sync',
+    async () => {
+      const {sntp} = await import('mikro/sntp')
+      const result = await sntp.sync({servers: ['pool.ntp.org']})
+      assert.ok(result)
+      const now = Date.now()
+      assert.truthy(now > 1735689600000, `Date.now() looks wrong after sync: ${now}`)
+      console.log(`time synced: ${new Date(now).toISOString()}`)
+    },
+    {timeout: 20_000},
+  )
 
   test('wifi disconnect', async () => {
     const {wifi} = await import('mikro/wifi')

@@ -501,6 +501,9 @@ importers:
 
   packages/@mikrojs/registry:
     dependencies:
+      '@mikrojs/native':
+        specifier: workspace:*
+        version: link:../native
       semver:
         specifier: ^7.7.4
         version: 7.8.5

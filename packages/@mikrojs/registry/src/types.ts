@@ -90,11 +90,36 @@ export interface DeviceRecord {
   /** Last install failure the device reported, validated to this shape before
    *  it is stored (it is device-supplied and is shown to operators). */
   lastInstall?: {reason: string; detail?: string}
+  /** Why the last offered build was not taken. `abandoned` is the only reason
+   *  that also lands in failedChecksums; the rest are "not yet", not "broken". */
+  lastDecline?: {checksum: string; reason: string; detail?: string}
   /** The checksum most recently offered to this device. */
   lastOfferedChecksum?: string
   /** Checksums this device reported failing; never re-offered. Bounded, newest
    *  kept, and cleared by `DELETE /devices/:deviceId/failures`. */
   failedChecksums: string[]
+  /** The operator-set config overlay for this device: only deviations from
+   *  the schema defaults, per the spec's Config sync section. Adapted to the
+   *  target release per serve, never rewritten to fit a newer schema. */
+  configOverrides?: unknown
+  /** The release version whose schema `configOverrides` was last saved
+   *  against, which is what makes operator-side migration explicit. */
+  configAuthoredFor?: string
+  /** The config token the device echoed on its last check-in. Absent when the
+   *  device holds no config (or its firmware predates config sync). */
+  lastConfigRev?: string
+  /** The app rejected the config it holds: reported on check-in, shown to
+   *  operators. `rev` names the exact document that failed. */
+  configError?: {rev: string; message: string; path?: string}
+}
+
+/** The config schema of one release, stored at publish. Release-level: every
+ *  firmware-range variant of `(app, version)` shares it (the publish 409
+ *  keeps it single). `schema` is the serialized `mikro/schema` AST. */
+export interface ConfigSchemaRecord {
+  app: string
+  version: string
+  schema: unknown
 }
 
 /** A token minted through browser login. One token covers publish and device
@@ -135,6 +160,9 @@ export interface RegistryStorage {
   getDeviceByUpdateKeyHash(hash: string): Promise<DeviceRecord | undefined>
   putDevice(record: DeviceRecord): Promise<void>
   listDevices(): Promise<DeviceRecord[]>
+  /** Config schemas, keyed `(app, version)` (see ConfigSchemaRecord). */
+  getConfigSchema(app: string, version: string): Promise<ConfigSchemaRecord | undefined>
+  putConfigSchema(record: ConfigSchemaRecord): Promise<void>
   getTokenByHash(hash: string): Promise<TokenRecord | undefined>
   putToken(record: TokenRecord): Promise<void>
   deleteToken(hash: string): Promise<void>

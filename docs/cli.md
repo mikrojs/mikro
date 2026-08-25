@@ -29,6 +29,10 @@ mikro dev [ENTRY]
 
 See [Build options](#build-options) for details on `--no-minify`, `--loglevel`, and other build flags.
 
+If the app declares a [config schema](/ota#device-config), each deploy round ships the
+manifest the config defaults live in, so `ota.config()` works without a registry. Per-device
+values beyond the defaults come from a registry check-in.
+
 To run on the host simulator instead of a device, use [`mikro sim dev`](#mikro-sim).
 
 ## mikro deploy
@@ -36,6 +40,12 @@ To run on the host simulator instead of a device, use [`mikro sim dev`](#mikro-s
 One-shot deploy to a connected device. This is treated as a production deployment: `MIKRO_ENV` is set to `"production"` and `--loglevel` defaults to `warn` (stripping `console.debug`, `console.log`, and `console.info` calls from the build).
 
 The build is staged over the cable and installed at the next boot, before the app loads, so a deploy succeeds even when the running app has fragmented the device's heap. The deploy restarts the device, waits for it to come back, and reports the install outcome; on failure the previous app keeps running.
+
+If the app declares a [config schema](/ota#device-config), the deployed build carries the
+schema defaults in its manifest, and `ota.config()` reads them until a registry delivers a
+document. The deploy also drops config-pairing state left over from a previous OTA install
+cycle (a staged or rollback document, a running trial, the last failure report); the delivered document itself is
+kept, and its version stamp decides whether the new build still reads it.
 
 ```sh
 mikro deploy [ENTRY]
@@ -342,10 +352,11 @@ mikro ota setup
 | `--registry URL` | Registry base URL (skips the url prompt)                               |
 | `--token TOKEN`  | Registry token (with `--registry`, setup runs without prompts)         |
 | `--user`         | Write `~/.mikro/registry.json` (all projects) instead of the project's |
+| `--force`        | Accept a url that does not identify itself as a Mikro.js registry      |
 
 ### mikro ota pack
 
-Build the current project to bytecode and pack it into a deployable OTA build: a `.tgz` with a manifest recording the app name, the firmware version it requires, and the bytecode version it targets.
+Build the current project to bytecode and pack it into a deployable OTA build: a `.tgz` with a manifest recording the app name, the firmware version it requires, and the bytecode version it targets. An app that declares a [config schema](/ota#device-config) gets it recorded there too, alongside the defaults it materializes: the registry validates config against the schema, and the device reads the defaults.
 
 ```sh
 mikro ota pack
@@ -380,7 +391,7 @@ mikro ota push
 
 See [Build options](#build-options) for details on `--no-minify`, `--loglevel`, and other build flags.
 
-A registry stores each `(app, version, bytecode)` build once, so re-pushing without bumping `package.json` fails. `--snapshot` sidesteps that during development by appending the UTC build time to the version as a semver prerelease (`1.2.3-snapshot.20260723T003205Z`). Snapshot versions therefore sort in build order under semver, so listed or sorted versions read chronologically; which build a device installs is decided by checksum, not by version order. Every push mints a new version, including a re-push of the same commit; which commit a build came from is recorded separately, in the build's source fields. With `--tarball`, pack with `--snapshot` instead; the version is fixed once a build is packed.
+A registry stores each `(app, version, firmware range)` build once, so re-pushing changed bytes without bumping `package.json` fails (re-pushing the same bytes is an idempotent success, so a CI retry is safe). `--snapshot` sidesteps that during development by appending the UTC build time to the version as a semver prerelease (`1.2.3-snapshot.20260723T003205Z`). Snapshot versions therefore sort in build order under semver, so listed or sorted versions read chronologically; which build a device installs is decided by checksum, not by version order. Every push creates a new version, including a re-push of the same commit; which commit a build came from is recorded separately, in the build's source fields. With `--tarball`, pack with `--snapshot` instead; the version is fixed once a build is packed.
 
 ### mikro ota release
 

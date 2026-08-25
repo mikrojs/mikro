@@ -39,13 +39,13 @@ NVS values are stored as plaintext in flash. Anyone with physical access to the 
 
 NVS flash is divided into namespaces with distinct owners:
 
-| Namespace           | Holds                                    | Owner       | Cleared by           |
-| ------------------- | ---------------------------------------- | ----------- | -------------------- |
-| `mik.env`/`mik.sec` | Environment variables (and secret flags) | the project | deploy sync          |
-| `mik.kv`            | App key-value data                       | your app    | `nvsStorage.clear()` |
-| `mik.sys`           | Runtime-internal state                   | mikrojs     | never implicitly     |
+| Namespace           | Holds                                    | Owner       | Cleared by            |
+| ------------------- | ---------------------------------------- | ----------- | --------------------- |
+| `mik.env`/`mik.sec` | Environment variables (and secret flags) | the project | deploy sync           |
+| `mik.kv`            | App key-value data                       | your app    | `nvsStorage.clear()`  |
+| `mik.sys`           | Runtime-internal state                   | mikrojs     | `clear({full: true})` |
 
-Everything you store through `nvsStorage` lives in `mik.kv`, fully separate from the runtime's namespaces. No key names are reserved: a key called `sys.foo` or `ota.url` is yours alone and collides with nothing.
+Everything you store through `nvsStorage` lives in `mik.kv`, fully separate from the runtime's namespaces. No key names are reserved: a key called `sys.foo` or `ota.url` is yours alone and collides with nothing. Nothing you write is affected by the runtime's own housekeeping in `mik.sys`, such as the OTA config-pairing keys a `mikro deploy` resets.
 
 All namespaces draw from the same NVS partition entry pool. The runtime's own use is small and bounded, but a nearly full partition can fail writes regardless of namespace (NVS needs free space for its internal garbage collection); `set()` surfaces that as a `StorageFull` or `WriteFailed` error.
 
@@ -56,12 +56,15 @@ Both stores share the same `createValue` API.
 ### createValue(key, options?)
 
 ```ts
-createValue<S extends StorableSchema>(key: string, options?: KVOptions<S>): KVValue<Infer<S>>
+createValue<S extends StorableSchema, O extends KVOptions<S>>(
+  key: string,
+  options?: O,
+): KVValue<InferOpts<S, O>>
 ```
 
 Create a handle to a named value. Without a schema, values are untyped (`unknown`). Pass a schema for type-safe storage.
 
-Values are [CBOR](/api/cbor)-encoded. Supported schema types: `s.number()`, `s.string()`, `s.boolean()`, `s.optional()`, `s.array()`, and `s.object()`. See [schema](/api/schema) for details.
+Values are [CBOR](/api/cbor)-encoded. Supported schema types: `s.number()`, `s.string()`, `s.boolean()`, `s.unknown()`, `s.optional()`, `s.array()`, `s.tuple()`, and `s.object()`. See [schema](/api/schema) for details.
 
 ```ts twoslash
 import {nvsStorage} from 'mikro/kv/nvs'
@@ -123,7 +126,7 @@ Returns storage usage information.
 get(): T | undefined
 ```
 
-Read the value. Returns `undefined` if the key doesn't exist. On corrupt or invalid data, calls `onReadError` (default: deletes the key, returns `undefined`).
+Read the value. Returns `undefined` if the key doesn't exist, or `initialValue` when one was given. On data that can't be read, `onReadError` decides what comes back (default: `undefined`); see [onReadError](#onreaderror) for what happens to the stored bytes in each case.
 
 ```ts twoslash
 import {rtcStorage} from 'mikro/kv/rtc'
@@ -186,10 +189,10 @@ Default: `() => undefined`.
 
 Errors returned by `set()` and `update()`, or passed to `onReadError`:
 
-| Variant            | When                                                          |
-| ------------------ | ------------------------------------------------------------- |
-| `StorageFull`      | RTC memory or NVS partition is full                           |
-| `EncodeFailed`     | Value is not [CBOR](/api/cbor)-encodable                      |
-| `WriteFailed`      | NVS open/commit failed (hardware error)                       |
-| `ValidationFailed` | Schema validation failed (has `path` field)                   |
-| `Unknown`          | Native code returned an error not in the curated set (`code`) |
+| Variant            | When                                                                      |
+| ------------------ | ------------------------------------------------------------------------- |
+| `StorageFull`      | RTC memory or NVS partition is full, or the value is too large            |
+| `EncodeFailed`     | Value is not [CBOR](/api/cbor)-encodable, or the key is empty or too long |
+| `WriteFailed`      | NVS open/commit failed (hardware error)                                   |
+| `ValidationFailed` | Schema validation failed (has `path` field)                               |
+| `Unknown`          | Native code returned an error not in the curated set (`code`)             |

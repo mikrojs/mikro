@@ -111,6 +111,13 @@ int main() {
         {"+ kv/nvs", "import {nvsStorage} from 'mikro/kv/nvs'"},
         {"+ kv/rtc", "import {rtcStorage} from 'mikro/kv/rtc'"},
         {"+ test", "import {describe, test} from 'mikro/test'"},
+        /* The OTA stack, loaded last so its cost is attributed to it rather
+         * than to the intrinsics it shares with everything above. These
+         * checkpoints are what a port of the client to C has to beat; the two
+         * clients cannot be compared here, because this bench is cumulative and
+         * whichever loads second inherits everything the first pulled in. */
+        {"+ ota", "import {ota} from 'mikro/ota'"},
+        {"+ ota/client", "import {check, watch} from 'mikro/ota/client'"},
     };
     int n = sizeof(modules) / sizeof(modules[0]);
 

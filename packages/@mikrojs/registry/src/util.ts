@@ -56,6 +56,11 @@ export function channelKey(app: string, channel: string, firmwareRange: string):
   return `${app}\u0000${channel}\u0000${firmwareRange}`
 }
 
+/** Index key for a release's config schema record. */
+export function configSchemaKey(app: string, version: string): string {
+  return `${app}\u0000${version}`
+}
+
 /** The breaking range a firmware version anchors under npm caret semantics:
  *  the left-most non-zero segment. `1` for 1.x, `0.17` for 0.17.x, `0.0.3`
  *  for an exact 0.0.x patch. undefined for anything that is not semver. */

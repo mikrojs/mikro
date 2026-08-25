@@ -48,10 +48,30 @@ struct MIKHttpQueuedMsg {
     MIKHttpQueuedMsg* next;
 };
 
+/* A C consumer of one request's messages, used when the requester is native
+ * code rather than JS — the OTA client. Set on a pending entry, it replaces the
+ * two promises entirely: nothing on that entry is ever handed to JS.
+ *
+ * Callbacks run from mik__http_consume, i.e. on the JS loop thread, never on the
+ * HTTP background task. `done` fires exactly once and is terminal. */
+struct MIKHttpNativeSink {
+    void (*headers)(void* user_data, int status);
+    void (*data)(void* user_data, const uint8_t* data, size_t len);
+    void (*done)(void* user_data, int status, const char* error_msg);
+    void* user_data;
+};
+
 struct MIKHttpPending {
     uint32_t id;
     std::atomic<bool>* cancelled;
     bool js_cancelled;
+    /* Native requests only: when this request stops being worth waiting for,
+     * in esp_timer microseconds. 0 means no deadline. */
+    int64_t deadline_us;
+
+    /* `done == nullptr` means this is a JS request and the promises below are
+     * live. Otherwise messages route to the sink and the promises are unused. */
+    MIKHttpNativeSink sink;
 
     MIKPromise headers_promise;
     bool headers_resolved;
@@ -62,6 +82,33 @@ struct MIKHttpPending {
     MIKHttpQueuedMsg* queue_head;
     MIKHttpQueuedMsg* queue_tail;
 };
+
+/* One native request, as the OTA client describes it. Strings and buffers are
+ * borrowed for the duration of the start call only; the module copies them. */
+struct MIKHttpNativeRequest {
+    const char* url;
+    const char* method;
+    const char* const* header_keys;
+    const char* const* header_values;
+    size_t header_count;
+    const uint8_t* body;
+    size_t body_len;
+    /* Whole-request bound, milliseconds; 0 for none. The 10s socket timeout
+     * only bounds a single read, so a server that dribbles is otherwise
+     * unbounded and holds the task and its TLS session indefinitely. */
+    uint32_t timeout_ms;
+};
+
+/* Bring the transport up for a native consumer that never imports the JS module.
+ * Must be called before mik__http_start_native. Idempotent. */
+void mik__http_ensure_native(struct JSContext* ctx);
+
+/* Start a request whose messages go to `sink`. Returns the request id, or 0 when
+ * it could not be started. Defined in mik_http.cpp. */
+uint32_t mik__http_start_native(struct MIKRuntime* rt, const MIKHttpNativeRequest* req,
+                                const MIKHttpNativeSink* sink);
+/* Abandon a native request. No further sink callbacks fire for it. */
+void mik__http_cancel_native(struct MIKRuntime* rt, uint32_t id);
 
 /* Ceilings shared with the test harness. Must match the #defines in
  * mik_http.cpp. */

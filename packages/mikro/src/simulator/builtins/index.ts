@@ -5,7 +5,7 @@ import {i2cBuiltin} from './i2c.js'
 import {kvBuiltin} from './kv.js'
 import {neopixelBuiltin} from './neopixel.js'
 import {nvsKvBuiltin} from './nvs-kv.js'
-import {otaBuiltin} from './ota.js'
+import {otaClientBuiltin} from './ota-client.js'
 import {pinBuiltin} from './pin.js'
 import {pwmBuiltin} from './pwm.js'
 import {sleepBuiltin} from './sleep.js'
@@ -29,7 +29,7 @@ export const builtinModuleNames: Record<BuiltinName, string> = {
   uart: 'native:mikro/uart',
   kv: 'native:mikro/rtc',
   nvs_kv: 'native:mikro/nvs_kv',
-  ota: 'native:mikro/ota',
+  ota_client: 'native:mikro/ota_client',
   sleep: 'native:mikro/sleep',
   http: 'native:mikro/http',
   sntp: 'native:mikro/sntp',
@@ -44,7 +44,7 @@ export const defaultBuiltins: Record<BuiltinName, BuiltinDefinition> = {
   neopixel: neopixelBuiltin,
   kv: kvBuiltin,
   nvs_kv: nvsKvBuiltin,
-  ota: otaBuiltin,
+  ota_client: otaClientBuiltin,
   sleep: sleepBuiltin,
   wifi: wifiBuiltin,
   i2c: i2cBuiltin,

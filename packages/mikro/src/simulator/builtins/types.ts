@@ -10,7 +10,7 @@ export type BuiltinModuleMap = {
   uart: 'native:mikro/uart'
   kv: 'native:mikro/rtc'
   nvs_kv: 'native:mikro/nvs_kv'
-  ota: 'native:mikro/ota'
+  ota_client: 'native:mikro/ota_client'
   sleep: 'native:mikro/sleep'
   http: 'native:mikro/http'
   sntp: 'native:mikro/sntp'

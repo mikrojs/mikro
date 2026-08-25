@@ -1,6 +1,6 @@
 {
   "name": "mikrojs-ota",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "private": true,
   "description": "Mikro.js over-the-air update example",
   "homepage": "https://github.com/mikrojs/mikro#readme",

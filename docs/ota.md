@@ -5,94 +5,101 @@ description: Update a device's app build remotely, over any transport, with auto
 
 # Over-the-air Updates
 
-OTA updates the **app build** (the compiled JavaScript) on a device remotely, with a trial
-install and automatic rollback. The firmware binary itself is not updated over the air; it is
-flashed over a cable.
+OTA updates the **app build** (the compiled JavaScript) on a device remotely. The device
+installs the new build as a trial and rolls back automatically if the trial fails. OTA does
+not update the firmware binary. To update the firmware, flash the device over a cable.
 
 Two modules divide the work:
 
-- [`mikro/ota/client`](/api/ota-client) is the built-in update client: it checks in with the
-  registry the device was enrolled against, downloads and stages an offered build, restarts to
-  install it, and confirms the trial. Most apps use it and write no update code beyond one
-  call.
-- [`mikro/ota`](/api/ota) is the policy layer underneath: verification, installation, the
-  trial, rollback, and retry limits. It performs no network I/O, so an app on a different
-  transport (cellular, Bluetooth, a UART link, an SD card) can drive it directly and replace
-  the whole wire.
+- [`mikro/ota/client`](/api/ota-client) is the built-in update client. It checks in with the
+  registry over HTTPS, so it requires the network stack of the device. It downloads and
+  stages an offered build, restarts to install it, and confirms the trial. For most apps,
+  this client is enough: they make one call and write no other update code.
+- [`mikro/ota`](/api/ota) provides the building blocks for the client. It verifies a downloaded build,
+  installs it, runs the trial, rolls back, and enforces the retry limits. It performs no
+  network I/O. An app with a custom transport (cellular, Bluetooth, a UART link, an SD
+  card) can call it directly.
 
 ## The built-in client
 
-One call each, depending on the app's shape:
+Each kind of app needs one call:
 
-```ts
-import * as ota from 'mikro/ota/client'
+```ts twoslash
+import * as otaClient from 'mikro/ota/client'
+import {restart} from 'mikro/sys'
 
 // Always-on app: check in the background, restart when a build is staged.
-ota.watch({checkinIntervalMs: 30 * 60_000})
+otaClient.watch({checkinIntervalMs: 30 * 60_000})
 
 // Wake-cycle app: one check per wake; the app restarts on 'staged'.
-const checked = await ota.check({trialBoots: 3})
+const checked = await otaClient.check({trialBoots: 3})
 if (checked.status === 'staged') restart()
 ```
 
-Connectivity stays the app's business: bring the network up before checking, or per round
-with watch mode's `beforeCheck` hook. The client is a no-op on an un-enrolled device;
-enrollment (below) is the opt-in. The [`ota/client` reference](/api/ota-client) covers the
-options, the result shape, and the one setting wake-cycle apps must know about
-([`trialBoots`](/api/ota-client#trialboots-on-a-wake-cycle)).
+The client does not connect the network. Start the network before a check, or per round with
+the `beforeCheck` hook of watch mode. On an un-enrolled device the client does nothing.
+Enrollment (below) is the opt-in. The [`ota/client` reference](/api/ota-client) covers the
+options, the result type, and the
+[`trialBoots`](/api/ota-client#trialboots-on-a-wake-cycle) setting for wake-cycle apps.
 
-The [ota example](https://github.com/mikrojs/mikro/tree/main/examples/ota) is the always-on
-flow end to end, registry included; the
+The [ota example](https://github.com/mikrojs/mikro/tree/main/examples/ota) shows the complete
+always-on flow, registry included. The
 [ota-wake-cycle example](https://github.com/mikrojs/mikro/tree/main/examples/ota-wake-cycle)
-is the deep-sleep variant.
+shows the deep-sleep variant.
 
 ## How an update works
 
 1. The device asks a registry whether a newer build is available. The registry is a service
-   the device talks to; it is not part of the runtime.
-2. If a build is offered, the bytes are streamed into `mikro/ota`, which verifies them
-   against the offered checksum and size and stages the build.
-3. The device restarts. On the next boot the firmware installs the staged build and runs
+   that the device contacts. It is not part of the runtime.
+2. If the registry offers a build, the app streams the bytes into `mikro/ota`. The module
+   verifies the bytes against the offered checksum and size. Then it stages the build.
+3. The device restarts. On the next boot, the firmware installs the staged build and runs
    it as a trial.
 
 ## The trial model
 
-An installed build boots as a trial rather than becoming permanent immediately. On the next
-boot the firmware examines how the previous cycle ended and decides whether to keep or revert
-it. In the common case this needs no application code:
+An installed build boots as a trial. It does not become permanent immediately. On the next
+boot, the firmware examines how the previous cycle ended. Then it keeps or reverts the
+build. In the common case this needs no application code:
 
-- **Clean cycle** (a normal restart, a deep sleep wake, or an external reset): the build
-  survived, so it is kept. It becomes the running version and the next rollback target.
-- **Crash** (a panic or watchdog reset): the build is rolled back to the previous one
-  immediately, without waiting for the trial to end.
-- **Fatal JS error** (an uncaught exception or unhandled rejection at startup): a JS-level crash
-  reboots as a clean reset rather than a panic, so the firmware records it while the build runs
-  and rolls back on the next boot. A build that throws on startup is reverted, not kept.
-- **Brownout or power-on**: ambiguous, since it may be a power problem rather than a fault in
-  the app, so the trial continues without keeping or reverting.
+- **Clean cycle** (a normal restart, a deep sleep wake, a power-on, or an external reset): the
+  build survived, so the firmware keeps it. The build becomes the running version and the next
+  rollback target.
+- **Crash** (a panic or watchdog reset): the firmware rolls back to the previous build
+  immediately. It does not wait for the trial to end.
+- **Fatal JS error** (an uncaught exception or unhandled rejection at startup): a JS-level
+  crash reboots as a clean reset, not as a panic. The firmware records the crash while the
+  build runs, and rolls back on the next boot.
+- **Brownout**: ambiguous, because the cause can be the supply and not the app. A bounded
+  number of brownout boots are absorbed without counting against the trial, and the trial
+  continues.
 
 The trial lasts one boot by default, so the build must survive its first run. On a device
-that sleeps and wakes on a schedule, that means surviving one wake cycle.
+that sleeps on a schedule, that means one wake cycle.
 
-### Confirming health yourself
+### Confirm health yourself
 
-Surviving a boot means the build neither crashed the device nor threw at startup. That doesn't
-prove it actually works — it may have started, failed to reach the network or a sensor, and sat
-there idle. For a stronger check, install the build with `requireConfirm`: the trial is then kept
-only if `ota.confirm()` is called before the trial window ends, and reverts otherwise. Call it
-after something the build can only pass when healthy, such as a successful registry check-in.
+A build that survives a boot did not crash the device and did not throw at startup. That
+does not prove that the build works. It can start, fail to reach the network or a sensor,
+and then sit idle.
 
-The built-in client does exactly this: it installs with `requireConfirm` and confirms on
-the next completed check-in, unconditionally. The rest of this section is the reasoning
-behind that choice. If your app needs the confirm moved later than check-in, that is the
-part of the client you cannot reconfigure: drive this policy layer yourself instead
-(see [Writing your own client](#writing-your-own-client)).
+For a stronger test, install the build with `requireConfirm`. The firmware then keeps the
+trial only if the app calls `ota.confirm()` before the trial window ends. If the app does
+not call it, the firmware reverts the build. Call `ota.confirm()` after an action that only
+a healthy build can complete, for example a registry check-in.
 
-A natural place to call it is after a successful registry check-in: a completed check-in shows
-the network stack and the application's main path are working, a stronger signal than surviving
-a boot, and it reuses a request the application already makes:
+The built-in client installs with `requireConfirm` and confirms on the next completed
+check-in, unconditionally. If your app must confirm later than check-in, drive `mikro/ota`
+yourself (see [Write your own client](#writing-your-own-client)). The confirm point is the
+one part of the client that you cannot configure.
 
-```ts
+Call `ota.confirm()` after a completed registry check-in. A completed check-in shows that
+the network stack and the main path of the application work. That signal is stronger than a
+survived boot, and the check-in is a request that the application already makes:
+
+```ts twoslash
+declare const myRegistry: {checkIn(body: {running: unknown}): Promise<{ok: boolean}>}
+// ---cut---
 import {ota} from 'mikro/ota'
 
 const result = await myRegistry.checkIn({running: ota.running()})
@@ -102,63 +109,84 @@ if (result.ok) {
 }
 ```
 
-Confirm only when the check-in actually completed. A failed request is not a signal of health,
-and it is the signal `requireConfirm` is watching for: a build whose own defect breaks
-networking will fail every check-in, so confirming regardless would keep exactly the build that
-rollback exists to remove. Leave the trial unresolved instead and let it lapse.
+Confirm only when the check-in completed. A failed request is not a signal of health. It is
+the signal that `requireConfirm` watches for. A build whose own defect breaks the network
+stack fails every check-in. A confirm on failure keeps exactly the build that rollback
+exists to remove. Leave the trial unresolved and let it lapse.
 
-`ota.confirm()` does nothing when there is no trial in progress, so it needs no guard for that
-case — but it does need the one above.
+`ota.confirm()` does nothing when no trial is in progress, so that case needs no guard. The
+case above does.
 
-Confirming at check-in proves the build boots and reaches the network. It does not prove the
-rest of the app works, and confirming ends the trial: a build that checks in and then **hangs**
-(an await that never settles, a stuck state machine) has already been confirmed, so it is not
-rolled back — a hang is not a crash, so nothing reboots and the firmware's automatic revert
-never fires. If your app can get stuck in a state a reboot would not clear, confirm later — past a
-point that only a working build reaches (a completed sensor read, a first job) — or drive a
-hardware watchdog the app must keep feeding. Check-in is the right place to confirm only when a
-stuck app always ends in a reboot.
+A confirm at check-in proves that the build boots and reaches the network. It does not
+prove that the rest of the app works, and the confirm ends the trial. A build can check in
+and then **hang** (an await that never settles, a stuck state machine). The confirm already
+ended its trial, so nothing reverts the build. A hang is not a crash. Nothing reboots, and
+the automatic revert never fires.
 
-To reverse an update on your own terms, call `ota.revert()`. It reinstalls the previous
-build immediately.
+Some apps can stop in a state that a reboot does not clear. For those apps, confirm later,
+past a point that only a healthy build reaches (a completed sensor read, a first job). Or
+drive a hardware watchdog that the app must feed. Confirm at check-in only when a stuck app
+always ends in a reboot.
+
+To reverse an update manually, call `ota.revert()`. It reinstalls the previous build
+immediately.
 
 ## Compatibility
 
 Two conditions decide whether a build can run on a device:
 
-- **Firmware version must satisfy the build's caret range.** A build records the firmware it
-  was compiled against as `firmwareVersion`, and serves every later firmware within the same
-  breaking boundary — the major for `1.x`, the minor while the firmware is still `0.x` (semver
-  treats a `0.x` minor bump as breaking). So a patch upgrade never needs a republish; a bump
-  across the breaking boundary does, because that is where APIs disappear. A release stores
-  one build per breaking range, and the registry serves the variant matching the device's
-  firmware.
-- **Bytecode version must match.** App builds are compiled to bytecode, which is tied to the
-  exact engine build, so a build compiled for a different version will not load. The registry
-  checks this too, but it follows from the firmware range — one toolchain produces one
-  firmware/bytecode pair — so it is a cross-check on the reported firmware, not what variants
-  are keyed by.
+- **The firmware version must satisfy the caret range of the build.** A build records the
+  firmware that it was compiled against as `firmwareVersion`. The build serves every later
+  firmware within the same breaking boundary. That boundary is the major for `1.x`, and the
+  minor while the firmware is `0.x` (semver treats a `0.x` minor bump as breaking). A patch
+  upgrade never needs a republish, but a bump across the breaking boundary does, because
+  that is where APIs disappear. A release stores one build per breaking range, and the
+  registry serves the variant that matches the firmware of the device.
+- **The bytecode version must match.** App builds compile to bytecode, and bytecode is tied
+  to the exact engine build. A build compiled for a different version does not load. The
+  registry also checks this, but the check follows from the firmware range: one toolchain
+  produces one firmware/bytecode pair. It is a cross-check on the reported firmware, not
+  the storage key for variants.
 
-**The registry decides this, not the device.** A check-in reports the device's firmware and
-bytecode version, and the registry picks a build that fits — or offers nothing. That is the
-only place the decision can be made well: a device can refuse the build it was handed, but
-it cannot ask for the right one instead, because it does not hold the other builds. So the
-offer carries neither field and `applyOffer` stages what it is given.
+**The registry decides this, not the device.** A check-in reports the firmware and bytecode
+version of the device. The registry picks a build that fits, or offers nothing. Only the
+registry can make that decision well. A device can refuse the build that it received, but
+it cannot ask for the correct one, because it does not hold the other builds. So the offer
+carries neither field, and `applyOffer` stages what it receives.
 
-Nothing is lost if a registry gets it wrong. A build that cannot run fails to load, the
-trial reverts it, and the next check-in reports the failure so the registry stops offering
-it — the same path as any build that fails on a device, and one an operator can see.
+A wrong choice by the registry causes no damage. A build that cannot run fails to load. The
+trial reverts it, and the next check-in reports the failure, so the registry does not offer
+that build again. This is the same path as any build that fails on a device, and an
+operator can see it.
 
-A device's own versions are on `mikro/sys` as `version` and `firmware.bytecodeVersion`.
+A device reports its own versions on `mikro/sys` as `version` and
+`firmware.bytecodeVersion`.
 
-## Writing your own client {#writing-your-own-client}
+## Write your own client {#writing-your-own-client}
 
-Apps on the reference registry protocol don't need any of this: it is what
-[`mikro/ota/client`](/api/ota-client) does. Write your own when the wire is yours: a different
-transport, an existing fleet backend, push instead of poll. The application then provides two
-things: a registry to query for updates, and a way to move bytes. A typical update cycle:
+Write your own client when the built-in client does not fit:
 
-```ts
+- Your devices use a different transport than HTTPS.
+- A fleet backend that you already operate manages updates.
+- Your server pushes updates, so the device does not poll.
+
+Your client then does two things: it asks a server whether an update exists, and it moves
+the bytes of the build to the device. The code below shows one complete update cycle:
+
+```ts twoslash
+import type {Diagnostic, RunningBuild} from 'mikro/ota'
+import type {Result} from 'mikro/result'
+declare const myRegistry: {
+  /** Your check-in call: POST the report, return the decoded response body.
+   *  The body stays `unknown` on purpose: it is untrusted wire data, and
+   *  parseOffer below is what validates it. */
+  checkIn(body: {
+    running: RunningBuild
+    lastInstall?: Diagnostic
+  }): Promise<Result<unknown, {name: string; message: string}>>
+  fetch(url: string, options: {rangeFrom: number}): AsyncIterable<Uint8Array>
+}
+// ---cut---
 import {ota} from 'mikro/ota'
 import {ok} from 'mikro/result'
 import {restart} from 'mikro/sys'
@@ -171,85 +199,87 @@ const checkin = await myRegistry.checkIn({
   running: ota.running(), // { checksum, version, trial } of what is executing now
   lastInstall: outcome.lastInstall, // forward a failure so the registry learns of it
 })
-// A check-in that never completed is not proof of health, so nothing below runs
-// on it: no confirm (the trial must lapse and revert), no offer to act on.
-if (!checkin.ok) return
-const body = checkin.value
 
-// Confirm before staging, and independently of whether an offer arrived. A
-// completed check-in is proof this build's network path works, which is what
-// requireConfirm waits for — whether or not the registry also had something
-// newer. Gating the confirm on "no offer arrived" lets a healthy build lapse and
-// roll back just because a newer one was published during its trial window.
-// Confirming first also lets the offer below be taken on this same pass.
-ota.confirm()
+// A check-in that never completed is not proof of health: no confirm (the
+// trial must lapse and revert), no offer to act on.
+if (checkin.ok) {
+  const body = checkin.value
 
-// Validate whatever the registry returned before acting on it. The offer fields
-// are top-level in the check-in response, so the whole body goes to parseOffer,
-// which enforces the scheme, the .tgz, the checksum and size. It does not check
-// the download host: the registry names where the build lives, the checksum
-// vouches for the bytes, and the update key (below) goes only to the registry.
-const offer = ota.parseOffer(body)
+  // Confirm before staging, even when an offer arrived: a completed check-in is
+  // the health signal requireConfirm waits for. A confirm gated on "no offer"
+  // would let a healthy build roll back when a newer one was published mid-trial.
+  ota.confirm()
 
-// If an update is offered, apply it. The callback is your only transport code.
-if (offer) {
-  const result = await ota.applyOffer(
-    offer,
-    async (update) => {
-      for await (const chunk of myRegistry.fetch(offer.url, {rangeFrom: update.resumeOffset})) {
-        // Returning err() signals a failed download; applyOffer reports it as a
-        // retryable `DownloadFailed` result rather than a corrupt build. Propagate
-        // the real error (or compose one with `new Error(msg, {cause})`), not just
-        // its name, so the cause survives.
-        const written = update.write(chunk)
-        if (!written.ok) return written
-      }
-      return ok()
-    },
-    // Keep the new build only once it calls ota.confirm() (after a successful
-    // check-in); a build that crashes at startup never does, so the trial
-    // reverts it instead of auto-keeping it.
-    {requireConfirm: true},
-  )
+  // Validate whatever the registry returned before acting on it. The offer fields
+  // are top-level in the check-in response, so the whole body goes to parseOffer,
+  // which enforces the scheme, the .tgz, the checksum and size. It does not check
+  // the download host: the registry names where the build lives, the checksum
+  // vouches for the bytes, and the update key goes only to the registry.
+  const offer = ota.parseOffer(body)
 
-  if (result.ok && result.value === 'staged') {
-    restart() // the firmware installs the staged build on the next boot
+  // If an update is offered, apply it. The callback is your only transport code.
+  if (offer) {
+    const result = await ota.applyOffer(
+      offer,
+      async (update) => {
+        for await (const chunk of myRegistry.fetch(offer.url, {rangeFrom: update.resumeOffset})) {
+          // Returning err() signals a failed download; applyOffer reports it as a
+          // retryable `DownloadFailed` result rather than a corrupt build. Propagate
+          // the real error (or compose one with `new Error(msg, {cause})`), not just
+          // its name, so the cause survives.
+          const written = update.write(chunk)
+          if (!written.ok) return written
+        }
+        return ok()
+      },
+      // Keep the new build only once it calls ota.confirm() (after a successful
+      // check-in); a build that crashes at startup never does, so the trial
+      // reverts it instead of auto-keeping it.
+      {requireConfirm: true},
+    )
+
+    if (result.ok && result.value === 'staged') {
+      restart() // the firmware installs the staged build on the next boot
+    }
   }
 }
 
 // Run your normal cycle.
 ```
 
-`applyOffer` runs the update policy: skipping a build that is already running or known bad,
-retry limits, the download callback, and verification against the checksum and size.
-Compatibility is the registry's decision (see above), not rechecked here. Only `'staged'` means bytes landed, which the application applies by
-restarting. The other outcomes (`'trial-pending'`, `'current'`, `'abandoned'`, `'exhausted'`)
-say why nothing was staged; see [the API reference](/api/ota#ota-applyoffer-offer-download-options).
+`applyOffer` runs the whole update sequence. It skips a build that already runs or that
+failed before. It enforces the retry limits and runs your download callback. Then it
+verifies the result against the checksum and size. Compatibility is the decision of the
+registry (see above), and this module does not check it again.
 
-`'trial-pending'` deserves attention: it means this device is still on trial for the build it
-is running, and that build must be settled before another can be taken. Confirm on the
-running build's own merits, as above, rather than treating the new offer as the thing to
-handle.
+Only `'staged'` means that bytes landed. The application applies them with a restart. The
+other outcomes (`'trial-pending'`, `'current'`, `'abandoned'`, `'exhausted'`) say why
+nothing was staged. See
+[the API reference](/api/ota#ota-applyoffer-offer-download-options).
 
-`ota.running()` reports the build that is currently executing, read from the live app. During
-a trial it reports the new build with `trial: true`; after a revert it reports the previous
-one. A build that was only downloaded is never reported as running, so the registry can use
-`running()` as an accurate record of what each device is on.
+`'trial-pending'` means that this device still runs a trial build. That build must settle
+before the device can take another. Confirm the running build on its own merits, as above.
+Do not treat the new offer as the item to handle.
 
-### Resuming an interrupted download
+`ota.running()` reports the build that executes now, read from the live app. During a trial
+it reports the new build with `trial: true`. After a revert it reports the previous build.
+`running()` never reports a build that was only downloaded. So the registry can use it as
+an accurate record of what each device runs.
 
-If a download is cut off, the bytes already received are kept. On the next attempt
-`update.resumeOffset` holds the number of staged bytes, so your transport can request the
-rest with an HTTP `Range` header instead of starting over. The final check hashes the whole
-staged file, so resuming stays safe.
+### Resume an interrupted download
 
-### Scheduling
+If a download stops, the device keeps the bytes that it received. On the next attempt,
+`update.resumeOffset` holds the number of staged bytes. Request the rest with an HTTP
+`Range` header. Do not start from zero. The final verification hashes the whole staged
+file, so a resumed download is as safe as a fresh one.
 
-The policy layer has no timer. When to check in and how to run the download are left to the
-caller, which is what knows its constraints, such as a connectivity or maintenance window,
-the cost of the connection, or a limited power budget. The built-in client's two modes are
-those decisions made for the common shapes: a jittered background cadence for always-on
-apps, one check per wake for sleeping ones.
+### Timing
+
+`mikro/ota` has no timer. The caller decides when to check in and how to run the download.
+Only the caller knows its constraints: a connectivity window, a maintenance window, the
+cost of the connection, or a limited power budget. The two modes of the built-in client are
+those decisions, made for the two common kinds of app. Always-on apps get a jittered background
+cadence. Apps that sleep get one check per wake.
 
 ## Relation to `mikro dev` and `mikro deploy`
 
@@ -262,24 +292,23 @@ The three differ only in how the bytes arrive.
 | `mikro deploy` | release, over cable | the whole build         | clears it       |
 | OTA            | remote              | the whole build, by you | reverts to it   |
 
-`mikro deploy` stages the build over the cable and the device installs it at the next boot,
-before the app loads, so the install cannot fail against a heap the running app has
-fragmented. For OTA state a cable deploy acts like a reflash: the deployed build comes up as
-the known-good build with no rollback target, and the first OTA update after it has nothing
-to revert to. Once an update survives its trial, that build becomes the rollback target for
+`mikro deploy` stages the build over the cable. The device installs it at the next boot,
+before the app loads. The install thus never runs against a heap that the app fragmented.
+For OTA state, a cable deploy is like a reflash. The deployed build starts as the
+known-good build with no rollback target, and the first OTA update after it has nothing to
+revert to. When an update survives its trial, that build becomes the rollback target for
 the next one. `mikro dev` stays incremental for a fast edit loop and does not change the
 rollback target.
 
 ## The registry
 
-A registry stores builds and decides which one each device should run. You run your own,
-implementing the OTA registry protocol on a backend you operate. The
+A registry stores builds and decides which build each device gets. You operate your own
+registry, as an implementation of the OTA registry protocol on your own backend. The
 [`@mikrojs/registry`](https://github.com/mikrojs/mikro/tree/main/packages/@mikrojs/registry)
-package is a ready-made reference implementation (a portable fetch handler with pluggable
-storage and auth), and the
-[ota example](https://github.com/mikrojs/mikro/tree/main/examples/ota) bundles it as a
-one-file server (`registry/server.ts`); the [OTA Registry Spec](/registry-spec) is the
-contract for building your own from scratch.
+package is a ready-made reference implementation: a portable fetch handler with pluggable
+storage and auth. The [ota example](https://github.com/mikrojs/mikro/tree/main/examples/ota)
+bundles it as a one-file server (`registry/server.ts`). The
+[OTA Registry Spec](/registry-spec) is the contract when you build your own registry.
 
 On your workstation, point the CLI at your registry once:
 
@@ -287,40 +316,44 @@ On your workstation, point the CLI at your registry once:
 mikro ota setup
 ```
 
-It asks for your registry url, then shows a short code and opens the approval page in your
-browser. Type the code there and approve. On a remote machine it prints the link instead of
-opening it.
+The command asks for the registry url. Then it shows a short code and opens the approval
+page in your browser. Type the code there and approve. On a remote machine, the command
+prints the link instead.
 
-Setup saves a token that can publish this app and enroll its devices, kept out of git so
-it cannot be committed by accident. You only do this once: `mikro ota push` and
+Setup saves a token that can publish this app and enroll its devices. The token stays out
+of git, so you cannot commit it by accident. You do this once. `mikro ota push` and
 `mikro ota enroll` use the saved url and token from then on.
 
-## Enrolling devices
+## Enroll devices {#enrolling-devices}
 
-A registry answers only authenticated check-ins, and every device authenticates with its
-own update key, issued by the registry when you enroll the device from your workstation:
+A registry answers only authenticated check-ins. Each device authenticates with its own
+update key. The registry issues the key when you enroll the device from your workstation:
 
 ```sh
 mikro ota enroll
 ```
 
-The CLI reads the hardware id off the connected device, registers it with the registry, and
-writes the registry url and the returned update key to the device over the cable, as a pair.
-Update keys never travel over the network to the device: the registry returns the update key
-exactly once, in its response to the enrollment request. On the device the pair lives in the system store (`mik.sys`), which
-deploys and `nvsStorage.clear()` never touch; the app reads it with
-[`ota.registry()`](/api/ota#ota-registry) and [`ota.bearer()`](/api/ota#ota-bearer). Enrolling
-also binds the device to the project's app, which is the only app it will ever be offered
-builds for.
+The CLI reads the hardware id from the connected device and registers it with the registry.
+Then it writes the registry url and the returned update key to the device, as a pair. An
+update key never travels over the network to the device. The registry returns it exactly
+once, in its response to the enrollment request.
 
-If a device's update key stops working (a 401 on check-in: it was rotated, or the device
-was deleted), re-enroll at the workstation with `mikro ota enroll --re-enroll`, which rotates
-the update key and invalidates the old one immediately. The device treats only a 401
-this way; transient errors keep the normal check-in cadence. For registries that issue
-update keys through their own tooling instead of the enroll endpoint, write the secret
-directly with `mikro ota enroll --update-key <secret>`.
+On the device, the pair lives in the system store (`mik.sys`). Deploys and
+`nvsStorage.clear()` do not touch that store. The app reads the pair with
+[`ota.registry()`](/api/ota#ota-registry) and [`ota.bearer()`](/api/ota#ota-bearer).
+Enrollment also binds the device to the app of the project. That is the only app the
+registry will offer to this device.
 
-## Building and publishing builds
+An update key can become invalid. A 401 on check-in means that the key was rotated or the
+device was deleted. If this occurs, re-enroll at the workstation with
+`mikro ota enroll --re-enroll`. That command rotates the update key and invalidates the old
+one immediately. The device treats only a 401 this way. Transient errors keep the normal
+check-in cadence.
+
+Some registries issue update keys with their own tools. For those registries, write the
+secret directly with `mikro ota enroll --update-key <secret>`.
+
+## Build and publish {#building-and-publishing-builds}
 
 ```sh
 # Create a build from the current project.
@@ -333,37 +366,106 @@ mikro ota push
 mikro ota push --release main
 ```
 
-`mikro ota pack` builds your app to bytecode and packs it into a `.tgz` with a small manifest
-recording the firmware version and bytecode version it targets. You can use it on its own for
-a build artifact or a manual upload. `mikro ota push` uploads the build to the registry
-configured by `mikro ota setup` (`.mikro/registry.json`), authenticated with the token stored
-there. Pass `--registry` and `--token` to override them for a one-off.
+`mikro ota pack` builds your app to bytecode and packs it into a `.tgz`. A small manifest
+in the archive records the firmware version and the bytecode version that the build
+targets. Use `pack` alone for a build artifact or a manual upload. `mikro ota push` uploads
+the build to the registry that `mikro ota setup` configured (`.mikro/registry.json`). The
+push authenticates with the stored token. Pass `--registry` and `--token` to override them
+for one push.
 
 ## Release channels {#release-channels}
 
-A channel is a movable pointer to a build, like a Docker tag or an npm dist-tag. A device is
-enrolled on one channel and is offered whatever build that channel currently points at. The
-device never knows which channel it is on; the mapping lives in the registry.
+A channel is a movable pointer to a build, like a Docker tag or an npm dist-tag. You enroll a
+device on one channel, and the registry offers it whatever build that channel points at. The device never knows its channel. The mapping lives in the registry.
 
-Uploading a build and serving it are two steps. `mikro ota push` uploads a build but serves
-it to no one until a channel points at it. `mikro ota release <version> <channel>` moves a
-channel to an already-uploaded build, and `mikro ota push --release <channel>` does both at
-once.
+An upload and a release are two steps. `mikro ota push` uploads a build, but no device
+receives it until a channel points at it. `mikro ota release <version> <channel>` moves a
+channel to a build that you already uploaded. `mikro ota push --release <channel>` does
+both at once.
 
 The default channel is `main`. A typical flow: enroll test devices on a `beta` channel with
-`mikro ota enroll --channel beta`, serve them with `mikro ota push --release beta`, and once a
-build is proven, graduate that exact build to everyone with `mikro ota release <version> main`.
-Rolling a channel back to an earlier build is the same command pointed at an older version.
+`mikro ota enroll --channel beta`, and serve them with `mikro ota push --release beta`.
+When a build is proven, graduate that exact build to everyone with
+`mikro ota release <version> main`. To move a channel back to an earlier build, run the
+same command with an older version.
+
+## Device config {#device-config}
+
+An app can declare a config schema and receive remote configuration with check-ins. No new
+deploy is necessary. Define the schema once in app source. Name it in `mikro.config.ts`.
+Read the effective config with [`ota.config()`](/api/ota#ota-config):
+
+```ts
+// app/ota.config.ts: one definition types the reads and renders the registry form
+import {number, object, string, union, literal} from 'mikro/schema'
+import type {InferRead} from 'mikro/schema'
+
+export const ConfigSchema = object({
+  interval: number({default: 60}),
+  logLevel: union([literal('debug'), literal('info'), literal('warn')], {default: 'info'}),
+  endpoint: string(),
+})
+
+// Types ota.config() app-wide; see the ota API reference.
+declare global {
+  interface OtaConfig extends InferRead<typeof ConfigSchema> {}
+}
+```
+
+```ts
+// mikro.config.ts
+import {defineConfig} from 'mikro'
+import {ConfigSchema} from './app/ota.config.js'
+
+export default defineConfig({
+  otaConfigSchema: ConfigSchema,
+})
+```
+
+`mikro ota pack` serializes the schema into the build, together with the defaults it
+materializes: every field a default covers, and nothing else. A registry that implements config
+sync stores the schema per release and renders a form from it. The registry stores only the
+values that an operator set, and serves only the top-level values that deviate from the
+defaults of the release the device runs, each of them complete. The device spreads what it
+receives over its own defaults, top level only, and applies the result without a schema of its
+own. The defaults of a new release take effect when the build installs.
+[The registry spec](/registry-spec#config-sync) carries the normative rules for that exchange.
+
+`ota.config()` is therefore always an object on a device running a deployed build, and the app
+needs no `?? fallback`. What can be absent is a single field: one the schema gives no default,
+which no operator has set yet. `InferRead` is the type of that shape, which is why the
+registration above uses it instead of `Infer` (the type an operator writes against). The one
+case that has nothing to serve, a build that carries no readable manifest and holds no stored
+document, throws instead of returning a value to branch on. That is a build that never went
+through `mikro deploy` or `mikro dev`.
+
+Config values are plaintext end to end: on the wire, in registry storage, and in the NVS
+document the device holds, the same as env vars. Credentials belong in env vars instead, set
+over the cable with `mikro env set`, which never travel through a registry. A required field
+with no default withholds the release from a device until an operator sets a value for it.
+
+A delivered document goes on trial, like an installed build: the device keeps the previous
+document until the next completed check-in after the app has read the new one. A value can
+pass the schema and still break the app, say a GPIO number the board does not have. If the app
+crashes before a check-in completes, the device restores the previous document after the
+trial boots run out, and reports the failed document to the registry as `configError`. The
+registry does not send the failed document again; the operator sees the report and corrects
+the values.
+
+In development there is usually no registry in the loop: the app reads its schema defaults,
+which `mikro deploy` and `mikro dev` ship in the build's manifest. To run a device with
+other values, deliver a document the same way production does, through a registry check-in.
 
 ## Limitations
 
 - OTA replaces your app build, not the firmware binary.
-- The new build, the previous one kept for rollback, and the unpacked app all share the
-  device's storage. On a board with the default 1 MB app filesystem this puts a practical
-  ceiling on app size for OTA; a larger app wants a larger filesystem partition, and
-  `mikro ota pack` reports when a build is too large to install safely.
-- A device's first OTA update has no rollback target: neither `mikro dev` nor `mikro deploy`
-  sets one (a cable deploy clears it). If that first update fails its trial, the device keeps
-  the new build and reports the failure at its next check-in; a build that crash-loops is
-  caught by the recovery REPL, from which you re-deploy over a cable. Once an update survives
-  its trial, later updates revert to the last surviving build.
+- The new build, the previous build kept for rollback, and the unpacked app share the
+  storage of the device. On a board with the default 1 MB app filesystem, this limits the
+  app size for OTA. A larger app needs a larger filesystem partition. `mikro ota pack` prints
+  the size of the build it produced, and the device reports its free staging space on every
+  check-in, so a registry can withhold a build that does not fit.
+- The first OTA update of a device has no rollback target. Neither `mikro dev` nor
+  `mikro deploy` sets one (a cable deploy clears it). If that first update fails its trial,
+  the device keeps the new build and reports the failure at its next check-in. The recovery
+  REPL catches a build that crash-loops. From the REPL, deploy again over a cable. When an
+  update survives its trial, later updates revert to the last build that survived.

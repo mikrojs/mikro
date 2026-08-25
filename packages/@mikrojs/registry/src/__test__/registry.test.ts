@@ -38,6 +38,7 @@ async function publish(
   if (overrides.directory !== undefined) form.set('directory', overrides.directory)
   if (overrides.commit !== undefined) form.set('commit', overrides.commit)
   if (overrides.dirty !== undefined) form.set('dirty', overrides.dirty)
+  if (overrides.configSchema !== undefined) form.set('configSchema', overrides.configSchema)
   // Publish now serves nothing on its own; a `channel` field is what points a
   // channel at the build. Default to `main` so the pre-channels tests keep
   // getting an immediate offer; pass `channel: ''` for a bare store-only push.
@@ -811,6 +812,45 @@ describe('check-in', () => {
     expect(await afterFailure.json()).toBeNull()
   })
 
+  it('records why a device declined a build, and keeps offering it', async () => {
+    // A device that spends its retry budget stops trying but keeps running the
+    // old build, so nothing about `running` changes. Without lastDecline the
+    // registry waits for an install that is not coming.
+    const storage = memoryStorage()
+    const registry = createRegistry({storage, token: TOKEN})
+    const {checksum} = await publish(registry)
+    const credential = await enroll(registry)
+    await checkin(registry, credential)
+
+    await checkin(registry, credential, {
+      lastDecline: {checksum, reason: 'exhausted', detail: 'link dropped'},
+    })
+    const device = (await storage.getDevice('dev-1'))!
+    expect(device.lastDecline).toEqual({checksum, reason: 'exhausted', detail: 'link dropped'})
+
+    // `exhausted` is "not yet", not "broken": the device retries after a reboot,
+    // and the build may be fine on every other device.
+    expect(device.failedChecksums).not.toContain(checksum)
+    const again = (await (await checkin(registry, credential)).json()) as {checksum: string}
+    expect(again.checksum).toBe(checksum)
+  })
+
+  it('stops offering a build the device abandoned', async () => {
+    // Verification failed, so those bytes can never succeed on this device.
+    const storage = memoryStorage()
+    const registry = createRegistry({storage, token: TOKEN})
+    const {checksum} = await publish(registry)
+    const credential = await enroll(registry)
+    await checkin(registry, credential)
+
+    await checkin(registry, credential, {
+      lastDecline: {checksum, reason: 'abandoned', detail: 'checksum mismatch'},
+    })
+    const device = (await storage.getDevice('dev-1'))!
+    expect(device.failedChecksums).toContain(checksum)
+    expect(await (await checkin(registry, credential)).json()).toBeNull()
+  })
+
   it('with several apps, follows the binding rather than what it runs', async () => {
     const registry = makeRegistry()
     await publish(registry, {app: 'sensor', version: '1.0.0'}, 'sensor-1')
@@ -1391,6 +1431,39 @@ describe('token expiry and revocation', () => {
     expect((await publish(registry, {token: other, version: '2.0.0'})).response.status).toBe(201)
   })
 
+  // grantFor reads the token, awaits, then refreshes `lastUsedAt`. A revoke
+  // landing in that window used to be undone by the refresh, which wrote the
+  // record back with its full expiry: the revoked token kept working.
+  it('does not resurrect a token revoked while a request was in flight', async () => {
+    const inner = memoryStorage()
+    let revokeOnce: (() => Promise<unknown>) | undefined
+    const storage: RegistryStorage = {
+      ...inner,
+      async getTokenByHash(hash) {
+        const record = await inner.getTokenByHash(hash)
+        const hook = revokeOnce
+        revokeOnce = undefined
+        if (hook !== undefined) await hook()
+        return record
+      },
+    }
+    const registry = createRegistry({storage, token: TOKEN})
+    const token = await mintToken(registry)
+
+    // Fires inside grantFor's read, so the delete lands before the refresh.
+    revokeOnce = () =>
+      registry.fetch(
+        new Request(`${BASE}/api/v1/auth/tokens/${tokenHash(token)}`, {
+          method: 'DELETE',
+          headers: {authorization: `Bearer ${TOKEN}`},
+        }),
+      )
+    await publish(registry, {token})
+
+    expect(await storage.getTokenByHash(tokenHash(token))).toBeUndefined()
+    expect((await publish(registry, {token, version: '2.0.0'})).response.status).toBe(401)
+  })
+
   it('does not serve token management without auth', async () => {
     const registry = makeRegistry()
     const listed = await registry.fetch(new Request(`${BASE}/api/v1/auth/tokens`))
@@ -1627,6 +1700,24 @@ describe('check-in over CBOR', () => {
 })
 
 describe('check-in validation', () => {
+  // The authenticated routes buffer a body before anything can validate it, and
+  // only `serve` caps that: a bare `{fetch}` export on another host does not.
+  it('caps the body, like the login routes', async () => {
+    const registry = makeRegistry()
+    const credential = await enroll(registry)
+    const oversized = await checkin(registry, credential, {pad: 'x'.repeat(200_000)})
+    expect(oversized.status).toBe(413)
+
+    const enrolled = await registry.fetch(
+      new Request(`${BASE}/api/v1/devices`, {
+        method: 'POST',
+        headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'},
+        body: JSON.stringify({deviceId: 'dev-2', app: 'sensor', pad: 'x'.repeat(200_000)}),
+      }),
+    )
+    expect(enrolled.status).toBe(413)
+  })
+
   it('rejects malformed device-reported fields instead of storing them', async () => {
     const storage = memoryStorage()
     const registry = createRegistry({storage, token: TOKEN})
@@ -1643,6 +1734,10 @@ describe('check-in validation', () => {
       {lastInstall: {reason: 'r'.repeat(65)}},
       {lastInstall: {reason: 'trial-reverted', detail: 'd'.repeat(257)}},
       {lastInstall: {detail: 'no reason'}},
+      {lastDecline: 'gave up'},
+      {lastDecline: {reason: 'exhausted'}},
+      {lastDecline: {checksum: 'not-a-checksum', reason: 'exhausted'}},
+      {lastDecline: {checksum: 'a'.repeat(64), reason: 'r'.repeat(65)}},
       {name: [1, 'n'.repeat(65)]},
       {name: ['one', 'kitchen']},
     ]
@@ -2202,6 +2297,539 @@ describe('name sync', () => {
       expect(response.status).toBe(400)
     }
     expect((await storedName(storage)).name).not.toBe('pinned')
+  })
+})
+
+describe('config sync', () => {
+  /** One defaulted leaf: valid with no operator input at all. */
+  const EASY = JSON.stringify({
+    kind: 'object',
+    shape: {interval: {kind: 'number', default: 60}},
+  })
+  /** A required leaf: invalid until an operator supplies mqttUrl. */
+  const STRICT = JSON.stringify({
+    kind: 'object',
+    shape: {interval: {kind: 'number', default: 60}, mqttUrl: {kind: 'string'}},
+  })
+
+  function putConfig(
+    registry: Registry,
+    deviceId: string,
+    body: Record<string, unknown>,
+  ): Promise<Response> {
+    return registry.fetch(
+      new Request(`${BASE}/api/v1/devices/${deviceId}/config`, {
+        method: 'PUT',
+        headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'},
+        body: JSON.stringify(body),
+      }),
+    )
+  }
+
+  describe('publish', () => {
+    it('stores the schema once per release and 409s a different one', async () => {
+      const registry = makeRegistry()
+      const first = await publish(registry, {version: '1.0.0', configSchema: EASY})
+      expect(first.response.status).toBe(201)
+
+      // Idempotent re-publish with the same schema is fine.
+      const again = await publish(registry, {version: '1.0.0', configSchema: EASY})
+      expect(again.response.status).toBe(200)
+
+      const conflicting = await publish(registry, {version: '1.0.0', configSchema: STRICT})
+      expect(conflicting.response.status).toBe(409)
+      expect(await conflicting.response.text()).toContain('different config schema')
+    })
+
+    it('rejects what config sync could never serve', async () => {
+      const registry = makeRegistry()
+      const withUnknown = JSON.stringify({
+        kind: 'object',
+        shape: {x: {kind: 'unknown'}},
+      })
+      const bad = await publish(registry, {configSchema: withUnknown})
+      expect(bad.response.status).toBe(400)
+      expect(await bad.response.text()).toContain('unknown()')
+
+      const notJson = await publish(registry, {configSchema: '{nope'})
+      expect(notJson.response.status).toBe(400)
+
+      const huge = await publish(registry, {
+        configSchema: JSON.stringify({
+          kind: 'object',
+          shape: {pad: {kind: 'string', default: 'x'.repeat(20_000)}},
+        }),
+      })
+      expect(huge.response.status).toBe(400)
+      expect(await huge.response.text()).toContain('at most')
+
+      // Under the schema cap, but the defaults alone exceed the document cap:
+      // nothing could ever be served for this release, so reject where the
+      // author can trim instead of 400ing every PUT and pausing every rollout.
+      const fatDefaults = await publish(registry, {
+        configSchema: JSON.stringify({
+          kind: 'object',
+          shape: {blob: {kind: 'string', default: 'x'.repeat(5000)}},
+        }),
+      })
+      expect(fatDefaults.response.status).toBe(400)
+      expect(await fatDefaults.response.text()).toContain('defaults alone')
+    })
+  })
+
+  describe('serve', () => {
+    it('serves the overlay for the running release and stops once echoed', async () => {
+      const registry = makeRegistry()
+      const {checksum} = await publish(registry, {version: '1.0.0', configSchema: EASY})
+      const credential = await enroll(registry)
+      const saved = await putConfig(registry, 'dev-1', {
+        values: {interval: 30},
+        version: '1.0.0',
+      })
+      expect(saved.status).toBe(200)
+      expect(await saved.json()).toEqual({ok: true, overrides: {interval: 30}, version: '1.0.0'})
+
+      const running = {checksum, version: '1.0.0', trial: false}
+      const first = (await (await checkin(registry, credential, {running})).json()) as {
+        config: {rev: string; version: string; doc: unknown}
+      }
+      expect(first.config.version).toBe('1.0.0')
+      // The deviation overlay: interval is the only top-level key that
+      // differs from the release's defaults, and it travels whole.
+      expect(first.config.doc).toEqual({interval: 30})
+      expect(first.config.rev).toMatch(/^[0-9a-f]{16}$/)
+
+      // Echoing the token means the device holds it: nothing more to send.
+      const second = await (
+        await checkin(registry, credential, {running, configRev: first.config.rev})
+      ).json()
+      expect(second).toBeNull()
+    })
+
+    it('clears a stale document when nothing deviates from the defaults', async () => {
+      const registry = makeRegistry()
+      const {checksum} = await publish(registry, {version: '1.0.0', configSchema: EASY})
+      const credential = await enroll(registry)
+      const running = {checksum, version: '1.0.0', trial: false}
+      const response = (await (
+        await checkin(registry, credential, {running, configRev: 'stale-token'})
+      ).json()) as {config: Record<string, unknown>}
+      expect(response.config).toEqual({version: '1.0.0'})
+      expect('doc' in response.config).toBe(false)
+    })
+
+    it('omits a top-level value that sits on its default', async () => {
+      const registry = makeRegistry()
+      const twoFields = JSON.stringify({
+        kind: 'object',
+        shape: {interval: {kind: 'number', default: 60}, note: {kind: 'string', default: ''}},
+      })
+      const {checksum} = await publish(registry, {version: '1.0.0', configSchema: twoFields})
+      const credential = await enroll(registry)
+      await putConfig(registry, 'dev-1', {
+        values: {interval: 60, note: 'hello'},
+        version: '1.0.0',
+      })
+
+      const running = {checksum, version: '1.0.0', trial: false}
+      const served = (await (await checkin(registry, credential, {running})).json()) as {
+        config: {doc: unknown}
+      }
+      // interval was authored, equals the default, and therefore never
+      // reaches the wire: the device's own defaults supply it.
+      expect(served.config.doc).toEqual({note: 'hello'})
+    })
+
+    it('ships a wholesale unit whole, including the leaf that matches the default', async () => {
+      const registry = makeRegistry()
+      const branches = JSON.stringify({
+        kind: 'object',
+        shape: {
+          mode: {
+            kind: 'taggedUnion',
+            key: 'kind',
+            branches: {
+              a: {kind: 'object', shape: {x: {kind: 'number'}}},
+              b: {kind: 'object', shape: {x: {kind: 'number'}}},
+            },
+            default: {kind: 'a', x: 1},
+          },
+        },
+      })
+      const {checksum} = await publish(registry, {version: '1.0.0', configSchema: branches})
+      const credential = await enroll(registry)
+      await putConfig(registry, 'dev-1', {values: {mode: {kind: 'b', x: 1}}, version: '1.0.0'})
+
+      const running = {checksum, version: '1.0.0', trial: false}
+      const served = (await (await checkin(registry, credential, {running})).json()) as {
+        config: {doc: unknown}
+      }
+      // `x` is 1 in both, but the x under branch b is a different schema node
+      // than the x under branch a: dropping it would leave the device
+      // spreading branch a's value into branch b.
+      expect(served.config.doc).toEqual({mode: {kind: 'b', x: 1}})
+
+      // The same unit back on its default deviates in nothing, so the device
+      // is told to hold nothing.
+      await putConfig(registry, 'dev-1', {values: {mode: {kind: 'a', x: 1}}, version: '1.0.0'})
+      const cleared = (await (
+        await checkin(registry, credential, {running, configRev: 'stale-token'})
+      ).json()) as {config: Record<string, unknown>}
+      expect(cleared.config).toEqual({version: '1.0.0'})
+      expect('doc' in cleared.config).toBe(false)
+    })
+
+    it('ships the whole top-level value when a leaf under it deviates', async () => {
+      const registry = makeRegistry()
+      const nested = JSON.stringify({
+        kind: 'object',
+        shape: {
+          mqtt: {
+            kind: 'object',
+            shape: {
+              host: {kind: 'string', default: 'broker.local'},
+              port: {kind: 'number', default: 1883},
+            },
+          },
+          interval: {kind: 'number', default: 60},
+        },
+      })
+      const {checksum} = await publish(registry, {version: '1.0.0', configSchema: nested})
+      const credential = await enroll(registry)
+      await putConfig(registry, 'dev-1', {values: {mqtt: {port: 8883}}, version: '1.0.0'})
+
+      const running = {checksum, version: '1.0.0', trial: false}
+      const served = (await (await checkin(registry, credential, {running})).json()) as {
+        config: {doc: unknown}
+      }
+      // The device merges at the top level only, so `mqtt` travels complete:
+      // host rides along even though it sits on its default. `interval`
+      // deviates in nothing and stays off the wire.
+      expect(served.config.doc).toEqual({mqtt: {host: 'broker.local', port: 8883}})
+    })
+
+    it('is the complete effective document when every key deviates', async () => {
+      const registry = makeRegistry()
+      const twoFields = JSON.stringify({
+        kind: 'object',
+        shape: {interval: {kind: 'number', default: 60}, note: {kind: 'string', default: ''}},
+      })
+      const {checksum} = await publish(registry, {version: '1.0.0', configSchema: twoFields})
+      const credential = await enroll(registry)
+      await putConfig(registry, 'dev-1', {
+        values: {interval: 30, note: 'hello'},
+        version: '1.0.0',
+      })
+
+      const running = {checksum, version: '1.0.0', trial: false}
+      const served = (await (await checkin(registry, credential, {running})).json()) as {
+        config: {rev: string; doc: unknown}
+      }
+      // A complete document is itself a valid overlay: spread over the
+      // defaults it yields itself, which is why a registry that still serves
+      // complete documents keeps working.
+      expect(served.config.doc).toEqual({interval: 30, note: 'hello'})
+      const echoed = await (
+        await checkin(registry, credential, {running, configRev: served.config.rev})
+      ).json()
+      expect(echoed).toBeNull()
+    })
+
+    it('keeps the rev when a save lands a value on its default', async () => {
+      const registry = makeRegistry()
+      const twoFields = JSON.stringify({
+        kind: 'object',
+        shape: {interval: {kind: 'number', default: 60}, note: {kind: 'string', default: ''}},
+      })
+      const {checksum} = await publish(registry, {version: '1.0.0', configSchema: twoFields})
+      const credential = await enroll(registry)
+      await putConfig(registry, 'dev-1', {values: {interval: 30}, version: '1.0.0'})
+
+      const running = {checksum, version: '1.0.0', trial: false}
+      const first = (await (await checkin(registry, credential, {running})).json()) as {
+        config: {rev: string; doc: unknown}
+      }
+      expect(first.config.doc).toEqual({interval: 30})
+
+      // Setting note to its own default changes what is stored and changes
+      // nothing about the effective config. The rev is the identity of the
+      // effective config, so it does not move and the device is not sent a
+      // document it already holds.
+      const again = await putConfig(registry, 'dev-1', {
+        values: {interval: 30, note: ''},
+        version: '1.0.0',
+      })
+      expect(again.status).toBe(200)
+      const echoed = await (
+        await checkin(registry, credential, {running, configRev: first.config.rev})
+      ).json()
+      expect(echoed).toBeNull()
+    })
+
+    // The cap is the EFFECTIVE document's, since that is what the device's JS
+    // heap holds once it spreads the overlay over its defaults. The served
+    // overlay is a subset of that document's top-level entries, so it needs
+    // no cap of its own.
+    it('accepts an effective document exactly at the 4 KiB cap and 400s one byte more', async () => {
+      const registry = makeRegistry()
+      const withNote = JSON.stringify({
+        kind: 'object',
+        shape: {note: {kind: 'string', default: ''}},
+      })
+      await publish(registry, {version: '1.0.0', configSchema: withNote})
+      await enroll(registry)
+      const overhead = JSON.stringify({note: ''}).length
+      const atCap = await putConfig(registry, 'dev-1', {
+        values: {note: 'x'.repeat(4096 - overhead)},
+        version: '1.0.0',
+      })
+      expect(atCap.status).toBe(200)
+
+      const overCap = await putConfig(registry, 'dev-1', {
+        values: {note: 'x'.repeat(4096 - overhead + 1)},
+        version: '1.0.0',
+      })
+      expect(overCap.status).toBe(400)
+      expect(await overCap.text()).toContain('4097 bytes')
+    })
+
+    it('derives on save: drops unknown keys, strips defaults, clears on empty', async () => {
+      const registry = makeRegistry()
+      const {checksum} = await publish(registry, {version: '1.0.0', configSchema: EASY})
+      const credential = await enroll(registry)
+      // Report a running version so a version-less save has one to author against.
+      await checkin(registry, credential, {running: {checksum, version: '1.0.0', trial: false}})
+
+      const noop = await putConfig(registry, 'dev-1', {values: {interval: 60, junk: true}})
+      expect(await noop.json()).toEqual({ok: true, version: '1.0.0'})
+
+      const invalid = await putConfig(registry, 'dev-1', {values: {interval: 'fast'}})
+      expect(invalid.status).toBe(400)
+      expect(await invalid.text()).toContain('.interval')
+    })
+
+    // A dropped wrong-kind value would derive a clean overlay from garbage:
+    // the save would report ok while storing nothing.
+    it('400s a save whose value has the wrong container kind', async () => {
+      const registry = makeRegistry()
+      await publish(registry, {version: '1.0.0', configSchema: EASY})
+      await enroll(registry)
+      const typo = await putConfig(registry, 'dev-1', {
+        values: {interval: {nested: true}},
+        version: '1.0.0',
+      })
+      expect(typo.status).toBe(400)
+      expect(await typo.text()).toContain('.interval')
+    })
+
+    // The serve-side cap, enforced at authoring — and in bytes, not UTF-16
+    // units: 2000 three-byte characters pass a length check and still
+    // overflow the device's response buffer.
+    it('400s an overlay over the 4 KiB cap, measured in encoded bytes', async () => {
+      const registry = makeRegistry()
+      const withNote = JSON.stringify({
+        kind: 'object',
+        shape: {note: {kind: 'string', default: ''}},
+      })
+      await publish(registry, {version: '1.0.0', configSchema: withNote})
+      await enroll(registry)
+      const oversized = await putConfig(registry, 'dev-1', {
+        values: {note: '€'.repeat(2000)},
+        version: '1.0.0',
+      })
+      expect(oversized.status).toBe(400)
+      expect(await oversized.text()).toContain('cap')
+    })
+
+    it('stores, echoes, lists and serves config values plainly', async () => {
+      const registry = makeRegistry()
+      const withKey = JSON.stringify({
+        kind: 'object',
+        shape: {
+          apiKey: {kind: 'string'},
+          interval: {kind: 'number', default: 60},
+        },
+      })
+      const {checksum} = await publish(registry, {version: '1.0.0', configSchema: withKey})
+      const credential = await enroll(registry)
+
+      const saved = await putConfig(registry, 'dev-1', {
+        values: {apiKey: 'hunter2', interval: 30},
+        version: '1.0.0',
+      })
+      expect(await saved.json()).toEqual({
+        ok: true,
+        version: '1.0.0',
+        overrides: {apiKey: 'hunter2', interval: 30},
+      })
+
+      const listed = await registry.fetch(
+        new Request(`${BASE}/api/v1/devices`, {headers: {authorization: `Bearer ${TOKEN}`}}),
+      )
+      const {devices} = (await listed.json()) as {devices: {configOverrides?: unknown}[]}
+      expect(devices[0]!.configOverrides).toEqual({apiKey: 'hunter2', interval: 30})
+
+      const running = {checksum, version: '1.0.0', trial: false}
+      const served = (await (await checkin(registry, credential, {running})).json()) as {
+        config: {doc: unknown}
+      }
+      expect(served.config.doc).toEqual({apiKey: 'hunter2', interval: 30})
+    })
+
+    // A save carries the whole overlay: what is stored is what the last
+    // submission derived, never a merge with what was there before.
+    it('replaces the stored overlay on a second save', async () => {
+      const registry = makeRegistry()
+      const withKey = JSON.stringify({
+        kind: 'object',
+        shape: {
+          apiKey: {kind: 'string'},
+          interval: {kind: 'number', default: 60},
+        },
+      })
+      const {checksum} = await publish(registry, {version: '1.0.0', configSchema: withKey})
+      const credential = await enroll(registry)
+      await putConfig(registry, 'dev-1', {
+        values: {apiKey: 'hunter2', interval: 30},
+        version: '1.0.0',
+      })
+
+      const resub = await putConfig(registry, 'dev-1', {
+        values: {apiKey: 'hunter3', interval: 45},
+        version: '1.0.0',
+      })
+      expect(await resub.json()).toEqual({
+        ok: true,
+        version: '1.0.0',
+        overrides: {apiKey: 'hunter3', interval: 45},
+      })
+
+      const running = {checksum, version: '1.0.0', trial: false}
+      const served = (await (await checkin(registry, credential, {running})).json()) as {
+        config: {doc: unknown}
+      }
+      expect(served.config.doc).toEqual({apiKey: 'hunter3', interval: 45})
+    })
+  })
+
+  describe('offer pairing', () => {
+    it("withholds the offer until the offered release's config validates (rule 5)", async () => {
+      const registry = makeRegistry()
+      const v1 = await publish(registry, {version: '1.0.0'}, 'build-one')
+      const credential = await enroll(registry)
+      const running = {checksum: v1.checksum, version: '1.0.0', trial: false}
+
+      const v2 = await publish(registry, {version: '2.0.0', configSchema: STRICT}, 'build-two')
+      // The new release needs mqttUrl and nobody has supplied it: no offer.
+      expect(await (await checkin(registry, credential, {running})).json()).toBeNull()
+
+      const saved = await putConfig(registry, 'dev-1', {
+        values: {mqttUrl: 'mqtt://broker.local'},
+        version: '2.0.0',
+      })
+      expect(saved.status).toBe(200)
+
+      const offered = (await (await checkin(registry, credential, {running})).json()) as {
+        checksum: string
+        config: {version: string; doc: unknown}
+      }
+      expect(offered.checksum).toBe(v2.checksum)
+      // The config rides with the offer and is for the offered release. Only
+      // mqttUrl deviates; interval sits on its default and stays off the wire,
+      // where the offered build's own manifest defaults supply it.
+      expect(offered.config.version).toBe('2.0.0')
+      expect(offered.config.doc).toEqual({mqttUrl: 'mqtt://broker.local'})
+    })
+  })
+
+  describe('advisory warnings', () => {
+    it('diffs a new release schema against the latest prior one at publish', async () => {
+      const registry = makeRegistry()
+      await publish(registry, {version: '1.0.0', configSchema: EASY}, 'build-one')
+      const next = await publish(registry, {version: '2.0.0', configSchema: STRICT}, 'build-two')
+      expect(next.response.status).toBe(201)
+      const body = (await next.response.json()) as {warnings?: string[]}
+      expect(body.warnings?.join('\n')).toContain('new required field .mqttUrl')
+    })
+
+    it('reports devices whose config will not validate at release time', async () => {
+      const registry = makeRegistry()
+      const v1 = await publish(registry, {version: '1.0.0'}, 'build-one')
+      const credential = await enroll(registry)
+      await checkin(registry, credential, {
+        running: {checksum: v1.checksum, version: '1.0.0', trial: false},
+      })
+
+      // Store 2.0.0 without serving it, then release it: the device has no
+      // mqttUrl value, so the report names it.
+      await publish(registry, {version: '2.0.0', configSchema: STRICT, channel: ''}, 'build-two')
+      const released = await registry.fetch(
+        new Request(`${BASE}/api/v1/releases`, {
+          method: 'POST',
+          headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'},
+          body: JSON.stringify({app: 'sensor', version: '2.0.0', channel: 'main'}),
+        }),
+      )
+      expect(released.status).toBe(200)
+      const body = (await released.json()) as {released: number; warnings?: string[]}
+      expect(body.released).toBe(1)
+      expect(body.warnings).toHaveLength(1)
+      expect(body.warnings![0]).toContain('device dev-1')
+      expect(body.warnings![0]).toContain('not offered 2.0.0')
+
+      // Supply the value: the report clears.
+      await putConfig(registry, 'dev-1', {
+        values: {mqttUrl: 'mqtt://broker.local'},
+        version: '2.0.0',
+      })
+      const again = await registry.fetch(
+        new Request(`${BASE}/api/v1/releases`, {
+          method: 'POST',
+          headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'},
+          body: JSON.stringify({app: 'sensor', version: '2.0.0', channel: 'main'}),
+        }),
+      )
+      const cleared = (await again.json()) as {warnings?: string[]}
+      expect(cleared.warnings).toBeUndefined()
+    })
+  })
+
+  describe('configError', () => {
+    it('stores the report while present and clears it when it stops', async () => {
+      const registry = makeRegistry()
+      await publish(registry, {version: '1.0.0', configSchema: EASY})
+      const credential = await enroll(registry)
+
+      const report = {rev: 'r1', message: 'expected number, got string', path: '.interval'}
+      await checkin(registry, credential, {configError: report})
+      const listed = await registry.fetch(
+        new Request(`${BASE}/api/v1/devices`, {
+          headers: {authorization: `Bearer ${TOKEN}`},
+        }),
+      )
+      const {devices} = (await listed.json()) as {devices: {configError?: unknown}[]}
+      expect(devices[0]!.configError).toEqual(report)
+
+      await checkin(registry, credential, {})
+      const after = await registry.fetch(
+        new Request(`${BASE}/api/v1/devices`, {
+          headers: {authorization: `Bearer ${TOKEN}`},
+        }),
+      )
+      const cleared = (await after.json()) as {devices: {configError?: unknown}[]}
+      expect(cleared.devices[0]!.configError).toBeUndefined()
+    })
+
+    it('rejects malformed config fields', async () => {
+      const registry = makeRegistry()
+      await publish(registry)
+      const credential = await enroll(registry)
+      const badRev = await checkin(registry, credential, {configRev: 'x'.repeat(65)})
+      expect(badRev.status).toBe(400)
+      expect(await badRev.text()).toContain('configRev')
+      const badError = await checkin(registry, credential, {configError: {message: 'no rev'}})
+      expect(badError.status).toBe(400)
+    })
   })
 })
 

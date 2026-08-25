@@ -50,18 +50,26 @@ export async function run(config: Args): Promise<void> {
       throw new Error('Cannot release: package.json has no app name')
     }
 
-    const {released} = await releaseBuild(
+    const {released, warnings} = await releaseBuild(
       {registry, app, version: config.version, channel: config.channel},
       token,
     )
 
     if (jsonOutput) {
-      agentResult('ota release', {app, version: config.version, channel: config.channel, released})
+      agentResult('ota release', {
+        app,
+        version: config.version,
+        channel: config.channel,
+        released,
+        warnings,
+      })
     } else {
       // eslint-disable-next-line no-console
       console.log(`Released ${app}@${config.version} to ${config.channel}`)
       // eslint-disable-next-line no-console
       console.log(`  registry  ${registry}`)
+      // eslint-disable-next-line no-console
+      for (const warning of warnings) console.log(`  warning: ${warning}`)
     }
   } catch (err) {
     if (jsonOutput) {

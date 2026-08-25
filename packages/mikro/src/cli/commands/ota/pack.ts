@@ -12,9 +12,11 @@ import {lastValueFrom, tap} from 'rxjs'
 import type {LogLevel, Minifier, MinifyLevel} from '../../../_exports/index.js'
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
 import {build, type BuildEvent} from '../../lib/build.js'
+import {buildConfigDefaults, serializeConfigSchema} from '../../lib/configSchema.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {describeError} from '../../lib/errorMessage.js'
 import {formatSize} from '../../lib/formatSize.js'
+import {loadMikroConfig} from '../../lib/loadMikroConfig.js'
 import {
   finalizeBuild,
   normalizeRepositoryDirectory,
@@ -145,14 +147,16 @@ export async function packProject(options: {
     {defaultValue: undefined},
   )
 
-  const [pkg, firmwareVersion, bytecodeVersion, git] = await Promise.all([
+  const [pkg, firmwareVersion, bytecodeVersion, git, mikroConfig] = await Promise.all([
     readPackageJson(projectRoot),
     resolveFirmwareVersion(projectRoot),
     readBytecodeVersion(buildDir),
     resolveGitState(projectRoot),
+    loadMikroConfig(projectRoot, 'production'),
   ])
   const app = projectName(pkg)
   const baseVersion = typeof pkg.version === 'string' ? pkg.version : '0.0.0'
+  const configSchema = serializeConfigSchema(mikroConfig)
 
   const version = options.snapshot ? snapshotVersion(baseVersion, new Date()) : baseVersion
 
@@ -171,6 +175,12 @@ export async function packProject(options: {
   if (git.sha !== null) {
     manifest.commit = git.sha
     if (git.dirty) manifest.dirty = true
+  }
+  if (configSchema !== undefined) {
+    manifest.configSchema = configSchema
+    // What the device reads instead of the schema: the materialized defaults,
+    // partial when required leaves or secrets are declared.
+    manifest.configDefaults = buildConfigDefaults(configSchema)
   }
 
   // Default to the working directory, like `npm pack`: this is the artifact the

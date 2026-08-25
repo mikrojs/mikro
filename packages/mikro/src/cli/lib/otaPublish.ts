@@ -45,6 +45,8 @@ export interface UploadRequestPlan {
     commit?: string
     /** Truthy flag: the repository was dirty at pack time; omitted when clean. */
     dirty?: string
+    /** Serialized config schema JSON (from the manifest); omitted when absent. */
+    configSchema?: string
   }
 }
 
@@ -83,6 +85,10 @@ export function buildUploadRequest(input: PublishInput, token: string): UploadRe
       directory: input.manifest.directory,
       commit: input.manifest.commit,
       dirty: input.manifest.dirty === true ? '1' : undefined,
+      configSchema:
+        input.manifest.configSchema !== undefined
+          ? JSON.stringify(input.manifest.configSchema)
+          : undefined,
     },
   }
 }
@@ -95,13 +101,31 @@ export interface FetchResponse {
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<FetchResponse>
 
-async function send(fetchImpl: FetchLike, url: string, init: RequestInit): Promise<void> {
+/** POST and return the registry's advisory `warnings`, if the body carries
+ *  any (schema-change notes, the release compat report). */
+async function send(fetchImpl: FetchLike, url: string, init: RequestInit): Promise<string[]> {
   const res = await fetchImpl(url, init)
+  const body = await res.text().catch(() => '')
   if (!res.ok) {
-    const body = await res.text().catch(() => '')
     const detail = body ? `: ${body}` : ''
     throw new Error(`Registry request to ${url} failed with ${res.status}${detail}`)
   }
+  return warningsFrom(parseBody(body))
+}
+
+function parseBody(body: string): unknown {
+  try {
+    return JSON.parse(body) as unknown
+  } catch {
+    return undefined
+  }
+}
+
+function warningsFrom(parsed: unknown): string[] {
+  if (typeof parsed !== 'object' || parsed === null) return []
+  const warnings = (parsed as {warnings?: unknown}).warnings
+  if (!Array.isArray(warnings)) return []
+  return warnings.filter((w): w is string => typeof w === 'string')
 }
 
 /**
@@ -113,7 +137,7 @@ export async function publishBuild(
   buildPath: string,
   token: string,
   fetchImpl: FetchLike = fetch as unknown as FetchLike,
-): Promise<void> {
+): Promise<{warnings: string[]}> {
   const upload = buildUploadRequest(input, token)
   const form = new FormData()
   form.set('app', upload.fields.app)
@@ -129,13 +153,15 @@ export async function publishBuild(
   if (upload.fields.directory !== undefined) form.set('directory', upload.fields.directory)
   if (upload.fields.commit !== undefined) form.set('commit', upload.fields.commit)
   if (upload.fields.dirty !== undefined) form.set('dirty', upload.fields.dirty)
+  if (upload.fields.configSchema !== undefined) form.set('configSchema', upload.fields.configSchema)
   const bytes = await readFile(buildPath)
   form.set('build', new Blob([bytes], {type: 'application/gzip'}), basename(buildPath))
-  await send(fetchImpl, upload.url, {
+  const warnings = await send(fetchImpl, upload.url, {
     method: upload.method,
     headers: upload.headers,
     body: form,
   })
+  return {warnings}
 }
 
 export interface ReleaseInput {
@@ -170,18 +196,21 @@ export async function releaseBuild(
   input: ReleaseInput,
   token: string,
   fetchImpl: FetchLike = fetch as unknown as FetchLike,
-): Promise<{released: number}> {
+): Promise<{released: number; warnings: string[]}> {
   const plan = buildReleaseRequest(input, token)
   const res = await fetchImpl(plan.url, {
     method: plan.method,
     headers: plan.headers,
     body: plan.body,
   })
+  const body = await res.text().catch(() => '')
   if (!res.ok) {
-    const body = await res.text().catch(() => '')
     const detail = body ? `: ${body}` : ''
     throw new Error(`Registry request to ${plan.url} failed with ${res.status}${detail}`)
   }
-  const parsed = (JSON.parse(await res.text()) as {released?: unknown}).released
-  return {released: typeof parsed === 'number' ? parsed : 0}
+  // An unparseable body is tolerated: `released` stays 0 and the caller
+  // reports that.
+  const parsed = parseBody(body)
+  const count = (parsed as {released?: unknown} | undefined)?.released
+  return {released: typeof count === 'number' ? count : 0, warnings: warningsFrom(parsed)}
 }

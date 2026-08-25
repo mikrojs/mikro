@@ -280,6 +280,62 @@ describe('finalizeBuild + readManifestFromTarball', () => {
       rmSync(out, {force: true})
     }
   })
+
+  it('round-trips the config schema and copies the manifest into app/', async () => {
+    const appDir = join(dir, 'app')
+    await mkdir(appDir, {recursive: true})
+    await writeFile(join(appDir, 'main.bjs'), Buffer.from([13, 1]))
+
+    const configSchema = {
+      kind: 'object',
+      shape: {interval: {kind: 'number', default: 60}},
+    }
+    const out = join(tmpdir(), `ota-schema-${Date.now()}.tgz`)
+    try {
+      await finalizeBuild(dir, out, {
+        app: 'my-app',
+        version: '1.2.0',
+        firmwareVersion: '0.15.0',
+        bytecodeVersion: 13,
+        configSchema,
+        // What the device reads instead of the schema (pack derives it).
+        configDefaults: {interval: 60},
+      })
+      expect(await readManifestFromTarball(out)).toEqual({
+        app: 'my-app',
+        version: '1.2.0',
+        firmwareVersion: '0.15.0',
+        bytecodeVersion: 13,
+        configSchema,
+        configDefaults: {interval: 60},
+      })
+      // The install commit keeps only the app/ tree, so the copy inside it is
+      // the one a device actually reads at /app/mikro.app.json.
+      const {stdout} = await execFileAsync('tar', ['-tzf', out], {encoding: 'utf-8'})
+      expect(stdout.split('\n')).toContain('app/mikro.app.json')
+    } finally {
+      rmSync(out, {force: true})
+    }
+  })
+
+  it('drops config defaults that are not a plain object', async () => {
+    const appDir = join(dir, 'app')
+    await mkdir(appDir, {recursive: true})
+    await writeFile(join(appDir, 'main.bjs'), Buffer.from([13, 1]))
+    const out = join(tmpdir(), `ota-baddefaults-${Date.now()}.tgz`)
+    try {
+      await finalizeBuild(dir, out, {
+        app: 'my-app',
+        version: '1.2.0',
+        firmwareVersion: '0.15.0',
+        bytecodeVersion: 13,
+        configDefaults: [60],
+      })
+      expect((await readManifestFromTarball(out)).configDefaults).toBeUndefined()
+    } finally {
+      rmSync(out, {force: true})
+    }
+  })
 })
 
 describe('normalizeRepositoryUrl', () => {

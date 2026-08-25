@@ -27,6 +27,11 @@ const isSim = env.get('MIKRO_ENV') === 'simulator'
 const m = memoryUsage()
 const fitsHttp = m.heapTotal - m.heapUsed > 48 * 1024
 
+// A cross-internet TLS round trip normally takes ~3.5s here, but a single
+// stalled handshake or slow httpbingo response blows the 10s default and
+// fails the run. 20s absorbs one stall; genuine hangs still fail fast enough.
+const NET_TIMEOUT = {timeout: 20_000}
+
 let request: typeof import('mikro/http/request').request
 
 describe.runIf(hasWifi && !isSim && fitsHttp)('http request e2e', () => {
@@ -47,60 +52,84 @@ describe.runIf(hasWifi && !isSim && fitsHttp)('http request e2e', () => {
     new AbortController() // trigger lazy class install
   })
 
-  test('GET over TLS returns status 200 and JSON', async () => {
-    const result = await request('https://httpbingo.org/get', {
-      headers: {'content-type': 'application/json'},
-    })
-    assert.ok(result, `fetch failed: ${result.ok ? '' : result.error.name}`)
-    assert.equal(result.value.status, 200)
-    assert.truthy(result.value.ok, 'response.ok reflects 2xx')
-    const body = await result.value.json()
-    assert.ok(body)
-    assert.type(body.value, 'object')
-  })
+  test(
+    'GET over TLS returns status 200 and JSON',
+    async () => {
+      const result = await request('https://httpbingo.org/get', {
+        headers: {'content-type': 'application/json'},
+      })
+      assert.ok(result, `fetch failed: ${result.ok ? '' : result.error.name}`)
+      assert.equal(result.value.status, 200)
+      assert.truthy(result.value.ok, 'response.ok reflects 2xx')
+      const body = await result.value.json()
+      assert.ok(body)
+      assert.type(body.value, 'object')
+    },
+    NET_TIMEOUT,
+  )
 
-  test('GET returns a non-empty body as bytes', async () => {
-    const result = await request('https://httpbingo.org/bytes/1024')
-    assert.ok(result)
+  test(
+    'GET returns a non-empty body as bytes',
+    async () => {
+      const result = await request('https://httpbingo.org/bytes/1024')
+      assert.ok(result)
 
-    const bytes = await result.value.bytes()
-    assert.ok(bytes)
-    assert.equal(bytes.value.length, 1024, `expected 1024 bytes, got ${bytes.value.length}`)
-  })
+      const bytes = await result.value.bytes()
+      assert.ok(bytes)
+      assert.equal(bytes.value.length, 1024, `expected 1024 bytes, got ${bytes.value.length}`)
+    },
+    NET_TIMEOUT,
+  )
 
-  test('non-2xx status surfaces as response.ok=false with body still readable', async () => {
-    const result = await request('https://httpbingo.org/status/404')
-    assert.ok(result)
-    assert.equal(result.value.status, 404)
-    assert.equal(result.value.ok, false)
-    await result.value.close()
-  })
+  test(
+    'non-2xx status surfaces as response.ok=false with body still readable',
+    async () => {
+      const result = await request('https://httpbingo.org/status/404')
+      assert.ok(result)
+      assert.equal(result.value.status, 404)
+      assert.equal(result.value.ok, false)
+      await result.value.close()
+    },
+    NET_TIMEOUT,
+  )
 
-  test('response headers are reported as pairs; get() is case-insensitive', async () => {
-    const result = await request('https://httpbingo.org/get')
-    assert.ok(result)
-    const ct = result.value.get('content-type')
-    assert.type(ct, 'string')
-    assert.truthy(ct!.includes('application/json'), 'content-type contains application/json')
-    await result.value.close()
-  })
+  test(
+    'response headers are reported as pairs; get() is case-insensitive',
+    async () => {
+      const result = await request('https://httpbingo.org/get')
+      assert.ok(result)
+      const ct = result.value.get('content-type')
+      assert.type(ct, 'string')
+      assert.truthy(ct!.includes('application/json'), 'content-type contains application/json')
+      await result.value.close()
+    },
+    NET_TIMEOUT,
+  )
 
-  test('AbortSignal cancels an in-flight request', async () => {
-    const controller = new AbortController()
-    // Slow endpoint: /delay/5 sleeps 5s before responding.
-    const promise = request('https://httpbingo.org/delay/5', {signal: controller.signal})
-    // Let the request start, then abort.
-    setTimeout(() => controller.abort(), 200)
-    const result = await promise
-    assert.err(result)
-    assert.equal(result.error.name, 'Aborted')
-  })
+  test(
+    'AbortSignal cancels an in-flight request',
+    async () => {
+      const controller = new AbortController()
+      // Slow endpoint: /delay/5 sleeps 5s before responding.
+      const promise = request('https://httpbingo.org/delay/5', {signal: controller.signal})
+      // Let the request start, then abort.
+      setTimeout(() => controller.abort(), 200)
+      const result = await promise
+      assert.err(result)
+      assert.equal(result.error.name, 'Aborted')
+    },
+    NET_TIMEOUT,
+  )
 
-  test('timeoutMs cancels a long-running request', async () => {
-    const result = await request('https://httpbingo.org/delay/5', {timeoutMs: 200})
-    assert.err(result)
-    assert.equal(result.error.name, 'Aborted')
-  })
+  test(
+    'timeoutMs cancels a long-running request',
+    async () => {
+      const result = await request('https://httpbingo.org/delay/5', {timeoutMs: 200})
+      assert.err(result)
+      assert.equal(result.error.name, 'Aborted')
+    },
+    NET_TIMEOUT,
+  )
 
   test('unreachable host surfaces as Network error (pre-headers)', async () => {
     // example.invalid TLD is reserved and must not resolve.
@@ -112,20 +141,24 @@ describe.runIf(hasWifi && !isSim && fitsHttp)('http request e2e', () => {
     }
   })
 
-  test('POST with JSON body round-trips through httpbingo /post', async () => {
-    const result = await request('https://httpbingo.org/post', {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({hello: 'mikro', n: 42}),
-    })
-    assert.ok(result)
-    assert.equal(result.value.status, 200)
-    const body = await result.value.json()
-    assert.ok(body)
-    const parsed = body.value as {json: {hello: string; n: number}}
-    assert.equal(parsed.json.hello, 'mikro')
-    assert.equal(parsed.json.n, 42)
-  })
+  test(
+    'POST with JSON body round-trips through httpbingo /post',
+    async () => {
+      const result = await request('https://httpbingo.org/post', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({hello: 'mikro', n: 42}),
+      })
+      assert.ok(result)
+      assert.equal(result.value.status, 200)
+      const body = await result.value.json()
+      assert.ok(body)
+      const parsed = body.value as {json: {hello: string; n: number}}
+      assert.equal(parsed.json.hello, 'mikro')
+      assert.equal(parsed.json.n, 42)
+    },
+    NET_TIMEOUT,
+  )
 
   test(
     'break inside for-await cancels the request and frees the pending slot',

@@ -5,7 +5,7 @@ import * as pathlib from 'node:path'
 import {promisify} from 'node:util'
 
 import {createReadStream} from 'fs'
-import {readdir, readFile, rm, stat, writeFile} from 'fs/promises'
+import {mkdir, readdir, readFile, rm, stat, writeFile} from 'fs/promises'
 import {create as tarCreate} from 'tar'
 
 const execFileAsync = promisify(execFile)
@@ -42,6 +42,23 @@ export interface OtaManifest {
    * repository-wide, so an edit to a file outside this app also sets it.
    * Omitted (reads as false) for a clean tree. */
   dirty?: boolean
+  /** Serialized `mikro/schema` AST of the app's OTA config schema
+   * (`otaConfigSchema` in `mikro.config.ts`). In the manifest so the artifact is
+   * self-describing: a `push --tarball` sends what the pack recorded, and the
+   * registry validates and serves config against it. The device never reads
+   * it. Absent when the app declares none. */
+  configSchema?: unknown
+  /** The defaults the schema materializes. Partial: every field a default
+   * covers, omitting the rest (defaultless leaves, units without a whole-value
+   * default). What `ota.config()` reads on a device holding no
+   * served document; the device reads this, never the schema. Present whenever
+   * the app declares a schema, even when it is empty. */
+  configDefaults?: unknown
+}
+
+/** A plain object, checked before it is copied out of an untrusted manifest. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 export const MANIFEST_NAME = 'mikro.app.json'
@@ -131,7 +148,16 @@ export async function pruneMacSidecars(dir: string): Promise<void> {
 }
 
 export async function writeManifest(buildDir: string, manifest: OtaManifest): Promise<void> {
-  await writeFile(pathlib.join(buildDir, MANIFEST_NAME), JSON.stringify(manifest))
+  const encoded = JSON.stringify(manifest)
+  await writeFile(pathlib.join(buildDir, MANIFEST_NAME), encoded)
+  // A second copy inside app/: the installer's commit keeps only the staged
+  // app/ tree, so the root copy (the registry's and `push --tarball`'s
+  // contract) never survives an install. The app/ copy is what the device
+  // reads at /app/mikro.app.json. Created unconditionally — a build with no
+  // app/ directory would otherwise install without a manifest, silently.
+  const appDir = pathlib.join(buildDir, 'app')
+  await mkdir(appDir, {recursive: true})
+  await writeFile(pathlib.join(appDir, MANIFEST_NAME), encoded)
 }
 
 /** Every path under `root`, `root`-relative, each directory immediately before
@@ -228,6 +254,10 @@ export async function readManifestFromTarball(tarballPath: string): Promise<OtaM
   if (typeof parsed.directory === 'string') manifest.directory = parsed.directory
   if (typeof parsed.commit === 'string') manifest.commit = parsed.commit
   if (parsed.dirty === true) manifest.dirty = true
+  if (typeof parsed.configSchema === 'object' && parsed.configSchema !== null) {
+    manifest.configSchema = parsed.configSchema
+  }
+  if (isPlainObject(parsed.configDefaults)) manifest.configDefaults = parsed.configDefaults
   return manifest
 }
 

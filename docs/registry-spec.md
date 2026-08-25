@@ -57,7 +57,12 @@ human page to browsers at the same url if you like; API clients ask for JSON.
 
 `mikro ota pack` produces a gzipped tar. Its root holds `mikro.app.json` plus the `app/` tree.
 The manifest is `{app, version, firmwareVersion, bytecodeVersion}`, with optional source fields
-`{repository, directory, commit, dirty}`. The `firmwareVersion`/`bytecodeVersion` fields record
+`{repository, directory, commit, dirty}` and, when the app declares a config schema, a
+`configSchema` (described under [the publish endpoint](#_2-the-publish-and-release-endpoints))
+plus `configDefaults`: the partial default config the schema materializes (every field a default
+fills; possibly `{}`), which the device spreads a served overlay over and reads on its own when
+it holds no document (see [Config sync](#config-sync)).
+The `firmwareVersion`/`bytecodeVersion` fields record
 what the build was compiled against; they are not a policy about who may run it. The source
 fields, when present, are captured at pack time (`repository` and `directory` from
 `package.json`, `commit` from HEAD, `dirty` when the repository had uncommitted changes) so a
@@ -99,6 +104,7 @@ offer's `checksum`. If it does not match, every download fails verification.
 | `directory`       | string, optional | app's path inside `repository` (relative, no `..`); only valid with `repository`                      |
 | `commit`          | string, optional | commit SHA the build was packed from (hex), from the build's `mikro.app.json`                         |
 | `dirty`           | string, optional | truthy flag: the repository was dirty at pack time; only valid with `commit`                          |
+| `configSchema`    | string, optional | serialized config schema (JSON), from the build's `mikro.app.json`                                    |
 | `build`           | file             | the `.tgz` (content-type `application/gzip`)                                                          |
 
 Auth is `Authorization: Bearer <token>`. The CLI never parses the token, so any token scheme
@@ -145,6 +151,44 @@ bytecode version, and a bytecode key would reject the second publish as a confli
 blocking exactly the transition the variant mechanism exists for. On any failure, respond with a
 non-`2xx` status and a text body; the CLI shows the status and the body to the user.
 
+A successful publish or release response is JSON and MAY carry `warnings`, an array of strings
+the CLI prints verbatim, one line each. This is where the advisory reports under
+[Schema changes between releases](#config-sync) travel; a registry with nothing to say omits the
+field.
+
+**The config schema.** An app that takes operator-editable config declares a schema for it, and
+`pack` serializes that schema into `mikro.app.json` as `configSchema`. `push` then sends it as
+the `configSchema` part the same way the other manifest fields travel: the manifest is the
+record, and the part spares the registry from unpacking the tarball. A registry that implements
+[config sync](#config-sync) stores it; one that does not MUST ignore it, as with the source
+fields.
+
+The serialized form is the `mikro/schema` AST as JSON: plain nodes discriminated by `kind`, the
+structural fields of the [schema language](/api/schema), and the `default` annotation carried
+as an extra property on a node. Ignore annotation properties you do not recognize; new
+annotations are added that way. Reject with a `400`, at publish, what
+config sync could never serve: a schema containing `unknown()`, an `optional()` wrapping an
+object or an array (an overlay needs every absence to mean exactly one thing; see
+[Config sync](#config-sync)), a node kind you do not know, a `default` in a position where it
+could never apply (on an `object()`, on an `optional()` or the node it wraps, or anywhere
+inside an `array`, `tuple`, `union`, or `taggedUnion`, each of which is filled from its own
+whole-value default or not at all), an empty `union` or a branchless `taggedUnion`
+(unsatisfiable, so they could only fail at serve), `__proto__`, `constructor` or `prototype`
+as a field name or branch tag (writing one through `out[key]` reaches the prototype rather
+than a property), a serialized size over 16 KiB,
+nesting more than 8 levels deep, or a schema whose materialized defaults alone encode over the
+4 KiB effective-document cap. The defaults are part of every effective document, so with
+defaults that big every authored config would exceed the cap and rule 5 would pause every
+rollout, discovered one device at a time. Publish is where the author
+can still rename a field or add a default; storing a schema and failing at serve time helps
+nobody.
+
+The schema belongs to the release, not the build. Every variant of `(app, version)` is packed
+from the same source, so each carries the same schema, and a publish whose `configSchema`
+differs from the one already stored for `(app, version)` is a `409`, exactly like a differing
+checksum. What may change between releases, and what to tell the operator when it does, is
+covered under [Schema changes between releases](#config-sync).
+
 A minimal registry may ignore `create`, for example by auto-creating apps or serving a single
 implicit app. It exists so that a multi-app registry can refuse to start a new app lineage from
 a typo in the app name.
@@ -152,7 +196,10 @@ a typo in the app name.
 Cap request bodies. Publish is the only route that carries more than a few kilobytes. A registry
 that buffers bodies has to enforce the limit while reading and answer `413` once it is passed,
 not after routing, so that an unauthenticated POST cannot exhaust memory. The reference `serve`
-adapter defaults to 16 MiB (`maxBodyBytes`).
+adapter defaults to 16 MiB (`maxBodyBytes`). The reference registry also caps its own routes,
+since a bare `{fetch}` export deployed to another host has no adapter ceiling at all: 16 KiB for
+the authenticated JSON and CBOR routes (enroll, release, the device config write, and check-in)
+and 64 KiB for the unauthenticated login routes, each answering `413` once passed.
 
 **Pointing a channel at an already-stored build.** `mikro ota release` uses this to serve a build
 that is already uploaded. `POST /releases`, JSON body `{app, version, channel}`,
@@ -484,17 +531,19 @@ wire by adding optional fields, never by renaming or repurposing existing ones.
 
 Request body:
 
-| Field          | Type                               | Meaning                                              |
-| -------------- | ---------------------------------- | ---------------------------------------------------- |
-| `deviceId`     | string                             | Hardware-derived id the device reports about itself  |
-| `firmware`     | string (semver)                    | Firmware version                                     |
-| `firmwareHash` | string                             | Firmware build hash                                  |
-| `bytecode`     | integer                            | Bytecode version the device can load                 |
-| `board`        | string, optional                   | Chip or board target (for future firmware targeting) |
-| `running`      | map `{checksum?, version?, trial}` | The build executing right now                        |
-| `lastInstall`  | map `{reason, detail?}`, optional  | Diagnostic from a failed install, sent once          |
-| `name`         | `[rev, name?]`, optional           | The device's name and revision (see Name sync)       |
-| `free`         | integer, optional                  | Bytes free to download and stage one build           |
+| Field          | Type                                        | Meaning                                                                                                   |
+| -------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `deviceId`     | string                                      | Hardware-derived id the device reports about itself                                                       |
+| `firmware`     | string (semver)                             | Firmware version                                                                                          |
+| `firmwareHash` | string                                      | Firmware build hash                                                                                       |
+| `bytecode`     | integer                                     | Bytecode version the device can load                                                                      |
+| `running`      | map `{checksum?, version?, trial}`          | The build executing right now                                                                             |
+| `lastInstall`  | map `{reason, detail?}`, optional           | Diagnostic from a failed install, sent once                                                               |
+| `lastDecline`  | map `{checksum, reason, detail?}`, optional | Why the last offered build was not taken, sent once (see Declined offers)                                 |
+| `name`         | `[rev, name?]`, optional                    | The device's name and revision (see Name sync)                                                            |
+| `free`         | integer, optional                           | Bytes free to download and stage one build                                                                |
+| `configRev`    | string, optional                            | Token of the config the device holds, or of the failed document after a config rollback (see Config sync) |
+| `configError`  | map `{rev, message, path?}`, optional       | A client that validates on device rejected the held config (see Config sync)                              |
 
 `running` is read from the live app. A device that has only staged a build still reports its
 previous build until the new one is actually executing, so `running` is never a guess.
@@ -504,8 +553,12 @@ cap the lengths rather than storing whatever arrives. The reference implementati
 with `{"error": "Invalid <field>"}` for a malformed field instead of dropping it silently. It
 requires `running.checksum` to match `^[0-9a-f]{64}$`; `running.version` and `firmware` to be at
 most 64 characters; `bytecode` to be an integer; `lastInstall` to be exactly `{reason, detail?}`
-with `reason` at most 64 characters and `detail` at most 256, with unknown keys dropped; and
-`name` at most 64 characters. `deviceId` at enrollment is capped at 128 characters. A `400` is not
+with `reason` at most 64 characters and `detail` at most 256, with unknown keys dropped;
+`lastDecline` to be exactly `{checksum, reason, detail?}` with the same caps as `lastInstall` and
+a `checksum` matching `^[0-9a-f]{64}$`; `name` at most 64 characters; `configRev` at most 64
+characters; and `configError` to be exactly
+`{rev, message, path?}` with `rev` at most 64, `message` at most 256, `path` at most 64, and
+unknown keys dropped. `deviceId` at enrollment is capped at 128 characters. A `400` is not
 a `401`, so the device keeps its update key and its normal cadence.
 
 `free` stops a registry offering a build the device has no room for. Without it, that failure
@@ -523,9 +576,10 @@ it can hold, not the largest one that happens to fit. The value is the bytes fre
 is downloaded and staged, which the reference client reads from the app filesystem
 (`storageUsage().free` in `mikro/sys`).
 
-The response is the offer object from the required half, or nothing. The response may carry extra
-top-level fields, and **devices ignore fields they do not know**. That is how future extensions
-are added (the hosted registry uses it for device config sync).
+The response is the offer object from the required half, or nothing, plus the optional `name`
+and `config` fields described in the sections below. The response may carry further top-level
+fields, and **devices ignore fields they do not know**. That is how extensions are added;
+[config sync](#config-sync) itself arrived through this seam.
 
 ### Identity
 
@@ -596,6 +650,165 @@ learned about revisions reports revision 1 against a legacy 0, so the device's n
 first sync even if the registry had renamed it earlier. This happens once, corrects itself, and
 favors whoever has the hardware in hand.
 
+### Config sync
+
+An app that publishes a [config schema](#_2-the-publish-and-release-endpoints) can have
+remote configuration delivered to its devices with check-in responses. The device stores what it
+receives without understanding it, and the app reads it back through `ota.config()` as one typed
+value. All validation happens where the schema lives, in the registry, never on the device: the
+same parties ship the code the device runs, so a config the registry validated needs no second
+check. The device's only assembly step is a single top-level spread, described below. There is
+no second protocol: config rides the check-in, and a registry that does not implement it changes
+nothing else.
+
+**Overlays in storage and on the wire.** What an operator authors, what the registry STORES, and
+what it SERVES are all deviations from the schema defaults, never the defaults themselves: derive
+the stored overlay by dropping unknown keys, stripping values structurally equal to the field's
+default, and pruning empty objects and empty arrays. The device resolves what it receives with a
+single top-level spread over the defaults its own build carries, `{...configDefaults, ...doc}`,
+and nothing deeper. So the served overlay is **wholesale at the top level**: every key present
+carries a COMPLETE top-level value. A deviating leaf inside a nested plain object therefore ships
+its whole top-level key, defaulted siblings included, and a union, tuple, tagged-union, or array
+value is compared to its default as one unit: equal as a whole, omitted; different in any way,
+present in full. The same wholesale rule governs storage, where nothing inside such a value is
+stripped or pruned, so empty objects and arrays inside one survive.
+
+**The wholesale rule is normative and the device cannot check it.** The device holds no schema,
+only its defaults, so it cannot tell a complete top-level value from a pruned one; it spreads
+whatever arrives. A registry that prunes inside a value corrupts the config silently, and this
+spec is the only thing that prevents it. The case that motivates the rule: with a default
+`{"mode": {"kind": "a", "x": 1}}` and an effective config `{"mode": {"kind": "b", "x": 1}}`, the
+wire MUST carry `{"mode": {"kind": "b", "x": 1}}` in full, the equal-looking `x` included. The
+`x` under branch `b` is a different schema node than the `x` under branch `a`, so "equal to the
+default" is not defined across them, and dropping it leaves the device spreading branch a's field
+into branch b's value. No layer anywhere does a shape-directed deep merge.
+
+**A complete effective document is itself a valid overlay:** every key is present, and spreading
+it over the defaults yields it verbatim. A registry that serves complete documents is therefore
+still correct, at the cost of wire bytes and of the device's stored copy. The reverse does not
+hold, so a device that expects a complete document reads an overlay as the whole config.
+
+Storing overlays is what lets defaults evolve: when a new release changes a default, every device
+without an override picks it up by installing the build (the new defaults ride in the build's own
+manifest as `configDefaults`), with no config write anywhere, and the next serve against the new
+release recomputes the deviations against those defaults, so what a device holds stays limited to
+what an operator actually set. Two consequences
+are worth stating to operators rather than discovering. Setting a field to its default is the
+same as never setting it, so nothing can pin today's default against a future release changing
+it. And clearing a field, which for a list means removing every item, falls back to the default
+rather than storing an empty value; emptiness is never a deliberate state in an overlay.
+
+**The response field.**
+
+```
+"config": {"rev": "<opaque>", "version": "1.4.0", "doc": {…deviations from the defaults…}}
+```
+
+`rev` is an opaque token, at most 64 characters, that identifies the EFFECTIVE config this
+device should hold, not the overlay that expresses it. The registry defines it (a hash of the
+version and the key-sorted effective document works, and so does a revision counter over that
+document); the device never computes one, it stores the token and echoes it verbatim as
+`configRev` on later check-ins. Two overlays that resolve to the same effective config MUST
+share a rev. That is what keeps an edit which lands a value back on its default, changing the
+overlay and nothing else, from redelivering a config the device already runs. `version` names
+the release whose schema the config was computed against, and the device refuses to surface a
+document stamped for a version other than the one actually running. `doc` is the deviation
+overlay: the top-level entries of the effective config that differ from that release's defaults,
+each complete, and the device resolves `{...configDefaults, ...doc}` when the app reads it.
+Values travel as they were authored, on the wire, in registry storage, and in the device's NVS
+copy. Send a `doc` only when at least one top-level value
+deviates: a device whose config is the defaults holds no document at all and runs on its own
+manifest's `configDefaults`, so bare defaults never travel. Sending
+`config` with no `doc` key is the deliberate clear: the device deletes its stored document,
+falls back to its manifest defaults, and stops echoing `configRev`. The absent `doc` key alone
+is what the device keys the clear on; a `rev` riding along is ignored, so a clear SHOULD omit
+it. Omitting the `config` field entirely means "no change", so the omit-never-null rule holds.
+
+**When to send.** Send `config` whenever the `configRev` the device echoed is not the token of
+what the registry currently wants it to have, including when no `configRev` arrived at all. No
+field announces whether the firmware supports config sync: firmware that does stores the
+document and echoes the token, which stops the sending; firmware that predates it ignores the
+unknown field, and the registry re-sends a few hundred bytes per check-in to no effect, which is
+harmless and disappears when the fleet's firmware catches up.
+
+**Which version the config is for.** A response that carries an offer carries the config for the
+_offered_ release, staged with the build and applied together with it, so the new version boots
+its trial with the config that matches it. A response without an offer carries the config for
+the _running_ release. `config.version` states the choice either way. During a trial the running
+build is the trial build, so a check-in made mid-trial is answered against the trial's release;
+if the trial rolls back, the reference client restores the previous document together with the
+previous build and echoes its token again, and the next check-in reconciles as usual. One edit
+therefore waits: a change to the running release's config while an offer is pending is not
+delivered until the offer settles, and self-heals at the first check-in after adopt or rollback.
+
+**Config trials.** A document delivered for the _running_ release goes on trial on the
+device, exactly as an offered build does: the previous document is kept as the rollback
+baseline, and the trial is adopted at the next completed check-in after the app has read the
+new document. A schema-valid value can still be fatal to the app (a GPIO the board does not
+have), and the crash it causes can fire before any check-in runs, so the device accounts the
+trial in `ota.config()` itself: each boot that reads config burns one trial boot, and when the
+budget is spent the read restores the previous document, which is what breaks a crash loop.
+After a rollback the device keeps echoing the FAILED document's rev as `configRev`, alongside a
+`configError` report. A registry needs no logic for any of this: echoed-equals-expected already
+stops it re-serving the failed document, and the next document it serves, after an operator
+changes the config, starts a fresh trial. A document staged with an offer needs no separate
+trial; it rides the build's.
+
+**Serving safely.** Never send a document that does not validate; **withhold it and surface the
+failure to the operator instead**, the same posture the `free` gate takes toward builds. The
+device applies whatever arrives without checking it: validation is entirely the registry's
+responsibility, which is why it MUST happen on every serve. The stored overlay is adapted to
+the target release per serve, as a pure function: drop keys the target schema does not know
+(from the wire, not from storage), strip values equal to the target schema's defaults, prune
+empty containers, merge the defaults in, validate the merged document, and serve the top-level
+entries of that document which deviate from the target's defaults. Stored overlays are never
+rewritten to fit a newer schema. A fleet runs many releases at once and a rollback can resurrect
+an old one, so the same stored overlay must keep serving every release the device might run, and
+each serve derives its own view. Cap the EFFECTIVE document at 4 KiB encoded, where it is
+computed: at authoring time and at every serve. That document is what the device materializes
+by spreading the overlay over its defaults, so the cap bounds its heap, and it also bounds the
+overlay, which is a subset of the document's top-level entries. The device stages the overlay in
+NVS and parses it from the check-in response buffer.
+
+**Which defaults a device runs on.** The defaults follow from the app archive, and the check-in's
+`running.checksum` identifies that archive exactly. A registry MAY therefore treat a running
+checksum matching none of the release's builds as a device running defaults it has never seen,
+and withhold or flag config sync for it. An archive rebuilt under an unchanged version is exactly
+this case.
+
+**`configError`.** A device report that a registry SHOULD accept and show to the operator:
+`rev` names a document, and `message` (with an optional `path`) says what happened to it. The
+built-in client sends it after a config trial rolls back; hand-rolled clients that validate on
+device may also use it. It stands until a new document is delivered or the config is cleared.
+It needs no automatic reaction, since the `rev` echo already prevents re-serving the failed
+document; its job is to tell the operator why the value they set is not in effect.
+
+**Schema changes between releases.** Diff the incoming schema against the app's latest release
+at publish and warn in the response body; the CLI shows it while the author can still act on it.
+Three kinds of change exist. Safe: a new defaulted or optional field, a new array or a new
+object of such fields, loosening `required` to defaulted or optional, adding a union member.
+Needs an operator: a new required field, tightening to `required`, changing a kept field's type,
+removing a union member that stored overlays still use; devices affected by these are not
+offered the new release until someone supplies or fixes the value (offer rule 5). Informational:
+a changed default alters behavior on every device without an override for it, and a removed
+field leaves its stored overrides in place, no longer served. At release time, report against
+the actual fleet:
+which devices on the channel hold overlays that will not validate under the new release, before
+anything is served. One drift no machinery catches: a field that keeps its name and type while
+its meaning changes validates everywhere and misbehaves everywhere. Change the key name when the
+meaning changes.
+
+**Out of scope.** How operators author config is the registry's own business: a dashboard form
+rendered from the schema, an API, per-fleet defaults layered under per-device values, anything.
+The wire defines delivery only, and nothing in it changes if the authoring model does.
+
+Config values are plaintext end to end: an operator-facing read returns what is stored, the
+check-in response carries it in the clear inside TLS, and the device holds it as NVS plaintext.
+The device-side docs state that as a property of config rather than leaving it a surprise.
+Credentials belong in env vars, which are set over the cable and never travel through a
+registry. A required field with no default is the tool for a value an operator must supply:
+until one is set, rule 5 withholds the release from that device.
+
 ### Offer selection
 
 **The app is the device's, never the check-in's.** A device is bound to one app lineage at
@@ -653,6 +866,12 @@ Given a check-in, offer the current build only when all of these hold:
    rule enforces the lower bound within it, at or above the build's `firmwareVersion`.
 4. The checksum has not failed on this device before. `lastInstall` reports failures, and the
    device also refuses to re-download a build it has abandoned.
+5. When the build's release carries a [config schema](#config-sync), the device's config for
+   that release validates. The offer and its config are a pair, and a device is never booted
+   into a release whose config cannot exist. A schema that adds a required field therefore
+   pauses each affected device's rollout, visibly, until an operator supplies the value; the
+   release-time report under Config sync is what makes the pause visible before anyone wonders
+   why nothing is updating.
 
 The device record is what these are read from, so, as with `free`, the most recent reported
 `firmware` and `bytecode` stand when a check-in leaves them out.
@@ -676,6 +895,30 @@ is attributed to whatever was offered last. If a settled offer stays on record, 
 diagnostic marks the build the device is running as failed, and rule 4 above then withholds the
 one build known to work on it.
 
+### Declined offers
+
+A device that is offered a build does not always take it, and when it stops trying, nothing about
+`running` changes, so a registry that waits for `running.checksum` to turn into the offered
+checksum waits forever, showing an update as pending that will never arrive. `lastDecline` is how
+the device says so. It carries the checksum it declined, unlike `lastInstall`, so it needs no
+attribution against the last offer.
+
+`reason` is one of:
+
+| reason            | meaning                                                                   | retried?                          |
+| ----------------- | ------------------------------------------------------------------------- | --------------------------------- |
+| `exhausted`       | Repeated download failures spent the device's retry budget for this build | Yes, after a reboot               |
+| `abandoned`       | The bytes failed verification, so they can never succeed                  | No, not on this device            |
+| `download-failed` | One download attempt failed; the budget still has room                    | Yes, at the next check-in         |
+| `install-failed`  | Staging or verification failed                                            | Depends on the kind; see `detail` |
+
+Treat `exhausted` and `download-failed` as "not yet", not as a build that is broken: a device on
+poor wifi produces both, and the build may be fine everywhere else. Only `abandoned` is evidence
+about the bytes, and it is the one that belongs in `failedChecksums`.
+
+Sent once, on the first check-in after the decline, and dropped on reboot if it was never
+delivered. A registry that never sees one has learned nothing either way.
+
 ## Suggested data model
 
 - **builds**: `checksum` (primary key), `app`, `version`, `bytecodeVersion`, `firmwareVersion`,
@@ -689,8 +932,14 @@ one build known to work on it.
   stored here; it is the highest-`promotedAt` build (see builds).
 - **devices**: `deviceId` (primary key), `updateKeyHash`, `app` (the binding, set at enrollment,
   nullable), `channel` (the release channel, set at enrollment, nullable, absent reads as `main`),
-  `name` (nullable), `lastSeen`, `runningChecksum`, `runningVersion`, `trial`, `lastFirmware`,
-  `lastBytecode`, `lastFree`, `lastInstall`, `failedChecksums` (bounded).
+  `name` (nullable), `nameRev` (the name's logical revision, absent reads as 0),
+  `lastSeen`, `runningChecksum`, `runningVersion`, `trial`, `lastFirmware`,
+  `lastBytecode`, `lastFree`, `lastInstall`, `lastDecline`, `lastOfferedChecksum` (cleared once
+  the offer succeeds), `failedChecksums` (bounded), and, with config sync,
+  `configOverrides` (the stored overlay), `configAuthoredFor` (the version whose schema it was
+  last saved against), `lastConfigRev`, `configError`.
+- **configSchemas**: `(app, version)` (primary key), `schema`. Release-level, shared by every
+  firmware-range variant of the version; the publish `409` above is what keeps it single.
 - **tokens**: `tokenHash` (primary key), `app` (nullable), `createdAt`, `expiresAt`, `lastUsedAt`.
 
 File-backed storage with no database is enough for a reference implementation. Records are keyed

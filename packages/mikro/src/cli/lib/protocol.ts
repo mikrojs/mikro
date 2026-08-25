@@ -98,6 +98,13 @@ export const CMD_CONFIG_DELETE = 0x42
 export const CMD_KV_SET = 0x43
 export const CMD_KV_DELETE = 0x44
 
+/** Largest value CMD_KV_SET carries, in UTF-8 bytes. Mirrors the firmware's
+ *  buffer in mik_config.cpp (keep the two in sync): sized for a 4 KiB config
+ *  document plus its {version, doc} envelope, the largest value this path
+ *  sees. The simulator enforces the same limit so a seed that deploys there
+ *  also deploys over a real cable. */
+export const KV_VALUE_MAX_BYTES = 4608
+
 /** Namespace selector for CMD_KV_SET / CMD_KV_DELETE. */
 export type KvNamespace = 'kv' | 'sys'
 

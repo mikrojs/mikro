@@ -1,11 +1,12 @@
 import type {
   BuildRecord,
   ChannelRecord,
+  ConfigSchemaRecord,
   DeviceRecord,
   RegistryStorage,
   TokenRecord,
 } from './types.js'
-import {channelKey} from './util.js'
+import {channelKey, configSchemaKey} from './util.js'
 
 /** In-memory storage: everything is lost on restart. For tests and demos. */
 export function memoryStorage(): RegistryStorage {
@@ -14,6 +15,7 @@ export function memoryStorage(): RegistryStorage {
   const channels = new Map<string, ChannelRecord>()
   const devices = new Map<string, DeviceRecord>()
   const tokens = new Map<string, TokenRecord>()
+  const configSchemas = new Map<string, ConfigSchemaRecord>()
 
   return {
     async putBlob(checksum, data) {
@@ -51,6 +53,12 @@ export function memoryStorage(): RegistryStorage {
     },
     async listDevices() {
       return [...devices.values()]
+    },
+    async getConfigSchema(app, version) {
+      return configSchemas.get(configSchemaKey(app, version))
+    },
+    async putConfigSchema(record) {
+      configSchemas.set(configSchemaKey(record.app, record.version), record)
     },
     async getTokenByHash(hash) {
       return tokens.get(hash)

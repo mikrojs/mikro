@@ -89,6 +89,10 @@ async function minifyWithSwc(code) {
 
 mkdirSync(outDir, {recursive: true})
 
+// Every source file each bundle inlined, for the duplication check below.
+// name -> [{module, bytes}]
+const inlinedBy = new Map()
+
 for (const name of moduleNames) {
   // Resolve entry point: {name}/{name}.ts (core modules) or {name}.ts (board/driver)
   const nested = join(runtimeDir, name, `${name}.ts`)
@@ -105,7 +109,17 @@ for (const name of moduleNames) {
     platform: 'neutral',
     format: 'esm',
     external: ['mikro', 'mikro/*', '@mikrojs/*', 'native:*'],
+    metafile: true,
   })
+
+  for (const output of Object.values(result.metafile.outputs)) {
+    for (const [input, {bytesInOutput}] of Object.entries(output.inputs)) {
+      // Zero bytes = type-only import, erased from the output.
+      if (bytesInOutput === 0) continue
+      if (!inlinedBy.has(input)) inlinedBy.set(input, [])
+      inlinedBy.get(input).push({module: name, bytes: bytesInOutput})
+    }
+  }
 
   const output = result.outputFiles?.[0]
   if (!output) {
@@ -146,4 +160,23 @@ for (const name of moduleNames) {
 
   // eslint-disable-next-line no-console
   console.log(`Bundled ${name} (${Buffer.byteLength(source)} bytes, ${externals.length} externals)`)
+}
+
+// A source file inlined into more than one bundle ships (and loads) twice:
+// duplicate flash bytes and a second live module instance in RAM. It happens
+// when sibling builtins share a file via a RELATIVE import — cross-builtin
+// `mikro/*` imports stay external and link at runtime, so the fix is to give
+// the shared file its own builtin and import it as `mikro/<mod>/shared`
+// (see kv/shared and ota/shared for the pattern).
+const duplicated = [...inlinedBy.entries()].filter(([, users]) => users.length > 1)
+if (duplicated.length > 0) {
+  for (const [input, users] of duplicated) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `Duplicated across bundles: ${input} — ${users
+        .map((u) => `${u.module} (${u.bytes}B)`)
+        .join(', ')}`,
+    )
+  }
+  process.exit(1)
 }

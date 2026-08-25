@@ -153,7 +153,8 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
     }
 
     log(`Pushing ${displayPath(buildPath)}…`)
-    await publishBuild(input, buildPath, token)
+    const {warnings} = await publishBuild(input, buildPath, token)
+    for (const warning of warnings) log(`  warning: ${warning}`)
 
     if (packedPath !== undefined) {
       const removing = packedPath
@@ -176,6 +177,7 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
         checksum: input.checksum,
         size: input.size,
         channel,
+        warnings,
       })
     } else {
       // Show the version: with --snapshot it is derived, so this is the only
