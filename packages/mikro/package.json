@@ -1,6 +1,6 @@
 {
   "name": "mikro",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "description": "Mikro.js: TypeScript for microcontrollers",
   "keywords": [
     "embedded",
