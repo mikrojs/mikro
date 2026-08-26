@@ -10,6 +10,7 @@
 
 #include "mikrojs/cbor_helpers.h"
 #include "mikrojs/ota_slots.h"
+#include "mikrojs/platform.h"
 
 namespace mikrojs {
 
@@ -291,6 +292,142 @@ JSValue MIKOtaConfigReader::Defaults(JSContext* ctx) {
     defaults_ctx_ = ctx;
     has_defaults_ = true;
     return defaults_;
+}
+
+/* ── the writes ──────────────────────────────────────────────────────────── */
+
+namespace {
+
+/* `arg` fills the one %s a config log line ever carries. */
+void LogConfig(const MIKOtaEnv* env, int level, const char* fmt, const char* arg = nullptr) {
+    if (!env || !env->log) return;
+    if (arg) {
+        env->log(env->opaque, level, fmt, arg);
+    } else {
+        env->log(env->opaque, level, "%s", fmt);
+    }
+}
+
+}  // namespace
+
+const char* mik__ota_config_write_to_str(MIKOtaConfigWrite write) {
+    switch (write) {
+        case MIKOtaConfigWrite::kUnchanged:
+            return "unchanged";
+        case MIKOtaConfigWrite::kApplied:
+            return "applied";
+        case MIKOtaConfigWrite::kCleared:
+            return "cleared";
+        case MIKOtaConfigWrite::kStaged:
+            return "staged";
+        case MIKOtaConfigWrite::kFailed:
+            return "failed";
+    }
+    return "unknown";
+}
+
+MIKOtaConfigWrite mik__ota_apply_running_config(const MIKOtaEnv* env,
+                                                const MIKOtaStoredConfig* config,
+                                                int trial_boots) {
+    if (!config) return MIKOtaConfigWrite::kUnchanged;
+
+    if (!config->doc_cbor || config->doc_cbor_len == 0) {
+        // A rev riding along does not turn a clear into a document.
+        mik__ota_clear_trial(env);
+        mik__ota_clear_config_error(env);
+        mik__ota_clear_slot(env, MIK_OTA_CFG_PREV);
+        MIKOtaLoadedConfig held = mik__ota_load_slot(env, MIK_OTA_CFG_CURRENT);
+        if (held.failed) return MIKOtaConfigWrite::kFailed;
+        if (!held.present) return MIKOtaConfigWrite::kUnchanged;
+        mik__ota_clear_slot(env, MIK_OTA_CFG_CURRENT);
+        LogConfig(env, MIK_LOG_INFO, "ota: config cleared");
+        return MIKOtaConfigWrite::kCleared;
+    }
+
+    MIKOtaLoadedConfig previous = mik__ota_load_slot(env, MIK_OTA_CFG_CURRENT);
+
+    // Without the document being replaced there is no baseline to roll back to,
+    // and clearing the one already stored would strand a bad document with
+    // nowhere to fall back to. Leave everything alone; the rev the device
+    // echoes is unchanged, so the writer sends this again.
+    if (previous.failed) return MIKOtaConfigWrite::kFailed;
+
+    // A registry is meant to send config only when the rev the device echoed
+    // differs, but one that sends it every round must not cost anything: taking
+    // an identical document as a change would re-write NVS on every round, put
+    // the document back on trial it had already passed, and tell the app its
+    // config changed when nothing did. The rev counts as part of the document —
+    // it is what the device echoes, so a new one has to be stored and echoed
+    // back even when the values are the same.
+    if (previous.present && strcmp(previous.cfg.rev, config->rev) == 0 &&
+        strcmp(previous.cfg.version, config->version) == 0 &&
+        previous.cfg.doc_cbor_len == config->doc_cbor_len &&
+        (config->doc_cbor_len == 0 ||
+         memcmp(previous.cfg.doc_cbor, config->doc_cbor, config->doc_cbor_len) == 0)) {
+        return MIKOtaConfigWrite::kUnchanged;
+    }
+
+    // The old document is kept as the rollback baseline: a schema-valid value
+    // can still be fatal to the app (a GPIO this board does not have), and the
+    // crash it causes can fire before any check-in runs.
+    if (previous.present) {
+        mik__ota_store_slot(env, MIK_OTA_CFG_PREV, previous.cfg);
+    } else {
+        mik__ota_clear_slot(env, MIK_OTA_CFG_PREV);
+    }
+    mik__ota_store_slot(env, MIK_OTA_CFG_CURRENT, *config);
+    MIKOtaConfigTrial trial = {trial_boots, false};
+    mik__ota_store_trial(env, trial);
+    mik__ota_clear_config_error(env);
+    LogConfig(env, MIK_LOG_INFO, "ota: config updated for %s", config->version);
+    return MIKOtaConfigWrite::kApplied;
+}
+
+void mik__ota_stage_next_config(const MIKOtaEnv* env, const MIKOtaStoredConfig* config) {
+    if (config && config->doc_cbor && config->doc_cbor_len > 0) {
+        mik__ota_store_slot(env, MIK_OTA_CFG_NEXT, *config);
+        LogConfig(env, MIK_LOG_INFO, "ota: config staged for %s", config->version);
+        return;
+    }
+    // The clear is staged too: the offered release holds no document, and its
+    // manifest defaults stand in once it runs.
+    mik__ota_clear_slot(env, MIK_OTA_CFG_NEXT);
+}
+
+MIKOtaConfigWrite mik__ota_deliver_config(const MIKOtaEnv* env, const MIKOtaStoredConfig* config,
+                                          int trial_boots) {
+    if (!config) return MIKOtaConfigWrite::kUnchanged;
+
+    char running[32] = {};
+    if (!env || !env->read_app_version ||
+        !env->read_app_version(env->opaque, running, sizeof(running))) {
+        // The version the document has to be matched against could not be read,
+        // so which slot it belongs in is unknown. Storing it in either would be
+        // a guess, and the reader drops a document stamped for another release
+        // without a sound, so the guess would fail silently.
+        return MIKOtaConfigWrite::kFailed;
+    }
+
+    if (strcmp(config->version, running) == 0) {
+        return mik__ota_apply_running_config(env, config, trial_boots);
+    }
+    // Stamped for another release: it is the document that release will read,
+    // and it applies with the build, not before it.
+    mik__ota_stage_next_config(env, config);
+    return MIKOtaConfigWrite::kStaged;
+}
+
+bool mik__ota_adopt_config_trial(const MIKOtaEnv* env) {
+    // A read that FAILED is not a read that found nothing: it fails under heap
+    // pressure, and adopting on it would keep a document the app never read.
+    MIKOtaConfigTrial trial = {};
+    MIKOtaKvStatus status = mik__ota_load_trial(env, &trial);
+    // With no trial in progress the clears are housekeeping, not a settlement.
+    bool settled = status == MIK_OTA_KV_OK && trial.read;
+    if (status != MIK_OTA_KV_ABSENT && !settled) return false;
+    mik__ota_clear_slot(env, MIK_OTA_CFG_PREV);
+    mik__ota_clear_trial(env);
+    return settled;
 }
 
 }  // namespace mikrojs

@@ -150,6 +150,44 @@ export interface ConfigTrial {
   read: boolean
 }
 
+/** What a config write did to the store. Only `applied` and `cleared` change
+ *  what the running build reads; `staged` changes what the next one will. */
+export type ConfigWrite =
+  /** Stored as the running build's config. The document it replaced is kept as
+   *  the rollback baseline and a trial is armed, so the next `ota.confirm()`
+   *  after the app has read it is what keeps it. */
+  | 'applied'
+  /** Stored for the release the document names, which is not the one running.
+   *  It applies when that build installs, with the build. */
+  | 'staged'
+  /** The document was removed. The manifest defaults stand alone again. */
+  | 'cleared'
+  /** Nothing moved: the document is identical to the one already held (rev
+   *  included), or it was a clear with nothing to clear. */
+  | 'unchanged'
+  /** Nothing was written, and the reason is transient: the store could not
+   *  answer, or the running version could not be read. Keep echoing the rev
+   *  from `configState()` so the document is served again, rather than the rev
+   *  of the document that did not land. */
+  | 'failed'
+  /** Not a usable config document. Validate with `parseConfig` first to find
+   *  out before the delivery, and log what the wire actually carried. */
+  | 'invalid'
+
+/** What a check-in body owes the registry about config, for a client that
+ *  builds its own. */
+export interface ConfigState {
+  /** The rev to send as `configRev`: the registry serves its document whenever
+   *  this differs from its own current rev. Absent when the device holds no
+   *  document. After a rolled-back trial this is the FAILED document's rev,
+   *  which is what stops the registry serving it again. */
+  rev?: string
+  /** A document that failed its trial and was rolled back, reported until it
+   *  is replaced. Send it as `configError`, or an operator has no way to see
+   *  that the document they published took the device down. */
+  error?: ConfigErrorReport
+}
+
 /** A config document rolled back after a failed trial; reported on check-ins
  *  while it stands. `rev` names the failed document, and the client keeps
  *  echoing it as `configRev`, which is what stops the registry re-serving
@@ -197,7 +235,11 @@ export interface Ota {
     download: DownloadFn,
     options?: InstallOptions,
   ): Promise<Result<ApplyOutcome, OtaError>>
-  /** Mark the running trial as healthy so it is kept rather than rolled back. */
+  /** Mark the running trial as healthy so it is kept rather than rolled back.
+   *  Settles a delivered config document's trial by the same call: a completed
+   *  check-in is the health signal both of them wait for. A config trial waits
+   *  additionally for the app to have read the document, so a `confirm()` from
+   *  an app that never called `config()` keeps nothing. */
   confirm(): void
   /** Reinstall the previous build immediately. */
   revert(): Result<void, OtaInstallError>
@@ -236,6 +278,46 @@ export interface Ota {
    * fixable states, never a value the app has to branch on.
    */
   config<T = RegisteredConfig>(): T
+  /**
+   * Validate a config document a client received over its own transport, or
+   * `undefined` when it cannot be used. What `parseOffer` is to an offer.
+   *
+   * A usable document is an object with a non-empty `version` (the release it
+   * was computed for, which decides where `applyConfig` puts it), an optional
+   * `rev` short enough to echo intact, and a `doc` that is an object or absent.
+   * An absent `doc` is the clear, not a malformed document.
+   *
+   * Whether the document survives CBOR is settled by `applyConfig`, which is
+   * where the stored bytes are made.
+   */
+  parseConfig(raw: unknown): StoredConfig | undefined
+  /**
+   * Store a config document, for a client that received one over its own
+   * transport. The built-in client covers the ordinary case and does not go
+   * through here.
+   *
+   * The `version` stamp decides where it lands: stamped for the running
+   * release it is applied, and the document it replaces is kept as the
+   * rollback baseline; stamped for another it is staged for the build it
+   * names, to apply when that build installs. The return value says which
+   * happened, and says when nothing did.
+   *
+   * A delivery to the running release arms a trial. Each boot whose first
+   * `config()` read serves the document burns one of `trialBoots`, and the
+   * budget spent with no `confirm()` in between restores the previous
+   * document. On a wake-cycle device every wake is a boot, so raise
+   * `trialBoots` above the default when a check-in can plausibly fail a few
+   * cycles in a row.
+   */
+  applyConfig(config: StoredConfig, options?: {trialBoots?: number}): ConfigWrite
+  /**
+   * What the device owes its registry about config: the rev to echo, and a
+   * rolled-back document to report. A client that builds its own check-in body
+   * needs both. Without the echo the registry re-serves the same document on
+   * every check-in; without the report a document that took the device down is
+   * re-served forever and nobody is told.
+   */
+  configState(): ConfigState
 }
 
 /** The `mikro/ota` singleton. The runtime value is provided by the on-device

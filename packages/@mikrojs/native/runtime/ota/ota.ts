@@ -8,9 +8,12 @@
 
 import {config} from 'mikro/ota/config'
 import {
+  applyConfig,
   applyOffer,
   bearer,
+  configState,
   confirm,
+  parseConfig,
   parseOffer,
   reconcile,
   registry,
@@ -30,6 +33,9 @@ const ota: Ota = {
   bearer,
   registry,
   config,
+  parseConfig,
+  applyConfig,
+  configState,
 }
 
 export {ota}

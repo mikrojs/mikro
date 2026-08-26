@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+#include "mikrojs/ota_config.h"
 #include "mikrojs/platform.h"
 
 namespace mikrojs {
@@ -205,6 +206,13 @@ void mik__ota_policy_confirm(const MIKOtaEnv* env) {
     if (env && env->mark_valid) {
         env->mark_valid(env->opaque);
     }
+    // One confirm settles both trials. A completed check-in is the health
+    // signal each of them waits for, so an app running its own client gets the
+    // config trial resolved by the same call the built-in client makes — and
+    // the two cannot drift into settling one trial but not the other. The
+    // config trial has its own extra gate (the app must have read the
+    // document), which lives in mik__ota_adopt_config_trial.
+    mik__ota_adopt_config_trial(env);
 }
 
 namespace {

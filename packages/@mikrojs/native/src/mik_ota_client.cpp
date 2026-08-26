@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "mikrojs/cbor_helpers.h"
+#include "mikrojs/ota_config.h"
 #include "mikrojs/ota_slots.h"
 #include "mikrojs/platform.h"
 
@@ -800,25 +801,12 @@ void MIKOtaClient::OnCheckInSettled() {
     // Confirm before applying: a completed check-in is the whole health signal
     // require_confirm waits for, whether or not an offer follows — and resolving
     // the trial now lets an offer published during it stage in this same pass.
+    // It settles a running-release config delivery's trial too (see
+    // mik__ota_policy_confirm): the same signal, for the same reason.
     if (running_.trial) {
         Log(MIK_LOG_INFO, "ota: check-in completed — confirming this build as healthy");
     }
     mik__ota_policy_confirm(env_);
-
-    // A completed check-in is the health signal for BOTH trials: the build's
-    // (confirmed above) and a running-release config delivery's. The config
-    // trial additionally waits for the app to have READ the document — a
-    // check-in completing before the app ever ran with the new values proves
-    // nothing about them.
-    // A read that FAILED is not a read that found nothing: it fails under the
-    // heap pressure this check-in just created, and adopting on it would take a
-    // document the app never read.
-    MIKOtaConfigTrial config_trial = {};
-    MIKOtaKvStatus trial_status = mik__ota_load_trial(env_, &config_trial);
-    if (trial_status == MIK_OTA_KV_ABSENT || (trial_status == MIK_OTA_KV_OK && config_trial.read)) {
-        mik__ota_clear_slot(env_, MIK_OTA_CFG_PREV);
-        mik__ota_clear_trial(env_);
-    }
 
     bool has_url_key = false;
     std::string offer_url;
@@ -939,8 +927,11 @@ void MIKOtaClient::OnCheckInSettled() {
     if (!has_url_key || !offer_valid) {
         // OR in this boot's promote/restore, delivered once: the config those
         // applied is as new to the app as one this round delivered.
-        bool updated = ApplyRunningConfig(have_response_config_ ? &response_config_ : nullptr,
-                                          active_.options.trial_boots);
+        MIKOtaConfigWrite write = mik__ota_apply_running_config(
+            env_, have_response_config_ ? &response_config_ : nullptr,
+            active_.options.trial_boots);
+        bool updated =
+            write == MIKOtaConfigWrite::kApplied || write == MIKOtaConfigWrite::kCleared;
         updated = updated || boot_config_changed_;
         boot_config_changed_ = false;
         Log(MIK_LOG_DEBUG, "ota: up to date, running the latest build");
@@ -1109,70 +1100,12 @@ void MIKOtaClient::OnDownloadSettled() {
     // with the build, applied together at the trial boot. An absent doc is the
     // clear, so it stages "the new release holds no document" and the manifest
     // defaults stand in.
-    if (have_response_config_ && response_config_.doc_cbor && response_config_.doc_cbor_len > 0) {
-        mik__ota_store_slot(env_, MIK_OTA_CFG_NEXT, response_config_);
-        Log(MIK_LOG_INFO, "ota: config staged for %s", response_config_.version);
-    } else {
-        mik__ota_clear_slot(env_, MIK_OTA_CFG_NEXT);
-    }
+    mik__ota_stage_next_config(env_, have_response_config_ ? &response_config_ : nullptr);
 
     Log(MIK_LOG_INFO, "ota: download verified and staged");
     result_.status = MIKOtaCheckStatus::kStaged;
     result_.offer = offer_;
     FinishRound(NextRound::kLater);
-}
-
-bool MIKOtaClient::ApplyRunningConfig(const MIKOtaStoredConfig* config, int trial_boots) {
-    if (!config) return false;
-
-    if (!config->doc_cbor || config->doc_cbor_len == 0) {
-        // A rev riding along does not turn a clear into a document.
-        mik__ota_clear_trial(env_);
-        mik__ota_clear_config_error(env_);
-        mik__ota_clear_slot(env_, MIK_OTA_CFG_PREV);
-        if (!mik__ota_load_slot(env_, MIK_OTA_CFG_CURRENT).present) return false;
-        mik__ota_clear_slot(env_, MIK_OTA_CFG_CURRENT);
-        Log(MIK_LOG_INFO, "ota: config cleared by the registry");
-        return true;
-    }
-
-    MIKOtaLoadedConfig previous = mik__ota_load_slot(env_, MIK_OTA_CFG_CURRENT);
-
-    // Without the document being replaced there is no baseline to roll back to,
-    // and clearing the one already stored would strand a bad document with
-    // nowhere to fall back to. Leave everything alone; the rev the device
-    // echoes is unchanged, so the registry sends this again next round.
-    if (previous.failed) return false;
-
-    // A registry is meant to send config only when the rev the device echoed
-    // differs, but one that sends it every round must not cost anything: taking
-    // an identical document as a change would re-write NVS on every round, put
-    // the document back on trial it had already passed, and tell the app its
-    // config changed when nothing did. The rev counts as part of the document —
-    // it is what the device echoes, so a new one has to be stored and echoed
-    // back even when the values are the same.
-    if (previous.present && strcmp(previous.cfg.rev, config->rev) == 0 &&
-        strcmp(previous.cfg.version, config->version) == 0 &&
-        previous.cfg.doc_cbor_len == config->doc_cbor_len &&
-        (config->doc_cbor_len == 0 ||
-         memcmp(previous.cfg.doc_cbor, config->doc_cbor, config->doc_cbor_len) == 0)) {
-        return false;
-    }
-
-    // The old document is kept as the rollback baseline: a schema-valid value
-    // can still be fatal to the app (a GPIO this board does not have), and the
-    // crash it causes can fire before any check-in runs.
-    if (previous.present) {
-        mik__ota_store_slot(env_, MIK_OTA_CFG_PREV, previous.cfg);
-    } else {
-        mik__ota_clear_slot(env_, MIK_OTA_CFG_PREV);
-    }
-    mik__ota_store_slot(env_, MIK_OTA_CFG_CURRENT, *config);
-    MIKOtaConfigTrial trial = {trial_boots, false};
-    mik__ota_store_trial(env_, trial);
-    mik__ota_clear_config_error(env_);
-    Log(MIK_LOG_INFO, "ota: config updated for %s", config->version);
-    return true;
 }
 
 void MIKOtaClient::FinishRound(NextRound next) {

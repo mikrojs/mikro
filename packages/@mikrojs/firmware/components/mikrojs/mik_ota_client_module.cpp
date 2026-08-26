@@ -14,10 +14,12 @@
 #include "esp_log.h"
 #include "mik_http_internal.h"
 #include "mik_ota_native.h"
+#include "mikrojs/cbor_helpers.h"
 #include "mikrojs/ota_client.h"
 #include "mikrojs/ota_config.h"
 #include "mikrojs/ota_js_hooks.h"
 #include "mikrojs/ota_policy.h"
+#include "mikrojs/ota_slots.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
@@ -26,6 +28,7 @@ using mikrojs::MIKOtaCheckResult;
 using mikrojs::MIKOtaCheckStatus;
 using mikrojs::MIKOtaClient;
 using mikrojs::MIKOtaConfigReader;
+using mikrojs::MIKOtaConfigWrite;
 using mikrojs::MIKOtaJsHooks;
 using mikrojs::MIKOtaApplyOutcome;
 using mikrojs::MIKOtaApplySession;
@@ -628,6 +631,174 @@ JSValue ota_apply_offer(JSContext* ctx, JSValue, int argc, JSValue* argv) {
     return promise;
 }
 
+// ── config delivery ─────────────────────────────────────────────────────────
+//
+// The write side of config sync, for a client that received a document over its
+// own transport. Where the slot policy lives is src/mik_ota_config.cpp, shared
+// with the built-in client, so the two cannot disagree about the trial or the
+// rollback baseline. What is here is the marshalling.
+
+/* Copy a string field into a fixed buffer. False when it is the wrong type or
+ * too long to hold: a truncated rev never matches the one the registry issued,
+ * so the device would be served the same document forever. */
+bool take_config_field(JSContext* ctx, JSValue obj, const char* key, char* out, size_t out_len,
+                       bool* out_present) {
+    *out_present = false;
+    JSValue value = JS_GetPropertyStr(ctx, obj, key);
+    if (JS_IsUndefined(value) || JS_IsNull(value)) {
+        JS_FreeValue(ctx, value);
+        return true;
+    }
+    if (!JS_IsString(value)) {
+        JS_FreeValue(ctx, value);
+        return false;
+    }
+    const char* text = JS_ToCString(ctx, value);
+    JS_FreeValue(ctx, value);
+    if (!text) return false;
+    bool fits = strlen(text) < out_len;
+    if (fits) {
+        snprintf(out, out_len, "%s", text);
+        *out_present = text[0] != '\0';
+    }
+    JS_FreeCString(ctx, text);
+    return fits;
+}
+
+/* Validate a raw value into the fields a stored config carries. `*out_doc` is
+ * the document to store, or JS_UNDEFINED for the clear; the caller owns it. */
+bool config_from_js(JSContext* ctx, JSValue raw, MIKOtaStoredConfig* out, JSValue* out_doc) {
+    *out_doc = JS_UNDEFINED;
+    if (!JS_IsObject(raw) || JS_IsArray(raw) || JS_IsFunction(ctx, raw)) return false;
+
+    /* The stamp is what says which release the document was computed for, and
+     * every read is decided by it. A document without one cannot be placed. */
+    bool has_version = false;
+    if (!take_config_field(ctx, raw, "version", out->version, sizeof(out->version),
+                           &has_version)) {
+        return false;
+    }
+    if (!has_version) return false;
+
+    bool has_rev = false;
+    if (!take_config_field(ctx, raw, "rev", out->rev, sizeof(out->rev), &has_rev)) return false;
+
+    JSValue doc = JS_GetPropertyStr(ctx, raw, "doc");
+    if (JS_IsUndefined(doc) || JS_IsNull(doc)) {
+        /* An absent document is the clear, not a malformed config. */
+        JS_FreeValue(ctx, doc);
+        return true;
+    }
+    /* The document is spread over the manifest defaults, top level only.
+     * Anything that is not a plain object has no keys to spread, so storing one
+     * would read back as an empty overlay rather than as the error it is. */
+    if (!JS_IsObject(doc) || JS_IsArray(doc) || JS_IsFunction(ctx, doc)) {
+        JS_FreeValue(ctx, doc);
+        return false;
+    }
+    *out_doc = doc;
+    return true;
+}
+
+/* Encode a document to the CBOR the slots store. False for a value CBOR cannot
+ * carry (a function, a cycle, past the depth limit). */
+bool encode_config_doc(JSContext* ctx, JSValue doc, std::vector<uint8_t>* out) {
+    /* Pass 1 sizes it against a zero-capacity buffer; the base pointer must be
+     * non-null because a zero-length append still reaches memcpy. */
+    static uint8_t measure_base;
+    nanocbor_encoder_t enc;
+    nanocbor_encoder_init(&enc, &measure_base, 0);
+    bool ok = mik__cbor_encode_value(ctx, &enc, doc, 0) >= 0;
+    size_t needed = nanocbor_encoded_len(&enc);
+    if (ok && needed > 0) {
+        out->resize(needed);
+        nanocbor_encoder_init(&enc, out->data(), needed);
+        ok = mik__cbor_encode_value(ctx, &enc, doc, 0) >= 0;
+    } else {
+        ok = false;
+    }
+    /* Property enumeration can throw on the way out, and an exception left on
+     * the context would surface at whatever ran next. */
+    if (JS_HasException(ctx)) JS_FreeValue(ctx, JS_GetException(ctx));
+    return ok;
+}
+
+/* parseConfig(raw) -> StoredConfig | undefined */
+JSValue ota_parse_config(JSContext* ctx, JSValue, int argc, JSValue* argv) {
+    MIKOtaStoredConfig cfg = {};
+    JSValue doc = JS_UNDEFINED;
+    if (argc < 1 || !config_from_js(ctx, argv[0], &cfg, &doc)) {
+        JS_FreeValue(ctx, doc);
+        return JS_UNDEFINED;
+    }
+    JSValue obj = JS_NewObject(ctx);
+    if (cfg.rev[0]) JS_SetPropertyStr(ctx, obj, "rev", JS_NewString(ctx, cfg.rev));
+    JS_SetPropertyStr(ctx, obj, "version", JS_NewString(ctx, cfg.version));
+    if (JS_IsUndefined(doc)) return obj;
+    /* The document travels on as it arrived: whether it survives CBOR is
+     * settled by applyConfig, which is where the bytes are actually made. */
+    JS_SetPropertyStr(ctx, obj, "doc", doc);
+    return obj;
+}
+
+/* applyConfig(cfg, {trialBoots}) -> ConfigWrite */
+JSValue ota_apply_config(JSContext* ctx, JSValue, int argc, JSValue* argv) {
+    MIKOtaClientState* state = state_of(ctx);
+    CHECK_NOT_NULL(state);
+
+    MIKOtaStoredConfig cfg = {};
+    JSValue doc = JS_UNDEFINED;
+    if (argc < 1 || !config_from_js(ctx, argv[0], &cfg, &doc)) {
+        JS_FreeValue(ctx, doc);
+        return JS_NewString(ctx, "invalid");
+    }
+
+    /* Held until the write is done: the stored config's span points into it. */
+    std::vector<uint8_t> bytes;
+    if (!JS_IsUndefined(doc)) {
+        bool encoded = encode_config_doc(ctx, doc, &bytes);
+        JS_FreeValue(ctx, doc);
+        if (!encoded) return JS_NewString(ctx, "invalid");
+        cfg.doc_cbor = bytes.data();
+        cfg.doc_cbor_len = bytes.size();
+    }
+
+    MIKOtaCheckOptions defaults;
+    int trial_boots = defaults.trial_boots;
+    if (argc > 1 && JS_IsObject(argv[1])) {
+        trial_boots = (int)opt_u32(ctx, argv[1], "trialBoots", (uint32_t)trial_boots);
+    }
+    /* A budget of zero would roll the document back on the first read that
+     * serves it, which is never what an app meant by delivering one. */
+    if (trial_boots < 1) trial_boots = 1;
+
+    MIKOtaConfigWrite write = mikrojs::mik__ota_deliver_config(state->env, &cfg, trial_boots);
+    return JS_NewString(ctx, mikrojs::mik__ota_config_write_to_str(write));
+}
+
+/* configState() -> {rev?, error?} */
+JSValue ota_config_state(JSContext* ctx, JSValue, int, JSValue*) {
+    MIKOtaClientState* state = state_of(ctx);
+    CHECK_NOT_NULL(state);
+
+    JSValue obj = JS_NewObject(ctx);
+    MIKOtaConfigErrorReport report = {};
+    bool has_error = mikrojs::mik__ota_load_config_error(state->env, &report);
+    if (has_error) {
+        JSValue error = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, error, "rev", JS_NewString(ctx, report.rev));
+        JS_SetPropertyStr(ctx, error, "message", JS_NewString(ctx, report.message));
+        JS_SetPropertyStr(ctx, obj, "error", error);
+    }
+    /* After a rollback the FAILED document's rev is the one to echo, not the
+     * restored one's: echoed-equals-held is what stops the registry serving the
+     * document that just failed, until an operator changes it. */
+    mikrojs::MIKOtaLoadedConfig held = mikrojs::mik__ota_load_slot(state->env, MIK_OTA_CFG_CURRENT);
+    const char* rev = has_error ? report.rev : (held.present ? held.cfg.rev : "");
+    if (rev[0]) JS_SetPropertyStr(ctx, obj, "rev", JS_NewString(ctx, rev));
+    return obj;
+}
+
 int mik__ota_client_module_init(JSContext* ctx, JSModuleDef* m) {
     JS_SetModuleExport(ctx, m, "check", JS_NewCFunction(ctx, mik__ota_client_check, "check", 1));
     JS_SetModuleExport(ctx, m, "watch", JS_NewCFunction(ctx, mik__ota_client_watch, "watch", 1));
@@ -642,6 +813,12 @@ int mik__ota_client_module_init(JSContext* ctx, JSModuleDef* m) {
                        JS_NewCFunction(ctx, ota_parse_offer, "parseOffer", 2));
     JS_SetModuleExport(ctx, m, "applyOffer",
                        JS_NewCFunction(ctx, ota_apply_offer, "applyOffer", 3));
+    JS_SetModuleExport(ctx, m, "parseConfig",
+                       JS_NewCFunction(ctx, ota_parse_config, "parseConfig", 1));
+    JS_SetModuleExport(ctx, m, "applyConfig",
+                       JS_NewCFunction(ctx, ota_apply_config, "applyConfig", 2));
+    JS_SetModuleExport(ctx, m, "configState",
+                       JS_NewCFunction(ctx, ota_config_state, "configState", 0));
     return 0;
 }
 
@@ -689,6 +866,9 @@ JSModuleDef* mik__ota_client_init(JSContext* ctx) {
     JS_AddModuleExport(ctx, m, "registry");
     JS_AddModuleExport(ctx, m, "parseOffer");
     JS_AddModuleExport(ctx, m, "applyOffer");
+    JS_AddModuleExport(ctx, m, "parseConfig");
+    JS_AddModuleExport(ctx, m, "applyConfig");
+    JS_AddModuleExport(ctx, m, "configState");
     return m;
 }
 
