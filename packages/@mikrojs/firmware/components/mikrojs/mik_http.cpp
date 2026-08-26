@@ -973,10 +973,12 @@ void mik__http_consume(JSContext* ctx) {
         if (!p->sink.done || p->deadline_us == 0 || now_us < p->deadline_us) continue;
         MIKHttpNativeSink sink = p->sink;
         /* Stop delivering and let the task's terminal message drop the entry;
-         * the sink hears about it once, here. */
+         * the sink hears about it once, here. `done` must stay set: it is what
+         * marks the entry native, and js_cancelled is what suppresses the
+         * second call. Clearing it would route the terminal message into the
+         * JS branch, onto promises a native entry never created. */
         p->sink.headers = nullptr;
         p->sink.data = nullptr;
-        p->sink.done = nullptr;
         p->js_cancelled = true;
         p->deadline_us = 0;
         if (p->cancelled) p->cancelled->store(true, std::memory_order_relaxed);
