@@ -234,11 +234,20 @@ bool MIK_ConsumeOOMFlag(MIKRuntime* mik_rt);
 void MIK_ReportOOM(MIKRuntime* mik_rt, const MIKOOMEvent* event);
 
 /* Per-module opaque data slots (for platform-specific modules to store state).
- * Slots are allocated dynamically via MIK_AllocModuleSlot(). */
+ *
+ * A slot index identifies one module for the lifetime of the process and means
+ * the same thing in every runtime, so reserve it once and cache it:
+ *
+ *     static int my_slot = -1;
+ *     if (my_slot < 0) my_slot = MIK_ReserveModuleSlot();
+ *
+ * Reserving per runtime instead would hand the same index to two modules as
+ * soon as a second runtime initialized a different set of them, and each
+ * would then read the other's state through the wrong type. */
 #define MIK_MODULE_DATA_SLOTS 16
 void MIK_SetModuleData(MIKRuntime* mik_rt, int slot, void* data);
 void* MIK_GetModuleData(MIKRuntime* mik_rt, int slot);
-int MIK_AllocModuleSlot(MIKRuntime* mik_rt);
+int MIK_ReserveModuleSlot(void);
 
 /* Self-registration for native modules (ESP32, board, driver modules).
  * Modules call MIK_REGISTER_MODULE() at file scope. The module loader

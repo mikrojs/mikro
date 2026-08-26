@@ -465,7 +465,7 @@ static int mik__uart_module_init(JSContext* ctx, JSModuleDef* m) {
 
 static JSModuleDef* mik__uart_init(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    mik__uart_slot = MIK_AllocModuleSlot(mik_rt);
+    if (mik__uart_slot < 0) mik__uart_slot = MIK_ReserveModuleSlot();
 
     /* Allocate per-runtime slot data */
     auto* slot_data = static_cast<MIKUartSlot*>(calloc(1, sizeof(MIKUartSlot)));

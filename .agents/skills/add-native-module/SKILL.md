@@ -236,10 +236,13 @@ Then add to `CMakeLists.txt` SRCS. No changes to `main.cpp` or `private.h` neede
 
 If your module does async work (network requests, hardware events), integrate with the mikrojs event loop.
 
-### Add consume/destroy functions and use a dynamic module slot
+### Add consume/destroy functions and reserve a module slot
+
+Slot indices are handed out process-wide and never freed, so reserve one once
+and cache it. The state it points at is still per runtime.
 
 ```cpp
-/* Dynamic module data slot for storing per-runtime state */
+/* Module data slot index, reserved once and reused by every runtime */
 static int mik__adc_slot = -1;
 
 struct MIKAdcState {
@@ -269,7 +272,7 @@ void mik__adc_destroy(JSContext* ctx) {
 
 static JSModuleDef* mik__adc_init(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    mik__adc_slot = MIK_AllocModuleSlot(mik_rt);
+    if (mik__adc_slot < 0) mik__adc_slot = MIK_ReserveModuleSlot();
 
     auto* state = new MIKAdcState();
     // ... initialize state ...
@@ -320,7 +323,7 @@ free(p);
 4. [ ] Source added to `CMakeLists.txt` SRCS
 5. [ ] ESP-IDF dependencies added to REQUIRES (if needed)
 6. [ ] `mikrojs_force_include_modules(xxx)` in CMakeLists.txt (required for linker)
-7. [ ] Dynamic slot via `MIK_AllocModuleSlot()` (if module has per-runtime state)
+7. [ ] Slot reserved once via `MIK_ReserveModuleSlot()`, guarded on the cached index being `< 0` (if module has per-runtime state)
 8. [ ] Consume/destroy functions passed to `MIK_REGISTER_MODULE` (if async)
 9. [ ] Type declarations added (optional)
 10. [ ] Follows naming conventions: `mik__snake_case` for internals, `js_` prefix for JSValue-returning functions

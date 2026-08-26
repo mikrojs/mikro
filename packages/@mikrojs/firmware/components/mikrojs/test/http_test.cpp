@@ -554,3 +554,26 @@ TEST_CASE("destroy skips promises on a timed-out native request", "[http]") {
 
     TEST_ASSERT_EQUAL(1, callsBeforeTeardown);
 }
+
+TEST_CASE("the http module slot is stable across runtimes", "[http]") {
+    setup();
+    ensure_http_initialized();
+    int slotInFirstRuntime = mik__http_slot;
+    teardown();
+
+    /* A second runtime must find http at the same index, and no other module
+     * may be handed that index here. */
+    setup();
+    int burned = MIK_ReserveModuleSlot();
+    ensure_http_initialized();
+    int slotInSecondRuntime = mik__http_slot;
+    MIKHttpState* state = mik__http(rt);
+    size_t pendingCount = state ? state->pending_count : 999;
+    teardown();
+
+    TEST_ASSERT_EQUAL_MESSAGE(slotInFirstRuntime, slotInSecondRuntime,
+                              "the same module keeps the same slot");
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(burned, slotInSecondRuntime,
+                                  "http must not share a slot with another module");
+    TEST_ASSERT_EQUAL_MESSAGE(0, pendingCount, "fresh state, not another module's bytes");
+}

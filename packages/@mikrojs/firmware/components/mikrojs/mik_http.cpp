@@ -923,7 +923,7 @@ static void mik__http_ensure_initialized(JSContext* ctx) {
 void mik__http_ensure_native(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     if (!mik_rt) return;
-    if (mik__http_slot < 0) mik__http_slot = MIK_AllocModuleSlot(mik_rt);
+    if (mik__http_slot < 0) mik__http_slot = MIK_ReserveModuleSlot();
     mik__http_ensure_initialized(ctx);
     MIK_RegisterLoopConsumer(mik_rt, mik__http_consume, mik__http_destroy);
 }
@@ -941,10 +941,9 @@ static int mik__http_module_init(JSContext* ctx, JSModuleDef* m) {
 }
 
 static JSModuleDef* mik__http_init(JSContext* ctx) {
-    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    /* The slot may already exist: a native consumer can bring the transport up
-     * before anything imports the JS module. */
-    if (mik__http_slot < 0) mik__http_slot = MIK_AllocModuleSlot(mik_rt);
+    /* The slot may already be reserved: a native consumer can bring the
+     * transport up before anything imports the JS module. */
+    if (mik__http_slot < 0) mik__http_slot = MIK_ReserveModuleSlot();
 
     JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/http", mik__http_module_init);
     if (!m) return nullptr;

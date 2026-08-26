@@ -123,9 +123,9 @@ struct MIKRuntime {
     std::vector<std::pair<std::string, std::string>> env_vars;
     /* Opaque per-module data slots for platform-specific modules.
      * Used by registered native modules to store their state on the runtime.
-     * Slots are allocated dynamically via MIK_AllocModuleSlot(). */
+     * Indexed by MIK_ReserveModuleSlot(), which is process-wide, so a slot
+     * means the same module in every runtime. */
     void* module_data[MIK_MODULE_DATA_SLOTS] = {};
-    int next_module_slot = 0;
     /* Virtual modules: name → JS source.  Checked by the module loader before
      * the builtin bytecode table, allowing host-side JS to override any
      * native:* C module (e.g. mocking device modules for desktop dev). */

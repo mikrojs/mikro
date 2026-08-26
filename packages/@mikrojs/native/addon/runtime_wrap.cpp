@@ -354,8 +354,10 @@ RuntimeWrap::RuntimeWrap(const Napi::CallbackInfo& info) : Napi::ObjectWrap<Runt
 
     /* Register native:mikro/host C module + host bridge */
     host_bridge_ = new HostBridge();
-    host_slot_ = MIK_AllocModuleSlot(mik_rt_);
-    s_host_slot = host_slot_;
+    /* One slot for the host bridge, shared by every Runtime in this process.
+     * Reserving per instance would consume the table after a handful. */
+    if (s_host_slot < 0) s_host_slot = MIK_ReserveModuleSlot();
+    host_slot_ = s_host_slot;
     MIK_SetModuleData(mik_rt_, host_slot_, host_bridge_);
 
     JSContext* ctx = MIK_GetJSContext(mik_rt_);
