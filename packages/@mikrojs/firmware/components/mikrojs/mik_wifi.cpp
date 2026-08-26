@@ -1236,7 +1236,7 @@ static int mik__wifi_module_init(JSContext* ctx, JSModuleDef* m) {
 static JSModuleDef* mik__wifi_init(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     CHECK_NOT_NULL(mik_rt);
-    mik__wifi_slot = MIK_AllocModuleSlot(mik_rt);
+    if (mik__wifi_slot < 0) mik__wifi_slot = MIK_ReserveModuleSlot();
 
     auto* state = new MIKWifiState();
     state->event_queue = xQueueCreate(8, sizeof(MIKWifiEvent));

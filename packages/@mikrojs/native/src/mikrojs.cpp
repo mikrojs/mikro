@@ -533,8 +533,15 @@ void* MIK_GetModuleData(MIKRuntime* mik_rt, int slot) {
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 mik_module_desc_t* mik__module_registry_head = nullptr;
 
-int MIK_AllocModuleSlot(MIKRuntime* mik_rt) {
-    int slot = mik_rt->next_module_slot++;
+int MIK_ReserveModuleSlot(void) {
+    /* Process-wide and never released: a module keeps one index for the life
+     * of the process, so every runtime agrees on what that index holds. A
+     * per-runtime counter would restart at zero and alias modules across
+     * runtimes. Callers reserve once (guard on their cached slot being < 0);
+     * reserving per runtime would exhaust the table instead. */
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+    static int next_slot = 0;
+    int slot = next_slot++;
     CHECK(slot < MIK_MODULE_DATA_SLOTS);
     return slot;
 }

@@ -663,7 +663,7 @@ static int mik__i2s_module_init(JSContext* ctx, JSModuleDef* m) {
 
 static JSModuleDef* mik__i2s_init(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    mik__i2s_slot = MIK_AllocModuleSlot(mik_rt);
+    if (mik__i2s_slot < 0) mik__i2s_slot = MIK_ReserveModuleSlot();
 
     auto* slot_data = static_cast<MIKI2sSlot*>(calloc(1, sizeof(MIKI2sSlot)));
     if (!slot_data) return nullptr;

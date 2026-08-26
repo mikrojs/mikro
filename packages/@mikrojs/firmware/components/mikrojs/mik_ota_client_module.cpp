@@ -650,7 +650,7 @@ int mik__ota_client_module_init(JSContext* ctx, JSModuleDef* m) {
 JSModuleDef* mik__ota_client_init(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     CHECK_NOT_NULL(mik_rt);
-    mik__ota_client_slot = MIK_AllocModuleSlot(mik_rt);
+    if (mik__ota_client_slot < 0) mik__ota_client_slot = MIK_ReserveModuleSlot();
 
     /* The bytecode version needs a context to derive (JS_WriteObject's first
      * byte), so it is read here and handed to the env, which has none. */

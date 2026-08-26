@@ -464,8 +464,7 @@ static int mik__pwm_module_init(JSContext* ctx, JSModuleDef* m) {
 }
 
 static JSModuleDef* mik__pwm_init(JSContext* ctx) {
-    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    mik__pwm_slot = MIK_AllocModuleSlot(mik_rt);
+    if (mik__pwm_slot < 0) mik__pwm_slot = MIK_ReserveModuleSlot();
 
     JSRuntime* rt = JS_GetRuntime(ctx);
 

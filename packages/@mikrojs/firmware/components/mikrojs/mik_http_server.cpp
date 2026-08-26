@@ -671,8 +671,7 @@ static int mik__hs_module_init(JSContext* ctx, JSModuleDef* m) {
 }
 
 static JSModuleDef* mik__http_server_init(JSContext* ctx) {
-    MIKRuntime* rt = MIK_GetRuntime(ctx);
-    mik__http_server_slot = MIK_AllocModuleSlot(rt);
+    if (mik__http_server_slot < 0) mik__http_server_slot = MIK_ReserveModuleSlot();
 
     JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/http_server", mik__hs_module_init);
     if (!m) return nullptr;

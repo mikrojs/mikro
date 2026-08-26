@@ -40,7 +40,6 @@ struct MIKRuntime {
 
     // Per-module state (16 slots)
     void* module_data[MIK_MODULE_DATA_SLOTS];
-    int next_module_slot;
 
     // Optional hooks (used by Node.js addon)
     char* (*preprocess_fn)(...);   // Module source preprocessor
@@ -145,11 +144,14 @@ The `freeing` flag is checked before delivering promise rejection events or call
 Stateful modules need to store persistent data on the runtime (for example WiFi connection state). Sixteen slots are available:
 
 ```c
-int slot = MIK_AllocModuleSlot(mik_rt);
-mik_rt->module_data[slot] = my_state;
+static int my_slot = -1;
+if (my_slot < 0) my_slot = MIK_ReserveModuleSlot();
+mik_rt->module_data[my_slot] = my_state;
 
 // Later, in a callback:
-MyState* state = (MyState*)mik_rt->module_data[slot];
+MyState* state = (MyState*)mik_rt->module_data[my_slot];
 ```
 
-Slots are allocated sequentially and never freed. This is a simple, fast mechanism for modules that need to store a pointer to their state without globals.
+Reserve the slot once and cache it. Indices are handed out process-wide and never freed, so a slot identifies one module in every runtime, and a module that runs in several runtimes keeps the same index in all of them.
+
+Do not reserve per runtime. A runtime-local index would restart from zero in the next runtime, so a module that cached its index would end up reading whichever module claimed that index there, through the wrong type.

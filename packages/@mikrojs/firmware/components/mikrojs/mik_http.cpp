@@ -923,7 +923,7 @@ static void mik__http_ensure_initialized(JSContext* ctx) {
 void mik__http_ensure_native(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     if (!mik_rt) return;
-    if (mik__http_slot < 0) mik__http_slot = MIK_AllocModuleSlot(mik_rt);
+    if (mik__http_slot < 0) mik__http_slot = MIK_ReserveModuleSlot();
     mik__http_ensure_initialized(ctx);
     MIK_RegisterLoopConsumer(mik_rt, mik__http_consume, mik__http_destroy);
 }
@@ -941,10 +941,9 @@ static int mik__http_module_init(JSContext* ctx, JSModuleDef* m) {
 }
 
 static JSModuleDef* mik__http_init(JSContext* ctx) {
-    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    /* The slot may already exist: a native consumer can bring the transport up
-     * before anything imports the JS module. */
-    if (mik__http_slot < 0) mik__http_slot = MIK_AllocModuleSlot(mik_rt);
+    /* The slot may already be reserved: a native consumer can bring the
+     * transport up before anything imports the JS module. */
+    if (mik__http_slot < 0) mik__http_slot = MIK_ReserveModuleSlot();
 
     JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/http", mik__http_module_init);
     if (!m) return nullptr;
@@ -973,10 +972,12 @@ void mik__http_consume(JSContext* ctx) {
         if (!p->sink.done || p->deadline_us == 0 || now_us < p->deadline_us) continue;
         MIKHttpNativeSink sink = p->sink;
         /* Stop delivering and let the task's terminal message drop the entry;
-         * the sink hears about it once, here. */
+         * the sink hears about it once, here. `done` must stay set: it is what
+         * marks the entry native, and js_cancelled is what suppresses the
+         * second call. Clearing it would route the terminal message into the
+         * JS branch, onto promises a native entry never created. */
         p->sink.headers = nullptr;
         p->sink.data = nullptr;
-        p->sink.done = nullptr;
         p->js_cancelled = true;
         p->deadline_us = 0;
         if (p->cancelled) p->cancelled->store(true, std::memory_order_relaxed);

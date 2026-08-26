@@ -473,3 +473,107 @@ TEST_CASE("cancel sets the pending cancelled flag", "[http]") {
     TEST_ASSERT_TRUE_MESSAGE(flagAfterCancel, "cancel sets the shared flag");
     TEST_ASSERT_EQUAL_MESSAGE(0, pendingCount, "pending dropped after cancellation settles");
 }
+
+/* ── Native sink (OTA client) ─────────────────────────────────────── */
+
+static int native_done_calls;
+static int native_done_status;
+static char native_done_error[64];
+
+static void native_sink_done(void*, int status, const char* error_msg) {
+    native_done_calls++;
+    native_done_status = status;
+    snprintf(native_done_error, sizeof(native_done_error), "%s", error_msg ? error_msg : "");
+}
+
+/* Install a native pending whose deadline has already passed, the way
+ * mik__http_start_native would minus the background task. Ownership of
+ * `cancelled` transfers to the entry; mik__pending_drop frees it. */
+static uint32_t seed_expired_native_pending() {
+    native_done_calls = 0;
+    native_done_status = -1;
+    native_done_error[0] = '\0';
+
+    MIKHttpState* state = mik__http(rt);
+    MIKHttpPending p = {};
+    p.id = state->next_id++;
+    p.cancelled = new std::atomic<bool>(false);
+    p.sink.done = native_sink_done;
+    p.deadline_us = 1; /* in the past for any running device */
+    state->pending[state->pending_count++] = p;
+    return p.id;
+}
+
+TEST_CASE("a timed-out native request stays tagged native", "[http]") {
+    setup();
+    ensure_http_initialized();
+
+    uint32_t id = seed_expired_native_pending();
+
+    mik__http_consume(ctx);
+    int callsAfterTimeout = native_done_calls;
+    int statusAfterTimeout = native_done_status;
+    char errorAfterTimeout[64];
+    snprintf(errorAfterTimeout, sizeof(errorAfterTimeout), "%s", native_done_error);
+    size_t countAfterTimeout = mik__http(rt)->pending_count;
+    /* The entry outlives the timeout waiting for the task's terminal message.
+     * sink.done is what marks it native; clearing it would send that message
+     * into the JS branch and onto promises this entry never created. */
+    bool stillTaggedNative = mik__http(rt)->pending[0].sink.done != nullptr;
+
+    push_error(id, "connection closed");
+    mik__http_consume(ctx);
+    int callsAfterTerminal = native_done_calls;
+    size_t countAfterTerminal = mik__http(rt)->pending_count;
+
+    teardown();
+
+    TEST_ASSERT_EQUAL_MESSAGE(1, callsAfterTimeout, "deadline sweep reports once");
+    TEST_ASSERT_EQUAL(0, statusAfterTimeout);
+    TEST_ASSERT_EQUAL_STRING("timeout", errorAfterTimeout);
+    TEST_ASSERT_EQUAL_MESSAGE(1, countAfterTimeout, "entry waits for the terminal message");
+    TEST_ASSERT_TRUE_MESSAGE(stillTaggedNative, "sink.done survives the timeout");
+    TEST_ASSERT_EQUAL_MESSAGE(1, callsAfterTerminal, "done is terminal, not repeated");
+    TEST_ASSERT_EQUAL_MESSAGE(0, countAfterTerminal, "terminal message drops the entry");
+}
+
+TEST_CASE("destroy skips promises on a timed-out native request", "[http]") {
+    setup();
+    ensure_http_initialized();
+
+    uint32_t id = seed_expired_native_pending();
+    mik__http_consume(ctx);
+
+    /* Leave the entry in place and let destroy drain the terminal message.
+     * It must take the native branch and free no promises: a native entry's
+     * headers_promise was never built. */
+    push_error(id, "connection closed");
+    int callsBeforeTeardown = native_done_calls;
+
+    teardown();
+
+    TEST_ASSERT_EQUAL(1, callsBeforeTeardown);
+}
+
+TEST_CASE("the http module slot is stable across runtimes", "[http]") {
+    setup();
+    ensure_http_initialized();
+    int slotInFirstRuntime = mik__http_slot;
+    teardown();
+
+    /* A second runtime must find http at the same index, and no other module
+     * may be handed that index here. */
+    setup();
+    int burned = MIK_ReserveModuleSlot();
+    ensure_http_initialized();
+    int slotInSecondRuntime = mik__http_slot;
+    MIKHttpState* state = mik__http(rt);
+    size_t pendingCount = state ? state->pending_count : 999;
+    teardown();
+
+    TEST_ASSERT_EQUAL_MESSAGE(slotInFirstRuntime, slotInSecondRuntime,
+                              "the same module keeps the same slot");
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(burned, slotInSecondRuntime,
+                                  "http must not share a slot with another module");
+    TEST_ASSERT_EQUAL_MESSAGE(0, pendingCount, "fresh state, not another module's bytes");
+}

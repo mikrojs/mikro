@@ -196,7 +196,7 @@ static int mik__sntp_module_init(JSContext* ctx, JSModuleDef* m) {
 static JSModuleDef* mik__sntp_init(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     CHECK_NOT_NULL(mik_rt);
-    mik__sntp_slot = MIK_AllocModuleSlot(mik_rt);
+    if (mik__sntp_slot < 0) mik__sntp_slot = MIK_ReserveModuleSlot();
 
     auto* state = new MIKSntpState();
     state->event_queue = xQueueCreate(4, sizeof(struct timeval));

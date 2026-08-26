@@ -221,8 +221,8 @@ TEST_CASE_FIXTURE(EntryFixture, "profiling records per-module load costs" *
 
 TEST_CASE_FIXTURE(EntryFixture, "module data slots store per-module pointers" *
                                     doctest::test_suite("entry")) {
-    int slot_a = MIK_AllocModuleSlot(rt);
-    int slot_b = MIK_AllocModuleSlot(rt);
+    int slot_a = MIK_ReserveModuleSlot();
+    int slot_b = MIK_ReserveModuleSlot();
     REQUIRE(slot_a >= 0);
     REQUIRE(slot_b >= 0);
     CHECK(slot_a != slot_b);
@@ -232,6 +232,27 @@ TEST_CASE_FIXTURE(EntryFixture, "module data slots store per-module pointers" *
     MIK_SetModuleData(rt, slot_b, &value_b);
     CHECK(MIK_GetModuleData(rt, slot_a) == &value_a);
     CHECK(MIK_GetModuleData(rt, slot_b) == &value_b);
+}
+
+TEST_CASE("a reserved module slot means the same module in every runtime" *
+          doctest::test_suite("entry")) {
+    /* Modules cache their slot index and reuse it for the life of the process.
+     * If reservation restarted per runtime, the second runtime would hand this
+     * index to the next module that asked, and the two would read each other's
+     * state through the wrong type. */
+    MIKRuntime* first = MIK_NewRuntime();
+    int slot = MIK_ReserveModuleSlot();
+    int marker = 1;
+    MIK_SetModuleData(first, slot, &marker);
+    CHECK(MIK_GetModuleData(first, slot) == &marker);
+    MIK_FreeRuntime(first);
+
+    /* A different module comes up first in the next runtime. */
+    MIKRuntime* second = MIK_NewRuntime();
+    int later = MIK_ReserveModuleSlot();
+    CHECK(later != slot);
+    CHECK(MIK_GetModuleData(second, slot) == nullptr);
+    MIK_FreeRuntime(second);
 }
 
 TEST_CASE_FIXTURE(EntryFixture, "SetConfig applies a tweaked default config" *

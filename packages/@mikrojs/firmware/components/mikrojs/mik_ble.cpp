@@ -1480,7 +1480,7 @@ static int mik__ble_module_init(JSContext* ctx, JSModuleDef* m) {
 static JSModuleDef* mik__ble_init(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     CHECK_NOT_NULL(mik_rt);
-    mik__ble_slot = MIK_AllocModuleSlot(mik_rt);
+    if (mik__ble_slot < 0) mik__ble_slot = MIK_ReserveModuleSlot();
 
     auto* state = new MIKBleState();
     mik__ble_st(mik_rt) = state;
