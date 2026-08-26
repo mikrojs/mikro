@@ -250,9 +250,6 @@ private:
      * policy working normally — already current, a trial still resolving — are
      * not failures and are not reported. */
     void NoteDecline(MIKOtaDeclineReason reason, const std::string& detail);
-    /* Apply a config delivered without an offer: it is for the running
-     * release. Returns whether stored state changed. */
-    bool ApplyRunningConfig(const MIKOtaStoredConfig* config, int trial_boots);
     void ScheduleNext(NextRound next);
     int64_t Jitter(int64_t ms);
     int64_t Now() const;

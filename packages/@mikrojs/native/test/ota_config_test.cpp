@@ -8,6 +8,7 @@
 #include "doctest.h"
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/ota_config.h"
+#include "mikrojs/ota_policy.h"
 #include "mikrojs/ota_slots.h"
 #include "ota_fake_env.h"
 
@@ -428,6 +429,200 @@ TEST_CASE("retries a rollback whose reads failed, without losing it") {
     CHECK(d.Read(*reader) == "{\"interval\":30}");
     CHECK(!d.env.HasBlob("ota.cfgPrev"));
     CHECK(!d.env.HasBlob("ota.cfgTrial"));
+    CHECK(CborStr(d.env.Blob("ota.cfgErr"), "rev") == "r2");
+}
+
+// ── the writes ──────────────────────────────────────────────────────────────
+
+/* A delivery, as a client hands one over. The bytes back the doc span, so the
+ * delivery has to outlive the call that stores it. */
+struct Delivery {
+    std::vector<uint8_t> bytes;
+    MIKOtaStoredConfig cfg = {};
+
+    Delivery(const char* rev, const char* version, std::vector<uint8_t> doc)
+        : bytes(std::move(doc)) {
+        snprintf(cfg.rev, sizeof(cfg.rev), "%s", rev);
+        snprintf(cfg.version, sizeof(cfg.version), "%s", version);
+        if (!bytes.empty()) {
+            cfg.doc_cbor = bytes.data();
+            cfg.doc_cbor_len = bytes.size();
+        }
+    }
+};
+
+TEST_CASE("applies a document stamped for the running release") {
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    Delivery delivered("r1", "1.0.0", DocInterval(45));
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &delivered.cfg, 2) == MIKOtaConfigWrite::kApplied);
+    CHECK(CborStr(d.env.Blob("ota.cfg"), "rev") == "r1");
+    CHECK(CborInt(d.env.Blob("ota.cfgTrial"), "left") == 2);
+    CHECK(d.ReadOnce() == "{\"interval\":45}");
+}
+
+TEST_CASE("keeps the document it replaced as the rollback baseline") {
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.StoreDoc("r1", "1.0.0", 45);
+    Delivery delivered("r2", "1.0.0", DocInterval(30));
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &delivered.cfg, 1) == MIKOtaConfigWrite::kApplied);
+    CHECK(CborStr(d.env.Blob("ota.cfgPrev"), "rev") == "r1");
+    CHECK(CborStr(d.env.Blob("ota.cfg"), "rev") == "r2");
+}
+
+TEST_CASE("stages a document stamped for another release") {
+    // It was computed for a build this device is not running, so it applies
+    // when that build does, and the running app must not see it.
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.StoreDoc("r1", "1.0.0", 45);
+    Delivery delivered("r2", "2.0.0", DocInterval(30));
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &delivered.cfg, 1) == MIKOtaConfigWrite::kStaged);
+    CHECK(CborStr(d.env.Blob("ota.cfgNext"), "rev") == "r2");
+    CHECK(CborStr(d.env.Blob("ota.cfg"), "rev") == "r1");
+    CHECK(!d.env.HasBlob("ota.cfgTrial"));
+    CHECK(d.ReadOnce() == "{\"interval\":45}");
+}
+
+TEST_CASE("stages the clear for another release") {
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.env.SeedConfig("ota.cfgNext", "r1", "2.0.0", DocInterval(30));
+    Delivery delivered("r2", "2.0.0", {});
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &delivered.cfg, 1) == MIKOtaConfigWrite::kStaged);
+    CHECK(!d.env.HasBlob("ota.cfgNext"));
+}
+
+TEST_CASE("clears the stored document when the delivery carries none") {
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.StoreDoc("r1", "1.0.0", 45);
+    Delivery cleared("r2", "1.0.0", {});
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &cleared.cfg, 1) == MIKOtaConfigWrite::kCleared);
+    CHECK(!d.env.HasBlob("ota.cfg"));
+    CHECK(d.ReadOnce() == "{\"interval\":60}");
+}
+
+TEST_CASE("reports a clear with nothing to clear as unchanged") {
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    Delivery cleared("r2", "1.0.0", {});
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &cleared.cfg, 1) == MIKOtaConfigWrite::kUnchanged);
+}
+
+TEST_CASE("an identical document costs nothing") {
+    // A writer that sends the same document every round must not put a document
+    // that already passed its trial back on trial, or re-write NVS for nothing.
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.StoreDoc("r1", "1.0.0", 45);
+    Delivery same("r1", "1.0.0", DocInterval(45));
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &same.cfg, 1) == MIKOtaConfigWrite::kUnchanged);
+    CHECK(!d.env.HasBlob("ota.cfgTrial"));
+    CHECK(!d.env.HasBlob("ota.cfgPrev"));
+}
+
+TEST_CASE("a new rev on the same values is a new document") {
+    // The rev is what the device echoes, so it has to be stored and echoed back
+    // even when nothing else about the document moved.
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.StoreDoc("r1", "1.0.0", 45);
+    Delivery rekeyed("r2", "1.0.0", DocInterval(45));
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &rekeyed.cfg, 1) == MIKOtaConfigWrite::kApplied);
+    CHECK(CborStr(d.env.Blob("ota.cfg"), "rev") == "r2");
+}
+
+TEST_CASE("a store that cannot answer is a failed write, not an unchanged one") {
+    // Nothing was written, so the writer must send the document again rather
+    // than echo a rev the device does not hold.
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.env.fail_blob_reads = true;
+    Delivery delivered("r1", "1.0.0", DocInterval(45));
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &delivered.cfg, 1) == MIKOtaConfigWrite::kFailed);
+    d.env.fail_blob_reads = false;
+    CHECK(!d.env.HasBlob("ota.cfg"));
+}
+
+TEST_CASE("cannot place a document without the running version") {
+    // Which slot it belongs in is exactly what the stamp answers, and the
+    // reader drops a document stamped for another release without a sound.
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.env.app_version.clear();
+    Delivery delivered("r1", "1.0.0", DocInterval(45));
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &delivered.cfg, 1) == MIKOtaConfigWrite::kFailed);
+    CHECK(!d.env.HasBlob("ota.cfg"));
+}
+
+TEST_CASE("a confirm keeps a document the app has read") {
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.StoreDoc("r1", "1.0.0", 30);
+    Delivery delivered("r2", "1.0.0", DocInterval(45));
+    mik__ota_deliver_config(d.env.env(), &delivered.cfg, 1);
+
+    CHECK(d.ReadOnce() == "{\"interval\":45}");
+    mik__ota_policy_confirm(d.env.env());
+
+    CHECK(!d.env.HasBlob("ota.cfgTrial"));
+    CHECK(!d.env.HasBlob("ota.cfgPrev"));
+    CHECK(d.ReadOnce() == "{\"interval\":45}");
+}
+
+TEST_CASE("a confirm keeps nothing the app has not read") {
+    // A check-in completing before the app ever ran with the new values proves
+    // nothing about them.
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    Delivery delivered("r2", "1.0.0", DocInterval(45));
+    mik__ota_deliver_config(d.env.env(), &delivered.cfg, 1);
+
+    mik__ota_policy_confirm(d.env.env());
+    CHECK(d.env.HasBlob("ota.cfgTrial"));
+}
+
+TEST_CASE("settling reports whether a trial was actually adopted") {
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    // No trial in progress: nothing to settle.
+    CHECK(!mik__ota_adopt_config_trial(d.env.env()));
+
+    Delivery delivered("r1", "1.0.0", DocInterval(45));
+    mik__ota_deliver_config(d.env.env(), &delivered.cfg, 1);
+    // Armed but unread: still nothing.
+    CHECK(!mik__ota_adopt_config_trial(d.env.env()));
+
+    CHECK(d.ReadOnce() == "{\"interval\":45}");
+    CHECK(mik__ota_adopt_config_trial(d.env.env()));
+}
+
+TEST_CASE("rolls a delivered document back when no confirm arrives") {
+    // The whole point of the trial, driven end to end through the write: a
+    // document delivered by an app's own client is no more trusted than one the
+    // built-in client delivered.
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.StoreDoc("r1", "1.0.0", 30);
+    Delivery delivered("r2", "1.0.0", DocInterval(45));
+    mik__ota_deliver_config(d.env.env(), &delivered.cfg, 1);
+
+    // One boot runs on the new values, and nothing confirms them.
+    CHECK(d.ReadOnce() == "{\"interval\":45}");
+    // The next restores what the app was running before, and records why.
+    CHECK(d.ReadOnce() == "{\"interval\":30}");
     CHECK(CborStr(d.env.Blob("ota.cfgErr"), "rev") == "r2");
 }
 

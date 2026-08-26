@@ -122,6 +122,13 @@ Marks the running trial as healthy, so it is kept rather than rolled back. Only 
 a build installed with `requireConfirm`; otherwise a trial is kept automatically once it
 survives a clean cycle. Does nothing when no trial is in progress.
 
+One call settles both trials: the build's and a delivered config document's. A completed
+check-in is the health signal each of them waits for. A config trial has one more gate: it
+settles only once the app has read the document with `ota.config()`, because a check-in that
+completes before the app ever ran with the new values proves nothing about them. So a
+`confirm()` from an app that never reads its config keeps nothing, and the document is rolled
+back when the trial boots run out.
+
 ### ota.revert()
 
 ```ts
@@ -244,6 +251,88 @@ check-in runs, but never before the app reads the config that causes it. Only a 
 actually serves the stored document is charged: a boot that runs on the defaults never spends a
 trial boot.
 
+### ota.parseConfig(raw)
+
+```ts
+parseConfig(raw: unknown): StoredConfig | undefined
+```
+
+Validates a config document received from a registry, or returns `undefined` if it is not a
+usable one. What [`parseOffer`](#ota-parseoffer-raw) is to an offer. Only a client that
+brings its own transport needs it; the built-in client validates what it receives itself.
+
+A usable document is an object with a non-empty `version` (the release the document was
+computed for, which decides where `applyConfig` puts it), an optional `rev` short enough to
+store intact, and a `doc` that is an object or absent. An absent `doc` is the clear, not a
+malformed document.
+
+Whether the document survives encoding is settled by `applyConfig`, which is where the stored
+bytes are made. A value CBOR cannot carry, a function or a cycle, passes here and comes back
+from `applyConfig` as `'invalid'`.
+
+```ts
+const config = ota.parseConfig(body.config)
+```
+
+### ota.applyConfig(config, options?)
+
+```ts
+applyConfig(
+  config: StoredConfig,
+  options?: {trialBoots?: number},
+): ConfigWrite
+```
+
+Stores a config document. This is the write side of what [`ota.config()`](#ota-config) reads,
+for a client that received a document over its own transport.
+
+The `version` stamp decides where the document lands. Stamped for the running release, it is
+applied: the document it replaces is kept as the rollback baseline, and a trial is armed.
+Stamped for another release, it is staged for the build it names, and applies when that build
+installs. The return value says which happened, and says when nothing did. See
+[ConfigWrite](#configwrite).
+
+```ts
+const write = ota.applyConfig(config, {trialBoots: 4})
+if (write === 'failed') {
+  // Nothing was written. Keep echoing the rev from configState() so the
+  // registry serves the document again on the next check-in.
+}
+```
+
+A delivery to the running release goes on trial, the same as one from the built-in client.
+Each boot whose first `ota.config()` read serves the document spends one of `trialBoots`
+(default 1), and the budget spent with no `ota.confirm()` in between restores the previous
+document and reports the failure to the registry as `configError`. On a device that wakes
+from deep sleep, every wake is a boot, so raise `trialBoots` when a check-in can plausibly
+fail for several cycles in a row. Otherwise one failed check-in rolls back a good document.
+
+The app must read the document with `ota.config()` for `ota.confirm()` to keep it.
+
+### ota.configState()
+
+```ts
+configState(): ConfigState
+```
+
+What the device owes its registry about config: the `rev` to echo, and a document that failed
+its trial and was rolled back. A client that builds its own check-in body needs both. Without
+the echo the registry serves the same document at every check-in. Without the report a
+document that took the device down is served forever, and the operator is never told why.
+
+```ts
+const state = ota.configState()
+await myRegistry.checkIn({
+  running: ota.running(),
+  configRev: state.rev,
+  configError: state.error,
+})
+```
+
+After a rolled-back trial, `rev` is the failed document's rev rather than the restored one's.
+That is deliberate: the registry stops serving a document whose rev the device already echoes,
+which is what keeps a bad document from being sent again until an operator changes it.
+
 ## Types
 
 ### Update
@@ -319,6 +408,54 @@ interface Diagnostic {
   detail?: string // human-readable detail
 }
 ```
+
+### StoredConfig
+
+```ts
+interface StoredConfig {
+  rev?: string
+  version: string
+  doc?: unknown
+}
+```
+
+One config document, as a registry computed it and the device stores it. `rev` is the opaque
+token echoed on check-ins, `version` is the release the document was computed for, and `doc`
+is the deviation overlay a read resolves over the build's manifest defaults. An absent `doc`
+is the clear. The device stores and returns the document without understanding it: validation
+belongs to the writer, which already holds the schema.
+
+### ConfigWrite
+
+```ts
+type ConfigWrite = 'applied' | 'staged' | 'cleared' | 'unchanged' | 'failed' | 'invalid'
+```
+
+What [`applyConfig`](#ota-applyconfig-config-options) did to the store.
+
+| Value         | Meaning                                                                                               |
+| ------------- | ----------------------------------------------------------------------------------------------------- |
+| `'applied'`   | Stored as the running build's config. A trial is armed.                                               |
+| `'staged'`    | Stored for the release it names. It applies when that build installs.                                 |
+| `'cleared'`   | The document was removed. The manifest defaults stand alone again.                                    |
+| `'unchanged'` | Identical to the document already held, or a clear with nothing to clear.                             |
+| `'failed'`    | Nothing was written: the store could not answer, or the running version could not be read. Transient. |
+| `'invalid'`   | Not a usable config document.                                                                         |
+
+Only `'applied'` and `'cleared'` change what the running build reads. On `'failed'`, keep
+echoing the rev from `configState()`, so the registry serves the document again.
+
+### ConfigState
+
+```ts
+interface ConfigState {
+  rev?: string
+  error?: {rev: string; message: string}
+}
+```
+
+The two config fields a check-in body owes the registry, from
+[`configState()`](#ota-configstate). Send them as `configRev` and `configError`.
 
 ## Errors
 

@@ -11,6 +11,11 @@
  * than the one running is ignored, because it was computed against a different
  * release's schema.
  *
+ * The writes deliver a document into those slots. The built-in check-in client
+ * takes them from its response; an app running its own transport (`ota.parseConfig`
+ * / `ota.applyConfig`) takes them from wherever its client got them. Both go
+ * through here, so the two cannot disagree about the trial and the baseline.
+ *
  * The read answers with an object or throws: there is no "no config yet" value.
  * A build that went through the tooling carries a manifest, the manifest
  * carries the defaults, and an app that declares no config schema gets an empty
@@ -96,5 +101,51 @@ private:
     /* The same, for the cached defaults. */
     JSContext* defaults_ctx_ = nullptr;
 };
+
+/* ── the writes ──────────────────────────────────────────────────────────── */
+
+/* What a write did to the store.
+ *
+ * `kUnchanged` covers both "identical to what is already held" and "a clear
+ * with nothing to clear": nothing moved, and the rev the device echoes is the
+ * one it echoed before. `kFailed` is a store that could not answer, which is
+ * not the same as nothing to do — the caller must not echo the new rev, so the
+ * writer sends the document again. */
+enum class MIKOtaConfigWrite {
+    kUnchanged,
+    kApplied,
+    kCleared,
+    kStaged,
+    kFailed,
+};
+
+const char* mik__ota_config_write_to_str(MIKOtaConfigWrite write);
+
+/* Deliver a document to the RUNNING release: the document it replaces becomes
+ * the rollback baseline, and a trial of `trial_boots` is armed, because a
+ * schema-valid value can still be fatal to the app. A NULL config, or one whose
+ * doc is absent, is the clear. */
+MIKOtaConfigWrite mik__ota_apply_running_config(const MIKOtaEnv* env,
+                                                const MIKOtaStoredConfig* config,
+                                                int trial_boots);
+
+/* Stage a document alongside an offered build: it was computed for that
+ * release, so it applies at its trial boot, with the build. A NULL config, or
+ * one whose doc is absent, stages the clear: the new release holds no document
+ * and its manifest defaults stand in. */
+void mik__ota_stage_next_config(const MIKOtaEnv* env, const MIKOtaStoredConfig* config);
+
+/* Deliver a document whose slot is not known from context, which is the case
+ * for a client that receives one over its own transport: the version stamp
+ * decides. Stamped for the running release it is applied, anything else is
+ * staged for the build it names. */
+MIKOtaConfigWrite mik__ota_deliver_config(const MIKOtaEnv* env, const MIKOtaStoredConfig* config,
+                                          int trial_boots);
+
+/* Settle a running-release trial on the health signal a completed check-in is.
+ * Adopts only once the app has READ the document: a check-in completing before
+ * the app ever ran with the new values proves nothing about them. Returns
+ * whether a trial was settled. */
+bool mik__ota_adopt_config_trial(const MIKOtaEnv* env);
 
 }  // namespace mikrojs

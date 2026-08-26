@@ -273,6 +273,57 @@ If a download stops, the device keeps the bytes that it received. On the next at
 `Range` header. Do not start from zero. The final verification hashes the whole staged
 file, so a resumed download is as safe as a fresh one.
 
+### Deliver device config
+
+A check-in response can carry a [config document](#device-config) as well as a build. Your
+client stores it with `ota.applyConfig`, and tells the registry what the device holds with
+`ota.configState`. Without those two calls the document has nowhere to go, and `ota.config()`
+serves the defaults of the build for as long as the device runs it.
+
+Put two fields in the check-in body. Both come from `ota.configState()`:
+
+```ts
+const state = ota.configState()
+
+const checkin = await myRegistry.checkIn({
+  running: ota.running(),
+  configRev: state.rev, // the registry serves its document when this differs
+  configError: state.error, // a document that failed its trial, reported until replaced
+})
+```
+
+Without `configRev` the registry serves the same document at every check-in. Without
+`configError` a document that took the device down is served again forever, and the operator
+never learns why.
+
+Store what came back:
+
+```ts
+const config = ota.parseConfig(body.config)
+if (config) {
+  const write = ota.applyConfig(config, {trialBoots: 4})
+  if (write === 'invalid' || write === 'failed') {
+    console.warn('ota: config not stored', write)
+  }
+}
+```
+
+`parseConfig` validates an untrusted value the way `parseOffer` validates an offer.
+`applyConfig` places the document by its `version` stamp: a document for the release the
+device runs is applied, and one for another release is staged for the build it names and
+applies when that build installs. The return value says which happened, and says when nothing
+did. See [the API reference](/api/ota#ota-applyconfig-config-options).
+
+A delivered document goes on trial, the same as one the built-in client delivers.
+`ota.confirm()` settles both trials: the build's and the document's. The config trial has one
+more gate. It settles only after the app has read the document with `ota.config()`. So read
+the config in the same cycle, or the trial waits for the cycle that does.
+
+Each boot whose first `ota.config()` read serves the document spends one trial boot. On a
+device that wakes from deep sleep, every wake is a boot. Raise `trialBoots` above the default
+of 1 when a check-in can fail for several cycles in a row, on a modem link or a solar power
+budget. Otherwise a single failed check-in rolls back a document that was fine.
+
 ### Timing
 
 `mikro/ota` has no timer. The caller decides when to check in and how to run the download.
@@ -451,6 +502,9 @@ crashes before a check-in completes, the device restores the previous document a
 trial boots run out, and reports the failed document to the registry as `configError`. The
 registry does not send the failed document again; the operator sees the report and corrects
 the values.
+
+A client that brings its own transport delivers documents itself, with `ota.applyConfig` and
+`ota.configState`. See [Deliver device config](#deliver-device-config).
 
 In development there is usually no registry in the loop: the app reads its schema defaults,
 which `mikro deploy` and `mikro dev` ship in the build's manifest. To run a device with
