@@ -185,7 +185,7 @@ CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
 
 # Use smaller cert bundle (common CAs only)
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
-# Deliberate deviation from IDF 6.0.2, which defaults this to n to save ~700 B
+# Deliberate deviation from IDF, which defaults this to n to save ~700 B
 # of heap. We need it: with n, esp_crt_bundle looks up only the top served
 # cert's issuer, so any chain that serves a cross-signed root fails outright.
 # That is ~2 in 5 real hosts, mostly Google Trust Services roots cross-signed
@@ -193,10 +193,5 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
 # Device-confirmed against registry.npmjs.org (MBEDTLS_ERR_X509_FATAL_ERROR,
 # -0x3000). Neither cross-signing root ships in the CMN or the full bundle, so
 # bundle selection is not an escape either.
-#
-# The cost on 6.0.2 is a leak: ~215 B of issuer-name copies per successful
-# handshake, ~10 KB/day at a 30-minute check-in cadence. Fixed upstream by
-# 0d8ff68f8a47 and a1f1d9072900, landing in an upcoming release. Until our
-# IDF floor gets there, patch IDF rather than turning this off.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
 

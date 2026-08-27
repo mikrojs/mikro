@@ -84,8 +84,8 @@ test.skipIf(!hasCmake())(
         'cmake_minimum_required(VERSION 3.22)',
         // Stand in for the variables ESP-IDF defines before project.cmake runs
         'set(IDF_VERSION_MAJOR 6)',
-        'set(IDF_VERSION_MINOR 0)',
-        'set(IDF_VERSION_PATCH 1)',
+        'set(IDF_VERSION_MINOR 1)',
+        'set(IDF_VERSION_PATCH 0)',
         'set(IDF_TARGET esp32s3)',
         'project(fixture NONE)',
         `include("${projectCmake}")`,
@@ -120,8 +120,8 @@ function makePartitionFixture(name) {
     [
       'cmake_minimum_required(VERSION 3.22)',
       'set(IDF_VERSION_MAJOR 6)',
-      'set(IDF_VERSION_MINOR 0)',
-      'set(IDF_VERSION_PATCH 1)',
+      'set(IDF_VERSION_MINOR 1)',
+      'set(IDF_VERSION_PATCH 0)',
       'set(IDF_TARGET esp32s3)',
       'project(fixture NONE)',
       `include("${projectCmake}")`,
