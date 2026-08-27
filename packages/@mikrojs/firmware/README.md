@@ -26,6 +26,6 @@ See the [Custom Firmware](https://mikrojs.dev/develop/custom-firmware) docs for 
 ## Requirements
 
 - Node.js >= 24
-- ESP-IDF >= 6.0.1 (installed via [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/))
+- ESP-IDF >= 6.1 (installed via [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/))
 
 To build, activate ESP-IDF in your shell first: run `eim select` and source the activation script it prints, then use `idf.py` as usual.

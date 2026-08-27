@@ -11,10 +11,10 @@ You can build custom firmware projects by depending on `@mikrojs/firmware` from 
 
 - [Node.js](https://nodejs.org/) >= 24
 - [pnpm](https://pnpm.io/) or npm
-- [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/) with ESP-IDF >= 6.0.1
+- [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/) with ESP-IDF >= 6.1
 
 ```sh
-eim install -i v6.0.2 -t all -n true
+eim install -i v6.1 -t all -n true
 ```
 
 ## Project structure
@@ -105,8 +105,8 @@ First activate ESP-IDF in your shell. With [EIM](https://docs.espressif.com/proj
 ```sh
 eim select
 # To activate this environment, run the following command in your terminal:
-# source ~/.espressif/tools/activate_idf_v6.0.2.sh
-source ~/.espressif/tools/activate_idf_v6.0.2.sh
+# source ~/.espressif/tools/activate_idf_v6.1.sh
+source ~/.espressif/tools/activate_idf_v6.1.sh
 ```
 
 Then install and build:
@@ -135,7 +135,7 @@ The firmware build needs `qjsc`, the QuickJS bytecode compiler, which is built b
 
 When you run `idf.py build`, the `project.cmake` included in your `CMakeLists.txt`:
 
-1. Validates ESP-IDF >= 6.0.1
+1. Validates ESP-IDF >= 6.1
 2. Resolves the `mikrojs` component from `@mikrojs/firmware`
 3. Scans your `package.json` dependencies for board/driver packages (via their `cmake.js` exports)
 4. Sets `EXTRA_COMPONENT_DIRS` to include all discovered components
