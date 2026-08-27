@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.18.2 (2026-08-27)
+
+### Features
+
+- **ota:** let an own-transport client deliver device config ([#337](https://github.com/mikrojs/mikro/pull/337))
+
+### Bug fixes
+
+- **firmware:** require esp-idf 6.1 ([#339](https://github.com/mikrojs/mikro/pull/339))
+- **native:** stop modules sharing data slots across runtimes ([#335](https://github.com/mikrojs/mikro/pull/335))
+
+### Other
+
+- **deps:** upgrade quickjs-ng to v0.16.2 ([#336](https://github.com/mikrojs/mikro/pull/336))
+
 ## 0.18.1 (2026-08-25)
 
 ### Features
