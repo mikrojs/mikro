@@ -2354,10 +2354,12 @@ describe('config sync', () => {
       const notJson = await publish(registry, {configSchema: '{nope'})
       expect(notJson.response.status).toBe(400)
 
+      // Must stay clear of the 32 KiB schema cap, or this falls through to the
+      // 4 KiB document cap and stops testing the limit it names.
       const huge = await publish(registry, {
         configSchema: JSON.stringify({
           kind: 'object',
-          shape: {pad: {kind: 'string', default: 'x'.repeat(20_000)}},
+          shape: {pad: {kind: 'string', default: 'x'.repeat(40_000)}},
         }),
       })
       expect(huge.response.status).toBe(400)
