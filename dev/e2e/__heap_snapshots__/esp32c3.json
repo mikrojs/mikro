@@ -54,12 +54,6 @@
     "test/udp.test.ts": {
       "heapDelta": 3520
     },
-    "test/wifi-e2e.test.ts": {
-      "heapDelta": 23544
-    },
-    "test/wifi-powersave.test.ts": {
-      "heapDelta": 23496
-    },
     "test/withUnload.test.ts": {
       "heapDelta": 6440
     }
