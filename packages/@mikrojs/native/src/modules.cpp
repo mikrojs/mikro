@@ -240,6 +240,21 @@ static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_n
     }
 
     if (strncmp(mikro_prefix, module_name, strlen(mikro_prefix)) == 0) {
+        /* C-backed mikro-prefixed modules (ported from bytecode builtins). Resolved
+         * here — after the virtual-module check, before bytecode builtins —
+         * so MIK_RegisterVirtualModule keeps documented precedence and
+         * runtimes that never import them pay nothing. */
+        static const struct {
+            const char* name;
+            JSModuleDef* (*load)(JSContext* ctx);
+        } c_modules[] = {
+            {"mikro/http/helpers", mik__http_helpers_load},
+            {"mikro/http/request", mik__http_request_load},
+            {"mikro/wifi", mik__wifi_client_load},
+        };
+        for (const auto& cm : c_modules) {
+            if (strcmp(cm.name, module_name) == 0) return cm.load(ctx);
+        }
         JSModuleDef* builtin_m = mik__load_builtin(ctx, module_name);
         if (builtin_m) return builtin_m;
         /* mik__load_builtin returns NULL either because the module isn't in
@@ -959,4 +974,55 @@ bool mik__is_unloadable_namespace(JSContext* ctx, JSValueConst ns) {
     bool ok = !mik__is_anchored_name(name);
     JS_FreeCString(ctx, name);
     return ok;
+}
+
+/* Load `specifier` through the module loader on behalf of `importer` and
+ * return its namespace. Goes through the loader (not the C-module table
+ * directly) so virtual-module overrides keep documented precedence.
+ *
+ * A PENDING evaluation promise is normal even for fully synchronous modules:
+ * quickjs-ng settles it through the job queue when this runs inside an outer
+ * module graph. Two invariants, picked by `require_evaluated`:
+ *  - false: the caller only stores the namespace or reads hoisted function
+ *    exports, which are safe from instantiation onward.
+ *  - true: the caller immediately reads or invokes const/class exports, so
+ *    the module body must have finished running (status EVALUATED); a module
+ *    parked in top-level await fails with a clear error instead of TDZ. */
+JSValue mik__load_module_ns(JSContext* ctx, const char* importer, const char* specifier,
+                            bool require_evaluated) {
+    JSAtom name = JS_NewAtom(ctx, specifier);
+    JSModuleDef* m = JS_FindLoadedModule(ctx, name);
+    if (!m) {
+        JSValue p = JS_LoadModule(ctx, importer, specifier);
+        if (JS_IsException(p)) {
+            /* Propagate the loader's real error (e.g. a syntax error in a
+             * virtual stub), not a generic not-available message. */
+            JS_FreeAtom(ctx, name);
+            return p;
+        }
+        if (JS_PromiseState(ctx, p) == JS_PROMISE_REJECTED) {
+            JSValue reason = JS_PromiseResult(ctx, p);
+            JS_PromiseMarkAsHandled(ctx, p);
+            JS_FreeValue(ctx, p);
+            JS_FreeAtom(ctx, name);
+            return JS_Throw(ctx, reason);
+        }
+        /* A PENDING promise (top-level-await stub) may still reject later;
+         * mark it handled so that surfaces as a load error, not as an
+         * unhandled-rejection report. Harmless for the fulfilled case. */
+        JS_PromiseMarkAsHandled(ctx, p);
+        JS_FreeValue(ctx, p);
+        m = JS_FindLoadedModule(ctx, name);
+    }
+    JS_FreeAtom(ctx, name);
+    if (!m) {
+        return JS_ThrowReferenceError(ctx, "Native module '%s' is not available", specifier);
+    }
+    /* 5 == EVALUATED; quickjs.h documents the numbering but exports no enum. */
+    if (require_evaluated && JS_GetModuleStatus(ctx, m) != 5) {
+        return JS_ThrowReferenceError(
+            ctx, "Module '%s' has not finished evaluating (top-level await is not supported here)",
+            specifier);
+    }
+    return JS_GetModuleNamespace(ctx, m);
 }

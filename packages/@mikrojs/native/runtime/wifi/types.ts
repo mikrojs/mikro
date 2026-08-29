@@ -1,3 +1,6 @@
+/* Type surface for mikro/wifi. On-device the module is the native
+ * implementation in src/mik_wifi_client.cpp (behavior pinned by
+ * test/wifi_client_test.cpp). */
 import type {Observable} from '../observable/types.js'
 import type {Result} from '../result/types.js'
 
