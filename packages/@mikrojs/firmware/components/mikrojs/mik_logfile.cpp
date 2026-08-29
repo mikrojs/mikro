@@ -5,6 +5,7 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <sys/stat.h>
@@ -18,11 +19,16 @@
 
 static const char* TAG = "mik_logfile";
 
-/* Static buffers — total ~1.5 KiB plus a FreeRTOS mutex. */
-static char s_line_buf[512];        /* current line being assembled */
-static char s_stdio_buf[1024];      /* setvbuf target for the FILE* */
-static char s_path_main[96];        /* "<dir>/log.txt"   */
-static char s_path_rot[100];        /* "<dir>/log.txt.1" */
+/* Log buffers (~1.7 KiB), heap-allocated in mik_logfile_init so boots
+ * without a configured log file don't carry them in BSS. Never freed once
+ * logging is enabled — suspend/resume reuse the paths and stdio buffer. */
+struct MIKLogBufs {
+    char line[512];      /* current line being assembled */
+    char stdio[1024];    /* setvbuf target for the FILE* */
+    char path_main[96];  /* "<dir>/log.txt"   */
+    char path_rot[100];  /* "<dir>/log.txt.1" */
+};
+static MIKLogBufs* s_bufs = nullptr;
 static SemaphoreHandle_t s_mtx = nullptr;
 static FILE* s_file = nullptr;
 static size_t s_file_size = 0;
@@ -67,11 +73,11 @@ static void rotate_if_needed() {
     if (s_file_size < s_max_size) return;
     fclose(s_file);
     s_file = nullptr;
-    unlink(s_path_rot);
-    rename(s_path_main, s_path_rot);
-    s_file = fopen(s_path_main, "a");
+    unlink(s_bufs->path_rot);
+    rename(s_bufs->path_main, s_bufs->path_rot);
+    s_file = fopen(s_bufs->path_main, "a");
     if (s_file) {
-        setvbuf(s_file, s_stdio_buf, _IOFBF, sizeof(s_stdio_buf));
+        setvbuf(s_file, s_bufs->stdio, _IOFBF, sizeof(s_bufs->stdio));
         s_file_size = 0;
     }
 }
@@ -84,9 +90,9 @@ static void emit_line() {
         s_line_has_ts = false;
         return;
     }
-    size_t n = fwrite(s_line_buf, 1, s_line_pos, s_file);
+    size_t n = fwrite(s_bufs->line, 1, s_line_pos, s_file);
     s_file_size += n;
-    bool is_err = line_is_error_level(s_line_buf, s_line_pos);
+    bool is_err = line_is_error_level(s_bufs->line, s_line_pos);
     if (s_flush_policy == MIK_LOG_FLUSH_LINE ||
         (s_flush_policy == MIK_LOG_FLUSH_ERROR && is_err)) {
         fflush(s_file);
@@ -99,17 +105,17 @@ static void emit_line() {
 /* Caller holds s_mtx. */
 static void append_byte(uint8_t c) {
     if (!s_line_has_ts) {
-        int n = format_timestamp(s_line_buf, sizeof(s_line_buf) - 1);
-        if (n < 0 || (size_t)n >= sizeof(s_line_buf) - 1) n = 0;
+        int n = format_timestamp(s_bufs->line, sizeof(s_bufs->line) - 1);
+        if (n < 0 || (size_t)n >= sizeof(s_bufs->line) - 1) n = 0;
         s_line_pos = (size_t)n;
         s_line_has_ts = true;
     }
-    if (s_line_pos < sizeof(s_line_buf) - 1) {
-        s_line_buf[s_line_pos++] = (char)c;
+    if (s_line_pos < sizeof(s_bufs->line) - 1) {
+        s_bufs->line[s_line_pos++] = (char)c;
     }
-    if (c == '\n' || s_line_pos >= sizeof(s_line_buf) - 1) {
-        if (s_line_pos == 0 || s_line_buf[s_line_pos - 1] != '\n') {
-            s_line_buf[s_line_pos++] = '\n';
+    if (c == '\n' || s_line_pos >= sizeof(s_bufs->line) - 1) {
+        if (s_line_pos == 0 || s_bufs->line[s_line_pos - 1] != '\n') {
+            s_bufs->line[s_line_pos++] = '\n';
         }
         emit_line();
     }
@@ -133,7 +139,7 @@ static void log_emit_tap(uint8_t msg_type, const void* data, size_t len) {
     for (size_t i = 0; i < len; i++) append_byte(p[i]);
     /* Ensure the line is closed even if the body lacks a trailing newline
      * (mik__repl_proto_send_output is called once per logical message). */
-    if (s_line_pos > 0 && s_line_buf[s_line_pos - 1] != '\n') {
+    if (s_line_pos > 0 && s_bufs->line[s_line_pos - 1] != '\n') {
         append_byte((uint8_t)'\n');
     }
     if (s_file && (msg_type == MIK_MSG_ERROR || msg_type == MIK_MSG_WARN ||
@@ -174,24 +180,35 @@ void mik_logfile_init(const MIKConfig* config) {
      * which is fine. */
     mkdir(config->log_dir, 0775);
 
-    if ((size_t)snprintf(s_path_main, sizeof(s_path_main), "%s/log.txt", config->log_dir) >=
-        sizeof(s_path_main)) {
+    s_bufs = static_cast<MIKLogBufs*>(calloc(1, sizeof(MIKLogBufs)));
+    if (!s_bufs) return;
+
+    if ((size_t)snprintf(s_bufs->path_main, sizeof(s_bufs->path_main), "%s/log.txt", config->log_dir) >=
+        sizeof(s_bufs->path_main)) {
         platform->log(MIK_LOG_WARN, TAG, "log dir path too long");
+        free(s_bufs);
+        s_bufs = nullptr;
         return;
     }
-    snprintf(s_path_rot, sizeof(s_path_rot), "%s.1", s_path_main);
+    snprintf(s_bufs->path_rot, sizeof(s_bufs->path_rot), "%s.1", s_bufs->path_main);
 
     s_mtx = xSemaphoreCreateMutex();
-    if (!s_mtx) return;
+    if (!s_mtx) {
+        free(s_bufs);
+        s_bufs = nullptr;
+        return;
+    }
 
-    s_file = fopen(s_path_main, "a");
+    s_file = fopen(s_bufs->path_main, "a");
     if (!s_file) {
         platform->log(MIK_LOG_WARN, TAG, "Could not open log file");
         vSemaphoreDelete(s_mtx);
         s_mtx = nullptr;
+        free(s_bufs);
+        s_bufs = nullptr;
         return;
     }
-    setvbuf(s_file, s_stdio_buf, _IOFBF, sizeof(s_stdio_buf));
+    setvbuf(s_file, s_bufs->stdio, _IOFBF, sizeof(s_bufs->stdio));
     fseek(s_file, 0, SEEK_END);
     long pos = ftell(s_file);
     s_file_size = pos > 0 ? (size_t)pos : 0;
@@ -221,9 +238,9 @@ void mik_logfile_resume(void) {
     if (!s_mtx) return;
     if (xSemaphoreTake(s_mtx, pdMS_TO_TICKS(100)) != pdTRUE) return;
     if (!s_file) {
-        s_file = fopen(s_path_main, "a");
+        s_file = fopen(s_bufs->path_main, "a");
         if (s_file) {
-            setvbuf(s_file, s_stdio_buf, _IOFBF, sizeof(s_stdio_buf));
+            setvbuf(s_file, s_bufs->stdio, _IOFBF, sizeof(s_bufs->stdio));
             fseek(s_file, 0, SEEK_END);
             long pos = ftell(s_file);
             s_file_size = pos > 0 ? (size_t)pos : 0;
@@ -239,12 +256,12 @@ void mik_logfile_reset(void) {
         fclose(s_file);
         s_file = nullptr;
     }
-    unlink(s_path_main);
-    unlink(s_path_rot);
+    unlink(s_bufs->path_main);
+    unlink(s_bufs->path_rot);
     /* Reopen the same path: unlinked, so this starts a fresh empty file. */
-    s_file = fopen(s_path_main, "a");
+    s_file = fopen(s_bufs->path_main, "a");
     if (s_file) {
-        setvbuf(s_file, s_stdio_buf, _IOFBF, sizeof(s_stdio_buf));
+        setvbuf(s_file, s_bufs->stdio, _IOFBF, sizeof(s_bufs->stdio));
         s_file_size = 0;
     }
     /* Drop any half-assembled line so a stale prefix doesn't bleed into
@@ -271,10 +288,10 @@ void mik_logfile_close(void) {
         s_prev_vprintf = nullptr;
     }
     if (s_line_pos > 0) {
-        if (s_line_buf[s_line_pos - 1] != '\n' && s_line_pos < sizeof(s_line_buf)) {
-            s_line_buf[s_line_pos++] = '\n';
+        if (s_bufs->line[s_line_pos - 1] != '\n' && s_line_pos < sizeof(s_bufs->line)) {
+            s_bufs->line[s_line_pos++] = '\n';
         }
-        if (s_file) fwrite(s_line_buf, 1, s_line_pos, s_file);
+        if (s_file) fwrite(s_bufs->line, 1, s_line_pos, s_file);
         s_line_pos = 0;
     }
     if (s_file) {
