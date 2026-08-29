@@ -374,9 +374,9 @@ export interface Ota {
    * `applyConfig`, with `trialBoots`), and validate the offer fields (exactly
    * `parseOffer(raw)`, with `allowInsecure`). An empty or null response is
    * the registry's quiet round: nothing to deliver, and the confirm still
-   * happens, which is the point of calling. A response that is anything else,
-   * a string or a number, never decoded (a captive portal's HTML, a proxy's
-   * error page), so it is not a completed round: nothing settles, and the
+   * happens, which is the point of calling. A response of any other shape
+   * never decoded: a captive portal handed back HTML, or a proxy sent an
+   * error page. That is not a completed round, so nothing settles and the
    * confirm does not run.
    *
    * Never call it on a failed request: a check-in that did not complete
