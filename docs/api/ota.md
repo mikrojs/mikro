@@ -333,6 +333,64 @@ After a rolled-back trial, `rev` is the failed document's rev rather than the re
 That is deliberate: the registry stops serving a document whose rev the device already echoes,
 which is what keeps a bad document from being sent again until an operator changes it.
 
+### ota.report()
+
+```ts
+report(): CheckinReport
+```
+
+The check-in body the device owes its registry, assembled: identity, [`running()`](#ota-running),
+the device name pair, free storage, a pending `lastInstall` report, and what
+[`configState()`](#ota-configstate) resolves. One call instead of gathering the fields by
+hand, and the same facts the built-in client sends. Field shapes match the wire, so a client
+(or the server proxying for it) can forward fields verbatim into `POST /api/v1/checkin`.
+
+```ts
+ota.reconcile()
+const checkin = await myRegistry.checkIn(ota.report())
+```
+
+Call [`reconcile()`](#ota-reconcile) first, on every boot: it is what surfaces the
+`lastInstall` report this reads. [`settle()`](#ota-settle-raw-options) marks the report
+delivered once a round completes; until then every `report()` carries it.
+
+### ota.settle(raw, options?)
+
+```ts
+settle(
+  raw: unknown,
+  options?: {trialBoots?: number; allowInsecure?: boolean},
+): SettleOutcome
+```
+
+Takes a **completed** check-in's response, whole. In order: confirms the running trial and a
+read config document's trial (exactly [`confirm()`](#ota-confirm)), adopts a delivered name
+pair, stores a delivered config document (exactly
+[`applyConfig`](#ota-applyconfig-config-options), with `trialBoots`), and validates the
+top-level offer fields (exactly [`parseOffer(raw)`](#ota-parseoffer-raw), with
+`allowInsecure`). An empty or null response is the registry's quiet round: nothing to
+deliver, and the confirm still happens, which is the point of calling. A response that is
+anything else, a string or a number, never decoded (a captive portal's HTML, a proxy's
+error page), so it is not a completed round: nothing settles, and the confirm does not run.
+
+Never call it on a failed request. A check-in that did not complete proves nothing about the
+running build, and settling it would keep exactly what rollback exists to catch.
+
+```ts
+if (checkin.ok) {
+  const {offer} = ota.settle(checkin.value, {trialBoots: 4})
+  const settings = ota.config() // read this cycle, so the config trial can settle
+  if (offer) {
+    const result = await ota.applyOffer(offer, download, {requireConfirm: true})
+    if (result.ok && result.value === 'staged') restart()
+  }
+}
+```
+
+What stays the app's: the download (`applyOffer` with the returned offer), the restart after
+`'staged'`, and reading `ota.config()` in the same cycle so a delivered document's trial can
+settle. See [SettleOutcome](#settleoutcome) for what the call reports back.
+
 ## Types
 
 ### Update
@@ -456,6 +514,41 @@ interface ConfigState {
 
 The two config fields a check-in body owes the registry, from
 [`configState()`](#ota-configstate). Send them as `configRev` and `configError`.
+
+### CheckinReport
+
+```ts
+interface CheckinReport {
+  deviceId: string
+  firmware: string // firmware version
+  firmwareHash: string
+  bytecode: number // QuickJS bytecode format version
+  running: RunningBuild
+  name: [rev: number, name?: string] // [rev] when never named or cleared
+  free?: number // free bytes on the user partition
+  lastInstall?: Diagnostic
+  configRev?: string
+  configError?: {rev: string; message: string}
+}
+```
+
+The check-in body, from [`report()`](#ota-report). The `name` pair is sent every round so a
+lost response settles on the next check-in. `free` is absent when the platform cannot say.
+
+### SettleOutcome
+
+```ts
+interface SettleOutcome {
+  offer?: Offer
+  config?: ConfigWrite
+  renamed: boolean
+}
+```
+
+What [`settle()`](#ota-settle-raw-options) took from the response. `offer` is validated and
+ready for `applyOffer`; absent when the response carried none. `config` reports what the
+document delivery did; only `'failed'` and `'invalid'` are worth logging. `renamed` says a
+name pair was adopted (a clear counts).
 
 ## Errors
 

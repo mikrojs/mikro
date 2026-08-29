@@ -17,6 +17,7 @@ export const otaClientBuiltin: BuiltinDefinition = {
 import {sysGet, sysRemove, sysSet} from 'native:mikro/nvs_kv'
 import {readFile} from 'mikro/fs'
 import {ok, err} from 'mikro/result'
+import {deviceId, deviceName, setDeviceName, firmware, version, storageUsage} from 'mikro/sys'
 
 const UNAVAILABLE = {
   status: 'failed',
@@ -207,7 +208,7 @@ function markConfigRead() {
 let current = {checksum: undefined, version: undefined, trial: false}
 let previous = undefined // rollback target
 let staged = undefined // {checksum} pending a next-boot install
-let report = {reverted: false} // pending reconcile report
+let pendingReport = {reverted: false} // pending reconcile report
 
 function install(checksum) {
   previous = current.checksum === undefined ? undefined : {checksum: current.checksum}
@@ -239,7 +240,7 @@ export function revert() {
   }
   current = {checksum: previous.checksum, version: current.version, trial: false}
   previous = undefined
-  report = {reverted: true}
+  pendingReport = {reverted: true}
   return ok()
 }
 
@@ -248,11 +249,11 @@ export function reconcile() {
   // the pending report.
   if (staged !== undefined) {
     install(staged.checksum)
-    report = {installed: staged.checksum, reverted: false}
+    pendingReport = {installed: staged.checksum, reverted: false}
     staged = undefined
   }
-  const out = report
-  report = {reverted: false}
+  const out = pendingReport
+  pendingReport = {reverted: false}
   return out
 }
 
@@ -299,12 +300,72 @@ export function applyOffer(offer, download, options) {
     const installNow = options !== undefined && options.install === 'now'
     if (installNow) {
       install(offer.checksum)
-      report = {installed: offer.checksum, reverted: false}
+      pendingReport = {installed: offer.checksum, reverted: false}
     } else {
       staged = {checksum: offer.checksum}
     }
     return ok('staged')
   })
+}
+
+// ── the check-in exchange, for a client with its own transport ───────────────
+// Mirrors the device (mik_ota_client_module.cpp): report() gathers the same
+// facts, settle() runs the same completed-round handling. The sim's
+// reconcile() never produces a lastInstall diagnostic, so report() omits it.
+
+export function report() {
+  const out = {
+    deviceId,
+    firmware: version,
+    firmwareHash: firmware.hash,
+    bytecode: firmware.bytecodeVersion,
+    running: running(),
+  }
+  const pair = deviceName()
+  out.name = pair.name === undefined ? [pair.rev] : [pair.rev, pair.name]
+  const usage = storageUsage()
+  if (usage !== undefined) out.free = usage.free
+  const state = configState()
+  if (state.rev !== undefined) out.configRev = state.rev
+  if (state.error !== undefined) out.configError = state.error
+  return out
+}
+
+export function settle(raw, options) {
+  const out = {renamed: false}
+  // Mirror the built-in's response guard: null/undefined is the registry's
+  // quiet round, an object is a decoded response — anything else is a body
+  // that never decoded (a captive portal's HTML). Not a completed round, so
+  // nothing settles: no confirm.
+  const quiet = raw === undefined || raw === null
+  const usable = typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+  if (!quiet && !usable) return out
+
+  // A completed check-in is the health signal both trials wait for; the
+  // confirm comes first so it settles the document held before this delivery,
+  // never the one about to be armed.
+  confirm()
+  if (!usable) return out
+
+  // The name pair: [rev] or [rev, name]. No key means "no change" and never
+  // "clear it"; junk in the pair is treated the same way. A rev is a
+  // non-negative int32, as the wire carries it.
+  const pair = raw.name
+  if (Array.isArray(pair) && Number.isInteger(pair[0]) && pair[0] >= 0 && pair[0] <= 0x7fffffff) {
+    const name = typeof pair[1] === 'string' && pair[1] !== '' ? pair[1] : undefined
+    setDeviceName(name === undefined ? {rev: pair[0]} : {rev: pair[0], name})
+    out.renamed = true
+  }
+
+  if (raw.config !== undefined && raw.config !== null) {
+    out.config = applyConfig(raw.config, options)
+  }
+
+  // The offer fields are top-level in the response, so the whole body goes to
+  // the parser, exactly as ota.parseOffer(body) would.
+  const offer = parseOffer(raw, options)
+  if (offer !== undefined) out.offer = offer
+  return out
 }
 `,
 }

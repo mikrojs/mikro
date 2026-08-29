@@ -17,8 +17,10 @@ import {
   parseOffer,
   reconcile,
   registry,
+  report,
   revert,
   running,
+  settle,
 } from 'native:mikro/ota_client'
 
 import type {Ota} from './types.js'
@@ -36,6 +38,8 @@ const ota: Ota = {
   parseConfig,
   applyConfig,
   configState,
+  report,
+  settle,
 }
 
 export {ota}

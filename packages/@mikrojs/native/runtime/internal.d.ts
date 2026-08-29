@@ -549,6 +549,8 @@ declare module 'native:mikro/ota_client' {
   export const parseConfig: Ota['parseConfig']
   export const applyConfig: Ota['applyConfig']
   export const configState: Ota['configState']
+  export const report: Ota['report']
+  export const settle: Ota['settle']
   export const confirm: Ota['confirm']
   export const revert: Ota['revert']
   export const bearer: Ota['bearer']
