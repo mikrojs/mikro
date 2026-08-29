@@ -384,10 +384,9 @@ void MIKOtaClient::Check(const MIKOtaCheckOptions& options, MIKOtaCheckSink sink
  * config — the floor is what bounds the damage a mistyped document can do. */
 constexpr uint32_t kMinCheckinIntervalMs = 30000;
 
-void MIKOtaClient::Watch(const MIKOtaWatchOptions& options) {
+bool MIKOtaClient::Watch(const MIKOtaWatchOptions& options) {
     if (!Enrollment(&watch_registry_url_, &watch_bearer_)) {
-        Log(MIK_LOG_INFO, "ota: device not enrolled; run `mikro ota enroll` to enable OTA updates");
-        return;
+        return false;
     }
     watch_options_ = options;
     if (watch_options_.checkin_interval_ms < kMinCheckinIntervalMs) {
@@ -402,6 +401,7 @@ void MIKOtaClient::Watch(const MIKOtaWatchOptions& options) {
     wait_started_ms_ = Now();
     deadline_ms_ = wait_started_ms_ + scheduled_delay_ms_;
     pending_wait_ = PendingWait::kInitial;
+    return true;
 }
 
 void MIKOtaClient::SetCheckinInterval(uint32_t interval_ms) {

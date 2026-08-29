@@ -14,6 +14,7 @@ export type {
   CheckOptions,
   CheckResult,
   DeclineReason,
+  NotEnrolledError,
   Teardown,
   Watcher,
   WatchOptions,
@@ -34,5 +35,8 @@ export const check = nativeCheck
  * the device after staging a build. Use `beforeCheck` to bring the network up
  * per round (its returned teardown runs after the round). Do not combine with
  * `check()` — the two modes are alternatives, one per app.
+ *
+ * Returns the watcher as a Result: an un-enrolled device gets an
+ * `err({name: 'NotEnrolled'})` and no loop is started.
  */
 export const watch = nativeWatch

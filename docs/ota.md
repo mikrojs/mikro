@@ -29,7 +29,7 @@ import * as otaClient from 'mikro/ota/client'
 import {restart} from 'mikro/sys'
 
 // Always-on app: check in the background, restart when a build is staged.
-otaClient.watch({checkinIntervalMs: 30 * 60_000})
+otaClient.watch({checkinIntervalMs: 30 * 60_000}).orPanic('device not enrolled')
 
 // Wake-cycle app: one check per wake; the app restarts on 'staged'.
 const checked = await otaClient.check({trialBoots: 3})
@@ -37,8 +37,9 @@ if (checked.status === 'staged') restart()
 ```
 
 The client does not connect the network. Start the network before a check, or per round with
-the `beforeCheck` hook of watch mode. On an un-enrolled device the client does nothing.
-Enrollment (below) is the opt-in. The [`ota/client` reference](/api/ota-client) covers the
+the `beforeCheck` hook of watch mode. An un-enrolled device gets an explicit answer instead
+of updates: `watch()` returns an `err` and starts no loop, and `check()` resolves to
+`{status: 'not-enrolled'}`. Enrollment (below) is the opt-in. The [`ota/client` reference](/api/ota-client) covers the
 options, the result type, and the
 [`trialBoots`](/api/ota-client#trialboots-on-a-wake-cycle) setting for wake-cycle apps.
 

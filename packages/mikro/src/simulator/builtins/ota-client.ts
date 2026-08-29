@@ -32,8 +32,15 @@ export function check() {
 }
 
 export function watch() {
+  // Mirrors the device contract: un-enrolled is a typed error, not a warning.
+  if (registry() === undefined || bearer() === undefined) {
+    return err({
+      name: 'NotEnrolled',
+      message: 'device not enrolled; run \`mikro ota enroll\` to enable OTA updates',
+    })
+  }
   console.warn('ota: watch() does nothing in the simulator; run this on a device')
-  return {stop: () => undefined, setCheckinInterval: () => undefined}
+  return ok({stop: () => undefined, setCheckinInterval: () => undefined})
 }
 
 export function config() {

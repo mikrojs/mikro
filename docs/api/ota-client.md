@@ -15,10 +15,11 @@ freshly installed build. It is the device half of the check-in protocol in the
 [registry spec](/registry-spec), speaking CBOR over HTTPS, and it sits on top of
 [`mikro/ota`](/api/ota), which stays available for apps that bring their own wire.
 
-An un-enrolled device is a no-op: enrollment (`mikro ota enroll`) is the opt-in, and the
-client reads the registry url and update key it provisioned. Connectivity is your app's
-business: the client never touches `mikro/wifi`; bring the network up before a check (or in
-the `beforeCheck` hook in watch mode).
+Enrollment (`mikro ota enroll`) is the opt-in: the client reads the registry url and update
+key it provisioned, and an un-enrolled device gets an explicit answer instead of updates —
+`check()` resolves to `{status: 'not-enrolled'}`, and `watch()` returns an `err` and starts
+no loop. Connectivity is your app's business: the client never touches `mikro/wifi`; bring
+the network up before a check (or in the `beforeCheck` hook in watch mode).
 
 There are two modes, one per app. Do not combine them: overlapping checks are queued one
 behind the other, but the two cadences fight over the same update state.
@@ -76,7 +77,7 @@ loudly, restarts, and checks again next cycle.
 ## otaClient.watch(options?) {#ota-watch-options}
 
 ```ts
-watch(options?: WatchOptions): Watcher
+watch(options?: WatchOptions): Result<Watcher, NotEnrolledError>
 ```
 
 Periodic update checks, for always-on apps: a detached background loop that runs a check on a
@@ -84,24 +85,31 @@ jittered cadence, retries sooner after a failed check, and **restarts the device
 after staging a build. It returns immediately; the loop never rejects, and a crashed check is
 contained and retried.
 
+The result is the watcher, or `err({name: 'NotEnrolled'})` on a device that has no
+enrollment pair, in which case no loop is started. That state is permanent for the boot
+(enrollment is written over the cable), so report it and move on; do not retry `watch()`:
+
 ```ts
 import * as otaClient from 'mikro/ota/client'
 
-otaClient.watch({checkinIntervalMs: 30 * 60_000})
+const watching = otaClient.watch({checkinIntervalMs: 30 * 60_000})
+if (!watching.ok) console.error('OTA updates are disabled:', watching.error)
 ```
 
 A device that powers its radio down between checks brings it up per round with `beforeCheck`.
 The hook returns the matching teardown, so everything the round needs lives in one scope:
 
 ```ts
-const watcher = otaClient.watch({
-  checkinIntervalMs: 30 * 60_000,
-  beforeCheck: async () => {
-    const conn = await wifi.connect({ssid, passphrase})
-    if (!conn.ok) return conn // round skipped, retried sooner
-    return () => wifi.disconnect() // teardown: runs after the round
-  },
-})
+otaClient
+  .watch({
+    checkinIntervalMs: 30 * 60_000,
+    beforeCheck: async () => {
+      const conn = await wifi.connect({ssid, passphrase})
+      if (!conn.ok) return conn // round skipped, retried sooner
+      return () => wifi.disconnect() // teardown: runs after the round
+    },
+  })
+  .orPanic('device not enrolled')
 ```
 
 Return whichever of these fits:
@@ -128,12 +136,14 @@ changes the config the running build reads, whether delivered or cleared by that
 applied by this boot's install or rollback, so an app does not have to poll for it:
 
 ```ts
-otaClient.watch({
-  beforeCheck: async () => {
-    /* ... */
-  },
-  onConfig: (config) => applySettings(config),
-})
+otaClient
+  .watch({
+    beforeCheck: async () => {
+      /* ... */
+    },
+    onConfig: (config) => applySettings(config),
+  })
+  .orPanic('device not enrolled')
 ```
 
 It is not called for a config staged alongside an offered build: that one applies at its
@@ -148,10 +158,12 @@ natural reboot.
 what a device does when the interval arrives from remote config:
 
 ```ts
-const watcher = otaClient.watch({
-  checkinIntervalMs: config.checkinInterval,
-  onConfig: (next) => watcher.setCheckinInterval(next.checkinInterval),
-})
+const watcher = otaClient
+  .watch({
+    checkinIntervalMs: config.checkinInterval,
+    onConfig: (next) => watcher.setCheckinInterval(next.checkinInterval),
+  })
+  .orPanic('device not enrolled')
 ```
 
 It is floored at 30s like `checkinIntervalMs`, and pulls `retryAfterFailureMs` down with it if

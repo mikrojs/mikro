@@ -86,7 +86,10 @@ npx mikro ota enroll
 ```
 
 Both land in the device's system store (`mik.sys`), where a deploy and `nvsStorage.clear()`
-leave them alone; the app reads them with `ota.registry()` and `ota.bearer()`. If the registry
+leave them alone; the app reads them with `ota.registry()` and `ota.bearer()`. On a device
+that is not enrolled yet, `otaClient.watch()` returns an error instead of a watcher; this
+app logs it (`OTA updates are disabled`) and keeps blinking, and enrolling plus a restart
+turns updates on. If the registry
 ever answers a check-in with 401 (update key rotated, device deleted), re-enroll with
 `mikro ota enroll --re-enroll`; update keys never travel over the network.
 

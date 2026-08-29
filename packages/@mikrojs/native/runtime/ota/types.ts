@@ -468,6 +468,11 @@ export interface WatchOptions extends CheckOptions {
   onConfig?(config: RegisteredConfig): void
 }
 
+/** `watch()` on a device with no enrollment pair (registry url + update key) in
+ *  the system store. Permanent for this boot: enrollment is provisioned over
+ *  the cable by `mikro ota enroll`, and a restart is what picks it up. */
+export type NotEnrolledError = {name: 'NotEnrolled'; message: string}
+
 export interface Watcher {
   /** Prevent future rounds and cancel the pending sleep. An in-flight round
    *  completes, but a build it stages no longer auto-restarts: it stays armed

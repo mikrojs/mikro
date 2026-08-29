@@ -301,7 +301,17 @@ JSValue mik__ota_client_watch(JSContext* ctx, JSValue this_val, int argc, JSValu
         }
     }
 
-    state->client->Watch(options);
+    if (!state->client->Watch(options)) {
+        /* Enrollment is written over the cable, so nothing this boot does can
+         * make a later round succeed. Drop the hooks installed above and hand
+         * the app a typed error instead of an inert watcher. */
+        state->hooks.reset();
+        JS_FreeValue(ctx, state->on_config);
+        state->on_config = JS_UNDEFINED;
+        return mik__result_err_named(
+            ctx, "NotEnrolled",
+            "device not enrolled; run `mikro ota enroll` to enable OTA updates");
+    }
     state->watching = true;
 
     JSValue handle = JS_NewObject(ctx);
@@ -310,7 +320,7 @@ JSValue mik__ota_client_watch(JSContext* ctx, JSValue this_val, int argc, JSValu
     JS_SetPropertyStr(
         ctx, handle, "setCheckinInterval",
         JS_NewCFunction(ctx, mik__ota_client_set_interval, "setCheckinInterval", 1));
-    return handle;
+    return mik__result_ok(ctx, handle);
 }
 
 // ── the policy surface (mikro/ota) ──────────────────────────────────────────

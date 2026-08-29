@@ -9,13 +9,15 @@ import type {
   CheckOptions,
   CheckResult,
   DeclineReason,
+  NotEnrolledError,
   Teardown,
   Watcher,
   WatchOptions,
 } from '@mikrojs/native/runtime/ota/types'
+import type {Result} from '@mikrojs/native/runtime/result/types'
 
 export declare function check(options?: CheckOptions): Promise<CheckResult>
-export declare function watch(options?: WatchOptions): Watcher
+export declare function watch(options?: WatchOptions): Result<Watcher, NotEnrolledError>
 
 export type {
   BeforeCheckResult,
@@ -23,6 +25,7 @@ export type {
   CheckOptions,
   CheckResult,
   DeclineReason,
+  NotEnrolledError,
   Teardown,
   Watcher,
   WatchOptions,
