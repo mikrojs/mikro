@@ -1,7 +1,12 @@
 import type {Result} from '../result/types.js'
 
 export interface MemoryUsage {
+  /** Bytes allocated from the JS heap. On device this counts real
+   *  allocator block sizes (requested bytes rounded up to the heap's
+   *  granularity), so it reflects what the heap actually spends; small
+   *  run-to-run variation is normal. */
   heapUsed: number
+  /** The JS heap's configured memory limit in bytes. */
   heapTotal: number
   /** Free system heap in bytes (0 on host) */
   systemFree: number
