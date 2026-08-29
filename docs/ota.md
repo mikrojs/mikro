@@ -442,13 +442,28 @@ Read the effective config with [`ota.config()`](/api/ota#ota-config):
 
 ```ts
 // app/ota.config.ts: one definition types the reads and renders the registry form
-import {number, object, string, union, literal} from 'mikro/schema'
+import {enumOf, number, object, string} from 'mikro/schema'
 import type {InferRead} from 'mikro/schema'
 
 export const ConfigSchema = object({
-  interval: number({default: 60}),
-  logLevel: union([literal('debug'), literal('info'), literal('warn')], {default: 'info'}),
-  endpoint: string(),
+  interval: number({
+    title: 'Check-in interval',
+    description: 'How often the device asks the registry for work.',
+    unit: 's',
+    default: 60,
+    min: 30,
+    max: 3600,
+    integer: true,
+  }),
+  logLevel: enumOf(
+    [
+      {value: 'debug', title: 'Debug', description: 'Verbose; not for production.'},
+      {value: 'info', title: 'Info'},
+      {value: 'warn', title: 'Warning'},
+    ],
+    {default: 'info'},
+  ),
+  endpoint: string({title: 'Endpoint', format: 'url'}),
 })
 
 // Types ota.config() app-wide; see the ota API reference.
@@ -466,6 +481,19 @@ export default defineConfig({
   otaConfigSchema: ConfigSchema,
 })
 ```
+
+The annotations are what make the operator's form usable rather than a list of field names:
+`title` and `description` label a field, `unit` says what the number means, and `min`, `max`,
+`integer`, `maxLength` and `format` bound what can be saved. [`enumOf`](/api/schema#enumof-entries)
+gives a closed choice list a label per value. `mask` marks a field a form should not show in
+cleartext, though it grants no protection beyond that. See [Annotations](/api/schema#annotations)
+for the full set.
+
+**Constraints are checked where config is written**, by the registry when an operator saves a value
+and by `mikro ota pack` when your defaults are serialized. They are not checked by
+[`parse()`](/api/schema#parse) on the device, which validates structure only, because a config
+schema never reaches a device. Bounds keep an operator from saving a value your board cannot
+survive; they are not a runtime guard inside your app.
 
 `mikro ota pack` serializes the schema into the build, together with the defaults it
 materializes: every field a default covers, and nothing else. A registry that implements config
@@ -491,7 +519,9 @@ with no default withholds the release from a device until an operator sets a val
 
 A delivered document goes on trial, like an installed build: the device keeps the previous
 document until the next completed check-in after the app has read the new one. A value can
-pass the schema and still break the app, say a GPIO number the board does not have. If the app
+pass the schema and still break the app, say a GPIO number the board does not have. Bounds narrow
+that window but cannot close it: a usable GPIO set differs per chip and one schema is authored for
+every chip an app targets, so `min` and `max` on a pin are an approximation. If the app
 crashes before a check-in completes, the device restores the previous document after the
 trial boots run out, and reports the failed document to the registry as `configError`. The
 registry does not send the failed document again; the operator sees the report and corrects

@@ -9,7 +9,13 @@ import {loadMikroConfig} from './loadMikroConfig.js'
 
 /** Config schemas over this size are a mistake; matches the registry spec's
  *  publish cap. */
-const CONFIG_SCHEMA_MAX_BYTES = 16 * 1024
+/* The schema is host-side only and never reaches a device, so this bounds
+ * registry storage rather than anything on the wire to a board. Raised from 16
+ * KiB when descriptions arrived: at the per-string ingest caps a fully
+ * annotated field costs roughly 610 bytes, which left only about 22 usable
+ * fields. The 4 KiB effective-document cap below is the one that governs device
+ * NVS and is deliberately unchanged. */
+const CONFIG_SCHEMA_MAX_BYTES = 32 * 1024
 
 /** The registry spec's cap on a served config document (the device parses it
  *  out of a fixed check-in response buffer and stores it in NVS). Enforced at

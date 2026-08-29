@@ -66,6 +66,12 @@ Create a handle to a named value. Without a schema, values are untyped (`unknown
 
 Values are [CBOR](/api/cbor)-encoded. Supported schema types: `s.number()`, `s.string()`, `s.boolean()`, `s.unknown()`, `s.optional()`, `s.array()`, `s.tuple()`, and `s.object()`. See [schema](/api/schema) for details.
 
+::: warning Constraints are not checked here
+[Constraints](/api/schema#constraints) are checked on the host: by a registry when an operator saves device config, and by `mikro ota pack`. They are not checked on the device. So `s.number({max: 100})` on a stored value will not reject 500 here, and neither will `format`, `minLength` or the other bounds. If you need a bound at runtime, check it in your own code.
+
+Types, structure and required fields are checked normally.
+:::
+
 ```ts twoslash
 import {nvsStorage} from 'mikro/kv/nvs'
 import {rtcStorage} from 'mikro/kv/rtc'

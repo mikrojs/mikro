@@ -4,6 +4,7 @@ import {
   applyDefaults,
   array,
   boolean,
+  enumOf,
   literal,
   number,
   object,
@@ -360,6 +361,25 @@ describe('schema', () => {
       })
     })
 
+    it('stores title, description and mask as node properties', () => {
+      expect(string({title: 'API key', description: 'Issued by the broker', mask: true})).toEqual({
+        kind: 'string',
+        title: 'API key',
+        description: 'Issued by the broker',
+        mask: true,
+      })
+      expect(object({a: string()}, {title: 'Broker'}) as unknown).toEqual({
+        kind: 'object',
+        shape: {a: {kind: 'string'}},
+        title: 'Broker',
+      })
+    })
+
+    it('omits annotations that were not written', () => {
+      expect(string({title: 'Host'})).toEqual({kind: 'string', title: 'Host'})
+      expect(Object.hasOwn(string({title: 'Host'}), 'description')).toBe(false)
+    })
+
     it('serializes to JSON as-is', () => {
       const schema = object({interval: number({default: 60}), key: string()})
       expect(JSON.parse(JSON.stringify(schema))).toEqual(schema)
@@ -373,6 +393,72 @@ describe('schema', () => {
 
     it('rejects optional() around a default', () => {
       expect(() => optional(string({default: 'x'}))).toThrow(TypeError)
+    })
+  })
+
+  describe('constraints are not checked here', () => {
+    /* core validate() is structure only. Constraints are enforced host-side by
+     * validateConfig in shared.ts: they exist for config schemas, which are
+     * validated where the registry runs and where the CLI packs, and never on
+     * the device this module ships to. See shared.test.ts for the enforcement
+     * tests, and core.ts's comment on validate() for why. */
+    it('accepts a value outside its declared bounds', () => {
+      expect(parse(number({min: 0, max: 30}), 200).ok).toBe(true)
+      expect(parse(number({integer: true}), 1.5).ok).toBe(true)
+      expect(parse(string({maxLength: 4}), 'toolong').ok).toBe(true)
+      expect(parse(string({format: 'ipv4'}), 'nope').ok).toBe(true)
+      expect(parse(array(string(), {maxItems: 1}), ['a', 'b']).ok).toBe(true)
+    })
+
+    it('still stores the constraint on the node for a host to read', () => {
+      expect(number({min: 0, max: 30, integer: true})).toEqual({
+        kind: 'number',
+        min: 0,
+        max: 30,
+        integer: true,
+      })
+      expect(string({format: 'url'})).toEqual({kind: 'string', format: 'url'})
+    })
+
+    it('accepts a default a constraint would reject, which pack catches', () => {
+      expect(() => number({default: 200, max: 30})).not.toThrow()
+      // The shape of a default is still checked here.
+      expect(() => number({default: 'x' as never})).toThrow(TypeError)
+    })
+
+    it('still checks structure', () => {
+      expect(parse(number({min: 0}), 'x').ok).toBe(false)
+      expect(parse(string({maxLength: 4}), 7).ok).toBe(false)
+    })
+  })
+
+  describe('enumOf', () => {
+    it('builds a union of titled literals', () => {
+      const schema = enumOf([
+        {value: 'debug', title: 'Debug'},
+        {value: 'info', title: 'Info', description: 'The default'},
+      ])
+      expect(schema as unknown).toEqual({
+        kind: 'union',
+        members: [
+          {kind: 'literal', value: 'debug', title: 'Debug'},
+          {kind: 'literal', value: 'info', title: 'Info', description: 'The default'},
+        ],
+      })
+    })
+
+    it('validates like the union it is', () => {
+      const schema = enumOf([
+        {value: 8, title: 'GPIO 8'},
+        {value: 9, title: 'GPIO 9'},
+      ])
+      expect(parse(schema, 8).ok).toBe(true)
+      expect(parse(schema, 7).ok).toBe(false)
+    })
+
+    it('carries a default and rejects one outside the list', () => {
+      expect(enumOf([{value: 'a'}, {value: 'b'}], {default: 'b'}).default).toBe('b')
+      expect(() => enumOf([{value: 'a'}], {default: 'z' as never})).toThrow(TypeError)
     })
   })
 

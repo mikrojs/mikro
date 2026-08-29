@@ -45,7 +45,11 @@ const CHECKSUM_RE = /^[0-9a-f]{64}$/
 const UTF8 = new TextEncoder()
 
 /** Publish cap on the serialized config schema (spec, "The config schema"). */
-const MAX_CONFIG_SCHEMA_BYTES = 16 * 1024
+// Host-side only, so this bounds registry storage, not anything a device
+// holds. Must move with the CLI's cap and the spec: unlike a constraint, which
+// an older registry merely fails to enforce, a lower cap here hard-rejects a
+// schema a conforming CLI accepted.
+const MAX_CONFIG_SCHEMA_BYTES = 32 * 1024
 /** Cap on the encoded EFFECTIVE config document: the device materializes it
  *  by spreading the served overlay over its manifest defaults, and it is what
  *  its JS heap then holds (spec, "Serving safely"). Enforced where the
@@ -515,7 +519,22 @@ export function createRegistry(options: RegistryOptions): Registry {
       storedSchema !== undefined &&
       !structuralEquals(storedSchema.schema, configSchema)
     ) {
-      return error(`Release ${app}@${version} already exists with a different config schema`, 409)
+      // Name the difference. Annotations made this reachable by editing one
+      // word of a description, and a bare "different config schema" leaves the
+      // author with nothing to look at. An empty diff does not mean the change
+      // was cosmetic: the taxonomy is deliberately silent for safe changes too,
+      // such as an added defaulted field or a loosened bound, and those still
+      // differ structurally and land here.
+      const detail = diffConfigSchemas(storedSchema.schema as Schema, configSchema as Schema)
+      const because =
+        detail.length > 0
+          ? `: ${detail.join('; ')}`
+          : ' (no incompatible changes detected; annotations and safe additions' +
+            ' change release identity too)'
+      return error(
+        `Release ${app}@${version} already exists with a different config schema${because}`,
+        409,
+      )
     }
 
     // Store the build without serving it. A build is only served once a channel

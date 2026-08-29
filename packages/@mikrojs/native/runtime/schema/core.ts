@@ -7,32 +7,208 @@ function err<E>(error: E) {
   return {ok: false as const, error}
 }
 
+/* Declared outright rather than derived from the factory with ReturnType. The
+ * `as const` this replaces existed for the `name` literal type, but it also made
+ * every field readonly, which stopped the type reducing against structurally
+ * equal error unions elsewhere (kv's KVError carries the same ValidationFailed
+ * shape) and broke contextual typing at those call sites. */
+export type SchemaError = {name: 'ValidationFailed'; message: string; path: string}
 export const SchemaError = {
-  ValidationFailed: (message: string, path: string) =>
-    ({name: 'ValidationFailed', message, path}) as const,
+  ValidationFailed: (message: string, path: string): SchemaError => ({
+    name: 'ValidationFailed',
+    message,
+    path,
+  }),
 }
-export type SchemaError = ReturnType<typeof SchemaError.ValidationFailed>
 
 // ── Schema types ────────────────────────────────────────────────────
 
 type Primitive = string | number | boolean
+
+/* A closed set of string shapes, deliberately not a caller-supplied regex: a
+ * registry validates operator input against a published schema, so a pattern
+ * from a publisher would be a denial-of-service vector on the registry (one
+ * catastrophic-backtracking expression from anyone who can publish). These are
+ * ours, fixed, and linear.
+ *
+ * `url` means any parseable absolute URL with a scheme, not http and https
+ * only: mqtt:// and ws:// are ordinary device-config values. A scheme
+ * allowlist is not expressible, which is the gap that would justify extending
+ * this. ipv6 is deliberately absent: no demand, and it is the one shape whose
+ * check is large enough to be worth its own decision. */
+export type Format = 'url' | 'hostname' | 'ipv4' | 'mac' | 'email'
+
+/* The unit an operator sees beside a number, and the one the app reads: the
+ * annotation describes the stored value and never converts it.
+ *
+ * The set is the IANA SenML Units and Secondary Units registries, which is the
+ * right basis rather than an invention of ours: ASCII by construction, scoped
+ * to constrained devices, and already built on the two-tier model this needs,
+ * where a secondary unit derives from a primary by scale and offset. Adopted
+ * wholesale, minus the entries SenML marks NOT RECOMMENDED for new producers
+ * (we are a new producer), plus the microcontroller units its secondary
+ * registry lacks -- it is telemetry-shaped, so it has no us, kHz, mW, uA, mAh,
+ * MiB, kohm or Bd.
+ *
+ * Two deliberate departures, both documented in docs/registry-spec.md:
+ * `deg` is kept despite its NOT RECOMMENDED marking, because an operator types
+ * degrees and not radians; `d` for day is dropped, because a bare `d` is the
+ * SI deci- prefix and RFC 8428 guideline 7 forbids standalone prefix letters.
+ *
+ * Note SenML's `%` is NOT a percentage -- it is a synonym for the ratio `/`,
+ * and the RFC says so explicitly. It is excluded, so a 0-100 field uses `/100`,
+ * which a form renders as `%`. */
+export type Unit =
+  | 'm'
+  | 'kg'
+  | 's'
+  | 'A'
+  | 'K'
+  | 'cd'
+  | 'mol'
+  | 'Hz'
+  | 'rad'
+  | 'sr'
+  | 'N'
+  | 'Pa'
+  | 'J'
+  | 'W'
+  | 'C'
+  | 'V'
+  | 'F'
+  | 'Ohm'
+  | 'S'
+  | 'Wb'
+  | 'T'
+  | 'H'
+  | 'Cel'
+  | 'lm'
+  | 'lx'
+  | 'Bq'
+  | 'Gy'
+  | 'Sv'
+  | 'kat'
+  | 'm2'
+  | 'm3'
+  | 'm/s'
+  | 'm/s2'
+  | 'm3/s'
+  | 'W/m2'
+  | 'cd/m2'
+  | 'bit'
+  | 'bit/s'
+  | 'lat'
+  | 'lon'
+  | 'pH'
+  | 'dB'
+  | 'dBW'
+  | 'count'
+  | '/'
+  | '%RH'
+  | '%EL'
+  | 'EL'
+  | '1/s'
+  | 'S/m'
+  | 'B'
+  | 'VA'
+  | 'VAs'
+  | 'var'
+  | 'vars'
+  | 'J/m'
+  | 'kg/m3'
+  | 'deg'
+  | 'NTU'
+  | 'ms'
+  | 'min'
+  | 'h'
+  | 'MHz'
+  | 'kW'
+  | 'kVA'
+  | 'kvar'
+  | 'Ah'
+  | 'Wh'
+  | 'kWh'
+  | 'varh'
+  | 'kvarh'
+  | 'kVAh'
+  | 'Wh/km'
+  | 'KiB'
+  | 'GB'
+  | 'Mbit/s'
+  | 'B/s'
+  | 'MB/s'
+  | 'mV'
+  | 'mA'
+  | 'dBm'
+  | 'ug/m3'
+  | 'mm/h'
+  | 'm/h'
+  | 'ppm'
+  | '/100'
+  | '/1000'
+  | 'hPa'
+  | 'mm'
+  | 'cm'
+  | 'km'
+  | 'km/h'
+  | 'ppb'
+  | 'ppt'
+  | 'VAh'
+  | 'mg/l'
+  | 'ug/l'
+  | 'g/l'
+  | 'us'
+  | 'kHz'
+  | 'GHz'
+  | 'mW'
+  | 'uA'
+  | 'uV'
+  | 'mAh'
+  | 'MiB'
+  | 'kB'
+  | 'MB'
+  | 'kbit/s'
+  | 'KiB/s'
+  | 'kohm'
+  | 'Mohm'
+  | 'kPa'
+  | 'bar'
+  | 'Bd'
 
 /* The `default` annotation is stored as an extra node property so a schema
  * serializes to JSON as-is; it is typed precisely on the constructor options
  * and loosely on the node, which keeps Infer free of recursive
  * instantiations. */
 
-export interface StringSchema {
+/* Display annotations, carried by every node a form can render. They never
+ * change what validates, so a consumer that does not render a form ignores
+ * them. Not on optional(): the wrapper expresses absence, the node it wraps
+ * expresses identity, so annotations go on the inner. */
+interface Annotated {
+  readonly title?: string
+  readonly description?: string
+}
+
+export interface StringSchema extends Annotated {
   readonly kind: 'string'
   readonly default?: string
+  readonly mask?: boolean
+  readonly minLength?: number
+  readonly maxLength?: number
+  readonly format?: Format
 }
 
-export interface NumberSchema {
+export interface NumberSchema extends Annotated {
   readonly kind: 'number'
   readonly default?: number
+  readonly mask?: boolean
+  readonly min?: number
+  readonly max?: number
+  readonly integer?: boolean
+  readonly unit?: Unit
 }
 
-export interface BooleanSchema {
+export interface BooleanSchema extends Annotated {
   readonly kind: 'boolean'
   readonly default?: boolean
 }
@@ -41,19 +217,23 @@ export interface UnknownSchema {
   readonly kind: 'unknown'
 }
 
-export interface LiteralSchema<T extends Primitive = Primitive> {
+export interface LiteralSchema<T extends Primitive = Primitive> extends Annotated {
   readonly kind: 'literal'
   readonly value: T
   readonly default?: T
 }
 
-export interface ArraySchema<S extends Schema = Schema> {
+export interface ArraySchema<S extends Schema = Schema> extends Annotated {
   readonly kind: 'array'
   readonly element: S
   readonly default?: unknown
+  readonly minItems?: number
+  readonly maxItems?: number
 }
 
-export interface ObjectSchema<Shape extends Record<string, Schema> = Record<string, Schema>> {
+export interface ObjectSchema<
+  Shape extends Record<string, Schema> = Record<string, Schema>,
+> extends Annotated {
   readonly kind: 'object'
   readonly shape: Shape
 }
@@ -63,13 +243,17 @@ export interface OptionalSchema<S extends Schema = Schema> {
   readonly inner: S
 }
 
-export interface TupleSchema<Elements extends readonly Schema[] = readonly Schema[]> {
+export interface TupleSchema<
+  Elements extends readonly Schema[] = readonly Schema[],
+> extends Annotated {
   readonly kind: 'tuple'
   readonly elements: Elements
   readonly default?: unknown
 }
 
-export interface UnionSchema<Members extends readonly Schema[] = readonly Schema[]> {
+export interface UnionSchema<
+  Members extends readonly Schema[] = readonly Schema[],
+> extends Annotated {
   readonly kind: 'union'
   readonly members: Members
   readonly default?: unknown
@@ -78,7 +262,7 @@ export interface UnionSchema<Members extends readonly Schema[] = readonly Schema
 export interface TaggedUnionSchema<
   Key extends string = string,
   Branches extends Record<string, ObjectSchema> = Record<string, ObjectSchema>,
-> {
+> extends Annotated {
   readonly kind: 'taggedUnion'
   readonly key: Key
   readonly branches: Branches
@@ -190,12 +374,48 @@ type InferReadObject<Shape> = {
 
 // ── Schema constructors ─────────────────────────────────────────────
 
-export interface ScalarOptions<T> {
+/* Display annotations every constructor accepts. Structural arguments stay
+ * positional; annotations trail. */
+export interface DisplayOptions {
+  readonly title?: string
+  readonly description?: string
+}
+
+export interface ScalarOptions<T> extends DisplayOptions {
   readonly default?: T
 }
 
-export interface DefaultOption<T> {
+export interface DefaultOption<T> extends DisplayOptions {
   readonly default?: T
+}
+
+/* `mask` says: do not display this value in cleartext. A form renders a
+ * password input, and any other consumer that prints a config document
+ * redacts. It is a display rule and nothing more: the value is stored,
+ * transmitted and held on the device in plaintext exactly as any other. */
+export interface MaskableOptions<T> extends ScalarOptions<T> {
+  readonly mask?: boolean
+}
+
+/* Constraints, unlike the display annotations, change what validates. A
+ * consumer may ignore an annotation it does not recognise; it may not ignore
+ * one of these, since doing so means accepting a value the author ruled out. */
+export interface StringOptions<T> extends MaskableOptions<T> {
+  readonly minLength?: number
+  readonly maxLength?: number
+  readonly format?: Format
+}
+
+export interface NumberOptions<T> extends MaskableOptions<T> {
+  readonly min?: number
+  readonly max?: number
+  readonly integer?: boolean
+  readonly unit?: Unit
+}
+
+export interface ArrayOptions<T> extends DefaultOption<T> {
+  readonly minItems?: number
+  readonly maxItems?: number
 }
 
 /* A node interface types `default` as optional, so a defaulted node and a bare
@@ -228,11 +448,47 @@ function rejectInnerDefaults(node: Schema, path: string, unit: string, self: str
   }
 }
 
-/* Copies the annotation onto the node and rejects a `default` the node itself
- * would not accept, so a bad default fails where it is written. */
-function annotate<S extends Schema>(node: S, options?: {default?: unknown}): S {
+/* Copies the annotations onto the node and rejects a `default` whose *shape*
+ * the node would not accept, so an obviously wrong default fails where it is
+ * written. Annotations live on the node so a schema serializes to JSON as-is.
+ *
+ * Constraints are deliberately not checked here, because validate() below does
+ * not carry them: see its comment. A default that breaks its own bound is
+ * caught by parseConfigSchema in shared.ts, which runs when the config is
+ * packed, moments after this. */
+const ANNOTATION_KEYS = [
+  'title',
+  'description',
+  'mask',
+  'minLength',
+  'maxLength',
+  'min',
+  'max',
+  'integer',
+  'minItems',
+  'maxItems',
+  'format',
+  'unit',
+] as const
+
+/* Every annotation any constructor accepts. Interfaces have no index
+ * signature, so the copy below reads through a Record view of this. */
+type AnyOptions = DisplayOptions &
+  Partial<
+    Record<'mask' | 'integer', boolean> &
+      Record<'minLength' | 'maxLength' | 'min' | 'max' | 'minItems' | 'maxItems', number> & {
+        default: unknown
+      }
+  >
+
+function annotate<S extends Schema>(node: S, options?: AnyOptions): S {
   if (options === undefined) return node
-  const out = node as {default?: unknown}
+  const out = node as unknown as Record<string, unknown>
+  const src = options as Record<string, unknown>
+  for (let i = 0; i < ANNOTATION_KEYS.length; i++) {
+    const key = ANNOTATION_KEYS[i]!
+    if (src[key] !== undefined) out[key] = src[key]
+  }
   if (options.default !== undefined) {
     out.default = options.default
     const result = validate(node, options.default, '')
@@ -244,13 +500,13 @@ function annotate<S extends Schema>(node: S, options?: {default?: unknown}): S {
 }
 
 export function string<D extends string | undefined = undefined>(
-  options?: ScalarOptions<D>,
+  options?: StringOptions<D>,
 ): Defaulted<StringSchema, D> {
   return annotate<StringSchema>({kind: 'string'}, options) as Defaulted<StringSchema, D>
 }
 
 export function number<D extends number | undefined = undefined>(
-  options?: ScalarOptions<D>,
+  options?: NumberOptions<D>,
 ): Defaulted<NumberSchema, D> {
   return annotate<NumberSchema>({kind: 'number'}, options) as Defaulted<NumberSchema, D>
 }
@@ -277,7 +533,7 @@ export function literal<T extends Primitive, D extends T | undefined = undefined
 
 export function array<S extends Schema, D extends NoInfer<Infer<S>>[] | undefined = undefined>(
   element: S,
-  options?: DefaultOption<D>,
+  options?: ArrayOptions<D>,
 ): Defaulted<ArraySchema<S>, D> {
   rejectInnerDefaults(element, '[]', 'an array', 'the array')
   return annotate<ArraySchema<S>>({kind: 'array', element}, options) as Defaulted<ArraySchema<S>, D>
@@ -292,7 +548,7 @@ export function object<Shape extends Record<string, Schema>>(
       "an object's defaults compose from its fields; declare defaults on the fields",
     )
   }
-  return {kind: 'object', shape}
+  return annotate<ObjectSchema<Shape>>({kind: 'object', shape}, options)
 }
 
 export function tuple<
@@ -326,6 +582,40 @@ export function union<
     UnionSchema<Members>,
     D
   >
+}
+
+/* A closed list of values with a label for each, which is what a form renders
+ * as a select or a radio group.
+ *
+ * Sugar, not a node kind: it builds a union of annotated literals, so nothing
+ * downstream has to learn about it. parseConfigSchema already rejects an empty
+ * union, and diffConfigSchemas already reports a removed member as requiring an
+ * operator, which is exactly what a dropped choice is.
+ *
+ * Use union([literal(...)]) directly when the values need no labels; labels are
+ * the whole point of this one. Named enumOf because `enum` is a reserved word:
+ * an export called `enum` could not be imported under its own name. */
+export interface EnumEntry<T extends Primitive> {
+  readonly value: T
+  readonly title?: string
+  readonly description?: string
+}
+
+type EnumMembers<Entries extends readonly EnumEntry<Primitive>[]> = {
+  [K in keyof Entries]: LiteralSchema<Entries[K]['value']>
+}
+
+export function enumOf<
+  const Entries extends readonly EnumEntry<Primitive>[],
+  D extends Entries[number]['value'] | undefined = undefined,
+>(entries: Entries, options?: DefaultOption<D>): Defaulted<UnionSchema<EnumMembers<Entries>>, D> {
+  const members = entries.map((entry) =>
+    literal(entry.value, {title: entry.title, description: entry.description}),
+  ) as unknown as EnumMembers<Entries>
+  return annotate<UnionSchema<EnumMembers<Entries>>>(
+    {kind: 'union', members},
+    options,
+  ) as Defaulted<UnionSchema<EnumMembers<Entries>>, D>
 }
 
 export function taggedUnion<
@@ -404,6 +694,19 @@ function typeOf(value: unknown): string {
   return typeof value
 }
 
+/* Structure only: the shape of a value, never a constraint on it.
+ *
+ * Constraints (min, max, integer, minLength, maxLength, minItems, maxItems,
+ * format) are enforced host-side in shared.ts, not here. This module is bundled
+ * into the device, and a config schema never reaches a device: it is validated
+ * where the registry runs and where the CLI packs. Carrying the checks here
+ * charged every app that imports mikro/schema for enforcement it could not use,
+ * measured at about 4 KB of heap on the `+ schema` bench checkpoint, most of it
+ * the format expressions.
+ *
+ * The cost of that split, stated plainly: parse() on the device checks that a
+ * number is a number, not that it is within its declared bounds. Constraints in
+ * a schema are a config-authoring feature. */
 export function validate(
   schema: Schema,
   value: unknown,

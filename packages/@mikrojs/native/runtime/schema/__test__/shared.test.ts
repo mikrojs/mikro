@@ -9,6 +9,7 @@ import {
   optional,
   string,
   taggedUnion,
+  tuple,
   union,
 } from '../schema.js'
 import {
@@ -18,6 +19,8 @@ import {
   parseConfigSchema,
   parseEffective,
   structuralEquals,
+  UNITS,
+  validateConfig,
 } from '../shared.js'
 
 const config = object({
@@ -229,6 +232,276 @@ describe('parseConfigSchema', () => {
   })
 })
 
+describe('parseConfigSchema annotations', () => {
+  const withNode = (node: unknown) => parseConfigSchema({kind: 'object', shape: {x: node}})
+  const message = (result: ReturnType<typeof parseConfigSchema>) =>
+    result.ok ? '' : result.error.message
+
+  it('accepts title, description and mask', () => {
+    const result = withNode({kind: 'string', title: 'Host', description: 'Broker host'})
+    expect(result.ok).toBe(true)
+    expect(withNode({kind: 'string', mask: true}).ok).toBe(true)
+    expect(withNode({kind: 'number', mask: false}).ok).toBe(true)
+  })
+
+  it('rejects non-string, empty and oversized annotation text', () => {
+    expect(message(withNode({kind: 'string', title: 7}))).toContain('title must be a string')
+    expect(message(withNode({kind: 'string', title: ''}))).toContain('must not be empty')
+    expect(message(withNode({kind: 'string', title: 'a'.repeat(81)}))).toContain('longer than 80')
+    expect(message(withNode({kind: 'string', description: 'a'.repeat(501)}))).toContain(
+      'longer than 500',
+    )
+  })
+
+  it('rejects annotations on the optional() wrapper', () => {
+    const result = parseConfigSchema({
+      kind: 'object',
+      shape: {x: {kind: 'optional', inner: {kind: 'string'}, title: 'Nope'}},
+    })
+    expect(message(result)).toContain('cannot carry a title')
+  })
+
+  it('rejects mask where it means nothing, and mask with a default', () => {
+    expect(message(withNode({kind: 'boolean', mask: true}))).toContain(
+      'only allowed on string() and number()',
+    )
+    expect(message(withNode({kind: 'string', mask: 'yes'}))).toContain('mask must be a boolean')
+    expect(message(withNode({kind: 'string', mask: true, default: 'hunter2'}))).toContain(
+      'masked field cannot carry a default',
+    )
+    // mask: false is the ordinary state and says nothing about defaults.
+    expect(withNode({kind: 'string', mask: false, default: 'anything'}).ok).toBe(true)
+  })
+})
+
+describe('parseConfigSchema constraints', () => {
+  const withNode = (node: unknown) => parseConfigSchema({kind: 'object', shape: {x: node}})
+  const message = (result: ReturnType<typeof parseConfigSchema>) =>
+    result.ok ? '' : result.error.message
+
+  it('accepts constraints on the kind that has them', () => {
+    expect(withNode({kind: 'number', min: 0, max: 30, integer: true}).ok).toBe(true)
+    expect(withNode({kind: 'string', minLength: 1, maxLength: 8}).ok).toBe(true)
+    expect(withNode({kind: 'array', element: {kind: 'string'}, maxItems: 4}).ok).toBe(true)
+  })
+
+  it('rejects a constraint on a kind that has no such thing', () => {
+    expect(message(withNode({kind: 'string', min: 1}))).toContain('min is not allowed on string()')
+    expect(message(withNode({kind: 'number', maxLength: 1}))).toContain('not allowed on number()')
+    expect(message(withNode({kind: 'boolean', integer: true}))).toContain(
+      'integer is not allowed on boolean()',
+    )
+  })
+
+  it('rejects malformed constraint values', () => {
+    expect(message(withNode({kind: 'number', min: 'x'}))).toContain('must be a finite number')
+    expect(message(withNode({kind: 'string', maxLength: -1}))).toContain(
+      'non-negative whole number',
+    )
+    expect(message(withNode({kind: 'string', maxLength: 1.5}))).toContain(
+      'non-negative whole number',
+    )
+    expect(message(withNode({kind: 'number', integer: 'yes'}))).toContain(
+      'integer must be a boolean',
+    )
+  })
+
+  it('rejects a default outside its own bounds, which the constructor no longer can', () => {
+    // core.ts dropped the constraint checks, so this is the check that catches
+    // it, and it runs when the config is packed.
+    const message = (node: unknown) => {
+      const result = parseConfigSchema({kind: 'object', shape: {x: node}})
+      return result.ok ? '' : result.error.message
+    }
+    expect(message({kind: 'number', max: 30, default: 200})).toContain('above the maximum of 30')
+    expect(message({kind: 'number', integer: true, default: 1.5})).toContain('whole number')
+    expect(message({kind: 'string', minLength: 1, default: ''})).toContain('shorter than 1')
+    expect(message({kind: 'string', format: 'ipv4', default: 'nope'})).toContain('not a valid ipv4')
+  })
+
+  it('rejects an inverted range and a default outside its bounds', () => {
+    expect(message(withNode({kind: 'number', min: 10, max: 5}))).toContain(
+      'min is greater than max',
+    )
+    expect(message(withNode({kind: 'number', max: 30, default: 200}))).toContain(
+      'above the maximum of 30',
+    )
+  })
+})
+
+describe('parseConfigSchema format', () => {
+  const withNode = (node: unknown) => parseConfigSchema({kind: 'object', shape: {x: node}})
+  const message = (result: ReturnType<typeof parseConfigSchema>) =>
+    result.ok ? '' : result.error.message
+
+  it('accepts every known format', () => {
+    for (const format of ['url', 'hostname', 'ipv4', 'mac', 'email']) {
+      expect(withNode({kind: 'string', format}).ok).toBe(true)
+    }
+  })
+
+  it('fails closed on an unknown format rather than ignoring it', () => {
+    const result = withNode({kind: 'string', format: 'ipv6'})
+    expect(result.ok).toBe(false)
+    expect(message(result)).toContain('unknown format "ipv6"')
+    expect(message(result)).toContain('known: url, hostname, ipv4, mac, email')
+  })
+
+  it('rejects format on a kind that has no string to check', () => {
+    expect(message(withNode({kind: 'number', format: 'url'}))).toContain(
+      'format is not allowed on number()',
+    )
+  })
+})
+
+describe('the unit table', () => {
+  it('has an ASCII key for every entry, which is what keeps identity stable', () => {
+    // The keys are hashed into the config rev and compared with structuralEquals.
+    // A non-ASCII key would be rewritten by any NFKC pass (micro sign decomposes
+    // to Greek mu, superscript two to a digit) and an unchanged republish would
+    // 409 with nothing to show for it.
+    for (const key of Object.keys(UNITS)) {
+      expect(key).toMatch(/^[\x20-\x7e]+$/)
+    }
+  })
+
+  it('resolves every secondary unit to a primary that is itself in the table', () => {
+    for (const [key, def] of Object.entries(UNITS)) {
+      expect(UNITS[def.primary], `${key} derives from ${def.primary}`).toBeDefined()
+      expect(UNITS[def.primary]!.primary).toBe(def.primary)
+      if (def.primary === key) expect(def.scale).toBe(1)
+    }
+  })
+
+  it('carries the SenML derivations the registry states', () => {
+    expect(UNITS.ms).toMatchObject({primary: 's', scale: 1 / 1000, offset: 0})
+    expect(UNITS.h).toMatchObject({primary: 's', scale: 3600})
+    expect(UNITS.KiB).toMatchObject({primary: 'B', scale: 1024})
+    // dBm is the reason the table carries an offset at all.
+    expect(UNITS.dBm).toMatchObject({primary: 'dBW', scale: 1, offset: -30})
+    // mAh chains to the primary C, not to the secondary Ah.
+    expect(UNITS.mAh).toMatchObject({primary: 'C', scale: 3.6})
+    expect(UNITS['KiB/s']).toMatchObject({primary: 'bit/s', scale: 8192})
+  })
+
+  it('renders a symbol where the ASCII key is not what a person reads', () => {
+    expect(UNITS.Cel.symbol).toBe('\u00b0C')
+    expect(UNITS.us.symbol).toBe('\u00b5s')
+    expect(UNITS.Ohm.symbol).toBe('\u03a9')
+    // SenML's `%` means a 0-1 ratio, not a percentage, so it is excluded and a
+    // 0-100 field uses `/100`, which renders as `%`.
+    expect(UNITS['/100'].symbol).toBe('%')
+    expect(Object.hasOwn(UNITS, '%')).toBe(false)
+    // The dimensionless units are named `/` and `count`; an empty symbol means
+    // render the number with no suffix, since "0.8 /" says nothing.
+    expect(UNITS['/'].symbol).toBe('')
+    expect(UNITS.count.symbol).toBe('')
+  })
+
+  it('omits a bare `d`, which is the SI deci- prefix', () => {
+    expect(Object.hasOwn(UNITS, 'd')).toBe(false)
+    expect(Object.hasOwn(UNITS, 'h')).toBe(true)
+  })
+})
+
+describe('parseConfigSchema unit', () => {
+  const withNode = (node: unknown) => parseConfigSchema({kind: 'object', shape: {x: node}})
+  const message = (result: ReturnType<typeof parseConfigSchema>) =>
+    result.ok ? '' : result.error.message
+
+  it('accepts a known unit on a number', () => {
+    expect(withNode({kind: 'number', unit: 'ms'}).ok).toBe(true)
+    expect(withNode({kind: 'number', unit: 'Cel'}).ok).toBe(true)
+  })
+
+  it('fails closed on an unknown unit and on the wrong kind', () => {
+    expect(message(withNode({kind: 'number', unit: 'furlong'}))).toContain('unknown unit')
+    expect(message(withNode({kind: 'number', unit: '%'}))).toContain('unknown unit')
+    expect(message(withNode({kind: 'string', unit: 'ms'}))).toContain(
+      'unit is not allowed on string()',
+    )
+  })
+})
+
+describe('validateConfig', () => {
+  const check = (schema: Parameters<typeof validateConfig>[0], value: unknown) =>
+    validateConfig(schema, value)
+  const why = (schema: Parameters<typeof validateConfig>[0], value: unknown) => {
+    const result = validateConfig(schema, value)
+    return result.ok ? '' : result.error.message
+  }
+
+  it('bounds a number by min, max and integer', () => {
+    const pin = number({min: 0, max: 30, integer: true})
+    expect(check(pin, 15).ok).toBe(true)
+    expect(check(pin, 200).ok).toBe(false)
+    expect(check(pin, -1).ok).toBe(false)
+    expect(check(pin, 1.5).ok).toBe(false)
+    expect(why(number({min: 5, max: 10}), 200)).toBe('above the maximum of 10')
+    expect(why(number({min: 5}), 1)).toBe('below the minimum of 5')
+    expect(why(number({integer: true}), 1.5)).toBe('expected a whole number, got 1.5')
+  })
+
+  it('bounds a string by length and shape', () => {
+    const ssid = string({minLength: 1, maxLength: 4})
+    expect(check(ssid, 'home').ok).toBe(true)
+    expect(check(ssid, '').ok).toBe(false)
+    expect(check(ssid, 'toolong').ok).toBe(false)
+    expect(why(string({format: 'ipv4'}), 'nope')).toBe('not a valid ipv4')
+  })
+
+  it('accepts any url scheme, and checks the other formats', () => {
+    expect(check(string({format: 'url'}), 'mqtt://broker.local:1883').ok).toBe(true)
+    expect(check(string({format: 'url'}), 'ws://10.0.0.1/socket').ok).toBe(true)
+    expect(check(string({format: 'url'}), 'example.com').ok).toBe(false)
+    expect(check(string({format: 'hostname'}), 'broker.local').ok).toBe(true)
+    expect(check(string({format: 'hostname'}), '-bad.local').ok).toBe(false)
+    expect(check(string({format: 'ipv4'}), '192.168.1.10').ok).toBe(true)
+    expect(check(string({format: 'ipv4'}), '256.1.1.1').ok).toBe(false)
+    expect(check(string({format: 'mac'}), 'a4:cf:12:9b:00:01').ok).toBe(true)
+    expect(check(string({format: 'mac'}), 'a4:cf:12:9b:00').ok).toBe(false)
+    expect(check(string({format: 'email'}), 'ops@example.com').ok).toBe(true)
+    expect(check(string({format: 'email'}), 'nope@nodot').ok).toBe(false)
+  })
+
+  it('bounds an array and reaches constraints nested inside containers', () => {
+    expect(check(array(string(), {minItems: 1, maxItems: 2}), ['a']).ok).toBe(true)
+    expect(check(array(string(), {minItems: 1}), []).ok).toBe(false)
+    expect(check(array(number({max: 10})), [1, 99]).ok).toBe(false)
+    expect(why(object({a: object({b: number({max: 1})})}), {a: {b: 9}})).toBe(
+      'above the maximum of 1',
+    )
+    expect(check(optional(number({max: 1})), undefined).ok).toBe(true)
+    expect(check(optional(number({max: 1})), 9).ok).toBe(false)
+  })
+
+  it('reports the path of the field that broke its bound', () => {
+    const result = validateConfig(object({pwm: object({duty: number({max: 1})})}), {
+      pwm: {duty: 5},
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.path).toBe('.pwm.duty')
+  })
+
+  it('accepts a value any union member allows, not just the first that fits', () => {
+    // Structural validation accepts what any member accepts, so the constraint
+    // pass has to agree. 150 matches the first member's shape and breaks its
+    // bound, but the second member exists for exactly that value.
+    const schema = union([number({min: 0, max: 10}), number({min: 100, max: 200})])
+    expect(check(schema, 5).ok).toBe(true)
+    expect(check(schema, 150).ok).toBe(true)
+    expect(check(schema, 50).ok).toBe(false)
+    // With one member, the specific bound message survives.
+    expect(why(union([number({max: 10})]), 50)).toBe('above the maximum of 10')
+  })
+
+  it('still fails on structure, and leaves unconstrained nodes alone', () => {
+    expect(check(number({min: 0}), 'x').ok).toBe(false)
+    expect(check(number(), -1e9).ok).toBe(true)
+    expect(check(string(), '').ok).toBe(true)
+  })
+})
+
 describe('deriveOverlay', () => {
   it('returns undefined when nothing deviates from defaults', () => {
     expect(deriveOverlay(config, {interval: 60, logLevel: 'info'})).toBeUndefined()
@@ -312,6 +585,159 @@ describe('diffConfigSchemas', () => {
     apiKey: string({default: ''}),
     label: optional(string()),
     mode: union([literal('a'), literal('b')], {default: 'a'}),
+  })
+
+  it('gates on a tightened bound and stays silent on a loosened one', () => {
+    const before = object({interval: number({default: 60, min: 0, max: 3600})})
+    const tighter = object({interval: number({default: 60, min: 30, max: 300})})
+    const warnings = diffConfigSchemas(before, tighter)
+    expect(warnings).toEqual([
+      'requires an operator: .interval raised min (stored overrides may no longer validate)',
+      'requires an operator: .interval lowered max (stored overrides may no longer validate)',
+    ])
+    expect(diffConfigSchemas(tighter, before)).toEqual([])
+  })
+
+  it('gates on a newly added bound and on a new whole-number requirement', () => {
+    const before = object({pin: number({default: 8})})
+    expect(diffConfigSchemas(before, object({pin: number({default: 8, max: 30})}))).toEqual([
+      'requires an operator: .pin added max (stored overrides may no longer validate)',
+    ])
+    expect(diffConfigSchemas(before, object({pin: number({default: 8, integer: true})}))).toEqual([
+      'requires an operator: .pin now requires a whole number ' +
+        '(stored overrides may no longer validate)',
+    ])
+  })
+
+  it('does not mistake a constraint change for a changed type', () => {
+    const before = object({name: string({default: 'a'})})
+    const after = object({name: string({default: 'a', maxLength: 8})})
+    expect(diffConfigSchemas(before, after).join(' ')).not.toContain('changed type')
+  })
+
+  it('gates on a new or changed format, and reports it as a format change', () => {
+    const before = object({broker: string({default: 'mqtt://localhost'})})
+    const added = object({broker: string({default: 'mqtt://localhost', format: 'url'})})
+    expect(diffConfigSchemas(before, added)).toEqual([
+      'requires an operator: .broker now requires format "url" ' +
+        '(stored overrides may no longer validate)',
+    ])
+    // Dropping a format only widens what validates.
+    expect(diffConfigSchemas(added, before)).toEqual([])
+    // And it must not read as a changed type, which would also return early.
+    expect(diffConfigSchemas(before, added).join(' ')).not.toContain('changed type')
+  })
+
+  it('gates on a bound tightened inside an array element or a tuple position', () => {
+    // The walk recurses through object shapes only, so without an explicit
+    // descent a stranded override here would carry no operator gate at all.
+    const beforeArray = object({levels: array(number({max: 10}))})
+    const afterArray = object({levels: array(number({max: 5}))})
+    expect(diffConfigSchemas(beforeArray, afterArray)).toEqual([
+      'requires an operator: .levels[] lowered max (stored overrides may no longer validate)',
+    ])
+
+    const beforeTuple = object({range: tuple([number(), number({max: 100})])})
+    const afterTuple = object({range: tuple([number(), number({max: 10})])})
+    expect(diffConfigSchemas(beforeTuple, afterTuple)).toEqual([
+      'requires an operator: .range[1] lowered max (stored overrides may no longer validate)',
+    ])
+
+    // Loosening inside an element stays silent, like everywhere else.
+    expect(diffConfigSchemas(afterArray, beforeArray)).toEqual([])
+  })
+
+  it('reaches a bound tightened on an object nested inside a container', () => {
+    // array-of-objects is an ordinary config shape, and the stranded-override
+    // scenario is the same as for a bare element with one more level of nesting.
+    const before = object({peers: array(object({port: number({max: 65535})}))})
+    const after = object({peers: array(object({port: number({max: 1024})}))})
+    expect(diffConfigSchemas(before, after)).toEqual([
+      'requires an operator: .peers[].port lowered max (stored overrides may no longer validate)',
+    ])
+    expect(diffConfigSchemas(after, before)).toEqual([])
+  })
+
+  it('reaches a bound tightened inside a taggedUnion branch, and does not call it a type change', () => {
+    const before = object({
+      net: taggedUnion('mode', {
+        dhcp: object({retries: number({max: 10})}),
+        static: object({host: string()}),
+      }),
+    })
+    const after = object({
+      net: taggedUnion('mode', {
+        dhcp: object({retries: number({max: 3})}),
+        static: object({host: string()}),
+      }),
+    })
+    const warnings = diffConfigSchemas(before, after)
+    expect(warnings).toEqual([
+      'requires an operator: .net.dhcp.retries lowered max ' +
+        '(stored overrides may no longer validate)',
+    ])
+    expect(warnings.join(' ')).not.toContain('changed type')
+  })
+
+  it('reports a nested object field once, not once per level', () => {
+    const before = object({mqtt: object({port: number({max: 65535})})})
+    const after = object({mqtt: object({port: number({max: 1024})})})
+    expect(diffConfigSchemas(before, after)).toEqual([
+      'requires an operator: .mqtt.port lowered max (stored overrides may no longer validate)',
+    ])
+  })
+
+  it('gates when one of two same-shaped members goes, which membership alone misses', () => {
+    // Both members strip to {kind: 'number'}, so asking whether a member of
+    // that shape survives answers yes even though the 100-200 range has gone
+    // and any override in it is now stranded.
+    const before = object({level: union([number({min: 0, max: 10}), number({min: 100, max: 200})])})
+    const after = object({level: union([number({min: 0, max: 10})])})
+    expect(diffConfigSchemas(before, after)).toEqual([
+      'requires an operator: .level removed 1 union member(s) ' +
+        '(stored overrides using them no longer validate)',
+    ])
+    // Adding one back is a widening, and stays silent.
+    expect(diffConfigSchemas(after, before)).toEqual([])
+  })
+
+  it('still gates on a removed member of a distinct shape', () => {
+    const before = object({level: union([number(), string()])})
+    const after = object({level: union([number()])})
+    expect(diffConfigSchemas(before, after)).toEqual([
+      'requires an operator: .level removed 1 union member(s) ' +
+        '(stored overrides using them no longer validate)',
+    ])
+  })
+
+  it('does not read a loosened bound in a union member as a removed member', () => {
+    const before = object({level: union([number({max: 10}), string()])})
+    const after = object({level: union([number({max: 100}), string()])})
+    expect(diffConfigSchemas(before, after)).toEqual([])
+    // Tightening the same member still gates.
+    expect(diffConfigSchemas(after, before)).toEqual([
+      'requires an operator: .level|0 lowered max (stored overrides may no longer validate)',
+    ])
+  })
+
+  it('gates on a changed unit, which silently reinterprets stored values', () => {
+    const before = object({interval: number({default: 60, unit: 's'})})
+    const after = object({interval: number({default: 60, unit: 'ms'})})
+    expect(diffConfigSchemas(before, after)).toEqual([
+      'requires an operator: .interval changed unit from "s" to "ms" ' +
+        '(stored values are reinterpreted)',
+    ])
+    expect(diffConfigSchemas(before, after).join(' ')).not.toContain('changed type')
+  })
+
+  it('is silent when only display annotations change', () => {
+    const relabelled = object({
+      interval: number({default: 60, title: 'Poll interval', description: 'How often'}),
+      apiKey: string({default: '', title: 'API key', mask: true}),
+      label: optional(string()),
+      mode: union([literal('a'), literal('b')], {default: 'a', title: 'Mode'}),
+    })
+    expect(diffConfigSchemas(v1, relabelled)).toEqual([])
   })
 
   it('is silent for safe changes', () => {

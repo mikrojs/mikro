@@ -24,6 +24,70 @@ describe('serializeConfigSchema', () => {
   })
 })
 
+describe('annotations through the pack path', () => {
+  // Mirrors examples/ota/app/ota.config.ts, which is the schema this feature
+  // exists for. Written as a plain AST rather than importing the constructors
+  // so the test also covers what an untrusted serialized schema must survive.
+  const annotated = {
+    otaConfigSchema: {
+      kind: 'object',
+      title: 'Blinky',
+      shape: {
+        pin: {
+          kind: 'number',
+          title: 'LED pin',
+          description: 'GPIO the LED is wired to.',
+          default: 15,
+          min: 0,
+          max: 30,
+          integer: true,
+        },
+        broker: {kind: 'string', format: 'url', mask: false, default: 'mqtt://localhost'},
+        interval: {kind: 'number', unit: 'ms', default: 400},
+      },
+    },
+  }
+
+  it('carries every annotation into the serialized schema', () => {
+    const serialized = serializeConfigSchema(annotated as never) as {
+      shape: Record<string, Record<string, unknown>>
+      title: string
+    }
+    expect(serialized.title).toBe('Blinky')
+    expect(serialized.shape.pin).toMatchObject({
+      title: 'LED pin',
+      description: 'GPIO the LED is wired to.',
+      min: 0,
+      max: 30,
+      integer: true,
+    })
+    expect(serialized.shape.broker).toMatchObject({format: 'url'})
+    expect(serialized.shape.interval).toMatchObject({unit: 'ms'})
+  })
+
+  it('keeps annotations out of configDefaults, which is what the device reads', () => {
+    const defaults = buildConfigDefaults(serializeConfigSchema(annotated as never))
+    expect(defaults).toEqual({pin: 15, broker: 'mqtt://localhost', interval: 400})
+  })
+
+  it('rejects a schema whose default breaks its own constraint', () => {
+    const bad = {
+      otaConfigSchema: {
+        kind: 'object',
+        shape: {pin: {kind: 'number', default: 200, max: 30}},
+      },
+    }
+    expect(() => serializeConfigSchema(bad as never)).toThrow(/above the maximum of 30/)
+  })
+
+  it('rejects an unrecognised constraint value rather than dropping it', () => {
+    const bad = {
+      otaConfigSchema: {kind: 'object', shape: {x: {kind: 'string', format: 'ipv6'}}},
+    }
+    expect(() => serializeConfigSchema(bad as never)).toThrow(/unknown format/)
+  })
+})
+
 describe('writeDevManifest', () => {
   let dir: string
   let buildDir: string
