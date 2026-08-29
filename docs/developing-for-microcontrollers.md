@@ -32,16 +32,17 @@ Usage:
 | ----------------------------- | --------------------------------------- |
 | Runtime startup               | ~75-80 KB (fixed)                       |
 | Each imported module          | ~1 KB+ per module, more for larger ones |
-| WiFi connection               | ~40 KB                                  |
-| HTTPS request (TLS handshake) | ~40-50 KB on top                        |
+| WiFi connection               | ~35 KB while the radio is up            |
+| HTTP request                  | ~20-25 KB during the request            |
+| HTTPS request (TLS handshake) | ~25-40 KB during the handshake, on top  |
 | Your app code                 | Proportional to size                    |
 
-WiFi + HTTPS is the biggest consumer. A simple blinky uses almost nothing, but a WiFi app doing HTTPS can leave you with only ~100KB free.
+WiFi + HTTPS is the biggest consumer. A simple blinky uses almost nothing, but a WiFi app doing HTTPS can leave you with only ~100KB free. The request and handshake costs are transient: they come back once the response is read, so the numbers to add up are the WiFi steady cost plus the largest burst your app produces.
 
 ### Practical tips
 
 - Connect to WiFi once and stay connected, rather than reconnecting per request.
-- Talk to local endpoints over plain HTTP when RAM is scarce. TLS costs 40-50 KB per handshake.
+- Talk to local endpoints over plain HTTP when RAM is scarce. TLS costs up to ~40 KB per handshake.
 - Concatenating strings in a loop allocates a new string every iteration. Push to an array and `.join()` once.
 - Load modules only when you need them, with a dynamic import:
 
@@ -103,6 +104,11 @@ export default defineConfig({
 - **Don't go below ~8 KB.** Native subsystems always need some room.
 
 If JavaScript runs out of memory, you get an `InternalError`. It's catchable, but the handler runs with almost no memory left, so the realistic options are logging a short pre-built message and restarting. If the system heap runs out (native code), you get a hard reset. The reserve keeps these from happening at the same time.
+
+Two things worth knowing about how the reserve works:
+
+- `memReserved` is measured once, against free heap at boot. It covers the native subsystems' future demand from that point, and it caps how much JavaScript may allocate; it does not partition the heap, and native code is not held to it.
+- Treat it as choosing which side runs out first, not as a hard guarantee. JavaScript hits its limit with a catchable error while native subsystems keep their room to work. Large native bursts (a TLS handshake, a WiFi reconnect) are transient, which is why the 64 KB default is enough for most network apps even though the subsystems' combined peak can exceed it.
 
 ### Finding memory issues
 

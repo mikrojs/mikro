@@ -376,16 +376,42 @@ void MIK_Main(void) {
 
     /* Create JS runtime — reserve heap for WiFi, TLS, HTTP, LittleFS, and other
      * ESP-IDF subsystems that allocate after the runtime is created.
-     * WiFi + lwIP ≈ 50-65 KB, TLS ≈ 40 KB, HTTP task ≈ 8 KB, misc ≈ 15 KB. */
+     * Measured with dev/feature-costs (C6 and S3, 2026-08): WiFi driver
+     * ≈ 33 KB steady, association ≈ 1-2 KB, the rest transient — HTTP
+     * ≈ 20-25 KB, TLS handshake ≈ 25-40 KB — stacking to ≈ 80 KB worst case.
+     * The 64 KB default under-covers that peak; it holds in practice because
+     * JS rarely sits at its cap when a burst lands. */
     MIKRunOptions options;
     MIK_DefaultOptions(&options);
+    /* Floor for the JS budget: the runtime's cold-start cost is ~78 KB
+     * (atoms, class tables, builtin bytecode), so anything much below this
+     * can't even finish MIK_NewRuntimeOptions. */
+    constexpr uint32_t kMinJsHeap = 96 * 1024;
     uint32_t free_heap = esp_get_free_heap_size();
-    uint32_t reserved = app_config.mem_reserved;
-    if (free_heap < reserved) {
+    if (free_heap < kMinJsHeap) {
         ESP_LOGE(TAG, "Not enough memory to start JS runtime (free: %" PRIu32
                       ", need: %" PRIu32 ")",
-                 free_heap, reserved);
+                 free_heap, kMinJsHeap);
         return;
+    }
+    /* The budget is computed ONCE, from boot-time free heap, and reused for
+     * every runtime this boot creates (test supervisor, post-test session).
+     * memReserved is the native subsystems' FUTURE demand from this point, so
+     * heap they consume later already counts against it; re-subtracting the
+     * full reserve from current free heap at a later creation double-counts
+     * what is already resident and shrinks the budget by exactly that amount
+     * (observed as e2e module-graph OOMs on the C3). */
+    uint32_t reserved = app_config.mem_reserved;
+    if (free_heap < reserved || free_heap - reserved < kMinJsHeap) {
+        /* Clamp instead of failing: honoring an oversized memReserved would
+         * leave the device without REPL/deploy, so a bad deployed config
+         * couldn't be fixed over the wire. */
+        uint32_t clamped = free_heap - kMinJsHeap;
+        ESP_LOGE(TAG,
+                 "memReserved %" PRIu32 " leaves less than %" PRIu32
+                 " bytes for JS (free: %" PRIu32 "); clamping reserve to %" PRIu32,
+                 reserved, kMinJsHeap, free_heap, clamped);
+        reserved = clamped;
     }
     options.mem_limit = (int)(free_heap - reserved);
     /* QuickJS's stack overflow check compares the current SP against

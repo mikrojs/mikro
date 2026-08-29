@@ -167,6 +167,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/mikro
 
+  dev/feature-costs:
+    dependencies:
+      mikro:
+        specifier: workspace:*
+        version: link:../../packages/mikro
+
   dev/kitchen-sink:
     dependencies:
       mikro:

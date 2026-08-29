@@ -337,7 +337,15 @@ int MIK_LoadConfig(const char* base_path, MIKConfig* config) {
                 config->stack_size = (size_t)num_val;
             }
             if (mik__json_get_number(buf, "memReserved", &num_val)) {
-                config->mem_reserved = (uint32_t)num_val;
+                /* The uint32 cast would wrap a negative value into a ~4 GB
+                 * reserve; keep the default instead. */
+                if (num_val < 0) {
+                    platform->log(MIK_LOG_WARN, TAG,
+                                  "Ignoring negative memReserved (%ld); using default",
+                                  (long)num_val);
+                } else {
+                    config->mem_reserved = (uint32_t)num_val;
+                }
             }
             if (mik__json_get_number(buf, "fsReadMax", &num_val)) {
                 config->fs_read_max = (uint32_t)num_val;

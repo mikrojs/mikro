@@ -194,6 +194,22 @@ TEST_CASE("MIK_LoadConfig reads mikro.config.json settings" * doctest::test_suit
     rmdir(dir.c_str());
 }
 
+TEST_CASE("MIK_LoadConfig ignores a negative memReserved" * doctest::test_suite("config")) {
+    auto dir = make_temp_dir();
+    write_file(dir + "/package.json", R"({"name": "test", "main": "./main.js"})");
+    write_file(dir + "/mikro.config.json", R"({"memReserved": -1})");
+
+    MIKConfig config;
+    MIK_LoadConfig(dir.c_str(), &config);
+
+    /* The uint32 cast would otherwise wrap -1 into a ~4 GB reserve. */
+    CHECK_EQ((uint32_t)(64 * 1024), config.mem_reserved);
+
+    remove_file(dir + "/mikro.config.json");
+    remove_file(dir + "/package.json");
+    rmdir(dir.c_str());
+}
+
 TEST_CASE("MIK_LoadConfig reads onPanic deepSleep mode" * doctest::test_suite("config")) {
     auto dir = make_temp_dir();
     write_file(dir + "/package.json", R"({"name": "test", "main": "./main.js"})");
