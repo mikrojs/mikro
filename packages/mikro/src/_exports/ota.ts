@@ -1,5 +1,6 @@
 export type {
   ApplyOutcome,
+  CheckinReport,
   ConfigErrorReport,
   ConfigState,
   ConfigWrite,
@@ -15,6 +16,7 @@ export type {
   OtaInstallError,
   OtaWriteError,
   RunningBuild,
+  SettleOutcome,
   StoredConfig,
   Update,
 } from '@mikrojs/native/runtime/ota/types'

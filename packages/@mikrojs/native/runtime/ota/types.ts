@@ -197,6 +197,45 @@ export interface ConfigErrorReport {
   message: string
 }
 
+/** The check-in body a device owes its registry, as `ota.report()` builds it.
+ *  Field shapes match the wire, so a client (or the proxy behind it) can
+ *  forward fields verbatim into `POST /api/v1/checkin`. */
+export interface CheckinReport {
+  deviceId: string
+  /** Firmware version string. */
+  firmware: string
+  firmwareHash: string
+  /** QuickJS bytecode format version the running engine reads. */
+  bytecode: number
+  running: RunningBuild
+  /** The device-owned name pair: `[rev, name]`, or `[rev]` when never named
+   *  or cleared. Sent every round so a lost response settles on the next
+   *  check-in. */
+  name: [rev: number, name?: string]
+  /** Free bytes on the user partition. Absent when the platform cannot say. */
+  free?: number
+  /** Why a previous install failed. Present after a `reconcile()` that found
+   *  one, until a `settle()` marks it delivered. */
+  lastInstall?: Diagnostic
+  /** The held document's rev to echo; see {@link ConfigState.rev}. */
+  configRev?: string
+  /** A rolled-back document to report; see {@link ConfigState.error}. */
+  configError?: ConfigErrorReport
+}
+
+/** What `ota.settle()` took from a completed check-in's response. */
+export interface SettleOutcome {
+  /** A validated build offer, for the app's `applyOffer` call: the download
+   *  is the one piece of the round that stays the app's. Absent when the
+   *  response carried none. */
+  offer?: Offer
+  /** What the config delivery did, when the response carried a document.
+   *  Only `'failed'` and `'invalid'` are worth logging; see {@link ConfigWrite}. */
+  config?: ConfigWrite
+  /** A name pair was adopted from the response (a clear counts). */
+  renamed: boolean
+}
+
 declare global {
   /**
    * Merge your app's config type into this interface (next to the schema
@@ -318,6 +357,37 @@ export interface Ota {
    * re-served forever and nobody is told.
    */
   configState(): ConfigState
+  /**
+   * The check-in body the device owes its registry, assembled: identity,
+   * `running()`, the name pair, free storage, the pending `lastInstall`
+   * report, and what `configState()` resolves. One call instead of gathering
+   * the fields by hand, and the same facts the built-in client sends.
+   *
+   * Call `reconcile()` first, on every boot: it is what surfaces the
+   * `lastInstall` report this reads (`settle()` marks it delivered).
+   */
+  report(): CheckinReport
+  /**
+   * Take a COMPLETED check-in's response, whole: confirm the running trial
+   * and a read config document's trial (exactly `confirm()`), adopt a
+   * delivered name pair, store a delivered config document (exactly
+   * `applyConfig`, with `trialBoots`), and validate the offer fields (exactly
+   * `parseOffer(raw)`, with `allowInsecure`). An empty or null response is
+   * the registry's quiet round: nothing to deliver, and the confirm still
+   * happens, which is the point of calling. A response that is anything else,
+   * a string or a number, never decoded (a captive portal's HTML, a proxy's
+   * error page), so it is not a completed round: nothing settles, and the
+   * confirm does not run.
+   *
+   * Never call it on a failed request: a check-in that did not complete
+   * proves nothing about the running build, and settling it would keep
+   * exactly what rollback exists to catch.
+   *
+   * What stays the app's: the download (`applyOffer` with the returned
+   * offer), the restart after `'staged'`, and reading `ota.config()` in the
+   * same cycle so a delivered document's trial can settle.
+   */
+  settle(raw: unknown, options?: {trialBoots?: number; allowInsecure?: boolean}): SettleOutcome
 }
 
 /** The `mikro/ota` singleton. The runtime value is provided by the on-device

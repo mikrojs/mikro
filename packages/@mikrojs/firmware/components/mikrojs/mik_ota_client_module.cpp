@@ -69,6 +69,11 @@ struct MIKOtaClientState {
     JSValue on_config = JS_UNDEFINED;
     std::vector<std::unique_ptr<PendingCheck>> pending;
     bool watching = false;
+    /* The reconcile diagnostic, held for report() the way the built-in client
+     * holds it for its own rounds: env->reconcile is read-once, so this is the
+     * only copy left after ota.reconcile() ran. settle() marks it delivered. */
+    bool has_last_install = false;
+    MIKOtaDiagnostic last_install = {};
 };
 
 int mik__ota_client_slot = -1;
@@ -345,6 +350,10 @@ JSValue ota_reconcile(JSContext* ctx, JSValue, int, JSValue*) {
     MIKOtaClientState* state = state_of(ctx);
     CHECK_NOT_NULL(state);
     MIKOtaReconcileOutcome outcome = mikrojs::mik__ota_policy_reconcile(state->env);
+    if (outcome.has_diagnostic) {
+        state->has_last_install = true;
+        state->last_install = outcome.diagnostic;
+    }
 
     JSValue obj = JS_NewObject(ctx);
     if (outcome.installed[0]) {
@@ -776,6 +785,20 @@ JSValue ota_apply_config(JSContext* ctx, JSValue, int argc, JSValue* argv) {
     return JS_NewString(ctx, mikrojs::mik__ota_config_write_to_str(write));
 }
 
+/* Loads the rolled-back report and sets the echo rev on `obj` under `rev_key`.
+ * After a rollback the FAILED document's rev is the one to echo, not the
+ * restored one's: echoed-equals-held is what stops the registry serving the
+ * document that just failed, until an operator changes it. Returns whether a
+ * report stands, leaving it in *report for the caller to marshal. */
+bool set_config_echo(JSContext* ctx, JSValue obj, const char* rev_key, const MIKOtaEnv* env,
+                     MIKOtaConfigErrorReport* report) {
+    bool has_error = mikrojs::mik__ota_load_config_error(env, report);
+    mikrojs::MIKOtaLoadedConfig held = mikrojs::mik__ota_load_slot(env, MIK_OTA_CFG_CURRENT);
+    const char* rev = has_error ? report->rev : (held.present ? held.cfg.rev : "");
+    if (rev[0]) JS_SetPropertyStr(ctx, obj, rev_key, JS_NewString(ctx, rev));
+    return has_error;
+}
+
 /* configState() -> {rev?, error?} */
 JSValue ota_config_state(JSContext* ctx, JSValue, int, JSValue*) {
     MIKOtaClientState* state = state_of(ctx);
@@ -783,20 +806,159 @@ JSValue ota_config_state(JSContext* ctx, JSValue, int, JSValue*) {
 
     JSValue obj = JS_NewObject(ctx);
     MIKOtaConfigErrorReport report = {};
-    bool has_error = mikrojs::mik__ota_load_config_error(state->env, &report);
-    if (has_error) {
+    if (set_config_echo(ctx, obj, "rev", state->env, &report)) {
         JSValue error = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, error, "rev", JS_NewString(ctx, report.rev));
         JS_SetPropertyStr(ctx, error, "message", JS_NewString(ctx, report.message));
         JS_SetPropertyStr(ctx, obj, "error", error);
     }
-    /* After a rollback the FAILED document's rev is the one to echo, not the
-     * restored one's: echoed-equals-held is what stops the registry serving the
-     * document that just failed, until an operator changes it. */
-    mikrojs::MIKOtaLoadedConfig held = mikrojs::mik__ota_load_slot(state->env, MIK_OTA_CFG_CURRENT);
-    const char* rev = has_error ? report.rev : (held.present ? held.cfg.rev : "");
-    if (rev[0]) JS_SetPropertyStr(ctx, obj, "rev", JS_NewString(ctx, rev));
     return obj;
+}
+
+// ── the check-in exchange, for a client with its own transport ──────────────
+//
+// report() and settle() are the two halves the built-in client runs around its
+// HTTP call: the same facts gathering as BeginCheckIn (mik_ota_client.cpp) and
+// the same completed-round handling as its response parse. Everything either
+// touches is an existing policy call, so a client that goes through here and
+// the built-in cannot disagree about what a round sends or settles.
+
+/* report() -> the check-in body the device owes its registry, wire field
+ * shapes throughout so a proxy can forward fields verbatim. */
+JSValue ota_report(JSContext* ctx, JSValue, int, JSValue*) {
+    MIKOtaClientState* state = state_of(ctx);
+    CHECK_NOT_NULL(state);
+    const MIKOtaEnv* env = state->env;
+
+    JSValue obj = JS_NewObject(ctx);
+
+    MIKDeviceIdentity identity = {};
+    if (env && env->identity) env->identity(env->opaque, &identity);
+    JS_SetPropertyStr(ctx, obj, "deviceId", JS_NewString(ctx, identity.device_id));
+    JS_SetPropertyStr(ctx, obj, "firmware", JS_NewString(ctx, identity.firmware_version));
+    JS_SetPropertyStr(ctx, obj, "firmwareHash", JS_NewString(ctx, identity.firmware_hash));
+    JS_SetPropertyStr(ctx, obj, "bytecode", JS_NewInt32(ctx, identity.bytecode_version));
+
+    JS_SetPropertyStr(ctx, obj, "running", ota_running(ctx, JS_UNDEFINED, 0, nullptr));
+
+    /* The name pair, sent every round so a lost response settles on the next
+     * check-in: [rev, name], or [rev] when never named or cleared. */
+    int name_rev = 0;
+    char name[64] = {};
+    bool has_name = env && env->get_device_name &&
+                    env->get_device_name(env->opaque, &name_rev, name, sizeof(name));
+    JSValue pair = JS_NewArray(ctx);
+    JS_SetPropertyUint32(ctx, pair, 0, JS_NewInt32(ctx, name_rev));
+    if (has_name && name[0]) JS_SetPropertyUint32(ctx, pair, 1, JS_NewString(ctx, name));
+    JS_SetPropertyStr(ctx, obj, "name", pair);
+
+    size_t free_bytes = 0;
+    if (env && env->storage_free && env->storage_free(env->opaque, &free_bytes)) {
+        JS_SetPropertyStr(ctx, obj, "free", JS_NewInt64(ctx, (int64_t)free_bytes));
+    }
+
+    if (state->has_last_install) {
+        JSValue diag = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, diag, "reason", JS_NewString(ctx, state->last_install.reason));
+        if (state->last_install.detail[0]) {
+            JS_SetPropertyStr(ctx, diag, "detail", JS_NewString(ctx, state->last_install.detail));
+        }
+        JS_SetPropertyStr(ctx, obj, "lastInstall", diag);
+    }
+
+    /* configRev / configError, through the same resolution as configState(). */
+    MIKOtaConfigErrorReport report = {};
+    if (set_config_echo(ctx, obj, "configRev", env, &report)) {
+        JSValue error = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, error, "rev", JS_NewString(ctx, report.rev));
+        JS_SetPropertyStr(ctx, error, "message", JS_NewString(ctx, report.message));
+        JS_SetPropertyStr(ctx, obj, "configError", error);
+    }
+    return obj;
+}
+
+/* settle(raw, {trialBoots, allowInsecure}) -> {offer?, config?, renamed}
+ *
+ * Only for a COMPLETED check-in: the confirm below is the whole health signal
+ * requireConfirm waits for, so settling a failed round would keep exactly the
+ * build (or document) that rollback exists to catch. */
+JSValue ota_settle(JSContext* ctx, JSValue, int argc, JSValue* argv) {
+    MIKOtaClientState* state = state_of(ctx);
+    CHECK_NOT_NULL(state);
+
+    JSValue raw = argc > 0 ? argv[0] : JS_UNDEFINED;
+    JSValue out = JS_NewObject(ctx);
+
+    /* Mirror the built-in's response guard (its DecodeFailed path): null or
+     * undefined is the registry's quiet round, and an object is a decoded
+     * response — but anything else is a body that never decoded (a captive
+     * portal's HTML, a proxy's error page). That is not a completed round, so
+     * nothing settles: no confirm, and the cached install report stays for
+     * the round that does complete. */
+    bool quiet = JS_IsUndefined(raw) || JS_IsNull(raw);
+    bool usable = JS_IsObject(raw) && !JS_IsArray(raw) && !JS_IsFunction(ctx, raw);
+    if (!quiet && !usable) {
+        JS_SetPropertyStr(ctx, out, "renamed", JS_FALSE);
+        return out;
+    }
+
+    /* Confirm before the deliveries, as the built-in does: it must settle the
+     * document held BEFORE this round, never the one about to be armed. */
+    mikrojs::mik__ota_policy_confirm(state->env);
+    /* The round completed, so the cached install report was delivered. */
+    state->has_last_install = false;
+
+    bool renamed = false;
+    if (usable) {
+        /* The name pair: [rev] or [rev, name]. No `name` key means "no change"
+         * and never "clear it"; junk in the pair is treated the same way. The
+         * adopt is unconditional — the registry only sends the key when its
+         * rev should win. */
+        JSValue pair = JS_GetPropertyStr(ctx, raw, "name");
+        if (JS_IsArray(pair)) {
+            JSValue rev_val = JS_GetPropertyUint32(ctx, pair, 0);
+            /* A rev is a non-negative int32, as the wire carries it; a
+             * fractional or oversized number is junk, not a truncation. */
+            double rev_num = -1;
+            bool rev_ok = JS_IsNumber(rev_val) && JS_ToFloat64(ctx, &rev_num, rev_val) == 0 &&
+                          rev_num >= 0 && rev_num <= 2147483647.0 &&
+                          rev_num == (double)(int32_t)rev_num;
+            int32_t rev = rev_ok ? (int32_t)rev_num : -1;
+            JS_FreeValue(ctx, rev_val);
+            if (rev_ok && state->env && state->env->set_device_name) {
+                JSValue name_val = JS_GetPropertyUint32(ctx, pair, 1);
+                const char* name = JS_IsString(name_val) ? JS_ToCString(ctx, name_val) : nullptr;
+                state->env->set_device_name(state->env->opaque, rev,
+                                            name && name[0] ? name : nullptr);
+                renamed = true;
+                if (name) JS_FreeCString(ctx, name);
+                JS_FreeValue(ctx, name_val);
+            }
+        }
+        JS_FreeValue(ctx, pair);
+
+        /* The config document goes through the applyConfig path unchanged, so
+         * the two entrances cannot diverge on validation or placement. */
+        JSValue cfg_raw = JS_GetPropertyStr(ctx, raw, "config");
+        if (!JS_IsUndefined(cfg_raw) && !JS_IsNull(cfg_raw)) {
+            JSValue args[2] = {cfg_raw, argc > 1 ? argv[1] : JS_UNDEFINED};
+            JS_SetPropertyStr(ctx, out, "config", ota_apply_config(ctx, JS_UNDEFINED, 2, args));
+        }
+        JS_FreeValue(ctx, cfg_raw);
+
+        /* The offer fields are top-level in the response, so the whole body
+         * goes to the parser, exactly as ota.parseOffer(body) would. */
+        bool allow_insecure = false;
+        if (argc > 1 && JS_IsObject(argv[1])) {
+            allow_insecure = opt_bool(ctx, argv[1], "allowInsecure", false);
+        }
+        MIKOtaOffer offer;
+        if (mikrojs::mik__ota_parse_offer_js(ctx, raw, allow_insecure, &offer)) {
+            JS_SetPropertyStr(ctx, out, "offer", offer_to_js(ctx, offer));
+        }
+    }
+    JS_SetPropertyStr(ctx, out, "renamed", JS_NewBool(ctx, renamed));
+    return out;
 }
 
 int mik__ota_client_module_init(JSContext* ctx, JSModuleDef* m) {
@@ -819,6 +981,8 @@ int mik__ota_client_module_init(JSContext* ctx, JSModuleDef* m) {
                        JS_NewCFunction(ctx, ota_apply_config, "applyConfig", 2));
     JS_SetModuleExport(ctx, m, "configState",
                        JS_NewCFunction(ctx, ota_config_state, "configState", 0));
+    JS_SetModuleExport(ctx, m, "report", JS_NewCFunction(ctx, ota_report, "report", 0));
+    JS_SetModuleExport(ctx, m, "settle", JS_NewCFunction(ctx, ota_settle, "settle", 2));
     return 0;
 }
 
@@ -869,6 +1033,8 @@ JSModuleDef* mik__ota_client_init(JSContext* ctx) {
     JS_AddModuleExport(ctx, m, "parseConfig");
     JS_AddModuleExport(ctx, m, "applyConfig");
     JS_AddModuleExport(ctx, m, "configState");
+    JS_AddModuleExport(ctx, m, "report");
+    JS_AddModuleExport(ctx, m, "settle");
     return m;
 }
 

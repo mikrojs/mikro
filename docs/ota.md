@@ -174,16 +174,13 @@ Your client then does two things: it asks a server whether an update exists, and
 the bytes of the build to the device. The code below shows one complete update cycle:
 
 ```ts twoslash
-import type {Diagnostic, RunningBuild} from 'mikro/ota'
+import type {CheckinReport} from 'mikro/ota'
 import type {Result} from 'mikro/result'
 declare const myRegistry: {
   /** Your check-in call: POST the report, return the decoded response body.
    *  The body stays `unknown` on purpose: it is untrusted wire data, and
-   *  parseOffer below is what validates it. */
-  checkIn(body: {
-    running: RunningBuild
-    lastInstall?: Diagnostic
-  }): Promise<Result<unknown, {name: string; message: string}>>
+   *  ota.settle below is what validates it. */
+  checkIn(body: CheckinReport): Promise<Result<unknown, {name: string; message: string}>>
   fetch(url: string, options: {rangeFrom: number}): AsyncIterable<Uint8Array>
 }
 // ---cut---
@@ -191,31 +188,31 @@ import {ota} from 'mikro/ota'
 import {ok} from 'mikro/result'
 import {restart} from 'mikro/sys'
 
-// On boot, find out what happened to any previous update and report it.
-const outcome = ota.reconcile()
-// outcome: { installed?: string; reverted: boolean; lastInstall?: { reason, detail? } }
+// On boot, settle what happened to any previous update. This is also what
+// surfaces the lastInstall report the check-in body carries.
+ota.reconcile()
 
-const checkin = await myRegistry.checkIn({
-  running: ota.running(), // { checksum, version, trial } of what is executing now
-  lastInstall: outcome.lastInstall, // forward a failure so the registry learns of it
-})
+// report() assembles everything the device owes the registry: identity, the
+// running build, the device name pair, free storage, a pending lastInstall
+// report, and the config echo. Field shapes match the wire, so a server can
+// forward them verbatim.
+const checkin = await myRegistry.checkIn(ota.report())
 
-// A check-in that never completed is not proof of health: no confirm (the
+// A check-in that never completed is not proof of health: no settle (the
 // trial must lapse and revert), no offer to act on.
 if (checkin.ok) {
-  const body = checkin.value
+  // settle() takes the completed round, whole: it confirms the running trial,
+  // adopts a delivered name, stores a delivered config document, and validates
+  // the offer fields. The confirm happens even on an empty response — a
+  // completed check-in is the health signal, offer or no offer, so a healthy
+  // build cannot roll back just because a newer one was published mid-trial.
+  // A body that never decoded to an object (a captive portal's HTML) settles
+  // nothing, confirm included.
+  const {offer} = ota.settle(checkin.value)
 
-  // Confirm before staging, even when an offer arrived: a completed check-in is
-  // the health signal requireConfirm waits for. A confirm gated on "no offer"
-  // would let a healthy build roll back when a newer one was published mid-trial.
-  ota.confirm()
-
-  // Validate whatever the registry returned before acting on it. The offer fields
-  // are top-level in the check-in response, so the whole body goes to parseOffer,
-  // which enforces the scheme, the .tgz, the checksum and size. It does not check
-  // the download host: the registry names where the build lives, the checksum
-  // vouches for the bytes, and the update key goes only to the registry.
-  const offer = ota.parseOffer(body)
+  // Read the config in the same cycle, so a document delivered above can
+  // settle its trial on the next completed check-in.
+  const config = ota.config()
 
   // If an update is offered, apply it. The callback is your only transport code.
   if (offer) {
@@ -247,6 +244,14 @@ if (checkin.ok) {
 // Run your normal cycle.
 ```
 
+`report()` and `settle()` are the two halves the built-in client runs around its own HTTP
+call. The primitives they compose — `running()`, `confirm()`, `parseOffer`, `applyConfig`,
+`configState()` — stay available one by one, for a client that must intercept a step; the
+[API reference](/api/ota) documents both layers. The offer validation inside `settle`
+enforces the scheme, the `.tgz`, the checksum and size. It does not check the download
+host: the registry names where the build lives, the checksum vouches for the bytes, and
+the update key goes only to the registry.
+
 `applyOffer` runs the whole update sequence. It skips a build that already runs or that
 failed before. It enforces the retry limits and runs your download callback. Then it
 verifies the result against the checksum and size. Compatibility is the decision of the
@@ -275,54 +280,43 @@ file, so a resumed download is as safe as a fresh one.
 
 ### Deliver device config
 
-A check-in response can carry a [config document](#device-config) as well as a build. Your
-client stores it with `ota.applyConfig`, and tells the registry what the device holds with
-`ota.configState`. Without those two calls the document has nowhere to go, and `ota.config()`
-serves the defaults of the build for as long as the device runs it.
+A check-in response can carry a [config document](#device-config) as well as a build. The
+cycle above already handles it: `ota.report()` puts the two fields the registry needs in
+the body (`configRev`, the held document's rev, and `configError`, a document that failed
+its trial), and `ota.settle()` stores what came back. Without the echo the registry serves
+the same document at every check-in. Without the error report a document that took the
+device down is served again forever, and the operator never learns why.
 
-Put two fields in the check-in body. Both come from `ota.configState()`:
+`settle` places the document by its `version` stamp: a document for the release the device
+runs is applied, and one for another release is staged for the build it names and applies
+when that build installs. Its `config` field says which happened, and says when nothing
+did — `'invalid'` and `'failed'` are the two worth logging. The same write is available on
+its own as `ota.parseConfig` + `ota.applyConfig`, with `ota.configState()` producing the
+two body fields, for a client that handles the document outside the settle. See
+[the API reference](/api/ota#ota-applyconfig-config-options).
 
-```ts
-const state = ota.configState()
-
-const checkin = await myRegistry.checkIn({
-  running: ota.running(),
-  configRev: state.rev, // the registry serves its document when this differs
-  configError: state.error, // a document that failed its trial, reported until replaced
-})
-```
-
-Without `configRev` the registry serves the same document at every check-in. Without
-`configError` a document that took the device down is served again forever, and the operator
-never learns why.
-
-Store what came back:
-
-```ts
-const config = ota.parseConfig(body.config)
-if (config) {
-  const write = ota.applyConfig(config, {trialBoots: 4})
-  if (write === 'invalid' || write === 'failed') {
-    console.warn('ota: config not stored', write)
-  }
-}
-```
-
-`parseConfig` validates an untrusted value the way `parseOffer` validates an offer.
-`applyConfig` places the document by its `version` stamp: a document for the release the
-device runs is applied, and one for another release is staged for the build it names and
-applies when that build installs. The return value says which happened, and says when nothing
-did. See [the API reference](/api/ota#ota-applyconfig-config-options).
-
-A delivered document goes on trial, the same as one the built-in client delivers.
-`ota.confirm()` settles both trials: the build's and the document's. The config trial has one
-more gate. It settles only after the app has read the document with `ota.config()`. So read
-the config in the same cycle, or the trial waits for the cycle that does.
+A delivered document goes on trial, the same as one the built-in client delivers. The
+confirm inside `settle` adjudicates both trials: the build's and the document's. The
+config trial has one more gate. It settles only after the app has read the document with
+`ota.config()`. So read the config in the same cycle, or the trial waits for the cycle
+that does.
 
 Each boot whose first `ota.config()` read serves the document spends one trial boot. On a
-device that wakes from deep sleep, every wake is a boot. Raise `trialBoots` above the default
-of 1 when a check-in can fail for several cycles in a row, on a modem link or a solar power
-budget. Otherwise a single failed check-in rolls back a document that was fine.
+device that wakes from deep sleep, every wake is a boot. Raise `trialBoots` (an option on
+`settle` and `applyConfig`) above the default of 1 when a check-in can fail for several
+cycles in a row, on a modem link or a solar power budget. Otherwise a single failed
+check-in rolls back a document that was fine.
+
+### Sync the device name
+
+A device [owns its name](/api/sys#devicename) as a `[rev, name]` pair, and the check-in is
+how a rename made in the registry dashboard reaches it. `ota.report()` sends the pair on
+every round; when the response carries a `name` pair back, `ota.settle()` adopts it. There
+is no rev arithmetic on the device: the registry sends the key only when its rev should
+win, and an absent key means "no change", never "clear".
+
+Outside the settle, the pair is `deviceName()` and `setDeviceName()` on `mikro/sys` — read
+it to display the name, and write it if your client adopts a rename by hand.
 
 ### Timing
 
@@ -503,8 +497,9 @@ trial boots run out, and reports the failed document to the registry as `configE
 registry does not send the failed document again; the operator sees the report and corrects
 the values.
 
-A client that brings its own transport delivers documents itself, with `ota.applyConfig` and
-`ota.configState`. See [Deliver device config](#deliver-device-config).
+A client that brings its own transport delivers documents itself, through `ota.settle` (or
+the split form, `ota.applyConfig` and `ota.configState`). See
+[Deliver device config](#deliver-device-config).
 
 In development there is usually no registry in the loop: the app reads its schema defaults,
 which `mikro deploy` and `mikro dev` ship in the build's manifest. To run a device with
