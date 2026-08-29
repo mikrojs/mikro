@@ -6,7 +6,7 @@
     "heapDelta": 26000
   },
   "esp32c6": {
-    "heapDelta": 26000
+    "heapDelta": 26220
   },
   "esp32s3": {
     "heapDelta": 26000
