@@ -307,6 +307,9 @@ function renderTestEvent(event: TestEvent, diagnostics: boolean): void {
     case 9:
       console.error(`    ${blue('□')} ${dim(String(d.t))}`)
       break
+    case 7: // beforeAll threw; the suite's tests fail with a pointer here
+      console.error(`    ${red(`✗ beforeAll failed: ${String(d.m)}`)}`)
+      break
     case 8: {
       if (!diagnostics) break
       const used = ((d.u as number) / 1024) | 0
@@ -368,7 +371,9 @@ function renderLeakReport(result: TestFileResult): void {
       break
     }
     case 'skipped':
-      console.error(`  ${dim(`heap snapshot untouched for ${chip}: no tests ran`)}`)
+      console.error(
+        `  ${dim(`heap snapshot untouched for ${chip}: ${result.failed > 0 ? 'tests failed' : 'no tests ran'}`)}`,
+      )
       break
     case 'ok':
     default:

@@ -359,7 +359,7 @@ mikro test --heap-tolerance 1k
 
 The same tolerance governs flagging and rewriting, so anything a run warns about is something `-u` will write.
 
-A file whose tests were all skipped leaves its snapshot untouched, with or without `-u`: that run measures an empty file, not the tests.
+A file with failures, or whose tests were all skipped, leaves its snapshot untouched, with or without `-u`: a skipped run measures an empty file, and a failing run measures a broken one.
 
 The same file also holds `boot` figures: the JS budget and free system heap a device leaves for an app, read from the ready handshake, plus the `memReserved` the device booted with. They are written by [`mikro profile`](/cli#mikro-profile), never by a test run. By the time a test runs, the harness is resident, which would inflate them:
 
