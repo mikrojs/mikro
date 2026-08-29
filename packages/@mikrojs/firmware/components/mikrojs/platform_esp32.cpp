@@ -112,6 +112,10 @@ static void* esp32_realloc_psram(void* ptr, size_t size) {
 #endif
 }
 
+static size_t esp32_malloc_usable_size(const void* ptr) {
+    return heap_caps_get_allocated_size(const_cast<void*>(ptr));
+}
+
 static bool esp32_get_fs_info(const char* label, size_t* total, size_t* used) {
 #if HAS_LITTLEFS
     return esp_littlefs_info(label, total, used) == ESP_OK;
@@ -326,6 +330,7 @@ static const MIKPlatform esp32_platform = {
     .malloc_psram = esp32_malloc_psram,
     .calloc_psram = esp32_calloc_psram,
     .realloc_psram = esp32_realloc_psram,
+    .malloc_usable_size = esp32_malloc_usable_size,
     .get_fs_info = esp32_get_fs_info,
     .log = esp32_log,
     .stdout_write = esp32_stdout_write,

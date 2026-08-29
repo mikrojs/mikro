@@ -194,6 +194,7 @@ if(BUILD_TESTING)
         test/app_store_test.cpp
         test/oom_test.cpp
         test/oom_inject_test.cpp
+        test/mem_usable_size_test.cpp
         test/fs_test.cpp
         test/console_stdio_test.cpp
         test/cbor_js_test.cpp
