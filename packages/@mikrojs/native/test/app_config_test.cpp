@@ -211,3 +211,26 @@ TEST_CASE("MIK_LoadConfig reads onPanic deepSleep mode" * doctest::test_suite("c
     remove_file(dir + "/package.json");
     rmdir(dir.c_str());
 }
+
+TEST_CASE("MIK_LoadConfig parses logFile keys from the CLI's flattened JSON" *
+          doctest::test_suite("config")) {
+    auto dir = make_temp_dir();
+    auto app = make_subdir(dir, "app");
+    write_file(app + "/package.json", R"({"main": "./main.js"})");
+    /* Byte-for-byte what serializeRuntimeConfig emits for
+     * `logFile: {flush: 'line'}` (maxSize omitted -> firmware default). */
+    write_file(app + "/mikro.config.json",
+               R"({"wifi.country":"NO","logFile.dir":"/appfs/logs","logFile.flush":"line"})");
+
+    MIKConfig config;
+    MIK_LoadConfig(dir.c_str(), &config);
+
+    CHECK_EQ(std::string("/appfs/logs"), std::string(config.log_dir));
+    CHECK_EQ(MIK_LOG_FLUSH_LINE, config.log_flush);
+    CHECK_EQ(64u * 1024u, config.log_max_size);
+
+    remove_file(app + "/package.json");
+    remove_file(app + "/mikro.config.json");
+    rmdir(app.c_str());
+    rmdir(dir.c_str());
+}
