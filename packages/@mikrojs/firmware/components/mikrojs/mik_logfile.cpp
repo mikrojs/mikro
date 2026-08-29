@@ -68,6 +68,16 @@ static bool line_is_error_level(const char* line, size_t len) {
     return false;
 }
 
+/* Caller holds s_mtx. fflush only moves the stdio buffer into the VFS;
+ * on LittleFS the bytes stay in the file handle's cache — invisible to
+ * other opens (fs.readFile, `mikro logs pull`) and lost on power cut —
+ * until fsync commits them. A flush that isn't durable defeats the
+ * purpose of the flush policy, so always pair the two. */
+static void flush_to_flash() {
+    fflush(s_file);
+    fsync(fileno(s_file));
+}
+
 /* Caller holds s_mtx. */
 static void rotate_if_needed() {
     if (s_file_size < s_max_size) return;
@@ -95,7 +105,7 @@ static void emit_line() {
     bool is_err = line_is_error_level(s_bufs->line, s_line_pos);
     if (s_flush_policy == MIK_LOG_FLUSH_LINE ||
         (s_flush_policy == MIK_LOG_FLUSH_ERROR && is_err)) {
-        fflush(s_file);
+        flush_to_flash();
     }
     rotate_if_needed();
     s_line_pos = 0;
@@ -144,7 +154,7 @@ static void log_emit_tap(uint8_t msg_type, const void* data, size_t len) {
     }
     if (s_file && (msg_type == MIK_MSG_ERROR || msg_type == MIK_MSG_WARN ||
                    msg_type == MIK_MSG_EVAL_ERROR)) {
-        fflush(s_file);
+        flush_to_flash();
     }
     xSemaphoreGive(s_mtx);
 }
@@ -274,7 +284,7 @@ void mik_logfile_reset(void) {
 void mik_logfile_flush(void) {
     if (!s_mtx || !s_file) return;
     if (xSemaphoreTake(s_mtx, pdMS_TO_TICKS(50)) != pdTRUE) return;
-    fflush(s_file);
+    flush_to_flash();
     xSemaphoreGive(s_mtx);
 }
 
