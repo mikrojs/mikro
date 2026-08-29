@@ -119,6 +119,10 @@ CONFIG_VFS_SUPPORT_SELECT=n
 
 # --- Assertions & error strings ---
 CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT=y
+# Silent assert(): still aborts (with the PC address), but drops the
+# expression/file/line strings. The visible RAM win is spi_flash's
+# cache-off code, whose rodata must live in DRAM: ~3.3KB on C6.
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
 # Keep esp_err_to_name() readable. Costs ~2 KB flash; without this, runtime
 # errors surface as "UNKNOWN ERROR" instead of e.g. ESP_ERR_NO_MEM, which
 # makes diagnosing on-device failures unnecessarily painful.
