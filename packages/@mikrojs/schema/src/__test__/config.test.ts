@@ -1,6 +1,16 @@
 import {describe, expect, it} from 'vitest'
 
 import {
+  deriveOverlay,
+  diffConfigSchemas,
+  materializeDefaults,
+  parseConfigSchema,
+  parseEffective,
+  structuralEquals,
+  UNITS,
+  validateConfig,
+} from '../config.js'
+import {
   array,
   boolean,
   literal,
@@ -11,17 +21,7 @@ import {
   taggedUnion,
   tuple,
   union,
-} from '../schema.js'
-import {
-  deriveOverlay,
-  diffConfigSchemas,
-  materializeDefaults,
-  parseConfigSchema,
-  parseEffective,
-  structuralEquals,
-  UNITS,
-  validateConfig,
-} from '../shared.js'
+} from '../core.js'
 
 const config = object({
   mqttUrl: string(),

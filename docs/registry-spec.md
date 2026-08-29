@@ -175,8 +175,9 @@ you do not recognize: doing so means accepting a value the author ruled out. Rej
 unrecognized `format` or `unit` at publish, where whoever can fix it will see it.
 
 Enforce every constraint you accept when validating an operator's config. The overlay `PUT` is
-the only place a constraint ever meets an operator-supplied value. The device never checks one:
-a config schema never reaches it, so the reference runtime validates structure alone. The
+the only place a constraint ever meets an operator-supplied value, because a config schema never
+reaches a device: whatever a device stores arrives already validated. (The reference runtime does
+check bounds wherever it runs, for the app's own schemas, but that is beside the point here.) The
 publishing toolchain sees only the author's own defaults. A registry that stores constraints
 without enforcing them protects nothing.
 

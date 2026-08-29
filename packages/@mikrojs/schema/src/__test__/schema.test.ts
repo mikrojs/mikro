@@ -9,12 +9,12 @@ import {
   number,
   object,
   optional,
-  parse,
   string,
   taggedUnion,
   union,
   unknown,
-} from '../schema.js'
+} from '../core.js'
+import {parse} from './parse.js'
 
 describe('schema', () => {
   describe('string', () => {
@@ -396,18 +396,36 @@ describe('schema', () => {
     })
   })
 
-  describe('constraints are not checked here', () => {
-    /* core validate() is structure only. Constraints are enforced host-side by
-     * validateConfig in shared.ts: they exist for config schemas, which are
-     * validated where the registry runs and where the CLI packs, and never on
-     * the device this module ships to. See shared.test.ts for the enforcement
-     * tests, and core.ts's comment on validate() for why. */
-    it('accepts a value outside its declared bounds', () => {
-      expect(parse(number({min: 0, max: 30}), 200).ok).toBe(true)
-      expect(parse(number({integer: true}), 1.5).ok).toBe(true)
-      expect(parse(string({maxLength: 4}), 'toolong').ok).toBe(true)
+  describe('constraints', () => {
+    /* parse() enforces every numeric and length bound wherever it runs, device
+     * included. `format` and `unit` are the two that stay host-side, checked by
+     * validateConfig in ./config.ts — format needs regular expressions the device
+     * has no engine for. See core.ts's comment on validate(). */
+    it('rejects a value outside its declared bounds', () => {
+      expect(parse(number({min: 0, max: 30}), 200).ok).toBe(false)
+      expect(parse(number({integer: true}), 1.5).ok).toBe(false)
+      expect(parse(string({maxLength: 4}), 'toolong').ok).toBe(false)
+      expect(parse(array(string(), {maxItems: 1}), ['a', 'b']).ok).toBe(false)
+    })
+
+    it('accepts a value inside them', () => {
+      expect(parse(number({min: 0, max: 30}), 30).ok).toBe(true)
+      expect(parse(number({integer: true}), 2).ok).toBe(true)
+      expect(parse(string({minLength: 1, maxLength: 4}), 'ok').ok).toBe(true)
+      expect(parse(array(string(), {maxItems: 1}), ['a']).ok).toBe(true)
+    })
+
+    it('names the bound and the path', () => {
+      const result = parse(object({pin: number({min: 0, max: 30})}), {pin: 200})
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.message).toBe('above the maximum of 30')
+        expect(result.error.path).toBe('.pin')
+      }
+    })
+
+    it('leaves format to the host, which is where the expressions live', () => {
       expect(parse(string({format: 'ipv4'}), 'nope').ok).toBe(true)
-      expect(parse(array(string(), {maxItems: 1}), ['a', 'b']).ok).toBe(true)
     })
 
     it('still stores the constraint on the node for a host to read', () => {
@@ -420,10 +438,10 @@ describe('schema', () => {
       expect(string({format: 'url'})).toEqual({kind: 'string', format: 'url'})
     })
 
-    it('accepts a default a constraint would reject, which pack catches', () => {
-      expect(() => number({default: 200, max: 30})).not.toThrow()
-      // The shape of a default is still checked here.
+    it('rejects a default that breaks its own bound, where it is written', () => {
+      expect(() => number({default: 200, max: 30})).toThrow(TypeError)
       expect(() => number({default: 'x' as never})).toThrow(TypeError)
+      expect(() => number({default: 20, max: 30})).not.toThrow()
     })
 
     it('still checks structure', () => {

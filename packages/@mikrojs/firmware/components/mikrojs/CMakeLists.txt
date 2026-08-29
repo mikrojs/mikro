@@ -71,6 +71,7 @@ idf_component_register(
     "${MIK_SRC_DIR}/mik_sys.cpp"
     "${MIK_SRC_DIR}/mik_text_encoding.cpp"
     "${MIK_SRC_DIR}/mik_cbor.cpp"
+    "${MIK_SRC_DIR}/mik_schema.cpp"
     "${MIK_SRC_DIR}/mik_sys_codec.cpp"
     "${MIK_SRC_DIR}/mik_result.cpp"
     "${MIK_SRC_DIR}/mik_udp.cpp"

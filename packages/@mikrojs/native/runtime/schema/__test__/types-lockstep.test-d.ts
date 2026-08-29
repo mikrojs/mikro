@@ -1,18 +1,21 @@
+import type * as Core from '@mikrojs/schema'
 import {describe, expectTypeOf, it} from 'vitest'
 
-import type * as Core from '../core.js'
 import type * as Types from '../types.js'
 
-/* types.ts is a hand-written type-only mirror of core.ts, and it exists for a
- * reason: re-exporting core.ts instead would drag its implementation into every
- * downstream project's compilation, where consumer flags apply to it (a
- * scaffolded project sets `allowUnreachableCode: false` and core.ts trips it).
+/* types.ts declares what native:mikro/schema provides, and it is a hand-written
+ * mirror of @mikrojs/schema rather than a re-export of it, for a reason:
+ * re-exporting would drag that package's implementation into every downstream
+ * project's compilation, where consumer flags apply to it (a scaffolded project
+ * sets `allowUnreachableCode: false` and core.ts trips it). The package keeps a
+ * `development` condition so in-workspace edits need no build, which means
+ * in-workspace resolution reaches the raw source either way.
  *
  * Nothing else keeps the two in step, and they had already drifted: SchemaError
- * was readonly in core.ts and mutable here, which stopped it reducing against
- * structurally equal error unions in kv. These assertions fail the build when
- * one file gains a member the other lacks, or a signature changes shape. */
-describe('types.ts mirrors core.ts', () => {
+ * was readonly in the implementation and mutable here, which stopped it
+ * reducing against structurally equal error unions in kv. These assertions fail
+ * the build when one gains a member the other lacks, or a signature changes. */
+describe('types.ts mirrors @mikrojs/schema', () => {
   it('mirrors the node interfaces', () => {
     expectTypeOf<Types.StringSchema>().toEqualTypeOf<Core.StringSchema>()
     expectTypeOf<Types.NumberSchema>().toEqualTypeOf<Core.NumberSchema>()

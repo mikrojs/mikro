@@ -1,11 +1,11 @@
-import {applyDefaults, type Schema} from '@mikrojs/native/runtime/schema/core'
+import {applyDefaults, type Schema} from '@mikrojs/schema'
 import {
   deriveOverlay,
   diffConfigSchemas,
   parseConfigSchema,
   parseEffective,
   structuralEquals,
-} from '@mikrojs/native/runtime/schema/shared'
+} from '@mikrojs/schema/config'
 import semver from 'semver'
 
 import {decodeCbor} from './cbor.js'

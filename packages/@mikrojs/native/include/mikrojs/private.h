@@ -282,6 +282,10 @@ bool MIK_Timer_UnSchedule(MIKTimers* timers, JSContext* ctx, uint32_t id);
 /* CBOR module (mik_cbor.cpp) */
 JSModuleDef* mik__cbor_init(JSContext* ctx);
 
+/* Schema module (mik_schema.cpp). Registered lazily: the loader calls its
+ * init on first import of native:mikro/schema. */
+void mik__schema_register(void);
+
 /* Result module (mik_result.cpp) */
 JSModuleDef* mik__result_init(JSContext* ctx);
 

@@ -76,14 +76,6 @@
       "import": "./dist/runtime/result/native-result.node-shim.js"
     },
     "./runtime/result/types": "./runtime/result/types.ts",
-    "./runtime/schema/core": {
-      "development": "./runtime/schema/core.ts",
-      "import": "./dist/runtime/schema/core.js"
-    },
-    "./runtime/schema/shared": {
-      "development": "./runtime/schema/shared.ts",
-      "import": "./dist/runtime/schema/shared.js"
-    },
     "./runtime/schema/types": "./runtime/schema/types.ts",
     "./runtime/sleep/types": "./runtime/sleep/types.ts",
     "./runtime/sntp/types": "./runtime/sntp/types.ts",
@@ -124,8 +116,6 @@
       "./runtime/reader/types": "./runtime/reader/types.ts",
       "./runtime/result/native-result.node-shim": "./dist/runtime/result/native-result.node-shim.js",
       "./runtime/result/types": "./runtime/result/types.ts",
-      "./runtime/schema/core": "./dist/runtime/schema/core.js",
-      "./runtime/schema/shared": "./dist/runtime/schema/shared.js",
       "./runtime/schema/types": "./runtime/schema/types.ts",
       "./runtime/sleep/types": "./runtime/sleep/types.ts",
       "./runtime/sntp/types": "./runtime/sntp/types.ts",
@@ -158,6 +148,7 @@
   },
   "devDependencies": {
     "@mikrojs/registry": "workspace:*",
+    "@mikrojs/schema": "workspace:*",
     "@swc/core": "^1.15.30",
     "@types/node": "catalog:node24",
     "esbuild": "^0.28.0",

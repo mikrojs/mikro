@@ -29,6 +29,13 @@ export default defineConfig({
         replacement: path.resolve(import.meta.dirname, 'runtime/http/helpers.ts'),
       },
       {
+        /* The host implementation of the same DSL. Not a shim written for the
+         * tests: core.ts is what the CLI and the registry run, and the
+         * conformance fixtures are what keep it and mik_schema.cpp together. */
+        find: 'native:mikro/schema',
+        replacement: path.resolve(import.meta.dirname, '../schema/src/core.ts'),
+      },
+      {
         find: 'native:mikro/result',
         replacement: path.resolve(import.meta.dirname, 'runtime/result/native-result.node-shim.ts'),
       },

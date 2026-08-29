@@ -1,7 +1,9 @@
-/* Core schema machinery: types, constructors, the validator, and
- * applyDefaults. Dependency-free so hosts (CLI, registries) can import it via
- * shared.ts without resolving mikro/* builtins; mikro/schema re-exports it and
- * adds the Result-returning parse(). */
+/* The schema DSL: types, constructors, the validator, and applyDefaults.
+ * Dependency-free and free of Node APIs, so a registry can import it anywhere
+ * it runs. This is the host implementation; a device runs the C++ port in
+ * @mikrojs/native's mik_schema.cpp, and mikro/schema is that port plus a
+ * Result-returning parse(). The two are held together by the conformance
+ * corpus (@mikrojs/native scripts/gen-schema-fixtures.js). */
 
 function err<E>(error: E) {
   return {ok: false as const, error}
@@ -348,7 +350,7 @@ export type InferRead<S> =
  * default, or a plain object whose fields ALL fill (or are optional). A
  * defaultless array and a partially fillable object are omitted whole, so
  * their fields read as absent until a document supplies them. Must stay in
- * lockstep with materializeDefaults in shared.ts. */
+ * lockstep with materializeDefaults in config.ts. */
 type Filled<S> = S extends {default: unknown}
   ? true
   : S extends OptionalSchema
@@ -454,7 +456,7 @@ function rejectInnerDefaults(node: Schema, path: string, unit: string, self: str
  *
  * Constraints are deliberately not checked here, because validate() below does
  * not carry them: see its comment. A default that breaks its own bound is
- * caught by parseConfigSchema in shared.ts, which runs when the config is
+ * caught by parseConfigSchema in config.ts, which runs when the config is
  * packed, moments after this. */
 const ANNOTATION_KEYS = [
   'title',
@@ -694,38 +696,69 @@ function typeOf(value: unknown): string {
   return typeof value
 }
 
-/* Structure only: the shape of a value, never a constraint on it.
+/* Shape, plus the bounds a value has to satisfy: min, max, integer, minLength,
+ * maxLength, minItems, maxItems. `format` and `unit` are the exceptions and
+ * stay in config.ts — format needs regular expressions the device has no
+ * engine for, and unit is a display hint that constrains nothing.
  *
- * Constraints (min, max, integer, minLength, maxLength, minItems, maxItems,
- * format) are enforced host-side in shared.ts, not here. This module is bundled
- * into the device, and a config schema never reaches a device: it is validated
- * where the registry runs and where the CLI packs. Carrying the checks here
- * charged every app that imports mikro/schema for enforcement it could not use,
- * measured at about 4 KB of heap on the `+ schema` bench checkpoint, most of it
- * the format expressions.
+ * These used to be host-only, because carrying them here charged every app
+ * that imports mikro/schema about 4 KB of heap. That argument died when the
+ * device stopped running this file: mik_schema.cpp is what a device executes,
+ * and a bound there is a few comparisons. Keep the two in step — the corpus in
+ * scripts/gen-schema-fixtures.js is what says whether they are.
  *
- * The cost of that split, stated plainly: parse() on the device checks that a
- * number is a number, not that it is within its declared bounds. Constraints in
- * a schema are a config-authoring feature. */
+ * One node is checked completely before the walk moves on, so a value that is
+ * both misshapen and out of bounds reports whichever comes first in schema
+ * order rather than every structural error ahead of every bound. */
 export function validate(
   schema: Schema,
   value: unknown,
   path: string,
 ): ReturnType<typeof err<SchemaError>> | null {
-  switch (schema.kind) {
-    case 'string':
-      if (typeof value !== 'string')
-        return err(SchemaError.ValidationFailed(`expected string, got ${typeOf(value)}`, path))
-      return null
+  const fault = walk(schema, value, path)
+  if (fault === null) return null
+  return err(SchemaError.ValidationFailed(fault.message, fault.path))
+}
 
-    case 'number':
-      if (typeof value !== 'number' || Number.isNaN(value))
-        return err(SchemaError.ValidationFailed(`expected number, got ${typeOf(value)}`, path))
+/* `bound` separates "the wrong shape" from "the right shape, out of range",
+ * which only the union case needs: it reports a member's bound rather than the
+ * generic no-member-matched line, because "above the maximum of 100" is what
+ * an operator can act on. */
+type Fault = {message: string; path: string; bound: boolean}
+
+function shape(message: string, path: string): Fault {
+  return {message, path, bound: false}
+}
+
+function bound(message: string, path: string): Fault {
+  return {message, path, bound: true}
+}
+
+function walk(schema: Schema, value: unknown, path: string): Fault | null {
+  switch (schema.kind) {
+    case 'string': {
+      if (typeof value !== 'string') return shape(`expected string, got ${typeOf(value)}`, path)
+      const {minLength, maxLength} = schema
+      if (minLength !== undefined && value.length < minLength)
+        return bound(`shorter than ${minLength} characters`, path)
+      if (maxLength !== undefined && value.length > maxLength)
+        return bound(`longer than ${maxLength} characters`, path)
       return null
+    }
+
+    case 'number': {
+      if (typeof value !== 'number' || Number.isNaN(value))
+        return shape(`expected number, got ${typeOf(value)}`, path)
+      const {min, max} = schema
+      if (schema.integer === true && !Number.isInteger(value))
+        return bound(`expected a whole number, got ${value}`, path)
+      if (min !== undefined && value < min) return bound(`below the minimum of ${min}`, path)
+      if (max !== undefined && value > max) return bound(`above the maximum of ${max}`, path)
+      return null
+    }
 
     case 'boolean':
-      if (typeof value !== 'boolean')
-        return err(SchemaError.ValidationFailed(`expected boolean, got ${typeOf(value)}`, path))
+      if (typeof value !== 'boolean') return shape(`expected boolean, got ${typeOf(value)}`, path)
       return null
 
     case 'unknown':
@@ -733,19 +766,18 @@ export function validate(
 
     case 'literal':
       if (value !== schema.value)
-        return err(
-          SchemaError.ValidationFailed(
-            `expected ${JSON.stringify(schema.value)}, got ${JSON.stringify(value)}`,
-            path,
-          ),
-        )
+        return shape(`expected ${JSON.stringify(schema.value)}, got ${JSON.stringify(value)}`, path)
       return null
 
     case 'array': {
-      if (!Array.isArray(value))
-        return err(SchemaError.ValidationFailed(`expected array, got ${typeOf(value)}`, path))
+      if (!Array.isArray(value)) return shape(`expected array, got ${typeOf(value)}`, path)
+      const {minItems, maxItems} = schema
+      if (minItems !== undefined && value.length < minItems)
+        return bound(`fewer than ${minItems} items`, path)
+      if (maxItems !== undefined && value.length > maxItems)
+        return bound(`more than ${maxItems} items`, path)
       for (let i = 0; i < value.length; i++) {
-        const result = validate(schema.element, value[i], `${path}[${i}]`)
+        const result = walk(schema.element, value[i], `${path}[${i}]`)
         if (result !== null) return result
       }
       return null
@@ -753,7 +785,7 @@ export function validate(
 
     case 'object': {
       if (typeof value !== 'object' || value === null || Array.isArray(value))
-        return err(SchemaError.ValidationFailed(`expected object, got ${typeOf(value)}`, path))
+        return shape(`expected object, got ${typeOf(value)}`, path)
       const obj = value as Record<string, unknown>
       const keys = Object.keys(schema.shape)
       for (let i = 0; i < keys.length; i++) {
@@ -764,13 +796,12 @@ export function validate(
         // must not stand in for a field.
         if (fieldSchema.kind === 'optional') {
           if (Object.hasOwn(obj, key)) {
-            const result = validate(fieldSchema, obj[key], fieldPath)
+            const result = walk(fieldSchema, obj[key], fieldPath)
             if (result !== null) return result
           }
         } else {
-          if (!Object.hasOwn(obj, key))
-            return err(SchemaError.ValidationFailed(`missing required field`, fieldPath))
-          const result = validate(fieldSchema, obj[key], fieldPath)
+          if (!Object.hasOwn(obj, key)) return shape(`missing required field`, fieldPath)
+          const result = walk(fieldSchema, obj[key], fieldPath)
           if (result !== null) return result
         }
       }
@@ -778,17 +809,11 @@ export function validate(
     }
 
     case 'tuple': {
-      if (!Array.isArray(value))
-        return err(SchemaError.ValidationFailed(`expected array, got ${typeOf(value)}`, path))
+      if (!Array.isArray(value)) return shape(`expected array, got ${typeOf(value)}`, path)
       if (value.length !== schema.elements.length)
-        return err(
-          SchemaError.ValidationFailed(
-            `expected ${schema.elements.length} elements, got ${value.length}`,
-            path,
-          ),
-        )
+        return shape(`expected ${schema.elements.length} elements, got ${value.length}`, path)
       for (let i = 0; i < schema.elements.length; i++) {
-        const result = validate(schema.elements[i]!, value[i], `${path}[${i}]`)
+        const result = walk(schema.elements[i]!, value[i], `${path}[${i}]`)
         if (result !== null) return result
       }
       return null
@@ -796,32 +821,39 @@ export function validate(
 
     case 'optional': {
       if (value === undefined) return null
-      return validate(schema.inner, value, path)
+      return walk(schema.inner, value, path)
     }
 
     case 'union': {
+      /* A union accepts what ANY member accepts, bounds included: in
+       * union([number({max: 10}), number({min: 100})]), 150 matches the first
+       * member's shape, breaks its bound, and the second member exists for
+       * exactly that value.
+       *
+       * When nothing passes, a member that had the right shape and only broke
+       * a bound gives the better message: "above the maximum of 100" tells an
+       * operator what to do, and the generic line does not. A member of the
+       * wrong shape says nothing useful about a union of mixed shapes, so
+       * those fall through to the generic line. */
+      let outOfRange: Fault | null = null
       for (let i = 0; i < schema.members.length; i++) {
-        const result = validate(schema.members[i]!, value, path)
+        const result = walk(schema.members[i]!, value, path)
         if (result === null) return null
+        if (result.bound) outOfRange ??= result
       }
-      return err(SchemaError.ValidationFailed(`value did not match any union member`, path))
+      return outOfRange ?? shape(`value did not match any union member`, path)
     }
 
     case 'taggedUnion': {
       if (typeof value !== 'object' || value === null || Array.isArray(value))
-        return err(SchemaError.ValidationFailed(`expected object, got ${typeOf(value)}`, path))
+        return shape(`expected object, got ${typeOf(value)}`, path)
       const obj = value as Record<string, unknown>
       const tag = obj[schema.key]
-      if (tag === undefined)
-        return err(
-          SchemaError.ValidationFailed(`missing discriminator field`, `${path}.${schema.key}`),
-        )
+      if (tag === undefined) return shape(`missing discriminator field`, `${path}.${schema.key}`)
       if (typeof tag !== 'string' && typeof tag !== 'number' && typeof tag !== 'boolean')
-        return err(
-          SchemaError.ValidationFailed(
-            `expected primitive discriminator, got ${typeOf(tag)}`,
-            `${path}.${schema.key}`,
-          ),
+        return shape(
+          `expected primitive discriminator, got ${typeOf(tag)}`,
+          `${path}.${schema.key}`,
         )
       // hasOwn, not indexing: a tag like "constructor" must not resolve to
       // an inherited property and validate against garbage.
@@ -829,14 +861,9 @@ export function validate(
         ? schema.branches[tag as string]
         : undefined
       if (branch === undefined)
-        return err(
-          SchemaError.ValidationFailed(
-            `unknown tag ${JSON.stringify(tag)}`,
-            `${path}.${schema.key}`,
-          ),
-        )
-      return validate(branch, value, path)
+        return shape(`unknown tag ${JSON.stringify(tag)}`, `${path}.${schema.key}`)
+      return walk(branch, value, path)
     }
   }
-  return err(SchemaError.ValidationFailed(`unknown schema kind: ${(schema as any).kind}`, path))
+  return shape(`unknown schema kind: ${(schema as any).kind}`, path)
 }

@@ -181,10 +181,10 @@ Annotations come in two kinds, and the difference matters to anyone reading a pu
 - **Display annotations** (`title`, `description`, `mask`) describe how a value should be presented. They never change what validates, and a consumer that does not render a form may ignore any it does not recognise.
 - **Constraints** (`min`, `max`, `integer`, `minLength`, `maxLength`, `minItems`, `maxItems`, `format`, `unit`) change what validates. A consumer may **not** ignore one it does not recognise, because ignoring a constraint means accepting a value the schema's author ruled out.
 
-::: warning Constraints are checked on the host, not on the device
-Constraints are checked where config is written: by a registry when an operator saves a value, and by `mikro ota pack`. [`parse()`](#parse) checks structure only, so `parse(number({max: 30}), 200)` returns `ok` on a device.
+::: warning `format` and `unit` are checked only where config is written
+[`parse()`](#parse) enforces every numeric and length bound wherever it runs, device included, so `parse(number({max: 30}), 200)` returns an error.
 
-A config schema never reaches a device, which is why the device runtime does not carry the checks. If your app needs a bound at runtime, check it in your own code.
+`format` is the exception. It is checked by a registry when an operator saves a value and by `mikro ota pack`, but not by `parse()`, because matching a URL or an email address needs regular expressions a microcontroller has no engine for. `parse(string({format: 'ipv4'}), 'nope')` returns `ok`. `unit` constrains nothing anywhere; it tells a form how to render a number.
 :::
 
 ```ts twoslash
@@ -273,7 +273,7 @@ These are what stop an operator saving a value the device cannot survive. A regi
 
 They catch typos and magnitude errors, not board-specific validity. A usable GPIO set differs per chip and one schema is authored for every chip an app targets, so `min` and `max` on a pin are an approximation and your app should still check its pins at runtime.
 
-A default must satisfy its own constraints. Unlike a default of the wrong _type_, which throws a `TypeError` where the schema is written, a default that breaks its own bound is reported when the config is packed, since that is where constraints are checked.
+A default must satisfy its own constraints, and a default that breaks its own bound throws a `TypeError` where the schema is written, the same as one of the wrong type.
 
 ### format
 
@@ -363,7 +363,7 @@ if (result.ok) {
 
 Validation is fail-fast: it stops at the first error.
 
-**`parse()` checks structure, not [constraints](#constraints).** `parse(number({max: 30}), 200)` returns `ok`. Constraints are checked when config is written, not when a value is read back. See [Constraints](#constraints).
+**`parse()` checks structure and every bound, but not `format`.** `parse(number({max: 30}), 200)` reports `above the maximum of 30`; `parse(string({format: 'ipv4'}), 'nope')` returns `ok`. See [Constraints](#constraints).
 
 ### applyDefaults(schema, value) {#applydefaults}
 

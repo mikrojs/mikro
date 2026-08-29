@@ -66,16 +66,32 @@ const config = {
       // the firmware build (see @mikrojs/firmware/components/mikrojs/CMakeLists.txt
       // for the symbol-map invocation), not via JS imports — so knip can't
       // see them and we declare them as entries explicitly. gen-checkin-fixtures.js
-      // is the same: CMakeLists.txt runs it for the host test build.
+      // is the same: CMakeLists.txt runs it for the host test build, and so is
+      // gen-schema-fixtures.js.
       entry: [
         'scripts/bundle-runtime.js',
         'scripts/generate-symbol-map.js',
         'scripts/gen-checkin-fixtures.js',
+        'scripts/gen-schema-fixtures.js',
       ],
       ignore: ['runtime/**'],
       // node-addon-api, @mikrojs/quickjs: resolved by CMake/node-gyp, not by JS imports
       // terser, @swc/core: optional minifiers loaded dynamically in bundle-runtime.js
-      ignoreDependencies: ['node-addon-api', '@mikrojs/quickjs', 'terser', '@swc/core'],
+      // @mikrojs/schema is imported only by runtime/schema/__test__, which the
+      // `ignore` above hides from knip.
+      ignoreDependencies: [
+        'node-addon-api',
+        '@mikrojs/quickjs',
+        'terser',
+        '@swc/core',
+        '@mikrojs/schema',
+      ],
+    },
+    'packages/@mikrojs/schema': {
+      // schema.test-d.ts is a vitest typecheck suite, run via typecheck.include
+      // in this package's vitest config rather than imported by anything, so
+      // knip sees no consumer.
+      ignore: ['src/**/*.test-d.ts'],
     },
   },
   ignore: [

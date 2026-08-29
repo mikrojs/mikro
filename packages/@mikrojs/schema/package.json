@@ -1,12 +1,12 @@
 {
-  "name": "@mikrojs/registry",
+  "name": "@mikrojs/schema",
   "version": "0.18.2",
-  "description": "Reference OTA update registry for Mikro.js: a portable fetch handler with pluggable storage and auth",
+  "description": "Schema DSL for Mikro.js: declare a shape once, infer its type, validate against it, and publish it for a registry to render a form from",
   "keywords": [
     "esp32",
     "mikrojs",
-    "ota",
-    "registry"
+    "schema",
+    "validation"
   ],
   "homepage": "https://github.com/mikrojs/mikro#readme",
   "bugs": {
@@ -25,19 +25,19 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "development": "./src/index.ts",
-      "import": "./dist/index.js"
+      "development": "./src/core.ts",
+      "import": "./dist/core.js"
     },
-    "./node": {
-      "development": "./src/node.ts",
-      "import": "./dist/node.js"
+    "./config": {
+      "development": "./src/config.ts",
+      "import": "./dist/config.js"
     },
     "./package.json": "./package.json"
   },
   "publishConfig": {
     "exports": {
-      ".": "./dist/index.js",
-      "./node": "./dist/node.js",
+      ".": "./dist/core.js",
+      "./config": "./dist/config.js",
       "./package.json": "./package.json"
     }
   },
@@ -46,14 +46,6 @@
     "publint": "publint",
     "typecheck": "tsc --noEmit",
     "watch": "tsc -p tsconfig.build.json --watch --preserveWatchOutput"
-  },
-  "dependencies": {
-    "@mikrojs/schema": "workspace:*",
-    "semver": "^7.7.4"
-  },
-  "devDependencies": {
-    "@types/node": "catalog:node24",
-    "@types/semver": "^7.7.1"
   },
   "engines": {
     "node": ">=24.0.0"
