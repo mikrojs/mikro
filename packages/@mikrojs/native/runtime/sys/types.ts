@@ -92,6 +92,11 @@ export declare function gc(): void
 /** Firmware version string (e.g. "0.1.0") */
 export declare const version: string
 
+/** Values {@link BoardInfo.features} can contain. `wifi`, `ble` and `bt` need
+ *  both the silicon and the matching stack compiled into the firmware;
+ *  `ieee802154` reports silicon alone. */
+export type BoardFeature = 'wifi' | 'ble' | 'bt' | 'ieee802154'
+
 export interface BoardInfo {
   /** Board name from the firmware build (e.g. "xiao-esp32c6") or "generic" */
   name: string
@@ -102,7 +107,7 @@ export interface BoardInfo {
   /** Silicon revision (major * 100 + minor on ESP32, 0 on host) */
   revision: number
   /** Supported features (e.g. ["wifi", "ble"]) */
-  features: string[]
+  features: BoardFeature[]
   /** Flash size in bytes (0 on host) */
   flash: number
   /** PSRAM size in bytes (0 if unavailable) */
