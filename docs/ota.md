@@ -246,8 +246,8 @@ if (checkin.ok) {
 ```
 
 `report()` and `settle()` are the two halves the built-in client runs around its own HTTP
-call. The primitives they compose — `running()`, `confirm()`, `parseOffer`, `applyConfig`,
-`configState()` — stay available one by one, for a client that must intercept a step; the
+call. The primitives they compose (`running()`, `confirm()`, `parseOffer`, `applyConfig`,
+`configState()`) stay available one by one, for a client that must intercept a step; the
 [API reference](/api/ota) documents both layers. The offer validation inside `settle`
 enforces the scheme, the `.tgz`, the checksum and size. It does not check the download
 host: the registry names where the build lives, the checksum vouches for the bytes, and
@@ -291,7 +291,7 @@ device down is served again forever, and the operator never learns why.
 `settle` places the document by its `version` stamp: a document for the release the device
 runs is applied, and one for another release is staged for the build it names and applies
 when that build installs. Its `config` field says which happened, and says when nothing
-did — `'invalid'` and `'failed'` are the two worth logging. The same write is available on
+did; `'invalid'` and `'failed'` are the two worth logging. The same write is available on
 its own as `ota.parseConfig` + `ota.applyConfig`, with `ota.configState()` producing the
 two body fields, for a client that handles the document outside the settle. See
 [the API reference](/api/ota#ota-applyconfig-config-options).
@@ -316,8 +316,8 @@ every round; when the response carries a `name` pair back, `ota.settle()` adopts
 is no rev arithmetic on the device: the registry sends the key only when its rev should
 win, and an absent key means "no change", never "clear".
 
-Outside the settle, the pair is `deviceName()` and `setDeviceName()` on `mikro/sys` — read
-it to display the name, and write it if your client adopts a rename by hand.
+Outside the settle, `mikro/sys` holds the pair: `deviceName()` reads it, and
+`setDeviceName()` writes it, for a client that adopts a rename by hand.
 
 ### Timing
 

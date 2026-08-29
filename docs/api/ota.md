@@ -341,8 +341,8 @@ report(): CheckinReport
 
 The check-in body the device owes its registry, assembled: identity, [`running()`](#ota-running),
 the device name pair, free storage, a pending `lastInstall` report, and what
-[`configState()`](#ota-configstate) resolves. One call instead of gathering the fields by
-hand, and the same facts the built-in client sends. Field shapes match the wire, so a client
+[`configState()`](#ota-configstate) resolves. It replaces gathering the fields by hand, and
+it sends the same facts the built-in client does. Field shapes match the wire, so a client
 (or the server proxying for it) can forward fields verbatim into `POST /api/v1/checkin`.
 
 ```ts
@@ -369,9 +369,9 @@ pair, stores a delivered config document (exactly
 [`applyConfig`](#ota-applyconfig-config-options), with `trialBoots`), and validates the
 top-level offer fields (exactly [`parseOffer(raw)`](#ota-parseoffer-raw), with
 `allowInsecure`). An empty or null response is the registry's quiet round: nothing to
-deliver, and the confirm still happens, which is the point of calling. A response that is
-anything else, a string or a number, never decoded (a captive portal's HTML, a proxy's
-error page), so it is not a completed round: nothing settles, and the confirm does not run.
+deliver, and the confirm still happens, which is the point of calling. A response of any
+other shape never decoded: a captive portal handed back HTML, or a proxy sent an error
+page. That is not a completed round, so nothing settles and the confirm does not run.
 
 Never call it on a failed request. A check-in that did not complete proves nothing about the
 running build, and settling it would keep exactly what rollback exists to catch.
