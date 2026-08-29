@@ -27,6 +27,7 @@ import {
   logsCommand,
   nameCommand,
   otaCommand,
+  profileCommand,
   prog,
   simCommand,
   testCommand,
@@ -176,6 +177,10 @@ switch (config.command.action) {
   }
   case 'ota': {
     void otaCommand.run(config.command)
+    break
+  }
+  case 'profile': {
+    void profileCommand.run(config.command)
     break
   }
   case 'sim': {

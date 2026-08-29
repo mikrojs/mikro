@@ -39,6 +39,18 @@ static MIKReplTransport* repl_transport = nullptr;
 static uint8_t ready_buf[384];
 static size_t ready_len = 0;
 
+/* Memory left for the app, captured once when the first runtime attaches: that
+ * happens before the entry is evaluated, so these describe the floor the app is
+ * handed rather than whatever is left whenever a client happens to connect.
+ * Reported on MSG_READY so `mikro profile` is a read, not a deploy. */
+static bool boot_mem_captured = false;
+static uint32_t boot_heap_free = 0;
+static uint32_t boot_system_free = 0;
+/* The reserve that produced `mem_limit`, reported alongside the figures so the
+ * host can tell a config change apart from a firmware regression — and can spot
+ * a device still running a config older than the one in the project. */
+static uint32_t boot_mem_reserved = 0;
+
 /* Transient flag: set by MIK_ProtocolExit to break the current ServeLoop
  * without closing the session. Distinct from repl_active (which signals
  * "session open"). Cleared at the top of each ServeLoop call. */
@@ -906,13 +918,13 @@ static void refresh_ready(MIKReplTransport* transport);
 /* Encodes the MSG_READY map into buf, or measures it when buf is null. Returns
  * the length the encoding needs, which exceeds cap when it did not fit. */
 static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const char* id,
-                           const char* version, const char* fw, const char* name) {
+                           const char* version, const char* fw, const char* name, bool mem) {
     /* Measuring calls pass buf=NULL; substitute a non-null base so
      * zero-length appends never hand memcpy a null pointer (UB). */
     static uint8_t measure_base;
     nanocbor_encoder_t enc;
     nanocbor_encoder_init(&enc, buf ? buf : &measure_base, buf ? cap : 0);
-    nanocbor_fmt_map(&enc, 3 + (fw ? 1 : 0) + (name ? 1 : 0));
+    nanocbor_fmt_map(&enc, 3 + (fw ? 1 : 0) + (name ? 1 : 0) + (mem ? 3 : 0));
     nanocbor_put_tstr(&enc, "chip");
     nanocbor_put_tstr(&enc, chip);
     nanocbor_put_tstr(&enc, "id");
@@ -926,6 +938,14 @@ static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const cha
     if (name) {
         nanocbor_put_tstr(&enc, "name");
         nanocbor_put_tstr(&enc, name);
+    }
+    if (mem) {
+        nanocbor_put_tstr(&enc, "heapFree");
+        nanocbor_fmt_uint(&enc, boot_heap_free);
+        nanocbor_put_tstr(&enc, "sysFree");
+        nanocbor_fmt_uint(&enc, boot_system_free);
+        nanocbor_put_tstr(&enc, "memRes");
+        nanocbor_fmt_uint(&enc, boot_mem_reserved);
     }
     return nanocbor_encoded_len(&enc);
 }
@@ -955,13 +975,19 @@ static void refresh_ready(MIKReplTransport* transport) {
      * decodes as a different name at the host. `name` goes before `fw`: a
      * dropped `fw` reads as the host's own bundled firmware, re-enabling the
      * auto-reflash the identity exists to prevent. */
-    if (name && encode_ready(nullptr, 0, chip, id, version, fw, name) > sizeof(ready_buf)) {
+    bool mem = boot_mem_captured;
+    /* Diagnostics are the first thing to go when the map does not fit: losing
+     * them costs a memory figure, while losing `name` or `fw` breaks identity. */
+    if (mem && encode_ready(nullptr, 0, chip, id, version, fw, name, mem) > sizeof(ready_buf)) {
+        mem = false;
+    }
+    if (name && encode_ready(nullptr, 0, chip, id, version, fw, name, mem) > sizeof(ready_buf)) {
         name = nullptr;
     }
-    if (fw && encode_ready(nullptr, 0, chip, id, version, fw, name) > sizeof(ready_buf)) {
+    if (fw && encode_ready(nullptr, 0, chip, id, version, fw, name, mem) > sizeof(ready_buf)) {
         fw = nullptr;
     }
-    ready_len = encode_ready(ready_buf, sizeof(ready_buf), chip, id, version, fw, name);
+    ready_len = encode_ready(ready_buf, sizeof(ready_buf), chip, id, version, fw, name, mem);
     if (ready_len > sizeof(ready_buf)) ready_len = 0;
 }
 
@@ -981,6 +1007,19 @@ void MIK_ProtocolAttach(MIKRuntime* mik_rt) {
     if (!mik_rt) return;
     repl_ctx = MIK_GetJSContext(mik_rt);
     repl_mik_rt = mik_rt;
+    /* First attach only. In test mode a fresh runtime attaches per file, and
+     * those would otherwise overwrite the boot floor with per-test figures. */
+    if (!boot_mem_captured) {
+        JSMemoryUsage mem;
+        JS_ComputeMemoryUsage(JS_GetRuntime(repl_ctx), &mem);
+        boot_heap_free =
+            mem.malloc_limit > (int64_t)mem.malloc_size
+                ? (uint32_t)(mem.malloc_limit - (int64_t)mem.malloc_size)
+                : 0;
+        boot_system_free = (uint32_t)MIK_GetPlatform()->get_free_system_mem();
+        boot_mem_reserved = mik_rt->config.mem_reserved;
+        boot_mem_captured = true;
+    }
 }
 
 void MIK_ProtocolDetach(void) {

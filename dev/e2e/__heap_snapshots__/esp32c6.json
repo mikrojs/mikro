@@ -1,0 +1,76 @@
+{
+  "tests": {
+    "test/abort.test.ts": {
+      "heapDelta": 12020
+    },
+    "test/cbor.test.ts": {
+      "heapDelta": 3500
+    },
+    "test/env.test.ts": {
+      "heapDelta": 3560
+    },
+    "test/fs-stream.test.ts": {
+      "heapDelta": 3888
+    },
+    "test/fs.test.ts": {
+      "heapDelta": 3744
+    },
+    "test/globals.test.ts": {
+      "heapDelta": 4256
+    },
+    "test/http-request-e2e.test.ts": {
+      "heapDelta": 4656
+    },
+    "test/http-request-streaming.test.ts": {
+      "heapDelta": 2216
+    },
+    "test/http-server-e2e.test.ts": {
+      "heapDelta": 3032
+    },
+    "test/import-meta.test.ts": {
+      "heapDelta": 3296
+    },
+    "test/kv.test.ts": {
+      "heapDelta": 3572
+    },
+    "test/logfile.test.ts": {
+      "heapDelta": 4176
+    },
+    "test/modules-hw.test.ts": {
+      "heapDelta": 26232
+    },
+    "test/modules-network.test.ts": {
+      "heapDelta": 40488
+    },
+    "test/modules.test.ts": {
+      "heapDelta": 3200
+    },
+    "test/observable.test.ts": {
+      "heapDelta": 3872
+    },
+    "test/result.test.ts": {
+      "heapDelta": 3560
+    },
+    "test/schema.test.ts": {
+      "heapDelta": 3560
+    },
+    "test/smoke.test.ts": {
+      "heapDelta": 3296
+    },
+    "test/sys.test.ts": {
+      "heapDelta": 3300
+    },
+    "test/udp.test.ts": {
+      "heapDelta": 152
+    },
+    "test/wifi-e2e.test.ts": {
+      "heapDelta": 41376
+    },
+    "test/wifi-powersave.test.ts": {
+      "heapDelta": 37684
+    },
+    "test/withUnload.test.ts": {
+      "heapDelta": 6868
+    }
+  }
+}

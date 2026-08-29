@@ -19,6 +19,6 @@ AI-written does not mean unchecked. A maintainer reviews and manually tests chan
 
 - Commits made by AI agents run a heavier pre-commit suite than human commits, including full C++ and TypeScript builds and both test suites, before a change is committed.
 - A memory benchmark fails CI when a change regresses heap usage by more than 10%.
-- An on-device test suite exercises the native runtime on real hardware, with per-file heap-baseline snapshots that flag memory regressions.
+- An on-device test suite exercises the native runtime on real hardware, with committed per-chip heap snapshots that flag memory regressions.
 
 Even so, extra scrutiny is welcome, especially of the C++ code. If something reads wrong, works differently than described, or looks unsound, [opening an issue](https://github.com/mikrojs/mikro/issues) is much appreciated.

@@ -329,13 +329,49 @@ The test runner flags common leaks at the end of each file:
 
 - **Timers** that were started but never cleared.
 - **In-flight HTTP requests** that weren't cancelled or awaited.
-- **Heap growth** that exceeds a committed per-file baseline.
+- **Heap growth** that exceeds a committed per-test snapshot.
 
 These show up as `⚠` warnings in the test output.
 
-### Heap-baseline snapshots
+### Heap snapshots
 
-The first run writes each file's measured heap delta, keyed by chip, to `<name>.test.heap-baseline.json` next to the test. Commit these files. Subsequent runs compare against the stored value and warn if it's exceeded. When a refactor legitimately changes the footprint, rerun with `--update-heap-baselines` to overwrite the snapshots; the diff lands with the code change.
+The first run writes each file's measured heap delta to `__heap_snapshots__/<chip>.json` in the project root, keyed by the test's path:
+
+```json
+// __heap_snapshots__/esp32c6.json
+{
+  "tests": {
+    "test/smoke.test.ts": {"heapDelta": 3296},
+    "test/wifi-powersave.test.ts": {"heapDelta": 37692}
+  }
+}
+```
+
+There's a file per chip because the same test retains different amounts on different targets: pointer size, which native modules are built in, and sdkconfig defaults all move the number. A run only touches the file for the chip it ran against.
+
+Commit these files. Subsequent runs compare against the stored value and warn if it's exceeded. When a refactor legitimately changes the footprint, rerun with `-u` (`--update-heap`) to overwrite them; the diff lands with the code change.
+
+Runs drift by a few bytes on their own, so a snapshot is only flagged, and only rewritten, once the change clears a tolerance. The default is 256 bytes or 1% of the stored value, whichever is larger; `--heap-tolerance` overrides it:
+
+```sh
+mikro test --heap-tolerance 1k
+```
+
+The same tolerance governs flagging and rewriting, so anything a run warns about is something `-u` will write.
+
+A file whose tests were all skipped leaves its snapshot untouched, with or without `-u`: that run measures an empty file, not the tests.
+
+The same file also holds `boot` figures: the JS budget and free system heap a device leaves for an app, read from the ready handshake, plus the `memReserved` the device booted with. They are written by [`mikro profile`](/cli#mikro-profile), never by a test run. By the time a test runs, the harness is resident, which would inflate them:
+
+```json
+// __heap_snapshots__/esp32c6.json
+{
+  "boot": {"heapFree": 223232, "systemFree": 241664, "memReserved": 65536},
+  "tests": {
+    "test/smoke.test.ts": {"heapDelta": 3296}
+  }
+}
+```
 
 `beforeAll` warmup (module init, `wifi.connect`, a throwaway TLS handshake) is folded into the baseline automatically.
 
