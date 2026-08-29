@@ -38,6 +38,10 @@ CONFIG_ESP_WIFI_RX_IRAM_OPT=n
 # sleep with STA power save enabled.
 CONFIG_ESP_WIFI_SLP_IRAM_OPT=n
 
+# Drop the "extra" WiFi IRAM optimization (~7KB on C6: .wifiextrairam).
+# Another member of the same IRAM-for-throughput family.
+CONFIG_ESP_WIFI_EXTRA_IRAM_OPT=n
+
 # Trim WiFi driver buffers toward Espressif's low-RAM rank. The IDF defaults
 # left too little heap for a TLS handshake next to a JS runtime on no-PSRAM
 # chips. STATIC_RX is a real ~1.6 KB/buffer allocation made at wifi init; the
