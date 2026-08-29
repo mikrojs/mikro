@@ -645,21 +645,20 @@ MIKOtaWatchOptions FastWatch() {
 
 }  // namespace
 
-TEST_CASE("watch: is inert on an un-enrolled device") {
+TEST_CASE("watch: reports un-enrolled instead of starting") {
     Harness h;
     h.env.kv_strings.erase("ota.registry");
-    h.client.Watch(FastWatch());
+    CHECK(!h.client.Watch(FastWatch()));
     h.Run();
     CHECK(!h.client.watching());
     CHECK(h.client.scheduled_delay_ms() == -1);
     CHECK(h.env.requests.empty());
-    CHECK(h.env.LoggedContaining("not enrolled"));
 }
 
 TEST_CASE("watch: waits the full interval after a clean round") {
     Harness h;
     h.env.ReplyWith(CheckinResponse{});
-    h.client.Watch({});
+    CHECK(h.client.Watch({}));
     // Initial delay of 5s, jitter pinned to 1.0 by random_fraction 0.5.
     CHECK(h.client.scheduled_delay_ms() == 5000);
     RunScheduledRound(h);

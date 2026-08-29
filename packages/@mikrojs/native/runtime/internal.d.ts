@@ -533,12 +533,21 @@ declare module 'native:mikro/udp' {
 }
 
 declare module 'native:mikro/ota_client' {
-  import type {CheckOptions, CheckResult, Ota, Watcher, WatchOptions} from './ota/types.js'
+  import type {Result} from 'mikro/result'
+
+  import type {
+    CheckOptions,
+    CheckResult,
+    NotEnrolledError,
+    Ota,
+    Watcher,
+    WatchOptions,
+  } from './ota/types.js'
 
   // Backed by src/mik_ota_client.cpp, src/mik_ota_config.cpp and
   // src/mik_ota_policy.cpp.
   export function check(options?: CheckOptions): Promise<CheckResult>
-  export function watch(options?: WatchOptions): Watcher
+  export function watch(options?: WatchOptions): Result<Watcher, NotEnrolledError>
   export function config(): unknown
 
   // The mikro/ota policy surface.

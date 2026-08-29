@@ -178,9 +178,9 @@ public:
      * un-enrolled device, which settles inline before Check() returns. */
     void Check(const MIKOtaCheckOptions& options, MIKOtaCheckSink sink);
 
-    /* Start the free-running loop. Inert, with a log line, on an un-enrolled
-     * device. At most one watch per client. */
-    void Watch(const MIKOtaWatchOptions& options);
+    /* Start the free-running loop. Returns false, with no loop started, on an
+     * un-enrolled device. At most one watch per client. */
+    bool Watch(const MIKOtaWatchOptions& options);
 
     /* No further rounds, and the pending delay is cancelled. A round in flight
      * still completes, but a build it stages no longer auto-restarts — it stays

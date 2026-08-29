@@ -9,7 +9,7 @@ import {wifi} from 'mikro/wifi'
 
 async function main(config: OtaConfig) {
   console.log('Watching for OTA updates')
-  otaClient.watch({
+  const watching = otaClient.watch({
     beforeCheck: async () => {
       const ssid = env.require('WIFI_SSID')
       const passphrase = env.require('WIFI_PASSPHRASE')
@@ -34,6 +34,11 @@ async function main(config: OtaConfig) {
     },
     checkinIntervalMs: config.checkinInterval,
   })
+  if (!watching.ok) {
+    // The app still runs, it just gets no updates. A restart after
+    // `mikro ota enroll` is what turns them on.
+    console.error('OTA updates are disabled:', watching.error)
+  }
 
   console.log('OTA Config: ', config)
   if (!config.on) {
