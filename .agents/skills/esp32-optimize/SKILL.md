@@ -266,4 +266,29 @@ Known open gaps (from the audit; verify still true before acting):
 5. Untouched knobs worth measuring: `MBEDTLS_SSL_IN_CONTENT_LEN` (16384 → 8192 halves per-connection peak with DYNAMIC_BUFFER), `CONFIG_LIBC_LOCKS_PLACE_IN_IRAM=y` (default, could flip to n), `-flto` for QuickJS objects, `QJS_DISABLE_PARSER` for bytecode-only deployments (~50-100 KB flash).
 6. `JS_READ_OBJ_ROM_DATA` is a no-op in QuickJS-NG (broken by inline caches) — flash-resident bytecode without heap copy needs an invasive patch; not worth it.
 
+### August 2026 update (perf/sram-trims, map-file census on esp32c6)
+
+Additions to "already in place" — don't re-recommend:
+
+- `ESP_WIFI_SLP_IRAM_OPT=n` (~19KB incl. its Kconfig selects — a hand-edited sdkconfig keeps
+  the selected PM_SLEEP_FUNC_IN_IRAM/ESP_PERIPH_CTRL_FUNC_IN_IRAM/ESP_PHY_IRAM_OPT stale at y;
+  only a defaults regen releases them) and `ESP_WIFI_EXTRA_IRAM_OPT=n` (6.8KB).
+- `CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y` (7.7KB: DRAM strings for cache-off code
+  plus assert call-site code in IRAM).
+- Test-supervisor scratch (~3KB) and log-file buffers (~1.7KB) moved from BSS to
+  conditional heap.
+- The per-allocation size header in `mem.cpp` is gone on device: an optional
+  `MIKPlatform.malloc_usable_size` hook (ESP32: `heap_caps_get_allocated_size`) replaced it,
+  ~13KB across a loaded app. Consequence: QuickJS accounting (`memoryUsage().heapUsed`, heap
+  baselines) now reports real rounded-up block sizes — slightly higher and mildly
+  run-to-run variable; host builds keep the header scheme.
+- Log-file flushes fsync (fflush alone never committed on LittleFS — flush='error'/'line' was
+  not durable before this).
+
+Census headline: ~160KB of the C6's 512KB SRAM is spent pre-heap (111.5KB IRAM text + 48KB
+static DRAM at the old defaults). BLE controller = ~26KB IRAM even when never initialized
+(lazy init only avoids heap); no lazy reclaim exists on C6 — `BT_RELEASE_IRAM` is
+esp32c2-only — so the no-BLE saving (gap 2) is real RAM, not just flash, but needs a build
+profile. WiFi static DRAM is another 21.7KB linked even if unused.
+
 Measure with `packages/@mikrojs/native/test/memory_bench.cpp` (host) and `sys.memoryUsage()` / `mikro logs` on device.
