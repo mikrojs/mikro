@@ -57,6 +57,8 @@ idf_component_register(
     "${MIK_SRC_DIR}/builtins.cpp"
     "${MIK_SRC_DIR}/eval_bytecode.cpp"
     "${MIK_SRC_DIR}/mik_abort.cpp"
+    "${MIK_SRC_DIR}/mik_http_client.cpp"
+    "${MIK_SRC_DIR}/mik_wifi_client.cpp"
     "${MIK_SRC_DIR}/fs.cpp"
     "${MIK_SRC_DIR}/mem.cpp"
     "${MIK_SRC_DIR}/mik_app_config.cpp"
@@ -193,7 +195,7 @@ include("${MIK_BYTECODE_CMAKE}")
 # Force linker to include self-registering native modules
 set(_MIK_MODULES cbor pin i2c i2s spi http http_server wifi rtc nvs_kv sntp sleep neopixel pwm uart ota)
 list(APPEND _MIK_MODULES ota_client)
-set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/helpers http/request http/server i2c i2s kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi)
+set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/server i2c i2s kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp)
 if(CONFIG_BT_ENABLED)
     list(APPEND _MIK_MODULES ble)
     list(APPEND _MIK_BYTECODE_MODULES ble)

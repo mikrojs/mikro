@@ -312,6 +312,7 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
      * distinguish "unset" from "set to some object". */
     mik_rt->result_proto = JS_UNDEFINED;
     mik_rt->result_ok_void_singleton = JS_UNDEFINED;
+    mik_rt->http_body_consumed_ctor = JS_UNDEFINED;
 
     /* Default fs read cap: 64 KiB. Large enough for typical config/JSON
      * payloads on MCU; small enough that a runaway readFile() can't
@@ -361,7 +362,9 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
     mik__udp_init(ctx);
     mik__observable_init(ctx);
 
-    /* Native mikrojs modules (replace bytecode builtins) */
+    /* Native mikrojs modules (replace bytecode builtins). The http client
+     * modules are NOT registered here: they load lazily through the C-module
+     * table in modules.cpp so virtual modules keep precedence. */
     mik__inspect_register(ctx);
     mik__pub_fs_register(ctx);
 
@@ -432,6 +435,8 @@ void MIK_FreeRuntime(MIKRuntime* mik_rt) {
     mik_rt->env_obj = JS_UNDEFINED;
     JS_FreeValue(mik_rt->ctx, mik_rt->result_ok_void_singleton);
     mik_rt->result_ok_void_singleton = JS_UNDEFINED;
+    JS_FreeValue(mik_rt->ctx, mik_rt->http_body_consumed_ctor);
+    mik_rt->http_body_consumed_ctor = JS_UNDEFINED;
     JS_FreeValue(mik_rt->ctx, mik_rt->result_proto);
     mik_rt->result_proto = JS_UNDEFINED;
     JS_FreeContext(mik_rt->ctx);

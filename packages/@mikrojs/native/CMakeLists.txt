@@ -43,6 +43,8 @@ set(MIKROJS_CORE_SOURCES
     src/mik_text_encoding.cpp
     src/mik_color.cpp
     src/mik_abort.cpp
+    src/mik_http_client.cpp
+    src/mik_wifi_client.cpp
     src/mik_cbor.cpp
     src/mik_result.cpp
     src/mik_console.cpp
@@ -88,7 +90,7 @@ endif()
 include(cmake/mikrojs_bytecode.cmake)
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
-    MODULES abort cbor env result schema fs http/helpers http/request i2c kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp wifi
+    MODULES abort cbor env result schema fs i2c kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp
     MODULE_PREFIX "mikro"
     SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode
@@ -208,6 +210,8 @@ if(BUILD_TESTING)
         test/stream_test.cpp
         test/runtime_recycle_test.cpp
         test/udp_test.cpp
+        test/http_client_test.cpp
+        test/wifi_client_test.cpp
         test/observable_test.cpp
         test/unhandled_rejection_test.cpp
         test/ota_policy_test.cpp

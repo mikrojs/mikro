@@ -2,6 +2,11 @@
 // `native:mikro/http`. Apps driving HTTP through a non-lwIP transport (e.g. an
 // LTE modem over UART) implement the `Request` type directly and reuse
 // `prepareBody` + `makeResponse` for the boring parts.
+//
+// On-device, `mikro/http/helpers` is the native C module in
+// src/mik_http_client.cpp (behavior pinned by test/http_client_test.cpp).
+// This TS source stays as the type surface and as the Node-side double for
+// the http/server vitest suite.
 
 import {err, ok} from 'mikro/result'
 

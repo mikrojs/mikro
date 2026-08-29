@@ -115,6 +115,10 @@ struct MIKRuntime {
      * mik__result_ok_void. Safe to share because Result is immutable by
      * convention, and the singleton is frozen + non-extensible. */
     JSValue result_ok_void_singleton;
+    /* Shared BodyConsumedError constructor for the native mikro/http/helpers
+     * module. Created lazily on first http module init, freed in
+     * MIK_FreeRuntime. */
+    JSValue http_body_consumed_ctor;
     JSValue env_obj;  /* Frozen object with env vars, set on import.meta.env */
     struct {
         JSValue on_data;  /* JS callback for stdin data, JS_UNDEFINED when not listening */
@@ -254,6 +258,26 @@ bool mik__report_uncaught(JSContext* ctx, JSValue exc, bool in_promise = false);
 std::string mik_inspect(JSContext* ctx, JSValue value, int depth = 2, bool colors = false,
                         bool show_hidden = false);
 void mik__inspect_register(JSContext* ctx);
+
+/* HTTP client modules mikro/http/helpers + mikro/http/request
+ * (mik_http_client.cpp). Loaded lazily via the C-module table in
+ * modules.cpp, not registered at runtime creation. */
+JSModuleDef* mik__http_helpers_load(JSContext* ctx);
+JSModuleDef* mik__http_request_load(JSContext* ctx);
+
+/* Wifi client module mikro/wifi (mik_wifi_client.cpp), same lazy table. */
+JSModuleDef* mik__wifi_client_load(JSContext* ctx);
+
+/* Load `specifier` through the module loader on behalf of `importer` and
+ * return its namespace (modules.cpp). Honors virtual-module overrides. */
+JSValue mik__load_module_ns(JSContext* ctx, const char* importer, const char* specifier,
+                            bool require_evaluated);
+
+/* Timer registry (timers.cpp) — direct scheduling for native callbacks that
+ * must not go through the JS setTimeout global. Schedule dups `func`. */
+uint32_t MIK_Timer_Schedule(MIKTimers* timers, JSContext* ctx, JSValue func, int argc,
+                            const JSValue* argv, int64_t timeout, bool is_interval, int64_t now);
+bool MIK_Timer_UnSchedule(MIKTimers* timers, JSContext* ctx, uint32_t id);
 
 /* CBOR module (mik_cbor.cpp) */
 JSModuleDef* mik__cbor_init(JSContext* ctx);

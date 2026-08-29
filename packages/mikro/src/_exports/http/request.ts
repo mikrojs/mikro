@@ -1,7 +1,8 @@
 // Pure-types entry for `mikro/http/request`. Runtime values are provided
-// on-device by the bundled `http/request` bytecode module (and by a stub in
-// the simulator). This file declares the shapes so TypeScript and host
-// tooling can see them without pulling in `native:mikro/http`.
+// by the native C module in @mikrojs/native/src/mik_http_client.cpp, which
+// drives the `native:mikro/http` transport (replaced by a stub in the
+// simulator). This file declares the shapes so TypeScript and host tooling
+// can see them without pulling in `native:mikro/http`.
 //
 // For `RequestError`, `BodyConsumedError`, `prepareBody`, `makeResponse`, or
 // the shared types, import from `mikro/http/helpers` directly -- that
