@@ -53,6 +53,14 @@ typedef struct MIKPlatform {
     /** PSRAM-targeted realloc. Grows or moves the allocation while keeping
      *  it in PSRAM. Same fallback rules as malloc_psram. */
     void* (*realloc_psram)(void* ptr, size_t size);
+    /** Usable size of a live allocation made by this platform's allocators
+     *  (malloc/calloc/realloc and the *_psram variants), as reported by
+     *  libc malloc_usable_size / malloc_size or ESP-IDF's
+     *  heap_caps_get_allocated_size. When provided, the runtime lets
+     *  QuickJS account blocks by their real size instead of prepending a
+     *  per-allocation size header (one word per live block). NULL keeps
+     *  the header scheme. */
+    size_t (*malloc_usable_size)(const void* ptr);
     bool (*get_fs_info)(const char* label, size_t* total, size_t* used);
     void (*log)(int level, const char* tag, const char* fmt, ...);
     int (*stdout_write)(const void* buf, size_t len);

@@ -36,4 +36,8 @@ void mik__oom_inject_fail_after(int64_t n);
 /* Net live allocations across all mem.cpp allocators, for leak checks
  * spanning an inject/recover cycle. */
 int64_t mik__oom_inject_live_allocs(void);
+/* Force the usable-size latch for hook-mode allocator tests: fn installs
+ * a fake platform hook, null restores header mode. Pointers must not
+ * cross a mode switch — the mode decides the allocation's offset. */
+void mik__usable_size_latch_override(size_t (*fn)(const void* ptr));
 #endif
