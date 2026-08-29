@@ -164,9 +164,29 @@ record, and the part spares the registry from unpacking the tarball. A registry 
 fields.
 
 The serialized form is the `mikro/schema` AST as JSON: plain nodes discriminated by `kind`, the
-structural fields of the [schema language](/api/schema), and the `default` annotation carried
-as an extra property on a node. Ignore annotation properties you do not recognize; new
-annotations are added that way. Reject with a `400`, at publish, what
+structural fields of the [schema language](/api/schema), and annotations carried as extra
+properties on a node.
+
+Annotations divide in two, and the division is normative. **Display annotations** (`title`,
+`description`, `mask`) never change what validates: ignore any you do not recognize, which is
+how new ones are added. **Constraints** (`min`, `max`, `integer`, `minLength`, `maxLength`,
+`minItems`, `maxItems`, `format`, `unit`) do change what validates, and you MUST NOT ignore one
+you do not recognize: doing so means accepting a value the author ruled out. Reject an
+unrecognized `format` or `unit` at publish, where whoever can fix it will see it.
+
+Enforce every constraint you accept when validating an operator's config. The overlay `PUT` is
+the only place a constraint ever meets an operator-supplied value. The device never checks one:
+a config schema never reaches it, so the reference runtime validates structure alone. The
+publishing toolchain sees only the author's own defaults. A registry that stores constraints
+without enforcing them protects nothing.
+
+**Never normalize annotation text.** Compare and hash `title` and `description` exactly as
+authored. Schema identity is a structural comparison and the config `rev` is a hash. An NFKC pass rewrites
+the micro sign to Greek mu, and superscript digits to plain ones, so normalizing anywhere makes an
+unchanged republish conflict with nothing to show for it. Unit keys are ASCII precisely
+so this cannot bite them.
+
+Reject with a `400`, at publish, what
 config sync could never serve: a schema containing `unknown()`, an `optional()` wrapping an
 object or an array (an overlay needs every absence to mean exactly one thing; see
 [Config sync](#config-sync)), a node kind you do not know, a `default` in a position where it
@@ -175,13 +195,19 @@ inside an `array`, `tuple`, `union`, or `taggedUnion`, each of which is filled f
 whole-value default or not at all), an empty `union` or a branchless `taggedUnion`
 (unsatisfiable, so they could only fail at serve), `__proto__`, `constructor` or `prototype`
 as a field name or branch tag (writing one through `out[key]` reaches the prototype rather
-than a property), a serialized size over 16 KiB,
+than a property), a serialized size over 32 KiB,
 nesting more than 8 levels deep, or a schema whose materialized defaults alone encode over the
 4 KiB effective-document cap. The defaults are part of every effective document, so with
 defaults that big every authored config would exceed the cap and rule 5 would pause every
 rollout, discovered one device at a time. Publish is where the author
 can still rename a field or add a default; storing a schema and failing at serve time helps
 nobody.
+
+Annotations count toward release identity like anything else in the schema, so correcting a typo
+in a `description` and republishing the same version is a conflict. That is deliberate: a version
+names one source tree. Say it in the conflict, though. Report which fields differ, and say when
+the only differences are annotations. Otherwise an author who changed one word gets back
+"different config schema" and nothing else.
 
 The schema belongs to the release, not the build. Every variant of `(app, version)` is packed
 from the same source, so each carries the same schema, and a publish whose `configSchema`
@@ -786,12 +812,25 @@ document; its job is to tell the operator why the value they set is not in effec
 **Schema changes between releases.** Diff the incoming schema against the app's latest release
 at publish and warn in the response body; the CLI shows it while the author can still act on it.
 Three kinds of change exist. Safe: a new defaulted or optional field, a new array or a new
-object of such fields, loosening `required` to defaulted or optional, adding a union member.
-Needs an operator: a new required field, tightening to `required`, changing a kept field's type,
-removing a union member that stored overlays still use; devices affected by these are not
-offered the new release until someone supplies or fixes the value (offer rule 5). Informational:
-a changed default alters behavior on every device without an override for it, and a removed
-field leaves its stored overrides in place, no longer served. At release time, report against
+object of such fields, loosening `required` to defaulted or optional, adding a union member,
+loosening a bound (raising a `max`, lowering a `min`, or dropping either), dropping a `format`,
+and any change to `title`, `description` or `mask`. Needs an operator: a new required field,
+tightening to `required`, changing a kept field's type, removing a union member that stored
+overlays still use, tightening or adding a bound, adding or changing a `format`, and changing a
+`unit`. A device affected by one of those is not offered the new release until someone supplies
+or fixes the value (offer rule 5). Informational: a changed default alters behavior on every device
+without an override for it, and a removed field leaves its stored overrides in place, no longer
+served.
+
+A changed `unit` is the one entry on that list no validation catches. `30` is valid whether the
+unit is `s` or `ms`, so nothing fails and every stored value quietly means something else. Gate
+it and say which unit it was.
+
+Count union members by shape when deciding whether one was removed. Two members can differ only
+in their bounds, so a member of that shape surviving does not mean none was lost: dropping one of
+`union([number({max: 10}), number({min: 100})])` strands any override only the removed range
+accepted. Compare bounds within members separately from whether a member is still there, or a
+merely loosened bound reads as a removal and gates a release that widened what validates. At release time, report against
 the actual fleet:
 which devices on the channel hold overlays that will not validate under the new release, before
 anything is served. One drift no machinery catches: a field that keeps its name and type while

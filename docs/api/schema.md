@@ -174,7 +174,18 @@ The discriminator field (`type` above) is injected into each branch's inferred t
 
 ## Annotations
 
-Constructors take an optional trailing options object for annotations: properties stored on the schema node that don't change what validates. Structural arguments stay positional; annotations trail.
+Constructors take an optional trailing options object for annotations: extra properties stored on the schema node. Structural arguments stay positional; annotations trail.
+
+Annotations come in two kinds, and the difference matters to anyone reading a published schema:
+
+- **Display annotations** (`title`, `description`, `mask`) describe how a value should be presented. They never change what validates, and a consumer that does not render a form may ignore any it does not recognise.
+- **Constraints** (`min`, `max`, `integer`, `minLength`, `maxLength`, `minItems`, `maxItems`, `format`, `unit`) change what validates. A consumer may **not** ignore one it does not recognise, because ignoring a constraint means accepting a value the schema's author ruled out.
+
+::: warning Constraints are checked on the host, not on the device
+Constraints are checked where config is written: by a registry when an operator saves a value, and by `mikro ota pack`. [`parse()`](#parse) checks structure only, so `parse(number({max: 30}), 200)` returns `ok` on a device.
+
+A config schema never reaches a device, which is why the device runtime does not carry the checks. If your app needs a bound at runtime, check it in your own code.
+:::
 
 ```ts twoslash
 import {array, boolean, literal, number, object, string, union} from 'mikro/schema'
@@ -216,6 +227,119 @@ The rule holds through nested objects and `optional()`, and it rejects a nested 
 
 Annotations serialize with the schema (`JSON.stringify` of a schema node is its wire form), and consumers ignore annotation properties they don't recognize.
 
+### title and description
+
+A label and an explanatory sentence, on every node kind. A registry renders an operator-facing config form from your published schema, and without them the field names are the labels.
+
+```ts twoslash
+import {number, object, string} from 'mikro/schema'
+// ---cut---
+object({
+  broker: object(
+    {
+      url: string({title: 'Broker URL', description: 'Where the device publishes readings.'}),
+    },
+    {title: 'MQTT'},
+  ),
+  interval: number({title: 'Poll interval', default: 60}),
+})
+```
+
+A node's `title` labels the control it renders, and a child's labels the child. So a `union` of literals gets its own title for the field and one per `literal` for each choice, and a `taggedUnion`'s title labels the selector while each branch object's title labels that branch. Titles are capped at 80 characters and descriptions at 500.
+
+They go on the node they describe, never on the `optional()` wrapper: absence is what `optional()` expresses, identity is what the node it wraps expresses.
+
+### mask
+
+On `string()` and `number()`: **do not display this value in cleartext**. A form renders a password input, and anything else that prints a config document redacts.
+
+That is all it does. It is not a security feature. Config values are plaintext end to end, stored in the registry, carried in the clear inside TLS on the check-in response, and held in device NVS as plaintext. Credentials belong in [env vars](/api/env), which are set over the cable and never travel through a registry. A masked field cannot carry a default, since a default credential is the same placeholder on every device.
+
+### Constraints
+
+`number()` takes `min`, `max` and `integer`; `string()` takes `minLength` and `maxLength`; `array()` takes `minItems` and `maxItems`.
+
+```ts twoslash
+import {array, number, object, string} from 'mikro/schema'
+// ---cut---
+object({
+  pin: number({title: 'LED pin', default: 15, min: 0, max: 30, integer: true}),
+  ssid: string({minLength: 1, maxLength: 32}),
+  topics: array(string(), {maxItems: 8}),
+})
+```
+
+These are what stop an operator saving a value the device cannot survive. A registry checks every write against the published schema, and that is the only gate before a value reaches a device, so a bound that is not in the schema is not a bound at all.
+
+They catch typos and magnitude errors, not board-specific validity. A usable GPIO set differs per chip and one schema is authored for every chip an app targets, so `min` and `max` on a pin are an approximation and your app should still check its pins at runtime.
+
+A default must satisfy its own constraints. Unlike a default of the wrong _type_, which throws a `TypeError` where the schema is written, a default that breaks its own bound is reported when the config is packed, since that is where constraints are checked.
+
+### format
+
+A named shape for a string, from a closed set: `url`, `hostname`, `ipv4`, `mac`, `email`.
+
+```ts twoslash
+import {object, string} from 'mikro/schema'
+// ---cut---
+object({
+  broker: string({format: 'url'}),
+  fallback: string({format: 'ipv4', default: '192.168.1.1'}),
+})
+```
+
+There is deliberately no `pattern`. A registry evaluates your published schema against operator input, so a caller-supplied regular expression would hand anyone who can publish a denial-of-service vector against the registry. These expressions are fixed and linear.
+
+`url` accepts any scheme with an authority, not only http and https, because `mqtt://` and `ws://` are ordinary device-config values. Restricting the scheme is not expressible today.
+
+### unit
+
+The unit of a number, from a closed set, so a form can show it, pick a sensible control and offer a readable hint next to an awkward magnitude.
+
+```ts twoslash
+import {number, object} from 'mikro/schema'
+// ---cut---
+object({
+  interval: number({title: 'Check-in interval', unit: 'ms', default: 60_000}),
+  clock: number({unit: 'kHz', default: 400}),
+  setpoint: number({unit: 'Cel', default: 21}),
+})
+```
+
+The set is the [IANA SenML](https://www.iana.org/assignments/senml/senml.xhtml) Units and Secondary Units registries, minus the entries SenML marks as not recommended for new producers, plus the microcontroller units its registry lacks (`us`, `kHz`, `mW`, `uA`, `mAh`, `MiB`, `kohm`, `Bd` and others). Keys are ASCII; a renderer maps them to a display symbol, so `Cel` shows as `°C`, `us` as `µs` and `Ohm` as `Ω`.
+
+A ratio from 0 to 1 is `/`, which is the registry's name for a dimensionless value. A form renders it with no suffix, since `0.8 /` would mean nothing to an operator. `count` behaves the same way. Use `/` for a duty cycle or a gain, and `/100` for a field an operator thinks of as 0 to 100.
+
+Two symbols do not mean what you would expect:
+
+- SenML's `%` is **not** a percentage. It is a synonym for the ratio `/` (0 to 1), and the RFC says so explicitly, so it is excluded here. A 0-100 field uses `/100`, which renders as `%`.
+- There is no `d` for day. A bare `d` is the SI deci- prefix, which the SenML naming rules forbid as a standalone symbol. Use `h`.
+
+**The unit describes the stored value and never converts it.** Declare the unit your app actually reads. If an operator should think in minutes, declare the field in minutes and multiply once where you read it, rather than storing seconds and displaying minutes.
+
+Changing a field's unit in a later release is a breaking change even though nothing fails validation: `30` means one thing under `s` and another under `ms`, so every value already stored is silently reinterpreted.
+
+### enumOf(entries)
+
+A closed list of values with a label for each, which is what a form renders as a select or a radio group.
+
+```ts twoslash
+import {enumOf, object} from 'mikro/schema'
+// ---cut---
+const schema = object({
+  logLevel: enumOf(
+    [
+      {value: 'debug', title: 'Debug', description: 'Verbose; not for production.'},
+      {value: 'info', title: 'Info'},
+      {value: 'warn', title: 'Warning'},
+    ],
+    {default: 'info'},
+  ),
+})
+```
+
+It is sugar, not a node kind: it builds a `union` of annotated `literal`s, so it validates and serializes exactly as one. Use `union([literal(...)])` directly when the values need no labels. The labels are what this adds. It is spelled `enumOf` because `enum` is a reserved word and an export named `enum` could not be imported under its own name.
+
 ## Validation
 
 ### parse(schema, value) {#parse}
@@ -238,6 +362,8 @@ if (result.ok) {
 ```
 
 Validation is fail-fast: it stops at the first error.
+
+**`parse()` checks structure, not [constraints](#constraints).** `parse(number({max: 30}), 200)` returns `ok`. Constraints are checked when config is written, not when a value is read back. See [Constraints](#constraints).
 
 ### applyDefaults(schema, value) {#applydefaults}
 
