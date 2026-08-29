@@ -4,11 +4,298 @@
  * overlay. Imports core.ts only, so hosts load it without resolving mikro/*
  * builtins; results are plain {ok} shapes for the same reason. */
 
-import {applyDefaults, type ObjectSchema, type Schema, SchemaError, validate} from './core.js'
+import {
+  applyDefaults,
+  type Format,
+  type ObjectSchema,
+  type Schema,
+  SchemaError,
+  type Unit,
+  validate,
+} from './core.js'
 
 export type SchemaCheck<T> = {ok: true; value: T} | {ok: false; error: SchemaError}
 
+/* The format expressions live here, not in core.ts, because core.ts is bundled
+ * into the device and a config schema is never validated there. Not a
+ * caller-supplied `pattern`: a registry runs these against operator input, so a
+ * publisher-supplied regular expression would be a denial-of-service vector. */
+const FORMAT_PATTERNS: Record<Format, RegExp> = {
+  url: /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s/?#]+\S*$/,
+  hostname:
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/,
+  ipv4: /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/,
+  // Separators do not mix: aa:bb-cc:dd:ee:ff is not an address.
+  mac: /^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$|^([0-9a-fA-F]{2}-){5}[0-9a-fA-F]{2}$/,
+  email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+}
+
+export const FORMATS = Object.keys(FORMAT_PATTERNS) as readonly Format[]
+
+/**
+ * Validates a value against a config schema, constraints included. `validate()`
+ * in core.ts checks structure only, because it ships to the device and a config
+ * schema never does; every host-side path that validates an operator's value
+ * goes through this instead.
+ */
+export function validateConfig(schema: Schema, value: unknown): SchemaCheck<unknown> {
+  const structural = validate(schema, value, '')
+  if (structural !== null) return {ok: false, error: structural.error}
+  const constraint = checkValueConstraints(schema, value, '')
+  if (constraint !== null) return constraint
+  return {ok: true, value}
+}
+
+/* Mirrors validate()'s walk, applying only the constraint checks. Runs after
+ * the structural pass, so every value here is already the right shape. */
+function checkValueConstraints(
+  schema: Schema,
+  value: unknown,
+  path: string,
+): ReturnType<typeof fail> | null {
+  switch (schema.kind) {
+    case 'string': {
+      const text = value as string
+      const {minLength, maxLength, format} = schema
+      if (minLength !== undefined && text.length < minLength) {
+        return fail(`shorter than ${minLength} characters`, path)
+      }
+      if (maxLength !== undefined && text.length > maxLength) {
+        return fail(`longer than ${maxLength} characters`, path)
+      }
+      if (format !== undefined && !FORMAT_PATTERNS[format].test(text)) {
+        return fail(`not a valid ${format}`, path)
+      }
+      // The pattern bounds each label at 63 characters; the whole name has its
+      // own limit that no per-label rule can express.
+      if (format === 'hostname' && text.length > 253) {
+        return fail('not a valid hostname', path)
+      }
+      return null
+    }
+    case 'number': {
+      const num = value as number
+      const {min, max} = schema
+      if (schema.integer === true && !Number.isInteger(num)) {
+        return fail(`expected a whole number, got ${num}`, path)
+      }
+      if (min !== undefined && num < min) return fail(`below the minimum of ${min}`, path)
+      if (max !== undefined && num > max) return fail(`above the maximum of ${max}`, path)
+      return null
+    }
+    case 'array': {
+      const items = value as unknown[]
+      const {minItems, maxItems} = schema
+      if (minItems !== undefined && items.length < minItems) {
+        return fail(`fewer than ${minItems} items`, path)
+      }
+      if (maxItems !== undefined && items.length > maxItems) {
+        return fail(`more than ${maxItems} items`, path)
+      }
+      for (let i = 0; i < items.length; i++) {
+        const result = checkValueConstraints(schema.element, items[i], `${path}[${i}]`)
+        if (result !== null) return result
+      }
+      return null
+    }
+    case 'object': {
+      const obj = value as Record<string, unknown>
+      for (const key of Object.keys(schema.shape)) {
+        if (!Object.hasOwn(obj, key)) continue
+        const result = checkValueConstraints(schema.shape[key]!, obj[key], `${path}.${key}`)
+        if (result !== null) return result
+      }
+      return null
+    }
+    case 'optional':
+      return value === undefined ? null : checkValueConstraints(schema.inner, value, path)
+    case 'tuple': {
+      const items = value as unknown[]
+      for (let i = 0; i < schema.elements.length; i++) {
+        const result = checkValueConstraints(schema.elements[i]!, items[i], `${path}[${i}]`)
+        if (result !== null) return result
+      }
+      return null
+    }
+    case 'union': {
+      /* A union accepts what ANY member accepts, so the constraint pass has to
+       * agree with the structural one. Applying only the first structurally
+       * matching member's constraints would reject a value a later member
+       * allows: in union([number({max: 10}), number({min: 100})]), 150 matches
+       * the first member's shape, fails its bound, and would be refused even
+       * though the second member exists for exactly that value.
+       *
+       * When nothing passes, report the first member's constraint failure
+       * rather than a generic "no member matched": for the ordinary union whose
+       * members differ in shape, that is the specific and useful message. */
+      let firstFailure: ReturnType<typeof fail> | null = null
+      for (const member of schema.members) {
+        if (validate(member, value, '') !== null) continue
+        const result = checkValueConstraints(member, value, path)
+        if (result === null) return null
+        firstFailure ??= result
+      }
+      return firstFailure
+    }
+    case 'taggedUnion': {
+      const obj = value as Record<string, unknown>
+      const branch = schema.branches[obj[schema.key] as string]
+      return branch === undefined ? null : checkValueConstraints(branch, value, path)
+    }
+    default:
+      return null
+  }
+}
+
+/** How a unit relates to the primary it measures in, plus the symbol to render
+ *  when the ASCII key is not what a person should read.
+ *
+ *  `scale` and `offset` exist so a form can show a read-only hint beside a
+ *  field ("30000000 us (30 s)"). They MUST NOT be used to convert a stored
+ *  value. The registry stores only deviations from the schema defaults and
+ *  hashes the effective document for its rev, so a lossy round trip stops a
+ *  default-equal value being stripped and two operators entering the same
+ *  thing produce different revs. Having the numbers here makes converting look
+ *  easy; it is still wrong. */
+export interface UnitDefinition {
+  readonly primary: Unit
+  readonly scale: number
+  readonly offset: number
+  /* What to render beside the number, when the ASCII key is not it. Absent
+   * means the key is already the right symbol. An EMPTY string means render no
+   * suffix at all: the dimensionless units are named `/` and `count` in the
+   * registry, and "0.8 /" is not something to show an operator. */
+  readonly symbol?: string
+}
+
+/* Declared as Record<Unit, ...> on purpose: the compiler then refuses a table
+ * that is missing a member of the union or carries one that is not in it, so
+ * the names are declared once in core.ts and cannot drift from this. */
+export const UNITS: Record<Unit, UnitDefinition> = {
+  m: {primary: 'm', scale: 1, offset: 0},
+  kg: {primary: 'kg', scale: 1, offset: 0},
+  s: {primary: 's', scale: 1, offset: 0},
+  A: {primary: 'A', scale: 1, offset: 0},
+  K: {primary: 'K', scale: 1, offset: 0},
+  cd: {primary: 'cd', scale: 1, offset: 0},
+  mol: {primary: 'mol', scale: 1, offset: 0},
+  Hz: {primary: 'Hz', scale: 1, offset: 0},
+  rad: {primary: 'rad', scale: 1, offset: 0},
+  sr: {primary: 'sr', scale: 1, offset: 0},
+  N: {primary: 'N', scale: 1, offset: 0},
+  Pa: {primary: 'Pa', scale: 1, offset: 0},
+  J: {primary: 'J', scale: 1, offset: 0},
+  W: {primary: 'W', scale: 1, offset: 0},
+  C: {primary: 'C', scale: 1, offset: 0},
+  V: {primary: 'V', scale: 1, offset: 0},
+  F: {primary: 'F', scale: 1, offset: 0},
+  Ohm: {primary: 'Ohm', scale: 1, offset: 0, symbol: 'Ω'},
+  S: {primary: 'S', scale: 1, offset: 0},
+  Wb: {primary: 'Wb', scale: 1, offset: 0},
+  T: {primary: 'T', scale: 1, offset: 0},
+  H: {primary: 'H', scale: 1, offset: 0},
+  Cel: {primary: 'Cel', scale: 1, offset: 0, symbol: '°C'},
+  lm: {primary: 'lm', scale: 1, offset: 0},
+  lx: {primary: 'lx', scale: 1, offset: 0},
+  Bq: {primary: 'Bq', scale: 1, offset: 0},
+  Gy: {primary: 'Gy', scale: 1, offset: 0},
+  Sv: {primary: 'Sv', scale: 1, offset: 0},
+  kat: {primary: 'kat', scale: 1, offset: 0},
+  m2: {primary: 'm2', scale: 1, offset: 0, symbol: 'm²'},
+  m3: {primary: 'm3', scale: 1, offset: 0, symbol: 'm³'},
+  'm/s': {primary: 'm/s', scale: 1, offset: 0},
+  'm/s2': {primary: 'm/s2', scale: 1, offset: 0, symbol: 'm/s²'},
+  'm3/s': {primary: 'm3/s', scale: 1, offset: 0, symbol: 'm³/s'},
+  'W/m2': {primary: 'W/m2', scale: 1, offset: 0, symbol: 'W/m²'},
+  'cd/m2': {primary: 'cd/m2', scale: 1, offset: 0, symbol: 'cd/m²'},
+  bit: {primary: 'bit', scale: 1, offset: 0},
+  'bit/s': {primary: 'bit/s', scale: 1, offset: 0},
+  lat: {primary: 'lat', scale: 1, offset: 0},
+  lon: {primary: 'lon', scale: 1, offset: 0},
+  pH: {primary: 'pH', scale: 1, offset: 0},
+  dB: {primary: 'dB', scale: 1, offset: 0},
+  dBW: {primary: 'dBW', scale: 1, offset: 0},
+  count: {primary: 'count', scale: 1, offset: 0, symbol: ''},
+  '/': {primary: '/', scale: 1, offset: 0, symbol: ''},
+  '%RH': {primary: '%RH', scale: 1, offset: 0},
+  '%EL': {primary: '%EL', scale: 1, offset: 0},
+  EL: {primary: 'EL', scale: 1, offset: 0},
+  '1/s': {primary: '1/s', scale: 1, offset: 0},
+  'S/m': {primary: 'S/m', scale: 1, offset: 0},
+  B: {primary: 'B', scale: 1, offset: 0},
+  VA: {primary: 'VA', scale: 1, offset: 0},
+  VAs: {primary: 'VAs', scale: 1, offset: 0},
+  var: {primary: 'var', scale: 1, offset: 0},
+  vars: {primary: 'vars', scale: 1, offset: 0},
+  'J/m': {primary: 'J/m', scale: 1, offset: 0},
+  'kg/m3': {primary: 'kg/m3', scale: 1, offset: 0, symbol: 'kg/m³'},
+  deg: {primary: 'deg', scale: 1, offset: 0, symbol: '°'},
+  NTU: {primary: 'NTU', scale: 1, offset: 0},
+  ms: {primary: 's', scale: 1 / 1000, offset: 0},
+  min: {primary: 's', scale: 60, offset: 0},
+  h: {primary: 's', scale: 3600, offset: 0},
+  MHz: {primary: 'Hz', scale: 1000000, offset: 0},
+  kW: {primary: 'W', scale: 1000, offset: 0},
+  kVA: {primary: 'VA', scale: 1000, offset: 0},
+  kvar: {primary: 'var', scale: 1000, offset: 0},
+  Ah: {primary: 'C', scale: 3600, offset: 0},
+  Wh: {primary: 'J', scale: 3600, offset: 0},
+  kWh: {primary: 'J', scale: 3600000, offset: 0},
+  varh: {primary: 'vars', scale: 3600, offset: 0},
+  kvarh: {primary: 'vars', scale: 3600000, offset: 0},
+  kVAh: {primary: 'VAs', scale: 3600000, offset: 0},
+  'Wh/km': {primary: 'J/m', scale: 3.6, offset: 0},
+  KiB: {primary: 'B', scale: 1024, offset: 0},
+  GB: {primary: 'B', scale: 1e9, offset: 0},
+  'Mbit/s': {primary: 'bit/s', scale: 1000000, offset: 0},
+  'B/s': {primary: 'bit/s', scale: 8, offset: 0},
+  'MB/s': {primary: 'bit/s', scale: 8000000, offset: 0},
+  mV: {primary: 'V', scale: 1 / 1000, offset: 0},
+  mA: {primary: 'A', scale: 1 / 1000, offset: 0},
+  dBm: {primary: 'dBW', scale: 1, offset: -30},
+  'ug/m3': {primary: 'kg/m3', scale: 1e-9, offset: 0, symbol: 'µg/m³'},
+  'mm/h': {primary: 'm/s', scale: 1 / 3600000, offset: 0},
+  'm/h': {primary: 'm/s', scale: 1 / 3600, offset: 0},
+  ppm: {primary: '/', scale: 1e-6, offset: 0},
+  '/100': {primary: '/', scale: 1 / 100, offset: 0, symbol: '%'},
+  '/1000': {primary: '/', scale: 1 / 1000, offset: 0, symbol: '‰'},
+  hPa: {primary: 'Pa', scale: 100, offset: 0},
+  mm: {primary: 'm', scale: 1 / 1000, offset: 0},
+  cm: {primary: 'm', scale: 1 / 100, offset: 0},
+  km: {primary: 'm', scale: 1000, offset: 0},
+  'km/h': {primary: 'm/s', scale: 1 / 3.6, offset: 0},
+  ppb: {primary: '/', scale: 1e-9, offset: 0},
+  ppt: {primary: '/', scale: 1e-12, offset: 0},
+  VAh: {primary: 'VAs', scale: 3600, offset: 0},
+  'mg/l': {primary: 'kg/m3', scale: 1 / 1000, offset: 0},
+  'ug/l': {primary: 'kg/m3', scale: 1e-6, offset: 0, symbol: 'µg/l'},
+  'g/l': {primary: 'kg/m3', scale: 1, offset: 0},
+  us: {primary: 's', scale: 1 / 1000000, offset: 0, symbol: 'µs'},
+  kHz: {primary: 'Hz', scale: 1000, offset: 0},
+  GHz: {primary: 'Hz', scale: 1000000000, offset: 0},
+  mW: {primary: 'W', scale: 1 / 1000, offset: 0},
+  uA: {primary: 'A', scale: 1 / 1000000, offset: 0, symbol: 'µA'},
+  uV: {primary: 'V', scale: 1 / 1000000, offset: 0, symbol: 'µV'},
+  mAh: {primary: 'C', scale: 3.6, offset: 0},
+  MiB: {primary: 'B', scale: 1048576, offset: 0},
+  kB: {primary: 'B', scale: 1000, offset: 0},
+  MB: {primary: 'B', scale: 1000000, offset: 0},
+  'kbit/s': {primary: 'bit/s', scale: 1000, offset: 0},
+  'KiB/s': {primary: 'bit/s', scale: 8192, offset: 0},
+  kohm: {primary: 'Ohm', scale: 1000, offset: 0, symbol: 'kΩ'},
+  Mohm: {primary: 'Ohm', scale: 1000000, offset: 0, symbol: 'MΩ'},
+  kPa: {primary: 'Pa', scale: 1000, offset: 0},
+  bar: {primary: 'Pa', scale: 100000, offset: 0},
+  Bd: {primary: '1/s', scale: 1, offset: 0},
+}
+
 const MAX_DEPTH = 8
+
+/* Caps on operator-visible annotation strings. A title is a field label and a
+ * description a sentence or two; both count toward the caller's encoded-size
+ * cap, so bound them here rather than letting one field crowd out a schema. */
+const MAX_TITLE_LENGTH = 80
+const MAX_DESCRIPTION_LENGTH = 500
 
 const KINDS = new Set([
   'string',
@@ -190,10 +477,119 @@ function walk(value: unknown, path: string, depth: number): ReturnType<typeof fa
     }
   }
 
+  const annotations = checkAnnotations(node, kind, path)
+  if (annotations !== null) return annotations
+
   if (node.default !== undefined) {
-    const check = validate(node as unknown as Schema, node.default, '')
-    if (check !== null) {
+    // Constraint-aware on purpose: the constructors cannot do this any more,
+    // since core.ts no longer carries the checks, so a default that breaks its
+    // own bound must be caught here, at pack, which is moments later.
+    const check = validateConfig(node as unknown as Schema, node.default)
+    if (!check.ok) {
       return fail(`default does not match the schema: ${check.error.message}`, path)
+    }
+  }
+  return null
+}
+
+/* The constructors' own TypeErrors never run against a JSON-sourced AST, so
+ * every annotation the constructors accept is re-checked here. optional() is
+ * the wrapper the annotations do not belong on: it expresses absence, the node
+ * it wraps expresses identity. */
+function checkAnnotations(
+  node: Record<string, unknown>,
+  kind: string,
+  path: string,
+): ReturnType<typeof fail> | null {
+  const onWrapper = kind === 'optional' || kind === 'unknown'
+  const text = (key: 'title' | 'description', max: number) => {
+    const value = node[key]
+    if (value === undefined) return null
+    if (onWrapper) return fail(`${kind}() cannot carry a ${key}; annotate what it wraps`, path)
+    if (typeof value !== 'string') return fail(`${key} must be a string`, path)
+    if (value.length === 0) return fail(`${key} must not be empty; omit it instead`, path)
+    if (value.length > max) return fail(`${key} is longer than ${max} characters`, path)
+    return null
+  }
+  const title = text('title', MAX_TITLE_LENGTH)
+  if (title !== null) return title
+  const description = text('description', MAX_DESCRIPTION_LENGTH)
+  if (description !== null) return description
+
+  if (node.mask !== undefined) {
+    if (kind !== 'string' && kind !== 'number') {
+      return fail(`mask is only allowed on string() and number()`, path)
+    }
+    if (typeof node.mask !== 'boolean') return fail('mask must be a boolean', path)
+    if (node.mask === true && node.default !== undefined) {
+      // A masked field with a default ships the same placeholder credential to
+      // every device, which is the opposite of what masking is for. Only when
+      // it is actually masked: `mask: false` is the ordinary state and says
+      // nothing about defaults.
+      return fail('a masked field cannot carry a default', path)
+    }
+  }
+  return checkConstraints(node, kind, path)
+}
+
+/* Which constraints each kind accepts, and whether the value must be a
+ * non-negative whole number (a count) or merely finite (a bound). */
+const CONSTRAINTS_BY_KIND: Record<string, readonly [string, string]> = {
+  string: ['minLength', 'maxLength'],
+  number: ['min', 'max'],
+  array: ['minItems', 'maxItems'],
+}
+const COUNT_CONSTRAINTS = ['minLength', 'maxLength', 'minItems', 'maxItems']
+const ALL_CONSTRAINTS = ['minLength', 'maxLength', 'min', 'max', 'minItems', 'maxItems']
+
+function checkConstraints(
+  node: Record<string, unknown>,
+  kind: string,
+  path: string,
+): ReturnType<typeof fail> | null {
+  const allowed = CONSTRAINTS_BY_KIND[kind]
+  for (const key of ALL_CONSTRAINTS) {
+    const value = node[key]
+    if (value === undefined) continue
+    if (allowed === undefined || !allowed.includes(key)) {
+      return fail(`${key} is not allowed on ${kind}()`, path)
+    }
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return fail(`${key} must be a finite number`, path)
+    }
+    if (COUNT_CONSTRAINTS.includes(key) && (!Number.isInteger(value) || value < 0)) {
+      return fail(`${key} must be a non-negative whole number`, path)
+    }
+  }
+  if (allowed !== undefined) {
+    const [lower, upper] = allowed
+    const low = node[lower]
+    const high = node[upper]
+    if (typeof low === 'number' && typeof high === 'number' && low > high) {
+      return fail(`${lower} is greater than ${upper}`, path)
+    }
+  }
+  if (node.integer !== undefined) {
+    if (kind !== 'number') return fail('integer is not allowed on ' + kind + '()', path)
+    if (typeof node.integer !== 'boolean') return fail('integer must be a boolean', path)
+  }
+  if (node.unit !== undefined) {
+    if (kind !== 'number') return fail(`unit is not allowed on ${kind}()`, path)
+    if (typeof node.unit !== 'string' || !Object.hasOwn(UNITS, node.unit)) {
+      return fail(`unknown unit ${JSON.stringify(node.unit)}`, path)
+    }
+  }
+  if (node.format !== undefined) {
+    if (kind !== 'string') return fail(`format is not allowed on ${kind}()`, path)
+    // Fail closed. An unrecognised display annotation may be ignored; an
+    // unrecognised constraint may not, since ignoring it means accepting a
+    // value the author ruled out. Rejecting at publish puts it in front of the
+    // one person who can fix it.
+    if (typeof node.format !== 'string' || !FORMATS.includes(node.format as never)) {
+      return fail(
+        `unknown format ${JSON.stringify(node.format)} (known: ${FORMATS.join(', ')})`,
+        path,
+      )
     }
   }
   return null
@@ -290,8 +686,10 @@ export function structuralEquals(a: unknown, b: unknown): boolean {
  */
 export function parseEffective(schema: Schema, overlay: unknown): SchemaCheck<unknown> {
   const effective = applyDefaults(schema, overlay)
-  const result = validate(schema, effective, '')
-  return result !== null ? result : {ok: true, value: effective}
+  // validateConfig, not validate: this is the gate an operator's config passes
+  // through, and constraints only bind if they are checked here.
+  const result = validateConfig(schema, effective)
+  return result.ok ? {ok: true, value: effective} : result
 }
 
 /**
@@ -338,26 +736,144 @@ function fillField(node: Schema): {value: unknown} | undefined {
 
 /** A node with its annotations removed, recursively, so two schemas can be
  *  compared on structure alone. */
-function stripAnnotations(node: unknown): unknown {
+/* Cosmetic: a change to one of these must never read as a structural change. */
+const DISPLAY_KEYS = ['default', 'title', 'description', 'mask']
+
+/* Semantic, so they survive stripAnnotations and are reported on their own
+ * terms. Stripped only for the type comparison, where a tightened bound must
+ * not masquerade as a changed type. */
+const CONSTRAINT_KEYS = [
+  'minLength',
+  'maxLength',
+  'min',
+  'max',
+  'integer',
+  'minItems',
+  'maxItems',
+  'format',
+]
+
+/* `unit` renders as a suffix, but it is not cosmetic: it reinterprets every
+ * stored value, since `interval: 30` means one thing under `s` and another
+ * under `ms`. Nothing fails validation, the device just behaves differently. So
+ * it survives stripAnnotations and is reported on its own terms, and is
+ * stripped only for the type comparison. */
+const SHAPE_KEYS = [...DISPLAY_KEYS, ...CONSTRAINT_KEYS, 'unit']
+
+function stripKeys(node: unknown, keys: readonly string[]): unknown {
   if (!isPlainObject(node)) return node
-  const {default: _default, ...rest} = node
   const out: Record<string, unknown> = {}
-  for (const key of Object.keys(rest)) {
-    const value = rest[key]
+  for (const key of Object.keys(node)) {
+    if (keys.includes(key)) continue
+    const value = node[key]
     if (key === 'shape' || key === 'branches') {
       const map = value as Record<string, unknown>
       const stripped: Record<string, unknown> = {}
-      for (const k of Object.keys(map)) stripped[k] = stripAnnotations(map[k])
+      for (const k of Object.keys(map)) stripped[k] = stripKeys(map[k], keys)
       out[key] = stripped
     } else if (key === 'element' || key === 'inner') {
-      out[key] = stripAnnotations(value)
+      out[key] = stripKeys(value, keys)
     } else if (key === 'elements' || key === 'members') {
-      out[key] = (value as unknown[]).map(stripAnnotations)
+      out[key] = (value as unknown[]).map((item) => stripKeys(item, keys))
     } else {
       out[key] = value
     }
   }
   return out
+}
+
+/** A node reduced to its shape alone, for asking "did the type change?" without
+ *  a tightened bound answering yes.
+ *
+ *  This is now the only comparison the diff makes. Constraints used to be kept
+ *  in some comparisons so that a change to one registered as a difference, but
+ *  every constraint is reported explicitly by constraintWarnings, and keeping
+ *  them here only made a changed bound masquerade as a changed type. */
+function stripToShape(node: unknown): unknown {
+  return stripKeys(node, SHAPE_KEYS)
+}
+
+/* Tightening a bound can invalidate a value an operator already stored, so it
+ * gates the same way a removed union member does. Loosening cannot, and is
+ * silent. Reported at release time on the schemas alone; rule 5 catches which
+ * devices are actually affected when an offer is considered. */
+function constraintWarnings(prev: unknown, curr: unknown, path: string, out: string[]): void {
+  if (!isPlainObject(prev) || !isPlainObject(curr)) return
+  const report = (key: string, lowerIsLooser: boolean): void => {
+    const before = prev[key]
+    const after = curr[key]
+    if (after === undefined) return
+    const gate = (how: string): void => {
+      out.push(
+        `requires an operator: ${path} ${how} ${key} (stored overrides may no longer validate)`,
+      )
+    }
+    if (before === undefined) return gate('added')
+    if (typeof before !== 'number' || typeof after !== 'number') return
+    if (lowerIsLooser ? after > before : after < before) gate(lowerIsLooser ? 'raised' : 'lowered')
+  }
+  for (const key of ['min', 'minLength', 'minItems']) report(key, true)
+  for (const key of ['max', 'maxLength', 'maxItems']) report(key, false)
+  if (curr.integer === true && prev.integer !== true) {
+    out.push(
+      `requires an operator: ${path} now requires a whole number ` +
+        `(stored overrides may no longer validate)`,
+    )
+  }
+  if (curr.format !== undefined && prev.format !== curr.format) {
+    out.push(
+      `requires an operator: ${path} now requires format ${JSON.stringify(curr.format)} ` +
+        `(stored overrides may no longer validate)`,
+    )
+  }
+  if (prev.unit !== curr.unit) {
+    out.push(
+      `requires an operator: ${path} changed unit from ${JSON.stringify(prev.unit ?? null)} ` +
+        `to ${JSON.stringify(curr.unit ?? null)} (stored values are reinterpreted)`,
+    )
+  }
+
+  /* Descend where the outer walk does not. It recurses through object shapes
+   * only, so without this a tightened bound on an array element or a tuple
+   * position is silent: stripToShape removes constraints recursively, so the
+   * type comparison sees no change, and the checks above only read this node's
+   * own keys. A stranded override with no operator gate is exactly what the
+   * taxonomy exists to prevent. */
+  if (prev.kind === 'array' && curr.kind === 'array') {
+    constraintWarnings(prev.element, curr.element, `${path}[]`, out)
+  } else if (prev.kind === 'tuple' && curr.kind === 'tuple') {
+    const elements = curr.elements as unknown[]
+    const previous = prev.elements as unknown[]
+    for (let i = 0; i < Math.min(previous.length, elements.length); i++) {
+      constraintWarnings(previous[i], elements[i], `${path}[${i}]`, out)
+    }
+  } else if (prev.kind === 'optional' && curr.kind === 'optional') {
+    constraintWarnings(prev.inner, curr.inner, path, out)
+  } else if (prev.kind === 'object' && curr.kind === 'object') {
+    /* array(object({port: number({max: 65535})})) is an ordinary config shape,
+     * and without this the port's tightened bound is silent: the outer walk
+     * hands the array to stripToShape, which is equal, and the descent above
+     * reaches the element object and stops.
+     *
+     * No double-reporting with the outer walk: its object branch recurses per
+     * field and returns before reaching constraintWarnings, so an object is
+     * either walked or descended here, never both. */
+    const prevShape = prev.shape as Record<string, unknown>
+    const currShape = curr.shape as Record<string, unknown>
+    for (const key of Object.keys(currShape)) {
+      if (Object.hasOwn(prevShape, key)) {
+        constraintWarnings(prevShape[key], currShape[key], `${path}.${key}`, out)
+      }
+    }
+  } else if (prev.kind === 'taggedUnion' && curr.kind === 'taggedUnion') {
+    const prevBranches = prev.branches as Record<string, unknown>
+    const currBranches = curr.branches as Record<string, unknown>
+    for (const tag of Object.keys(currBranches)) {
+      if (Object.hasOwn(prevBranches, tag)) {
+        constraintWarnings(prevBranches[tag], currBranches[tag], `${path}.${tag}`, out)
+      }
+    }
+  }
 }
 
 /** required / defaulted / optional, per the spec's scalar-leaf classes.
@@ -429,17 +945,42 @@ export function diffConfigSchemas(previous: Schema, next: Schema): string[] {
       // Member sets, not wholesale structure: adding a member (the common
       // safe widening) must not read as a type change. Only removals can
       // invalidate a stored override.
-      const removed = prevInner.members.filter(
-        (prevMember) =>
-          !currInner.members.some((currMember) =>
-            structuralEquals(stripAnnotations(prevMember), stripAnnotations(currMember)),
-          ),
-      )
-      if (removed.length > 0) {
+      /* Counted by shape group, not tested for membership. Comparing on shape
+       * is what stops a merely loosened bound reading as a removal, but it also
+       * makes two differently bounded members of the same kind indistinguishable
+       * here: asking "does a member of this shape still exist?" answers yes when
+       * one of the two has gone. Dropping one of
+       * union([number({max: 10}), number({min: 100})]) would then be silent,
+       * stranding any override only the removed range accepted.
+       *
+       * A group whose count fell has lost a member. Counting keeps the loosened
+       * bound safe, since that leaves the count unchanged. */
+      const countOfShape = (members: readonly unknown[], shape: unknown) =>
+        members.filter((member) => structuralEquals(stripToShape(member), shape)).length
+
+      let removed = 0
+      const groups: unknown[] = []
+      for (const prevMember of prevInner.members) {
+        const shape = stripToShape(prevMember)
+        if (groups.some((seen) => structuralEquals(seen, shape))) continue
+        groups.push(shape)
+        const before = countOfShape(prevInner.members, shape)
+        const after = countOfShape(currInner.members, shape)
+        if (after < before) removed += before - after
+      }
+      if (removed > 0) {
         warnings.push(
-          `requires an operator: ${path} removed ${removed.length} union member(s) ` +
+          `requires an operator: ${path} removed ${removed} union member(s) ` +
             `(stored overrides using them no longer validate)`,
         )
+      }
+      // Constraint changes within members, index-wise. Members are ordered and
+      // an edit that also reorders them is not something this can attribute, so
+      // only compare when the lists still line up.
+      if (prevInner.members.length === currInner.members.length) {
+        for (let i = 0; i < prevInner.members.length; i++) {
+          constraintWarnings(prevInner.members[i], currInner.members[i], `${path}|${i}`, warnings)
+        }
       }
     } else if (
       prevInner.kind === 'taggedUnion' &&
@@ -456,19 +997,24 @@ export function diffConfigSchemas(previous: Schema, next: Schema): string[] {
             `requires an operator: ${path} removed branch ${JSON.stringify(tag)} ` +
               `(stored overrides using it no longer validate)`,
           )
-        } else if (!structuralEquals(stripAnnotations(prevBranch), stripAnnotations(currBranch))) {
+        } else if (!structuralEquals(stripToShape(prevBranch), stripToShape(currBranch))) {
+          // Shape, not constraints: a branch whose bound merely changed has not
+          // changed type, and the descent in constraintWarnings reports it on
+          // its own terms rather than as a reshaped branch.
           warnings.push(
             `requires an operator: ${path}.${tag} changed type ` +
               `(stored overrides may no longer validate)`,
           )
         }
       }
-    } else if (!structuralEquals(stripAnnotations(prevInner), stripAnnotations(currInner))) {
+    } else if (!structuralEquals(stripToShape(prevInner), stripToShape(currInner))) {
       warnings.push(
         `requires an operator: ${path} changed type (stored overrides may no longer validate)`,
       )
       return
     }
+
+    constraintWarnings(prevInner, currInner, path, warnings)
 
     const prevClass = leafClass(prev)
     const currClass = leafClass(curr)
