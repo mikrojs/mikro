@@ -18,7 +18,16 @@ const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
 const m = memoryUsage()
 const fitsFetch = m.heapTotal - m.heapUsed > 48 * 1024
 
-describe.runIf(hasWifi)('wifi e2e', () => {
+// The firmware refuses to start the radio under 40KB of free internal RAM
+// (it would otherwise abort() in PHY init), and by the time that check runs
+// the wifi module graph and driver init have already cost ~55-60KB of system
+// heap. That puts the real entry bar near 100KB; 128KB adds room for RX
+// buffers during association. Chips under it skip rather than fail on the
+// pre-flight (e.g. esp32c3). systemFree is 0 on the host sim, where the
+// stubbed radio costs nothing.
+const fitsRadio = m.systemFree === 0 || m.systemFree > 128 * 1024
+
+describe.runIf(hasWifi && fitsRadio)('wifi e2e', () => {
   // A failed first attempt costs the attempt (~4-6s) plus the 2s retry
   // backoff before the second try, so a single radio hiccup overruns the
   // 10s default and cascades into the dependent tests below. 25s covers

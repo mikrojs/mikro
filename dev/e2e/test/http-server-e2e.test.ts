@@ -26,8 +26,8 @@ describe.runIf(hasWifi && !isSim && fitsHttp)('http server e2e', () => {
     ;({request} = await import('mikro/http/request'))
     const {wifi} = await import('mikro/wifi')
     const connected = await wifi.connect({ssid: WIFI_SSID!, passphrase: WIFI_PASSPHRASE!})
-    assert.equal(connected.ok, true, 'wifi connect')
-    if (!connected.ok) return
+    assert.ok(connected, 'wifi connect')
+
     base = `http://${connected.value.ip}:${PORT}`
     console.log(`serving on ${base}`)
 

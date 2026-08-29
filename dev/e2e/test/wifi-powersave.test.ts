@@ -20,12 +20,16 @@ const hasWifi = WIFI_SSID && WIFI_PASSPHRASE && onDevice
 const m = memoryUsage()
 const fitsFetch = m.heapTotal - m.heapUsed > 48 * 1024
 
+// The radio pre-flight needs ~128KB of free system heap at file entry;
+// the derivation is in wifi-e2e.test.ts next to its fitsRadio.
+const fitsRadio = m.systemFree > 128 * 1024
+
 // ~120 beacon intervals at the usual 102.4ms — long enough that a wake
 // path that corrupts state or misses TIM windows gets caught, short
 // enough not to dominate the suite.
 const IDLE_MS = 12_000
 
-describe.runIf(hasWifi)('wifi modem-sleep', () => {
+describe.runIf(hasWifi && fitsRadio)('wifi modem-sleep', () => {
   test(
     'connect with power save active',
     async () => {

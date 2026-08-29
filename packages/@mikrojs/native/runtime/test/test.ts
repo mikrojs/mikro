@@ -510,13 +510,17 @@ async function run(): Promise<void> {
       } catch (e) {
         const msg = formatThrown(e)
         emit({e: 7, s: suite.name, m: msg})
+        // Fail the suite's tests rather than skip them: a broken beforeAll is
+        // a broken run, and skipping made it indistinguishable from a
+        // deliberate gate. The e:7 above carries the real error; the per-test
+        // message just points at it.
         for (const t of suite.tests) {
           if (t.todo) {
             emit({e: 9, s: suite.name, t: t.name})
             todo++
           } else {
-            emit({e: 4, s: suite.name, t: t.name})
-            skipped++
+            emit({e: 3, s: suite.name, t: t.name, d: 0, m: 'beforeAll failed'})
+            failed++
           }
         }
         emit({e: 5, s: suite.name})

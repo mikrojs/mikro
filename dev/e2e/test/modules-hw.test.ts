@@ -1,18 +1,6 @@
-import {memoryUsage} from 'mikro/sys'
 import {assert, describe, test} from 'mikro/test'
 
-// Hardware modules loaded together: each costs ~6KB of heap once
-// imported, ~40KB retained for the whole set (measured on esp32c6).
-// The gate adds ~8KB of margin for import-time evaluation peaks, so
-// chips whose per-file runtime has less free heap (e.g. esp32c3) skip
-// this file. Note: when skipped, spi and neopixel have no other
-// JS-level e2e coverage (pin/pwm/i2c/sleep are also covered by the
-// firmware's C doctest suite).
-
-const m = memoryUsage()
-const runsHwModules = m.heapTotal - m.heapUsed > 48 * 1024
-
-describe.runIf(runsHwModules)('module: pin', () => {
+describe('module: pin', () => {
   test('exports exist', async () => {
     const mod = await import('mikro/pin')
     assert.type(mod.pinMode, 'function')
@@ -23,35 +11,35 @@ describe.runIf(runsHwModules)('module: pin', () => {
   })
 })
 
-describe.runIf(runsHwModules)('module: pwm', () => {
+describe('module: pwm', () => {
   test('exports exist', async () => {
     const mod = await import('mikro/pwm')
     assert.type(mod.Pwm, 'function')
   })
 })
 
-describe.runIf(runsHwModules)('module: neopixel', () => {
+describe('module: neopixel', () => {
   test('exports exist', async () => {
     const mod = await import('mikro/neopixel')
     assert.type(mod.NeoPixel, 'function')
   })
 })
 
-describe.runIf(runsHwModules)('module: i2c', () => {
+describe('module: i2c', () => {
   test('exports exist', async () => {
     const mod = await import('mikro/i2c')
     assert.type(mod.I2c, 'function')
   })
 })
 
-describe.runIf(runsHwModules)('module: spi', () => {
+describe('module: spi', () => {
   test('exports exist', async () => {
     const mod = await import('mikro/spi')
     assert.type(mod.Spi, 'function')
   })
 })
 
-describe.runIf(runsHwModules)('module: sleep', () => {
+describe('module: sleep', () => {
   test('exports exist', async () => {
     const mod = await import('mikro/sleep')
     assert.type(mod.sleep, 'function')

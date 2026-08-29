@@ -249,13 +249,14 @@ function applyHeapSnapshot(
   result.chip = chip
   if (typeof result.heapDelta !== 'number') return
   const stored = readSnapshot(root, result.file, chip)
-  // A file that executed nothing measures the cost of an empty run, not the
-  // tests: seeding or updating from it would record garbage, and comparing
+  // A file that executed nothing measures the cost of an empty run, and a file
+  // with failures measures a broken one (aborted tests leave debris resident):
+  // seeding or updating from either would record garbage, and comparing
   // against it would warn forever about a figure -u must not accept. Leave
   // the snapshot alone, and say so when there is a stored figure the reader
   // might expect a comparison against. `todo` tests don't count: they are
   // permanent placeholders, not a sign this environment skipped the file.
-  if (result.passed + result.failed === 0 && result.skipped > 0) {
+  if (result.failed > 0 || (result.passed === 0 && result.skipped > 0)) {
     if (stored !== undefined) {
       result.heapSnapshotStored = stored
       result.heapSnapshotAction = 'skipped'
