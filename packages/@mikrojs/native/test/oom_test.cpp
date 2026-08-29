@@ -2,6 +2,7 @@
 #include <vector>
 
 #include <mikrojs/mikrojs.h>
+#include <mikrojs/platform.h>
 #include <quickjs.h>
 
 #include <doctest.h>
@@ -117,6 +118,47 @@ TEST_CASE("No OOM event when memory limit is generous" * doctest::test_suite("oo
     CHECK_MESSAGE(recorder.events.empty(),
                   "Expected no OOM events with a generous (16 MB) memory limit");
     CHECK_MESSAGE(!MIK_ConsumeOOMFlag(rt), "Expected OOM flag to be clear");
+
+    MIK_FreeRuntime(rt);
+}
+
+static size_t fake_low_sys_free(void) {
+    return 4 * 1024;
+}
+
+TEST_CASE("Pre-eval warning fires when system heap is the tighter ceiling" *
+          doctest::test_suite("oom")) {
+    /* The malloc limit is fixed at runtime creation, but native code shares
+     * the physical heap and can leave less than the accounting limit
+     * promises. The pre-eval check must warn on the tighter of the two: a
+     * generous 16 MB limit with only 4 KB of system heap should still fire,
+     * with the event carrying the system figure. */
+    MIKRuntime* rt = MIK_NewRuntime();
+    REQUIRE(rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(rt);
+    JS_SetMemoryLimit(JS_GetRuntime(ctx), 16 * 1024 * 1024);
+
+    const MIKPlatform* orig = MIK_GetPlatform();
+    MIKPlatform fake = *orig;
+    fake.get_free_system_mem = fake_low_sys_free;
+    MIK_SetPlatform(&fake);
+
+    OOMRecorder recorder;
+    MIK_SetOOMHandler(rt, record_oom, &recorder);
+
+    const char* src = "export const x = 1;";
+    JSValue result = MIK_EvalModuleContent(ctx, "<test>", src, strlen(src));
+    JS_FreeValue(ctx, result);
+
+    MIK_SetPlatform(orig);
+
+    REQUIRE_MESSAGE(!recorder.events.empty(),
+                    "Expected OOM handler to fire when system heap is low");
+    CHECK_MESSAGE(recorder.events[0].phase == MIK_OOM_PRE_EVAL_WARN,
+                  "Expected phase=MIK_OOM_PRE_EVAL_WARN");
+    CHECK_MESSAGE(recorder.events[0].headroom == 4 * 1024,
+                  "Expected the event to carry the system free figure, not the "
+                  "accounting figure");
 
     MIK_FreeRuntime(rt);
 }

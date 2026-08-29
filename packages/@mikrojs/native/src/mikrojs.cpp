@@ -911,15 +911,32 @@ static void mik__check_pre_eval_headroom(JSContext* ctx, const char* filename) {
     if (mem.malloc_limit <= 0) return; /* No limit configured — nothing to warn about. */
 
     long headroom = (long)mem.malloc_limit - (long)mem.malloc_size;
+    /* The malloc limit is fixed at runtime creation, but the physical heap
+     * moves underneath it — the real budget is whichever ceiling is nearer.
+     * 0 means the platform can't report system memory (desktop builds). */
+    const MIKPlatform* platform = MIK_GetPlatform();
+    size_t sys_free = platform->get_free_system_mem();
+    bool sys_bound = sys_free > 0 && (long)sys_free < headroom;
+    if (sys_bound) {
+        headroom = (long)sys_free;
+    }
     if (headroom >= MIK__PRE_EVAL_HEADROOM_WARN) return;
 
-    const MIKPlatform* platform = MIK_GetPlatform();
-    platform->log(MIK_LOG_WARN, "mikrojs",
-                  "Low QuickJS heap headroom before evaluating '%s': %ld bytes left "
-                  "(%ld / %ld used). Module evaluation may fail with OOM. Lower "
-                  "`memReserved` in mikro.config.ts or split the module graph with "
-                  "dynamic imports.",
-                  filename, headroom, (long)mem.malloc_size, (long)mem.malloc_limit);
+    if (sys_bound) {
+        platform->log(MIK_LOG_WARN, "mikrojs",
+                      "Low system heap before evaluating '%s': %ld bytes free "
+                      "(QuickJS %ld / %ld used has room, but native subsystems have "
+                      "overrun the reserve). Module evaluation may fail with OOM. Raise "
+                      "`memReserved` in mikro.config.ts or free native resources.",
+                      filename, headroom, (long)mem.malloc_size, (long)mem.malloc_limit);
+    } else {
+        platform->log(MIK_LOG_WARN, "mikrojs",
+                      "Low QuickJS heap headroom before evaluating '%s': %ld bytes left "
+                      "(%ld / %ld used). Module evaluation may fail with OOM. Lower "
+                      "`memReserved` in mikro.config.ts or split the module graph with "
+                      "dynamic imports.",
+                      filename, headroom, (long)mem.malloc_size, (long)mem.malloc_limit);
+    }
 
     /* Signal the host so it can take application-level action (flash LED,
      * log metric, trigger reset, forward to telemetry). Operates on C state
