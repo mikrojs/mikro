@@ -32,6 +32,12 @@ CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
 CONFIG_ESP_WIFI_IRAM_OPT=n
 CONFIG_ESP_WIFI_RX_IRAM_OPT=n
 
+# Run the WiFi modem-sleep RX path from flash instead of IRAM (~13KB on C6:
+# the .wifislprxiram/.wifislpiram sections). Same trade as the flags above,
+# but for the sleep wake path: slightly slower beacon RX while in modem
+# sleep with STA power save enabled.
+CONFIG_ESP_WIFI_SLP_IRAM_OPT=n
+
 # Trim WiFi driver buffers toward Espressif's low-RAM rank. The IDF defaults
 # left too little heap for a TLS handshake next to a JS runtime on no-PSRAM
 # chips. STATIC_RX is a real ~1.6 KB/buffer allocation made at wifi init; the
