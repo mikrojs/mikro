@@ -177,6 +177,10 @@ console.log('Flash: %dMB', board.flash / 1024 / 1024)
 | `flash`    | Flash size in bytes (0 on host)                                                  |
 | `psram`    | PSRAM size in bytes (0 if unavailable)                                           |
 
+`wifi`, `ble` and `bt` appear only when the chip supports them and the matching
+stack was compiled into the firmware, so `features` answers whether the module
+behind a radio will work. `ieee802154` reports silicon alone.
+
 ### firmware
 
 ```ts

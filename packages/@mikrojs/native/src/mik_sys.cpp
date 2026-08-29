@@ -187,15 +187,23 @@ static JSValue mik__sys_board(JSContext* ctx) {
     JS_SetPropertyStr(ctx, obj, "cores", JS_NewInt32(ctx, chip_info.cores));
     JS_SetPropertyStr(ctx, obj, "revision", JS_NewInt32(ctx, chip_info.revision));
 
-    /* Features as string array */
+    /* Features as string array. Callers use this to decide whether an
+     * optional module will work, so a radio only counts when the silicon
+     * has it AND the stack behind it was compiled in. */
     JSValue features = JS_NewArray(ctx);
     uint32_t fi = 0;
+#ifdef CONFIG_ESP_WIFI_ENABLED
     if (chip_info.features & CHIP_FEATURE_WIFI_BGN)
         JS_SetPropertyUint32(ctx, features, fi++, JS_NewString(ctx, "wifi"));
+#endif
+#ifdef CONFIG_BT_ENABLED
     if (chip_info.features & CHIP_FEATURE_BLE)
         JS_SetPropertyUint32(ctx, features, fi++, JS_NewString(ctx, "ble"));
     if (chip_info.features & CHIP_FEATURE_BT)
         JS_SetPropertyUint32(ctx, features, fi++, JS_NewString(ctx, "bt"));
+#endif
+    /* No stack to gate on: mikrojs has no 802.15.4 API, so this stays a
+     * plain silicon report. */
     if (chip_info.features & CHIP_FEATURE_IEEE802154)
         JS_SetPropertyUint32(ctx, features, fi++, JS_NewString(ctx, "ieee802154"));
     JS_SetPropertyStr(ctx, obj, "features", features);
