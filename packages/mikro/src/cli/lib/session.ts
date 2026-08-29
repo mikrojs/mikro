@@ -115,6 +115,14 @@ export interface ReadyEvent {
   /** The stored name pair could not be read, so `nameRev` is unknown rather
    *  than 0. Callers that write identity must decline instead of assuming. */
   nameCorrupt?: boolean | undefined
+  /** JS heap left before `mem_limit` throws, captured before the app was
+   *  evaluated. Absent on firmware predating the field. */
+  heapFree?: number | undefined
+  /** Free system heap at the same moment. Absent on older firmware. */
+  systemFree?: number | undefined
+  /** The `memReserved` the device booted with, which set `mem_limit`. Lets the
+   *  host spot a device still running a config older than the project's. */
+  memReserved?: number | undefined
   advisory?: FirmwareAdvisory | null
 }
 
@@ -1188,6 +1196,9 @@ function frameToEvent(frame: Frame): ReplEvent | null {
       let name: string | undefined
       let nameRev: number | undefined
       let nameCorrupt: boolean | undefined
+      let heapFree: number | undefined
+      let systemFree: number | undefined
+      let memReserved: number | undefined
       try {
         const info = decodeCbor(msg.payload) as {
           chip?: string
@@ -1195,6 +1206,9 @@ function frameToEvent(frame: Frame): ReplEvent | null {
           v?: string
           fw?: string
           name?: string
+          heapFree?: number
+          sysFree?: number
+          memRes?: number
         }
         chip = info.chip ?? null
         id = info.id ?? null
@@ -1206,10 +1220,25 @@ function frameToEvent(frame: Frame): ReplEvent | null {
         name = state.name
         nameRev = state.rev
         nameCorrupt = state.corrupt
+        heapFree = typeof info.heapFree === 'number' ? info.heapFree : undefined
+        systemFree = typeof info.sysFree === 'number' ? info.sysFree : undefined
+        memReserved = typeof info.memRes === 'number' ? info.memRes : undefined
       } catch {
         // ignore
       }
-      return {type: 'ready', chip, id, version, fw, name, nameRev, nameCorrupt}
+      return {
+        type: 'ready',
+        chip,
+        id,
+        version,
+        fw,
+        name,
+        nameRev,
+        nameCorrupt,
+        heapFree,
+        systemFree,
+        memReserved,
+      }
     }
     case 'log':
     case 'warn':

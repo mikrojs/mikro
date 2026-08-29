@@ -227,19 +227,20 @@ Run on-device tests. Discovers `*.test.ts` files, deploys them, and reports stru
 mikro test [PATTERN]
 ```
 
-| Option                    | Description                                                                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `PATTERN`                 | Glob pattern to filter test files (default: `**/*.test.ts`)                                             |
-| `-p, --port PORT`         | Serial port (auto-detected if omitted)                                                                  |
-| `--env-file FILE`         | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
-| `--no-auto-env`           | Skip auto-loading of `.env` and `.env.test`                                                             |
-| `--no-minify`             | Skip minification                                                                                       |
-| `--no-bytecode`           | Skip bytecode compilation                                                                               |
-| `-t, --timeout MS`        | Per-file timeout in ms (default: `60000`)                                                               |
-| `--update-heap-baselines` | Overwrite committed per-file heap-baseline snapshots                                                    |
-| `--diagnostics`           | Show per-test heap progress and supervisor announcements                                                |
-| `-y, --yes`               | Skip confirmation prompt                                                                                |
-| `--json`                  | Output as JSON                                                                                          |
+| Option                  | Description                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| `PATTERN`               | Glob pattern to filter test files (default: `**/*.test.ts`)                                             |
+| `-p, --port PORT`       | Serial port (auto-detected if omitted)                                                                  |
+| `--env-file FILE`       | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
+| `--no-auto-env`         | Skip auto-loading of `.env` and `.env.test`                                                             |
+| `--no-minify`           | Skip minification                                                                                       |
+| `--no-bytecode`         | Skip bytecode compilation                                                                               |
+| `-t, --timeout MS`      | Per-file timeout in ms (default: `60000`)                                                               |
+| `-u, --update-heap`     | Overwrite committed heap snapshots with this run's measurements                                         |
+| `--heap-tolerance SIZE` | Heap drift below which a snapshot is neither flagged nor rewritten                                      |
+| `--diagnostics`         | Show per-test heap progress and supervisor announcements                                                |
+| `-y, --yes`             | Skip confirmation prompt                                                                                |
+| `--json`                | Output as JSON                                                                                          |
 
 See [Build options](#build-options) for details on `--no-minify` and other build flags.
 
@@ -273,6 +274,42 @@ The environment variable `MIKRO_ENV` is automatically set to `"test"` during tes
 :::
 
 To run tests in the host simulator, use [`mikro sim test`](#mikro-sim).
+
+## mikro profile
+
+Report the memory a device leaves for an app to consume. This is the device counterpart to the `QuickJS baseline` line in [`mikro sim profile`](#mikro-sim-profile): what is available before any of your code costs anything.
+
+```sh
+mikro profile
+```
+
+```
+  esp32c6  js 218KB   system 252.4KB
+```
+
+There are two ceilings, and either one can be the first you hit:
+
+- **js**: the JS budget left before `mem_limit` throws `InternalError: out of memory`. This is the figure the firmware boot banner prints.
+- **system**: the free chip heap that native allocations draw on (TLS records, WiFi buffers, drivers).
+
+QuickJS allocates out of the system heap, so JS growth is capped by whichever is smaller. Both are recorded as `boot` in `__heap_snapshots__/<chip>.json`, the same file [`mikro test`](#mikro-test) writes per-test figures to.
+
+They track the firmware and the project's runtime configuration rather than app code, so they move when sdkconfig, native modules, or the ESP-IDF version move. They also move when [`memReserved`](/config#memreserved) changes, since `mem_limit` is derived as free heap minus that reserve. `memReserved` moves **js** one-for-one and leaves **system** untouched, which is what tells a reserve change apart from a real firmware regression.
+
+The device reports both in the ready handshake, captured before it evaluated your app, so a normal run only connects and reads. There is one exception: when the device booted with a different `memReserved` than the project config, the reading would describe the old reserve, so the command offers to deploy the project first. Accepting replaces the app on the device with a production build.
+
+| Option                  | Description                                                     |
+| ----------------------- | --------------------------------------------------------------- |
+| `-p, --port PORT`       | Serial port (auto-detected if omitted)                          |
+| `-u, --update-heap`     | Overwrite the committed boot snapshot with this run's reading   |
+| `--heap-tolerance SIZE` | Drift below which the snapshot is neither flagged nor rewritten |
+| `--json`                | Output as JSON                                                  |
+
+When a reading shows less free memory than the stored figure, the command reports a regression and exits non-zero; more free memory is reported as an improvement worth recording. A move in either ceiling counts, and `-u` records both.
+
+::: tip
+Firmware predating this handshake field does not report the figures, and the command says so. Rebuild and flash to get them.
+:::
 
 ## mikro env
 
@@ -523,17 +560,18 @@ Discover and run `*.test.ts` files in the simulator. The sim equivalent of `mikr
 mikro sim test [PATTERN]
 ```
 
-| Option                    | Description                                                                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `PATTERN`                 | Glob pattern to filter test files (default: `**/*.test.ts`)                                             |
-| `--env-file FILE`         | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
-| `--no-auto-env`           | Skip auto-loading of `.env` and `.env.simulator`                                                        |
-| `--no-minify`             | Skip minification                                                                                       |
-| `--no-bytecode`           | Skip bytecode compilation                                                                               |
-| `-t, --timeout MS`        | Per-file timeout in ms (default: `60000`)                                                               |
-| `--update-heap-baselines` | Overwrite committed per-file heap-baseline snapshots                                                    |
-| `--diagnostics`           | Show per-test heap progress and supervisor announcements                                                |
-| `--json`                  | Output as JSON                                                                                          |
+| Option                  | Description                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| `PATTERN`               | Glob pattern to filter test files (default: `**/*.test.ts`)                                             |
+| `--env-file FILE`       | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
+| `--no-auto-env`         | Skip auto-loading of `.env` and `.env.simulator`                                                        |
+| `--no-minify`           | Skip minification                                                                                       |
+| `--no-bytecode`         | Skip bytecode compilation                                                                               |
+| `-t, --timeout MS`      | Per-file timeout in ms (default: `60000`)                                                               |
+| `-u, --update-heap`     | Overwrite committed heap snapshots with this run's measurements                                         |
+| `--heap-tolerance SIZE` | Heap drift below which a snapshot is neither flagged nor rewritten                                      |
+| `--diagnostics`         | Show per-test heap progress and supervisor announcements                                                |
+| `--json`                | Output as JSON                                                                                          |
 
 ### mikro sim env
 

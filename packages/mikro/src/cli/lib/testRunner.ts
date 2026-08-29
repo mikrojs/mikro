@@ -19,7 +19,8 @@ import {
 import type {Minifier, MinifyLevel} from '../../_exports/index.js'
 import {buildTests, entryRootDir} from './build.js'
 import {collectFiles, type EnvVar} from './deploy.js'
-import {readBaseline, writeBaseline} from './heapBaseline.js'
+import {classifyHeapSnapshot, heapTolerance, readSnapshot, writeSnapshot} from './heapSnapshots.js'
+import {resolveProjectRoot} from './projectRoot.js'
 import type {DeployEvent, ReplEvent, ReplSession, TestEvent} from './session.js'
 
 /**
@@ -50,7 +51,7 @@ function resolveAppRoot(cwd: string): string {
   return 'app'
 }
 
-export type HeapBaselineAction = 'created' | 'ok' | 'exceeded' | 'updated' | 'stale'
+export type HeapSnapshotAction = 'created' | 'ok' | 'exceeded' | 'updated' | 'stale' | 'skipped'
 
 export interface TestFileResult {
   file: string
@@ -67,7 +68,7 @@ export interface TestFileResult {
    *  PASS over files that silently never ran. */
   completed?: boolean
   /** heapUsed delta (bytes) between run start and end, after gc on both
-   *  sides. Relative to the (post-beforeAll) baseline; drives heap-baseline
+   *  sides. Relative to the (post-beforeAll) baseline; drives heap-snapshot
    *  regression tracking. Surfaced as the "retained" figure (the only memory
    *  signal on the host sim, which has no system heap). */
   heapDelta?: number
@@ -84,12 +85,15 @@ export interface TestFileResult {
   /** Net in-flight HTTP request count change (should be 0). Detects fetches
    *  that were initiated but not cancelled or awaited before teardown. */
   pendingDelta?: number
-  /** Chip reported by the device (e.g. "esp32c6", "host"). Used as baseline key. */
+  /** Chip reported by the device (e.g. "esp32c6", "simulator"). Snapshot key. */
   chip?: string
-  /** Stored baseline value for this chip (if a baseline file existed) */
-  heapBaselineStored?: number
-  /** What happened to the heap-baseline file this run */
-  heapBaselineAction?: HeapBaselineAction
+  /** Stored snapshot value for this chip (if a snapshot existed) */
+  heapSnapshotStored?: number
+  /** On an `updated` action, the value that was there before. `heapSnapshotStored`
+   *  holds the newly written one, so the diff needs both. */
+  heapSnapshotPrevious?: number
+  /** What happened to the heap snapshot this run */
+  heapSnapshotAction?: HeapSnapshotAction
 }
 
 export interface TestRunOptions {
@@ -102,8 +106,11 @@ export interface TestRunOptions {
   buildDir: string
   /** Value of MIKRO_ENV to set during the test run (e.g. 'test', 'simulator'). */
   mikroEnv: string
-  /** If true, write the current heapDelta as the new baseline for the current chip. */
-  updateHeapBaselines?: boolean
+  /** If true, write the current heapDelta as the new snapshot for the current chip. */
+  updateHeapSnapshots?: boolean
+  /** Drift (bytes) below which a snapshot is neither flagged nor rewritten.
+   *  Undefined uses max(256B, 1% of stored). */
+  heapTolerance?: number
 }
 
 /**
@@ -157,7 +164,7 @@ export interface TestManifestCallbacks {
 /**
  * Build the test manifest, deploy once, and observe the device supervisor
  * stream as each test file runs in its own fresh runtime. Returns one
- * TestFileResult per input, with heap-baseline bookkeeping applied.
+ * TestFileResult per input, with heap-snapshot bookkeeping applied.
  */
 export async function runTestManifest(
   session: ReplSession,
@@ -206,18 +213,19 @@ export async function runTestManifest(
       .pipe(tap((event) => cb.onDeployEvent?.(event))),
   )
 
-  // Resolve chip before streaming so heap-baseline bookkeeping can run
+  // Resolve chip before streaming so heap-snapshot bookkeeping can run
   // synchronously inside onFileDone — otherwise the per-file render happens
-  // before heapBaselineAction is set and the user sees no feedback.
+  // before heapSnapshotAction is set and the user sees no feedback.
   // ready$ is shareReplay(1) and session.deploy() awaits ready, so this is
   // cached and resolves immediately.
   const ready = await firstValueFrom(session.ready$)
   const chip = ready.chip ?? 'unknown'
+  const snapshotRoot = resolveProjectRoot()
 
   const wrappedCb: TestManifestCallbacks = {
     ...cb,
     onFileDone: (result, index, total) => {
-      applyHeapBaseline(result, chip, options.updateHeapBaselines ?? false)
+      applyHeapSnapshot(result, snapshotRoot, chip, options)
       cb.onFileDone?.(result, index, total)
     },
   }
@@ -227,37 +235,57 @@ export async function runTestManifest(
 }
 
 /**
- * Mutates `result` with chip + heap-baseline bookkeeping fields and writes
- * the baseline file when appropriate. Must run before the user-visible
- * render of a TestFileResult so messages like "heap-baseline exceeded" can
- * appear alongside the file's pass/fail summary.
+ * Mutates `result` with chip + heap-snapshot bookkeeping fields and writes the
+ * snapshot file when appropriate. Must run before the user-visible render of a
+ * TestFileResult so messages like "heap snapshot exceeded" can appear alongside
+ * the file's pass/fail summary.
  */
-function applyHeapBaseline(result: TestFileResult, chip: string, update: boolean): void {
+function applyHeapSnapshot(
+  result: TestFileResult,
+  root: string,
+  chip: string,
+  options: TestRunOptions,
+): void {
   result.chip = chip
   if (typeof result.heapDelta !== 'number') return
-  const stored = readBaseline(result.file, chip)
-  if (update) {
-    writeBaseline(result.file, chip, result.heapDelta)
-    result.heapBaselineAction = stored === undefined ? 'created' : 'updated'
-    result.heapBaselineStored = result.heapDelta
+  const stored = readSnapshot(root, result.file, chip)
+  // A file that executed nothing measures the cost of an empty run, not the
+  // tests: seeding or updating from it would record garbage, and comparing
+  // against it would warn forever about a figure -u must not accept. Leave
+  // the snapshot alone, and say so when there is a stored figure the reader
+  // might expect a comparison against. `todo` tests don't count: they are
+  // permanent placeholders, not a sign this environment skipped the file.
+  if (result.passed + result.failed === 0 && result.skipped > 0) {
+    if (stored !== undefined) {
+      result.heapSnapshotStored = stored
+      result.heapSnapshotAction = 'skipped'
+    }
     return
   }
+  // Seed a missing entry even without the flag, so a new test file or a chip
+  // seen for the first time records itself instead of going unmeasured.
   if (stored === undefined) {
-    writeBaseline(result.file, chip, result.heapDelta)
-    result.heapBaselineAction = 'created'
-    result.heapBaselineStored = result.heapDelta
+    writeSnapshot(root, result.file, chip, result.heapDelta)
+    result.heapSnapshotAction = 'created'
+    result.heapSnapshotStored = result.heapDelta
     return
   }
-  result.heapBaselineStored = stored
-  if (result.heapDelta > stored) {
-    result.heapBaselineAction = 'exceeded'
+  const tolerance = heapTolerance(stored, options.heapTolerance)
+  result.heapSnapshotStored = stored
+  if (options.updateHeapSnapshots === true) {
+    // Leave drift under the tolerance alone: rewriting on a couple of bytes
+    // is pure diff noise.
+    if (Math.abs(result.heapDelta - stored) <= tolerance) {
+      result.heapSnapshotAction = 'ok'
+      return
+    }
+    writeSnapshot(root, result.file, chip, result.heapDelta)
+    result.heapSnapshotAction = 'updated'
+    result.heapSnapshotPrevious = stored
+    result.heapSnapshotStored = result.heapDelta
     return
   }
-  // Nudge to tighten the snapshot when actual is well below stored, so
-  // optimizations get locked in rather than leaving slack that masks a
-  // future regression. Margin: max(512B, 25% of stored).
-  const margin = Math.max(512, Math.floor(stored * 0.25))
-  result.heapBaselineAction = result.heapDelta < stored - margin ? 'stale' : 'ok'
+  result.heapSnapshotAction = classifyHeapSnapshot(result.heapDelta, stored, tolerance)
 }
 
 /** Format a byte count for human-readable test output. */

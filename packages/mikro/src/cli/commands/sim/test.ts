@@ -11,6 +11,7 @@ import {agentEmit, agentError, agentResult, isAgentMode} from '../../lib/agent.j
 import {loadEnvFiles} from '../../lib/deploy.js'
 import {openSim} from '../../lib/openSim.js'
 import {parseMinifier, parseMinifyLevel} from '../../lib/parseMinifier.js'
+import {parseSize} from '../../lib/parseSize.js'
 import {getMikroDir, resolveProjectRoot} from '../../lib/projectRoot.js'
 import type {TestEvent} from '../../lib/session.js'
 import {SimAlreadyRunningError} from '../../lib/simPid.js'
@@ -55,9 +56,14 @@ export const args = command(
         description: message`Per-file timeout in ms (default: 60000)`,
       }),
     ),
-    updateHeapBaselines: optional(
-      flag('--update-heap-baselines', {
-        description: message`Overwrite per-file heap-baseline snapshots (<name>.test.heap-baseline.json) with the current run's heapDelta, keyed by the current chip.`,
+    updateHeapSnapshots: optional(
+      flag('-u', '--update-heap', {
+        description: message`Overwrite committed heap snapshots (__heap_snapshots__/<chip>.json) with the current run's heapDelta. Drift under the tolerance is left alone.`,
+      }),
+    ),
+    heapTolerance: optional(
+      option('--heap-tolerance', string({metavar: 'SIZE'}), {
+        description: message`Heap drift below which a snapshot is neither flagged nor rewritten (default: max(256, 1% of stored)). Accepts a K/M suffix.`,
       }),
     ),
     diagnostics: optional(
@@ -88,7 +94,8 @@ interface RunConfig {
   minifyLevel?: string
   noBytecode?: boolean
   timeout?: string
-  updateHeapBaselines?: boolean
+  updateHeapSnapshots?: boolean
+  heapTolerance?: string
   diagnostics?: boolean
   json?: boolean
   agent?: boolean
@@ -99,6 +106,19 @@ export async function run(config: RunConfig): Promise<void> {
   const log = jsonOutput ? () => {} : (msg: string) => console.error(msg)
 
   const cwd = process.cwd()
+
+  let heapTolerance: number | undefined
+  if (config.heapTolerance !== undefined) {
+    try {
+      heapTolerance = parseSize(config.heapTolerance)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (jsonOutput) agentResult('sim test', {error: msg})
+      else log(msg)
+      process.exit(1)
+    }
+  }
+
   let testFiles: string[] = []
   try {
     testFiles = await discoverTestFiles(cwd, config.filters)
@@ -158,7 +178,8 @@ export async function run(config: RunConfig): Promise<void> {
     timeout: timeoutMs,
     buildDir: pathlib.join(getMikroDir(), 'build'),
     mikroEnv: 'simulator',
-    updateHeapBaselines: config.updateHeapBaselines === true,
+    updateHeapSnapshots: config.updateHeapSnapshots === true,
+    ...(heapTolerance === undefined ? {} : {heapTolerance}),
   }
 
   const startTime = Date.now()
@@ -191,9 +212,12 @@ export async function run(config: RunConfig): Promise<void> {
             ...(typeof result.timerDelta === 'number' ? {timerDelta: result.timerDelta} : {}),
             ...(typeof result.pendingDelta === 'number' ? {pendingDelta: result.pendingDelta} : {}),
             ...(result.chip ? {chip: result.chip} : {}),
-            ...(result.heapBaselineAction ? {heapBaselineAction: result.heapBaselineAction} : {}),
-            ...(typeof result.heapBaselineStored === 'number'
-              ? {heapBaselineStored: result.heapBaselineStored}
+            ...(result.heapSnapshotAction ? {heapSnapshotAction: result.heapSnapshotAction} : {}),
+            ...(typeof result.heapSnapshotStored === 'number'
+              ? {heapSnapshotStored: result.heapSnapshotStored}
+              : {}),
+            ...(typeof result.heapSnapshotPrevious === 'number'
+              ? {heapSnapshotPrevious: result.heapSnapshotPrevious}
               : {}),
             ...(result.error ? {error: result.error} : {}),
           })
@@ -251,8 +275,9 @@ export async function run(config: RunConfig): Promise<void> {
         timerDelta: r.timerDelta,
         pendingDelta: r.pendingDelta,
         chip: r.chip,
-        heapBaselineAction: r.heapBaselineAction,
-        heapBaselineStored: r.heapBaselineStored,
+        heapSnapshotAction: r.heapSnapshotAction,
+        heapSnapshotStored: r.heapSnapshotStored,
+        heapSnapshotPrevious: r.heapSnapshotPrevious,
       })),
     })
   } else {
@@ -300,33 +325,51 @@ function renderTestEvent(event: TestEvent, diagnostics: boolean): void {
   }
 }
 
+/**
+ * "updated heap snapshot for simulator: 12.1KB → 11.8KB (-300B)"
+ *
+ * Retained heap, so down is the win: green for a drop, red for growth. Segments
+ * are dimmed individually rather than wrapping the whole line, because the
+ * colour reset that ends the delta would otherwise clear the dim as well.
+ */
+function formatSnapshotUpdate(chip: string, result: TestFileResult): string {
+  const before = result.heapSnapshotPrevious ?? 0
+  const after = result.heapSnapshotStored ?? 0
+  const change = after - before
+  const delta = change > 0 ? red(`+${formatBytes(change)}`) : green(formatBytes(change))
+  const head = `updated heap snapshot for ${chip}: ${formatBytes(before)} → ${formatBytes(after)} (`
+  return `${dim(head)}${delta}${dim(')')}`
+}
+
 function renderLeakReport(result: TestFileResult): void {
   const chip = result.chip ?? 'unknown'
-  switch (result.heapBaselineAction) {
+  switch (result.heapSnapshotAction) {
     case 'created':
       console.error(
-        `  ${dim(`wrote heap-baseline for ${chip}: ${formatBytes(result.heapBaselineStored ?? 0)}`)}`,
+        `  ${dim(`wrote heap snapshot for ${chip}: ${formatBytes(result.heapSnapshotStored ?? 0)}`)}`,
       )
       break
-    case 'updated':
-      console.error(
-        `  ${dim(`updated heap-baseline for ${chip}: ${formatBytes(result.heapBaselineStored ?? 0)}`)}`,
-      )
+    case 'updated': {
+      console.error(`  ${formatSnapshotUpdate(chip, result)}`)
       break
+    }
     case 'exceeded': {
-      const over = (result.heapDelta ?? 0) - (result.heapBaselineStored ?? 0)
+      const over = (result.heapDelta ?? 0) - (result.heapSnapshotStored ?? 0)
       console.error(
-        `  ${yellow(`⚠ heap-baseline exceeded for ${chip}: +${formatBytes(over)} over ${formatBytes(result.heapBaselineStored ?? 0)}. Re-run with --update-heap-baselines to accept.`)}`,
+        `  ${yellow(`⚠ heap snapshot exceeded for ${chip}: +${formatBytes(over)} over ${formatBytes(result.heapSnapshotStored ?? 0)}. Re-run with -u to accept.`)}`,
       )
       break
     }
     case 'stale': {
-      const under = (result.heapBaselineStored ?? 0) - (result.heapDelta ?? 0)
+      const under = (result.heapSnapshotStored ?? 0) - (result.heapDelta ?? 0)
       console.error(
-        `  ${dim(`heap-baseline stale for ${chip}: now ${formatBytes(result.heapDelta ?? 0)} (stored ${formatBytes(result.heapBaselineStored ?? 0)}, -${formatBytes(under)}). Re-run with --update-heap-baselines to tighten.`)}`,
+        `  ${dim(`heap snapshot stale for ${chip}: now ${formatBytes(result.heapDelta ?? 0)} (stored ${formatBytes(result.heapSnapshotStored ?? 0)}, -${formatBytes(under)}). Re-run with -u to record it.`)}`,
       )
       break
     }
+    case 'skipped':
+      console.error(`  ${dim(`heap snapshot untouched for ${chip}: no tests ran`)}`)
+      break
     case 'ok':
     default:
       break
@@ -361,8 +404,8 @@ function formatDuration(ms: number): string {
 }
 
 function renderAlertSummary(results: TestFileResult[], cwd: string): void {
-  const exceeded = results.filter((r) => r.heapBaselineAction === 'exceeded')
-  const stale = results.filter((r) => r.heapBaselineAction === 'stale')
+  const exceeded = results.filter((r) => r.heapSnapshotAction === 'exceeded')
+  const stale = results.filter((r) => r.heapSnapshotAction === 'stale')
   const timerLeaks = results.filter((r) => (r.timerDelta ?? 0) > 0)
   const httpLeaks = results.filter((r) => (r.pendingDelta ?? 0) > 0)
   if (
@@ -378,16 +421,16 @@ function renderAlertSummary(results: TestFileResult[], cwd: string): void {
   if (exceeded.length > 0) {
     const items = exceeded
       .map(
-        (r) => `${rel(r.file)} (+${formatBytes((r.heapDelta ?? 0) - (r.heapBaselineStored ?? 0))})`,
+        (r) => `${rel(r.file)} (+${formatBytes((r.heapDelta ?? 0) - (r.heapSnapshotStored ?? 0))})`,
       )
       .join(', ')
     console.error(`  ${yellow(`⚠ heap exceeded: ${items}`)}`)
-    console.error(`    ${dim('Re-run with --update-heap-baselines to accept.')}`)
+    console.error(`    ${dim('Re-run with -u to accept.')}`)
   }
   if (stale.length > 0) {
     const items = stale
       .map(
-        (r) => `${rel(r.file)} (-${formatBytes((r.heapBaselineStored ?? 0) - (r.heapDelta ?? 0))})`,
+        (r) => `${rel(r.file)} (-${formatBytes((r.heapSnapshotStored ?? 0) - (r.heapDelta ?? 0))})`,
       )
       .join(', ')
     console.error(`  ${dim(`heap stale: ${items}`)}`)

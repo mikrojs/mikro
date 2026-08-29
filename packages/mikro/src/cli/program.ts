@@ -18,6 +18,7 @@ import * as logsCommand from './commands/logs.js'
 import * as listCommand from './commands/ls.js'
 import * as nameCommand from './commands/name.js'
 import * as otaCommand from './commands/ota.js'
+import * as profileCommand from './commands/profile.js'
 import * as simCommand from './commands/sim.js'
 import * as testCommand from './commands/test.js'
 
@@ -37,6 +38,7 @@ export {
   logsCommand,
   nameCommand,
   otaCommand,
+  profileCommand,
   simCommand,
   testCommand,
 }
@@ -59,6 +61,7 @@ export const commands = {
   test: testCommand,
   sim: simCommand,
   ota: otaCommand,
+  profile: profileCommand,
 }
 
 export const argsParser = or(
@@ -82,6 +85,7 @@ export const argsParser = or(
     object({command: commands.home.args}),
     object({command: commands.logs.args}),
     object({command: commands.ota.args}),
+    object({command: commands.profile.args}),
   ),
 )
 
