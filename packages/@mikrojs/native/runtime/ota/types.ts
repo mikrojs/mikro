@@ -6,7 +6,8 @@ import type {Result} from '../result/types.js'
 /** An update offered by a registry: what to fetch and how to verify it, nothing
  *  more. Whether this device should take it is the registry's decision, made
  *  against the firmware and bytecode version the device reports at check-in and
- *  the whole set of builds it holds. Validate untrusted input with `parseOffer`. */
+ *  the whole set of builds it holds. `settle()` validates the untrusted
+ *  response fields into one. */
 export interface Offer {
   /** https URL of the .tgz build */
   url: string
@@ -117,24 +118,6 @@ export type ApplyOutcome =
  *  mismatch code, since it cannot tell a bad hash from bad bytes. */
 export type OtaError = OtaWriteError | OtaBeginError | OtaInstallError | OtaDownloadError
 
-/** One stored config document: the complete effective config computed and
- *  validated by the registry (or by the CLI at cable-seed time), the opaque
- *  token that identifies it, and the release version it was computed for.
- *  The device stores and returns it without understanding it: validation is
- *  the writer's job, and the registry already ships the code. */
-export interface StoredConfig {
-  /** Opaque registry-issued token echoed as `configRev` on check-ins. The
-   *  registry serves its document whenever the echo differs from its own
-   *  current rev, so a document it does not recognize is replaced. */
-  rev?: string
-  /** The release version this document was computed for. A document stamped
-   *  for another version is ignored by `ota.config()`. */
-  version: string
-  /** The served document: the deviation overlay the read resolves over the
-   *  build's manifest defaults. */
-  doc?: unknown
-}
-
 /** The three config slots, mirroring the build's install slots: `current` is
  *  what the running build reads, `next` is staged with an offered build,
  *  `prev` is the rollback baseline while a trial is unresolved. */
@@ -166,27 +149,12 @@ export type ConfigWrite =
    *  included), or it was a clear with nothing to clear. */
   | 'unchanged'
   /** Nothing was written, and the reason is transient: the store could not
-   *  answer, or the running version could not be read. Keep echoing the rev
-   *  from `configState()` so the document is served again, rather than the rev
-   *  of the document that did not land. */
+   *  answer, or the running version could not be read. The next `report()`
+   *  still echoes the held rev, so the document is served again, rather than
+   *  the rev of the document that did not land. */
   | 'failed'
-  /** Not a usable config document. Validate with `parseConfig` first to find
-   *  out before the delivery, and log what the wire actually carried. */
+  /** Not a usable config document; log what the wire actually carried. */
   | 'invalid'
-
-/** What a check-in body owes the registry about config, for a client that
- *  builds its own. */
-export interface ConfigState {
-  /** The rev to send as `configRev`: the registry serves its document whenever
-   *  this differs from its own current rev. Absent when the device holds no
-   *  document. After a rolled-back trial this is the FAILED document's rev,
-   *  which is what stops the registry serving it again. */
-  rev?: string
-  /** A document that failed its trial and was rolled back, reported until it
-   *  is replaced. Send it as `configError`, or an operator has no way to see
-   *  that the document they published took the device down. */
-  error?: ConfigErrorReport
-}
 
 /** A config document rolled back after a failed trial; reported on check-ins
  *  while it stands. `rev` names the failed document, and the client keeps
@@ -230,9 +198,12 @@ export interface CheckinReport {
   /** Why a previous install failed. Present after a `reconcile()` that found
    *  one, until a `settle()` marks it delivered. */
   lastInstall?: Diagnostic
-  /** The held document's rev to echo; see {@link ConfigState.rev}. */
+  /** The held document's rev to echo: the registry serves its document
+   *  whenever this differs from its own current rev. After a rolled-back
+   *  trial this is the FAILED document's rev, which is what stops the
+   *  registry serving it again. */
   configRev?: string
-  /** A rolled-back document to report; see {@link ConfigState.error}. */
+  /** A rolled-back document to report; see {@link ConfigErrorReport}. */
   configError?: ConfigErrorReport
   /** Why the last offered build was not taken. Present after `applyOffer`
    *  declined one or the app recorded its own via `decline()`, until a
@@ -277,11 +248,6 @@ export type RegisteredConfig = keyof OtaConfig extends never ? unknown : OtaConf
 export interface Ota {
   /** Report what happened to a previous update on this boot, and clear the report. */
   reconcile(): InstallOutcome
-  /** The build currently executing, read from the live app. */
-  running(): RunningBuild
-  /** Validate a registry value into an `Offer`, or `undefined` if unusable.
-   *  `allowInsecure` (dev only) accepts an http build url instead of https. */
-  parseOffer(raw: unknown, opts?: {allowInsecure?: boolean}): Offer | undefined
   /** Run the full update policy: skip checks and the retry limit, download
    *  via the `download` callback, and verification. Compatibility is not
    *  re-checked: the registry selected this build for the reported firmware,
@@ -339,46 +305,6 @@ export interface Ota {
    */
   config<T = RegisteredConfig>(): T
   /**
-   * Validate a config document a client received over its own transport, or
-   * `undefined` when it cannot be used. What `parseOffer` is to an offer.
-   *
-   * A usable document is an object with a non-empty `version` (the release it
-   * was computed for, which decides where `applyConfig` puts it), an optional
-   * `rev` short enough to echo intact, and a `doc` that is an object or absent.
-   * An absent `doc` is the clear, not a malformed document.
-   *
-   * Whether the document survives CBOR is settled by `applyConfig`, which is
-   * where the stored bytes are made.
-   */
-  parseConfig(raw: unknown): StoredConfig | undefined
-  /**
-   * Store a config document, for a client that received one over its own
-   * transport. The built-in client covers the ordinary case and does not go
-   * through here.
-   *
-   * The `version` stamp decides where it lands: stamped for the running
-   * release it is applied, and the document it replaces is kept as the
-   * rollback baseline; stamped for another it is staged for the build it
-   * names, to apply when that build installs. The return value says which
-   * happened, and says when nothing did.
-   *
-   * A delivery to the running release arms a trial. Each boot whose first
-   * `config()` read serves the document burns one of `trialBoots`, and the
-   * budget spent with no `confirm()` in between restores the previous
-   * document. On a wake-cycle device every wake is a boot, so raise
-   * `trialBoots` above the default when a check-in can plausibly fail a few
-   * cycles in a row.
-   */
-  applyConfig(config: StoredConfig, options?: {trialBoots?: number}): ConfigWrite
-  /**
-   * What the device owes its registry about config: the rev to echo, and a
-   * rolled-back document to report. A client that builds its own check-in body
-   * needs both. Without the echo the registry re-serves the same document on
-   * every check-in; without the report a document that took the device down is
-   * re-served forever and nobody is told.
-   */
-  configState(): ConfigState
-  /**
    * Record why an offered build was not taken, for the next `report()` to
    * carry as `lastDecline` and a later `settle()` to mark delivered — the
    * same lifecycle as `lastInstall`. `applyOffer` records its own outcomes,
@@ -398,8 +324,8 @@ export interface Ota {
   decline(checksum: string, reason: DeclineReason | (string & {}), detail?: string): void
   /**
    * The check-in body the device owes its registry, assembled: identity,
-   * `running()`, the name pair, free storage, the pending `lastInstall`
-   * report, a recorded `lastDecline`, and what `configState()` resolves. One
+   * the running build, the name pair, free storage, the pending `lastInstall`
+   * report, a recorded `lastDecline`, and the config echo. One
    * call instead of gathering the fields by hand, and the same facts the
    * built-in client sends.
    *
@@ -410,9 +336,12 @@ export interface Ota {
   /**
    * Take a COMPLETED check-in's response, whole: confirm the running trial
    * and a read config document's trial (exactly `confirm()`), adopt a
-   * delivered name pair, store a delivered config document (exactly
-   * `applyConfig`, with `trialBoots`), and validate the offer fields (exactly
-   * `parseOffer(raw)`, with `allowInsecure`). An empty or null response is
+   * delivered name pair, store a delivered config document, and validate the
+   * offer fields (`allowInsecure`, dev only, accepts an http build url). A
+   * stored document arms a trial of `trialBoots` boots: each boot whose first
+   * `config()` read serves it burns one, and the budget spent with no
+   * `confirm()` in between restores the previous document, so raise it above
+   * the default on a wake-cycle device. An empty or null response is
    * the registry's quiet round: nothing to deliver, and the confirm still
    * happens, which is the point of calling. A response of any other shape
    * never decoded: a captive portal handed back HTML, or a proxy sent an

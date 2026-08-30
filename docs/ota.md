@@ -99,11 +99,11 @@ the network stack and the main path of the application work. That signal is stro
 survived boot, and the check-in is a request that the application already makes:
 
 ```ts twoslash
-declare const myRegistry: {checkIn(body: {running: unknown}): Promise<{ok: boolean}>}
+declare const myRegistry: {checkIn(body: unknown): Promise<{ok: boolean}>}
 // ---cut---
 import {ota} from 'mikro/ota'
 
-const result = await myRegistry.checkIn({running: ota.running()})
+const result = await myRegistry.checkIn(ota.report())
 if (result.ok) {
   // Only now: the check-in completed, so the running build is healthy.
   ota.confirm()
@@ -246,9 +246,8 @@ if (checkin.ok) {
 ```
 
 `report()` and `settle()` are the two halves the built-in client runs around its own HTTP
-call. The primitives they compose (`running()`, `confirm()`, `parseOffer`, `applyConfig`,
-`configState()`) stay available one by one, for a client that must intercept a step; the
-[API reference](/api/ota) documents both layers. The offer validation inside `settle`
+call, and together with `applyOffer` and `decline()` they are the whole own-transport
+surface; the [API reference](/api/ota) documents it. The offer validation inside `settle`
 enforces the scheme, the `.tgz`, the checksum and size. It does not check the download
 host: the registry names where the build lives, the checksum vouches for the bytes, and
 the update key goes only to the registry.
@@ -267,9 +266,9 @@ nothing was staged. See
 before the device can take another. Confirm the running build on its own merits, as above.
 Do not treat the new offer as the item to handle.
 
-`ota.running()` reports the build that executes now, read from the live app. During a trial
-it reports the new build with `trial: true`. After a revert it reports the previous build.
-`running()` never reports a build that was only downloaded. So the registry can use it as
+The report's `running` field is the build that executes now, read from the live app. During
+a trial it reports the new build with `trial: true`. After a revert it reports the previous
+build. It never reports a build that was only downloaded. So the registry can use it as
 an accurate record of what each device runs.
 
 ### Resume an interrupted download
@@ -291,10 +290,8 @@ device down is served again forever, and the operator never learns why.
 `settle` places the document by its `version` stamp: a document for the release the device
 runs is applied, and one for another release is staged for the build it names and applies
 when that build installs. Its `config` field says which happened, and says when nothing
-did; `'invalid'` and `'failed'` are the two worth logging. The same write is available on
-its own as `ota.parseConfig` + `ota.applyConfig`, with `ota.configState()` producing the
-two body fields, for a client that handles the document outside the settle. See
-[the API reference](/api/ota#ota-applyconfig-config-options).
+did; `'invalid'` and `'failed'` are the two worth logging. See
+[the API reference](/api/ota#ota-settle-raw-options).
 
 A delivered document goes on trial, the same as one the built-in client delivers. The
 confirm inside `settle` adjudicates both trials: the build's and the document's. The
@@ -304,7 +301,7 @@ that does.
 
 Each boot whose first `ota.config()` read serves the document spends one trial boot. On a
 device that wakes from deep sleep, every wake is a boot. Raise `trialBoots` (an option on
-`settle` and `applyConfig`) above the default of 1 when a check-in can fail for several
+`settle`) above the default of 1 when a check-in can fail for several
 cycles in a row, on a modem link or a solar power budget. Otherwise a single failed
 check-in rolls back a document that was fine.
 
@@ -528,8 +525,7 @@ trial boots run out, and reports the failed document to the registry as `configE
 registry does not send the failed document again; the operator sees the report and corrects
 the values.
 
-A client that brings its own transport delivers documents itself, through `ota.settle` (or
-the split form, `ota.applyConfig` and `ota.configState`). See
+A client that brings its own transport delivers documents itself, through `ota.settle`. See
 [Deliver device config](#deliver-device-config).
 
 In development there is usually no registry in the loop: the app reads its schema defaults,

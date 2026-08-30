@@ -382,7 +382,7 @@ JSValue ota_reconcile(JSContext* ctx, JSValue, int, JSValue*) {
     return obj;
 }
 
-/* running() -> { checksum?, version?, trial } */
+/* The running-build object, { checksum?, version?, trial }, for report(). */
 JSValue ota_running(JSContext* ctx, JSValue, int, JSValue*) {
     MIKOtaClientState* state = state_of(ctx);
     CHECK_NOT_NULL(state);
@@ -430,20 +430,6 @@ JSValue offer_to_js(JSContext* ctx, const MIKOtaOffer& offer) {
     JS_SetPropertyStr(ctx, obj, "checksum", JS_NewString(ctx, offer.checksum.c_str()));
     JS_SetPropertyStr(ctx, obj, "size", JS_NewInt64(ctx, static_cast<int64_t>(offer.size)));
     return obj;
-}
-
-/* parseOffer(raw, {allowInsecure}) -> Offer | undefined */
-JSValue ota_parse_offer(JSContext* ctx, JSValue, int argc, JSValue* argv) {
-    bool allow_insecure = false;
-    if (argc > 1 && JS_IsObject(argv[1])) {
-        allow_insecure = opt_bool(ctx, argv[1], "allowInsecure", false);
-    }
-    MIKOtaOffer offer;
-    if (!mikrojs::mik__ota_parse_offer_js(ctx, argc > 0 ? argv[0] : JS_UNDEFINED, allow_insecure,
-                                          &offer)) {
-        return JS_UNDEFINED;
-    }
-    return offer_to_js(ctx, offer);
 }
 
 // ── applyOffer ──────────────────────────────────────────────────────────────
@@ -782,25 +768,7 @@ bool encode_config_doc(JSContext* ctx, JSValue doc, std::vector<uint8_t>* out) {
     return ok;
 }
 
-/* parseConfig(raw) -> StoredConfig | undefined */
-JSValue ota_parse_config(JSContext* ctx, JSValue, int argc, JSValue* argv) {
-    MIKOtaStoredConfig cfg = {};
-    JSValue doc = JS_UNDEFINED;
-    if (argc < 1 || !config_from_js(ctx, argv[0], &cfg, &doc)) {
-        JS_FreeValue(ctx, doc);
-        return JS_UNDEFINED;
-    }
-    JSValue obj = JS_NewObject(ctx);
-    if (cfg.rev[0]) JS_SetPropertyStr(ctx, obj, "rev", JS_NewString(ctx, cfg.rev));
-    JS_SetPropertyStr(ctx, obj, "version", JS_NewString(ctx, cfg.version));
-    if (JS_IsUndefined(doc)) return obj;
-    /* The document travels on as it arrived: whether it survives CBOR is
-     * settled by applyConfig, which is where the bytes are actually made. */
-    JS_SetPropertyStr(ctx, obj, "doc", doc);
-    return obj;
-}
-
-/* applyConfig(cfg, {trialBoots}) -> ConfigWrite */
+/* The config delivery, cfg + {trialBoots} -> ConfigWrite string, for settle(). */
 JSValue ota_apply_config(JSContext* ctx, JSValue, int argc, JSValue* argv) {
     MIKOtaClientState* state = state_of(ctx);
     CHECK_NOT_NULL(state);
@@ -847,22 +815,6 @@ bool set_config_echo(JSContext* ctx, JSValue obj, const char* rev_key, const MIK
     const char* rev = has_error ? report->rev : (held.present ? held.cfg.rev : "");
     if (rev[0]) JS_SetPropertyStr(ctx, obj, rev_key, JS_NewString(ctx, rev));
     return has_error;
-}
-
-/* configState() -> {rev?, error?} */
-JSValue ota_config_state(JSContext* ctx, JSValue, int, JSValue*) {
-    MIKOtaClientState* state = state_of(ctx);
-    CHECK_NOT_NULL(state);
-
-    JSValue obj = JS_NewObject(ctx);
-    MIKOtaConfigErrorReport report = {};
-    if (set_config_echo(ctx, obj, "rev", state->env, &report)) {
-        JSValue error = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, error, "rev", JS_NewString(ctx, report.rev));
-        JS_SetPropertyStr(ctx, error, "message", JS_NewString(ctx, report.message));
-        JS_SetPropertyStr(ctx, obj, "error", error);
-    }
-    return obj;
 }
 
 // ── the check-in exchange, for a client with its own transport ──────────────
@@ -1052,7 +1004,7 @@ JSValue ota_settle(JSContext* ctx, JSValue, int argc, JSValue* argv) {
         JS_FreeValue(ctx, cfg_raw);
 
         /* The offer fields are top-level in the response, so the whole body
-         * goes to the parser, exactly as ota.parseOffer(body) would. */
+         * goes to the offer parser. */
         bool allow_insecure = false;
         if (argc > 1 && JS_IsObject(argv[1])) {
             allow_insecure = opt_bool(ctx, argv[1], "allowInsecure", false);
@@ -1071,21 +1023,12 @@ int mik__ota_client_module_init(JSContext* ctx, JSModuleDef* m) {
     JS_SetModuleExport(ctx, m, "watch", JS_NewCFunction(ctx, mik__ota_client_watch, "watch", 1));
     JS_SetModuleExport(ctx, m, "config", JS_NewCFunction(ctx, mik__ota_client_config, "config", 0));
     JS_SetModuleExport(ctx, m, "reconcile", JS_NewCFunction(ctx, ota_reconcile, "reconcile", 0));
-    JS_SetModuleExport(ctx, m, "running", JS_NewCFunction(ctx, ota_running, "running", 0));
     JS_SetModuleExport(ctx, m, "confirm", JS_NewCFunction(ctx, ota_confirm, "confirm", 0));
     JS_SetModuleExport(ctx, m, "revert", JS_NewCFunction(ctx, ota_revert, "revert", 0));
     JS_SetModuleExport(ctx, m, "bearer", JS_NewCFunction(ctx, ota_bearer, "bearer", 0));
     JS_SetModuleExport(ctx, m, "registry", JS_NewCFunction(ctx, ota_registry, "registry", 0));
-    JS_SetModuleExport(ctx, m, "parseOffer",
-                       JS_NewCFunction(ctx, ota_parse_offer, "parseOffer", 2));
     JS_SetModuleExport(ctx, m, "applyOffer",
                        JS_NewCFunction(ctx, ota_apply_offer, "applyOffer", 3));
-    JS_SetModuleExport(ctx, m, "parseConfig",
-                       JS_NewCFunction(ctx, ota_parse_config, "parseConfig", 1));
-    JS_SetModuleExport(ctx, m, "applyConfig",
-                       JS_NewCFunction(ctx, ota_apply_config, "applyConfig", 2));
-    JS_SetModuleExport(ctx, m, "configState",
-                       JS_NewCFunction(ctx, ota_config_state, "configState", 0));
     JS_SetModuleExport(ctx, m, "decline", JS_NewCFunction(ctx, ota_decline, "decline", 3));
     JS_SetModuleExport(ctx, m, "report", JS_NewCFunction(ctx, ota_report, "report", 0));
     JS_SetModuleExport(ctx, m, "settle", JS_NewCFunction(ctx, ota_settle, "settle", 2));
@@ -1129,16 +1072,11 @@ JSModuleDef* mik__ota_client_init(JSContext* ctx) {
     JS_AddModuleExport(ctx, m, "watch");
     JS_AddModuleExport(ctx, m, "config");
     JS_AddModuleExport(ctx, m, "reconcile");
-    JS_AddModuleExport(ctx, m, "running");
     JS_AddModuleExport(ctx, m, "confirm");
     JS_AddModuleExport(ctx, m, "revert");
     JS_AddModuleExport(ctx, m, "bearer");
     JS_AddModuleExport(ctx, m, "registry");
-    JS_AddModuleExport(ctx, m, "parseOffer");
     JS_AddModuleExport(ctx, m, "applyOffer");
-    JS_AddModuleExport(ctx, m, "parseConfig");
-    JS_AddModuleExport(ctx, m, "applyConfig");
-    JS_AddModuleExport(ctx, m, "configState");
     JS_AddModuleExport(ctx, m, "decline");
     JS_AddModuleExport(ctx, m, "report");
     JS_AddModuleExport(ctx, m, "settle");
