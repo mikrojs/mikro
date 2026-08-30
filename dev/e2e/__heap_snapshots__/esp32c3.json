@@ -22,19 +22,19 @@
       "heapDelta": 3304
     },
     "test/kv.test.ts": {
-      "heapDelta": 3568
+      "heapDelta": 3272
     },
     "test/logfile.test.ts": {
       "heapDelta": 4184
     },
     "test/modules-hw.test.ts": {
-      "heapDelta": 26304
+      "heapDelta": 26288
     },
     "test/modules-network.test.ts": {
-      "heapDelta": 40628
+      "heapDelta": 21804
     },
     "test/modules.test.ts": {
-      "heapDelta": 3208
+      "heapDelta": 3304
     },
     "test/observable.test.ts": {
       "heapDelta": 3880
@@ -43,7 +43,7 @@
       "heapDelta": 3568
     },
     "test/schema.test.ts": {
-      "heapDelta": 3568
+      "heapDelta": 3240
     },
     "test/smoke.test.ts": {
       "heapDelta": 3304
@@ -57,5 +57,10 @@
     "test/withUnload.test.ts": {
       "heapDelta": 6440
     }
+  },
+  "boot": {
+    "heapFree": 96456,
+    "systemFree": 151424,
+    "memReserved": 65536
   }
 }
