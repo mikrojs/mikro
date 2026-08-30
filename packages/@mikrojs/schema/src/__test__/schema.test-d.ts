@@ -8,12 +8,12 @@ import {
   number,
   object,
   optional,
-  parse,
   string,
   taggedUnion,
   union,
   unknown,
-} from '../schema.js'
+} from '../core.js'
+import {parse} from './parse.js'
 
 describe('schema type inference', () => {
   it('infers string', () => {

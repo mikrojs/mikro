@@ -5,12 +5,7 @@
 
 import {err, ok} from '@mikrojs/native/runtime/result/native-result.node-shim'
 import type {Result} from '@mikrojs/native/runtime/result/types'
-import {
-  type Infer,
-  type Schema,
-  type SchemaError,
-  validate,
-} from '@mikrojs/native/runtime/schema/core'
+import {type Infer, type Schema, type SchemaError, validate} from '@mikrojs/schema'
 
 export type {
   ArrayOptions,
@@ -37,7 +32,7 @@ export type {
   UnionSchema,
   Unit,
   UnknownSchema,
-} from '@mikrojs/native/runtime/schema/core'
+} from '@mikrojs/schema'
 export {
   applyDefaults,
   array,
@@ -53,7 +48,7 @@ export {
   tuple,
   union,
   unknown,
-} from '@mikrojs/native/runtime/schema/core'
+} from '@mikrojs/schema'
 
 export function parse<S extends Schema>(schema: S, value: unknown): Result<Infer<S>, SchemaError> {
   const result = validate(schema, value, '')

@@ -490,11 +490,11 @@ gives a closed choice list a label per value. `mask` marks a field a form should
 cleartext, though it grants no protection beyond that. See [Annotations](/api/schema#annotations)
 for the full set.
 
-**Constraints are checked where config is written**, by the registry when an operator saves a value
-and by `mikro ota pack` when your defaults are serialized. They are not checked by
-[`parse()`](/api/schema#parse) on the device, which validates structure only, because a config
-schema never reaches a device. Bounds keep an operator from saving a value your board cannot
-survive; they are not a runtime guard inside your app.
+**Bounds are checked everywhere**: by the registry when an operator saves a value, by
+`mikro ota pack` when your defaults are serialized, and by [`parse()`](/api/schema#parse) on the
+device. What keeps a bad value off your board is the registry, since a config schema never reaches
+a device and the document it stores arrives already validated. `format` is checked only where
+config is written, because a device has no regular-expression engine.
 
 `mikro ota pack` serializes the schema into the build, together with the defaults it
 materializes: every field a default covers, and nothing else. A registry that implements config

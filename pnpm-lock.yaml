@@ -490,6 +490,9 @@ importers:
       '@mikrojs/registry':
         specifier: workspace:*
         version: link:../registry
+      '@mikrojs/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@swc/core':
         specifier: ^1.15.30
         version: 1.15.43
@@ -507,9 +510,9 @@ importers:
 
   packages/@mikrojs/registry:
     dependencies:
-      '@mikrojs/native':
+      '@mikrojs/schema':
         specifier: workspace:*
-        version: link:../native
+        version: link:../schema
       semver:
         specifier: ^7.7.4
         version: 7.8.5
@@ -520,6 +523,8 @@ importers:
       '@types/semver':
         specifier: ^7.7.1
         version: 7.7.1
+
+  packages/@mikrojs/schema: {}
 
   packages/@repo/idf.py: {}
 
@@ -617,6 +622,9 @@ importers:
       '@mikrojs/quickjs':
         specifier: workspace:*
         version: link:../@mikrojs/quickjs
+      '@mikrojs/schema':
+        specifier: workspace:*
+        version: link:../@mikrojs/schema
       '@optique/core':
         specifier: ^1.0.2
         version: 1.0.2

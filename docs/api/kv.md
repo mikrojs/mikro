@@ -66,10 +66,10 @@ Create a handle to a named value. Without a schema, values are untyped (`unknown
 
 Values are [CBOR](/api/cbor)-encoded. Supported schema types: `s.number()`, `s.string()`, `s.boolean()`, `s.unknown()`, `s.optional()`, `s.array()`, `s.tuple()`, and `s.object()`. See [schema](/api/schema) for details.
 
-::: warning Constraints are not checked here
-[Constraints](/api/schema#constraints) are checked on the host: by a registry when an operator saves device config, and by `mikro ota pack`. They are not checked on the device. So `s.number({max: 100})` on a stored value will not reject 500 here, and neither will `format`, `minLength` or the other bounds. If you need a bound at runtime, check it in your own code.
+::: warning `format` is not checked here
+Bounds are checked on every read and write, so `s.number({max: 100})` rejects 500. Types, structure and required fields are checked too.
 
-Types, structure and required fields are checked normally.
+[`format`](/api/schema#format) is the exception: matching a URL or an email address needs regular expressions the device has no engine for, so `s.string({format: 'email'})` will not reject a malformed address here. Check that in your own code if you need it.
 :::
 
 ```ts twoslash

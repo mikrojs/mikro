@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs'
 import {mkdir, writeFile} from 'node:fs/promises'
 import * as pathlib from 'node:path'
 
-import {materializeDefaults, parseConfigSchema} from '@mikrojs/native/runtime/schema/shared'
+import {materializeDefaults, parseConfigSchema} from '@mikrojs/schema/config'
 
 import type {MikroJSConfig} from '../../_exports/index.js'
 import {loadMikroConfig} from './loadMikroConfig.js'

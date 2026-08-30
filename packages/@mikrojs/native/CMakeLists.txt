@@ -46,6 +46,7 @@ set(MIKROJS_CORE_SOURCES
     src/mik_http_client.cpp
     src/mik_wifi_client.cpp
     src/mik_cbor.cpp
+    src/mik_schema.cpp
     src/mik_result.cpp
     src/mik_console.cpp
     src/mik_sys.cpp
@@ -219,6 +220,7 @@ if(BUILD_TESTING)
         test/ota_config_test.cpp
         test/ota_js_hooks_test.cpp
         test/ota_wire_fixtures_test.cpp
+        test/schema_conformance_test.cpp
         test/sys_codec_test.cpp
     )
 
@@ -238,9 +240,25 @@ if(BUILD_TESTING)
     )
     add_dependencies(mikrojs_tests gen_checkin_fixtures)
 
+    # ── Schema conformance fixtures ──────────────────────────────────
+    # mikro/schema has two implementations: @mikrojs/schema (host) and
+    # src/mik_schema.cpp (device). The generator records what core.ts does and
+    # test/schema_conformance_test.cpp replays it through the native module.
+    # Always regenerated so the fixtures cannot lag core.ts.
+    set(_SCHEMA_FIXTURE_DIR "${CMAKE_CURRENT_BINARY_DIR}/gen/schema-fixtures")
+    add_custom_target(gen_schema_fixtures
+        COMMAND node "${CMAKE_CURRENT_SOURCE_DIR}/scripts/gen-schema-fixtures.js"
+            "${_SCHEMA_FIXTURE_DIR}"
+        COMMENT "Generating schema conformance fixtures from @mikrojs/schema"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        VERBATIM
+    )
+    add_dependencies(mikrojs_tests gen_schema_fixtures)
+
     target_link_libraries(mikrojs_tests PRIVATE mikrojs)
     target_compile_definitions(mikrojs_tests PRIVATE
-        "MIK_CHECKIN_FIXTURE_DIR=\"${_CHECKIN_FIXTURE_DIR}\"")
+        "MIK_CHECKIN_FIXTURE_DIR=\"${_CHECKIN_FIXTURE_DIR}\""
+        "MIK_SCHEMA_FIXTURE_DIR=\"${_SCHEMA_FIXTURE_DIR}\"")
     target_include_directories(mikrojs_tests PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/test"
         "${CMAKE_CURRENT_SOURCE_DIR}/deps/nanocbor/include"

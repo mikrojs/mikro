@@ -245,6 +245,7 @@
     "@mikrojs/firmware": "workspace:*",
     "@mikrojs/native": "workspace:*",
     "@mikrojs/quickjs": "workspace:*",
+    "@mikrojs/schema": "workspace:*",
     "@optique/core": "^1.0.2",
     "@optique/run": "^1.0.2",
     "cbor2": "^2.3.0",

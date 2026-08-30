@@ -26,6 +26,34 @@ declare module 'native:mikro/cbor' {
   export function decode(data: Uint8Array): Result<unknown, CborError>
 }
 
+declare module 'native:mikro/schema' {
+  import type * as S from '@mikrojs/native/runtime/schema/types'
+  /* typeof-aliased rather than re-exported: `export ... from` inside an
+   * ambient module declaration resolves to never, and writing the generic
+   * signatures out again here would be a third copy of the surface. */
+  export const string: typeof S.string
+  export const number: typeof S.number
+  export const boolean: typeof S.boolean
+  export const unknown: typeof S.unknown
+  export const literal: typeof S.literal
+  export const array: typeof S.array
+  export const object: typeof S.object
+  export const tuple: typeof S.tuple
+  export const optional: typeof S.optional
+  export const union: typeof S.union
+  export const enumOf: typeof S.enumOf
+  export const taggedUnion: typeof S.taggedUnion
+  export const applyDefaults: typeof S.applyDefaults
+  export const SchemaError: typeof S.SchemaError
+  /* The plain {ok, error} envelope core.ts's local err() builds, not a
+   * mikro/result Result: parse() in schema.ts wraps it. */
+  export function validate(
+    schema: S.Schema,
+    value: unknown,
+    path: string,
+  ): {ok: false; error: S.SchemaError} | null
+}
+
 declare module 'native:mikro/result' {
   import type {ErrResult, OkResult} from './result/types.js'
   export function ok(): OkResult<void>

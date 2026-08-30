@@ -1,8 +1,10 @@
-/* Host-side helpers for config schemas, shared by the CLI and registries.
- * Not part of the mikro/schema device bundle: the device never validates a
- * schema AST (its manifest copy was written by the CLI) and never derives an
- * overlay. Imports core.ts only, so hosts load it without resolving mikro/*
- * builtins; results are plain {ok} shapes for the same reason. */
+/* Host-side helpers for OTA config schemas, used by the CLI and by registries.
+ * Nothing here reaches a device: it never validates a schema AST (its manifest
+ * copy was written by the CLI) and never derives an overlay. `format` lives
+ * here rather than in core.ts because the expressions are a denial-of-service
+ * surface a device should not carry, and it has no regex engine to carry them
+ * with. Imports core.ts only, so this stays dependency-free; results are plain
+ * {ok} shapes for the same reason. */
 
 import {
   applyDefaults,
@@ -33,10 +35,10 @@ const FORMAT_PATTERNS: Record<Format, RegExp> = {
 export const FORMATS = Object.keys(FORMAT_PATTERNS) as readonly Format[]
 
 /**
- * Validates a value against a config schema, constraints included. `validate()`
- * in core.ts checks structure only, because it ships to the device and a config
- * schema never does; every host-side path that validates an operator's value
- * goes through this instead.
+ * Validates a value against a config schema, `format` included. `validate()` in
+ * core.ts covers shape and every numeric and length bound; this adds the one
+ * annotation that stays host-side, so every path that validates an operator's
+ * value goes through here rather than calling validate() directly.
  */
 export function validateConfig(schema: Schema, value: unknown): SchemaCheck<unknown> {
   const structural = validate(schema, value, '')
@@ -46,8 +48,11 @@ export function validateConfig(schema: Schema, value: unknown): SchemaCheck<unkn
   return {ok: true, value}
 }
 
-/* Mirrors validate()'s walk, applying only the constraint checks. Runs after
- * the structural pass, so every value here is already the right shape. */
+/* Mirrors validate()'s walk, applying only `format`. Runs after validate(), so
+ * every value here is already the right shape and within its bounds. Kept as a
+ * second walk rather than folded into core.ts because the expressions below
+ * are a denial-of-service surface a device should not carry, and a device has
+ * no regex engine to carry them with. */
 function checkValueConstraints(
   schema: Schema,
   value: unknown,
@@ -56,13 +61,7 @@ function checkValueConstraints(
   switch (schema.kind) {
     case 'string': {
       const text = value as string
-      const {minLength, maxLength, format} = schema
-      if (minLength !== undefined && text.length < minLength) {
-        return fail(`shorter than ${minLength} characters`, path)
-      }
-      if (maxLength !== undefined && text.length > maxLength) {
-        return fail(`longer than ${maxLength} characters`, path)
-      }
+      const {format} = schema
       if (format !== undefined && !FORMAT_PATTERNS[format].test(text)) {
         return fail(`not a valid ${format}`, path)
       }
@@ -73,25 +72,8 @@ function checkValueConstraints(
       }
       return null
     }
-    case 'number': {
-      const num = value as number
-      const {min, max} = schema
-      if (schema.integer === true && !Number.isInteger(num)) {
-        return fail(`expected a whole number, got ${num}`, path)
-      }
-      if (min !== undefined && num < min) return fail(`below the minimum of ${min}`, path)
-      if (max !== undefined && num > max) return fail(`above the maximum of ${max}`, path)
-      return null
-    }
     case 'array': {
       const items = value as unknown[]
-      const {minItems, maxItems} = schema
-      if (minItems !== undefined && items.length < minItems) {
-        return fail(`fewer than ${minItems} items`, path)
-      }
-      if (maxItems !== undefined && items.length > maxItems) {
-        return fail(`more than ${maxItems} items`, path)
-      }
       for (let i = 0; i < items.length; i++) {
         const result = checkValueConstraints(schema.element, items[i], `${path}[${i}]`)
         if (result !== null) return result
@@ -118,16 +100,11 @@ function checkValueConstraints(
       return null
     }
     case 'union': {
-      /* A union accepts what ANY member accepts, so the constraint pass has to
-       * agree with the structural one. Applying only the first structurally
-       * matching member's constraints would reject a value a later member
-       * allows: in union([number({max: 10}), number({min: 100})]), 150 matches
-       * the first member's shape, fails its bound, and would be refused even
-       * though the second member exists for exactly that value.
-       *
-       * When nothing passes, report the first member's constraint failure
-       * rather than a generic "no member matched": for the ordinary union whose
-       * members differ in shape, that is the specific and useful message. */
+      /* A union accepts what ANY member accepts, so the format pass has to
+       * agree with validate(). Applying only the first matching member's
+       * format would reject a value a later member allows. validate() has
+       * already ruled out members of the wrong shape or out of range, so
+       * anything reached here differs only in format. */
       let firstFailure: ReturnType<typeof fail> | null = null
       for (const member of schema.members) {
         if (validate(member, value, '') !== null) continue

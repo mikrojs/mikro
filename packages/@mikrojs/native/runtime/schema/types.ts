@@ -281,7 +281,7 @@ export type InferRead<S> =
       : Simplify<InferReadObject<Shape>>
     : Infer<S>
 
-/* Kept in lockstep with core.ts (and materializeDefaults in shared.ts). */
+/* Kept in lockstep with @mikrojs/schema (and its materializeDefaults). */
 type Filled<S> = S extends {default: unknown}
   ? true
   : S extends OptionalSchema

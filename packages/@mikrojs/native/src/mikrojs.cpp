@@ -364,7 +364,11 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
 
     /* Native mikrojs modules (replace bytecode builtins). The http client
      * modules are NOT registered here: they load lazily through the C-module
-     * table in modules.cpp so virtual modules keep precedence. */
+     * table in modules.cpp so virtual modules keep precedence. Schema takes
+     * the other lazy route, putting a descriptor on the native: registry,
+     * because mikro/schema keeps a small facade for its Result-returning
+     * parse(); both are resolved after the virtual-module check. */
+    mik__schema_register();
     mik__inspect_register(ctx);
     mik__pub_fs_register(ctx);
 
