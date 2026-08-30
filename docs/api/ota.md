@@ -333,6 +333,38 @@ After a rolled-back trial, `rev` is the failed document's rev rather than the re
 That is deliberate: the registry stops serving a document whose rev the device already echoes,
 which is what keeps a bad document from being sent again until an operator changes it.
 
+### ota.decline(checksum, reason, detail?)
+
+```ts
+decline(checksum: string, reason: string, detail?: string): void
+```
+
+Records why an offered build was not taken. The next [`report()`](#ota-report) carries the
+record as `lastDecline`, and [`settle()`](#ota-settle-raw-options) marks it delivered, the
+same lifecycle `lastInstall` has. Without it a registry that waits for `running.checksum` to
+turn into the offered checksum cannot tell a device still working through a download from
+one that has permanently stopped trying, and shows the update as pending forever.
+
+`applyOffer` records its own outcomes (`abandoned`, `exhausted`, `download-failed`,
+`install-failed`), so call this only for a reason the module cannot see: a download budget
+your app keeps across wakes, a build your own policy refuses. Any reason word up to 64
+characters is accepted by the registry.
+
+```ts
+if (myDownloadBudgetSpent(offer.checksum)) {
+  ota.decline(offer.checksum, 'exhausted', 'cross-wake download budget spent')
+} else {
+  await ota.applyOffer(offer, download)
+}
+```
+
+The record is persisted on the device: on a wake-cycle device the decline lands after that
+wake's check-in, so it must survive the sleep to make the next one. Recording again
+overwrites; only the last decline stands. Throws a `TypeError` on a checksum that is not 64
+lowercase hex characters or a reason past 64 characters, since the registry would reject the
+whole check-in body over the malformed field. `detail` is free text and is cut to 256
+characters instead.
+
 ### ota.report()
 
 ```ts
@@ -340,10 +372,10 @@ report(): CheckinReport
 ```
 
 The check-in body the device owes its registry, assembled: identity, [`running()`](#ota-running),
-the device name pair, free storage, a pending `lastInstall` report, and what
-[`configState()`](#ota-configstate) resolves. It replaces gathering the fields by hand, and
-it sends the same facts the built-in client does. Field shapes match the wire, so a client
-(or the server proxying for it) can forward fields verbatim into `POST /api/v1/checkin`.
+the device name pair, free storage, a pending `lastInstall` report, a recorded `lastDecline`,
+and what [`configState()`](#ota-configstate) resolves. It replaces gathering the fields by
+hand, and it sends the same facts the built-in client does. Field shapes match the wire, so a
+client (or the server proxying for it) can forward fields verbatim into `POST /api/v1/checkin`.
 
 ```ts
 ota.reconcile()
@@ -529,11 +561,15 @@ interface CheckinReport {
   lastInstall?: Diagnostic
   configRev?: string
   configError?: {rev: string; message: string}
+  lastDecline?: {checksum: string; reason: string; detail?: string}
 }
 ```
 
 The check-in body, from [`report()`](#ota-report). The `name` pair is sent every round so a
 lost response settles on the next check-in. `free` is absent when the platform cannot say.
+`lastDecline` is present after `applyOffer` declined an offer or the app recorded its own
+with [`decline()`](#ota-decline-checksum-reason-detail), until a `settle()` marks it
+delivered.
 
 ### SettleOutcome
 

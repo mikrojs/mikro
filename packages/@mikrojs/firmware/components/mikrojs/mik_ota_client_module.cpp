@@ -32,6 +32,7 @@ using mikrojs::MIKOtaConfigWrite;
 using mikrojs::MIKOtaJsHooks;
 using mikrojs::MIKOtaApplyOutcome;
 using mikrojs::MIKOtaApplySession;
+using mikrojs::MIKOtaDeclineRecord;
 using mikrojs::MIKOtaError;
 using mikrojs::MIKOtaInstallOptions;
 using mikrojs::MIKOtaOffer;
@@ -504,15 +505,47 @@ JSValue make_update_object(JSContext* ctx, size_t resume_offset) {
     return update;
 }
 
+/* True for the checksum shape the registry's checkin validation accepts. A
+ * lastDecline with any other checksum would 400 every future check-in — and
+ * permanently, since a failed round never settles and so never clears it. */
+bool is_wire_checksum(const char* s) {
+    for (int i = 0; i < 64; i++) {
+        char c = s[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+    }
+    return s[64] == '\0';
+}
+
+/* Record why an offered build was not taken, for the next report() to carry as
+ * lastDecline and a later settle() to mark delivered — the own-transport twin
+ * of the built-in client's NoteDecline, persisted because here the decline
+ * lands after the wake's check-in and must survive a deep sleep to make the
+ * next one. */
+void note_decline(const MIKOtaEnv* env, const std::string& checksum, const char* reason,
+                  const std::string& detail) {
+    if (!is_wire_checksum(checksum.c_str())) return;
+    MIKOtaDeclineRecord record;
+    snprintf(record.checksum, sizeof(record.checksum), "%s", checksum.c_str());
+    snprintf(record.reason, sizeof(record.reason), "%s", reason);
+    snprintf(record.detail, sizeof(record.detail), "%s", detail.c_str());
+    mikrojs::MIKOtaStore(env).SetDecline(record);
+}
+
 /* Close the attempt and settle applyOffer's promise. */
 void settle_apply(JSContext* ctx, bool downloaded, const std::string& message) {
     MIKOtaClientState* state = state_of(ctx);
     if (!state || !state->apply.active) return;
 
+    std::string checksum = state->apply.session.checksum;
     MIKOtaApplyOutcome outcome = MIKOtaApplyOutcome::kStaged;
     MIKOtaError error;
     bool ok = mikrojs::mik__ota_policy_apply_end(&state->apply.session, downloaded, message,
                                                  state->apply.options, &outcome, &error);
+    if (!ok) {
+        note_decline(state->env, checksum,
+                     error.name == "DownloadFailed" ? "download-failed" : "install-failed",
+                     error.message);
+    }
     JSValue result = ok ? mik__result_ok(ctx, JS_NewString(ctx, mikrojs::mik__ota_outcome_to_str(
                                                                     outcome)))
                         : mik__result_err_obj(ctx, error_to_js(ctx, error));
@@ -592,11 +625,18 @@ JSValue ota_apply_offer(JSContext* ctx, JSValue, int argc, JSValue* argv) {
     MIKOtaError error;
     if (!mikrojs::mik__ota_policy_apply_begin(state->env, offer, &state->apply.session, &outcome,
                                               &error)) {
+        note_decline(state->env, offer.checksum, "install-failed", error.message);
         JSValue failed = mik__result_err_obj(ctx, error_to_js(ctx, error));
         return MIK_NewResolvedPromise(ctx, 1, &failed);
     }
     if (!state->apply.session.update) {
-        /* Declined before staging: trial pending, current, abandoned, exhausted. */
+        /* Declined before staging: trial pending, current, abandoned, exhausted.
+         * Only the last two are recorded for the registry — the first two are
+         * the policy working as intended, mirroring the built-in's NoteDecline. */
+        if (outcome == MIKOtaApplyOutcome::kAbandoned ||
+            outcome == MIKOtaApplyOutcome::kExhausted) {
+            note_decline(state->env, offer.checksum, mikrojs::mik__ota_outcome_to_str(outcome), "");
+        }
         JSValue declined =
             mik__result_ok(ctx, JS_NewString(ctx, mikrojs::mik__ota_outcome_to_str(outcome)));
         return MIK_NewResolvedPromise(ctx, 1, &declined);
@@ -833,6 +873,45 @@ JSValue ota_config_state(JSContext* ctx, JSValue, int, JSValue*) {
 // touches is an existing policy call, so a client that goes through here and
 // the built-in cannot disagree about what a round sends or settles.
 
+/* decline(checksum, reason, detail?) — record why the last offered build was
+ * not taken, for the next report() to carry as lastDecline. The apply paths
+ * record their own outcomes; this is for a reason only the app can see, such
+ * as a download budget it keeps across wakes. The caps are the registry's: an
+ * oversized reason would have the whole check-in rejected, so it throws here,
+ * while detail is free text and is cut to fit instead. */
+JSValue ota_decline(JSContext* ctx, JSValue, int argc, JSValue* argv) {
+    MIKOtaClientState* state = state_of(ctx);
+    CHECK_NOT_NULL(state);
+
+    const char* checksum =
+        argc > 0 && JS_IsString(argv[0]) ? JS_ToCString(ctx, argv[0]) : nullptr;
+    if (!checksum || !is_wire_checksum(checksum)) {
+        if (checksum) JS_FreeCString(ctx, checksum);
+        return JS_ThrowTypeError(ctx, "decline(): checksum must be 64 lowercase hex characters");
+    }
+    const char* reason = argc > 1 && JS_IsString(argv[1]) ? JS_ToCString(ctx, argv[1]) : nullptr;
+    if (!reason || reason[0] == '\0' || strlen(reason) > 64) {
+        JS_FreeCString(ctx, checksum);
+        if (reason) JS_FreeCString(ctx, reason);
+        return JS_ThrowTypeError(ctx, "decline(): reason must be 1 to 64 characters");
+    }
+    const char* detail = nullptr;
+    if (argc > 2 && !JS_IsUndefined(argv[2])) {
+        detail = JS_IsString(argv[2]) ? JS_ToCString(ctx, argv[2]) : nullptr;
+        if (!detail) {
+            JS_FreeCString(ctx, checksum);
+            JS_FreeCString(ctx, reason);
+            return JS_ThrowTypeError(ctx, "decline(): detail must be a string");
+        }
+    }
+
+    note_decline(state->env, checksum, reason, detail ? detail : "");
+    JS_FreeCString(ctx, checksum);
+    JS_FreeCString(ctx, reason);
+    if (detail) JS_FreeCString(ctx, detail);
+    return JS_UNDEFINED;
+}
+
 /* report() -> the check-in body the device owes its registry, wire field
  * shapes throughout so a proxy can forward fields verbatim. */
 JSValue ota_report(JSContext* ctx, JSValue, int, JSValue*) {
@@ -876,6 +955,20 @@ JSValue ota_report(JSContext* ctx, JSValue, int, JSValue*) {
         JS_SetPropertyStr(ctx, obj, "lastInstall", diag);
     }
 
+    /* Why the last offered build was not taken, recorded by applyOffer or
+     * decline(). Without it a registry cannot tell a device still working
+     * through a download from one that has stopped. */
+    MIKOtaDeclineRecord declined;
+    if (mikrojs::MIKOtaStore(env).GetDecline(&declined)) {
+        JSValue last = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, last, "checksum", JS_NewString(ctx, declined.checksum));
+        JS_SetPropertyStr(ctx, last, "reason", JS_NewString(ctx, declined.reason));
+        if (declined.detail[0]) {
+            JS_SetPropertyStr(ctx, last, "detail", JS_NewString(ctx, declined.detail));
+        }
+        JS_SetPropertyStr(ctx, obj, "lastDecline", last);
+    }
+
     /* configRev / configError, through the same resolution as configState(). */
     MIKOtaConfigErrorReport report = {};
     if (set_config_echo(ctx, obj, "configRev", env, &report)) {
@@ -915,8 +1008,10 @@ JSValue ota_settle(JSContext* ctx, JSValue, int argc, JSValue* argv) {
     /* Confirm before the deliveries, as the built-in does: it must settle the
      * document held BEFORE this round, never the one about to be armed. */
     mikrojs::mik__ota_policy_confirm(state->env);
-    /* The round completed, so the cached install report was delivered. */
+    /* The round completed, so the cached install report and the stored decline
+     * record were delivered. */
     state->has_last_install = false;
+    mikrojs::MIKOtaStore(state->env).ClearDecline();
 
     bool renamed = false;
     if (usable) {
@@ -991,6 +1086,7 @@ int mik__ota_client_module_init(JSContext* ctx, JSModuleDef* m) {
                        JS_NewCFunction(ctx, ota_apply_config, "applyConfig", 2));
     JS_SetModuleExport(ctx, m, "configState",
                        JS_NewCFunction(ctx, ota_config_state, "configState", 0));
+    JS_SetModuleExport(ctx, m, "decline", JS_NewCFunction(ctx, ota_decline, "decline", 3));
     JS_SetModuleExport(ctx, m, "report", JS_NewCFunction(ctx, ota_report, "report", 0));
     JS_SetModuleExport(ctx, m, "settle", JS_NewCFunction(ctx, ota_settle, "settle", 2));
     return 0;
@@ -1043,6 +1139,7 @@ JSModuleDef* mik__ota_client_init(JSContext* ctx) {
     JS_AddModuleExport(ctx, m, "parseConfig");
     JS_AddModuleExport(ctx, m, "applyConfig");
     JS_AddModuleExport(ctx, m, "configState");
+    JS_AddModuleExport(ctx, m, "decline");
     JS_AddModuleExport(ctx, m, "report");
     JS_AddModuleExport(ctx, m, "settle");
     return m;

@@ -51,6 +51,18 @@ public:
 
 using MIKOtaDownloadFn = std::function<bool(MIKOtaUpdate& update, MIKOtaError* out_err)>;
 
+/* Why the last offered build was not taken, in wire-string form, held in the
+ * store until a completed check-in delivers it. Persisted rather than held in
+ * memory (unlike the built-in client's copy) because an own-transport decline
+ * happens after that wake's check-in, so it must survive a deep sleep to make
+ * the next report. Field caps match the registry's checkin validation, which
+ * rejects a body whose lastDecline oversteps them. */
+struct MIKOtaDeclineRecord {
+    char checksum[65] = {};
+    char reason[65] = {};
+    char detail[257] = {};
+};
+
 class MIKOtaStore {
 public:
     explicit MIKOtaStore(const MIKOtaEnv* env) : env_(env) {}
@@ -74,6 +86,11 @@ public:
 
     bool GetInFlight() const;
     void SetInFlight(bool in_flight);
+
+    /* False when no record stands. */
+    bool GetDecline(MIKOtaDeclineRecord* out) const;
+    void SetDecline(const MIKOtaDeclineRecord& record);
+    void ClearDecline();
 
 private:
     const MIKOtaEnv* env_;

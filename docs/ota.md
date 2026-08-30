@@ -194,9 +194,9 @@ import {restart} from 'mikro/sys'
 ota.reconcile()
 
 // report() assembles everything the device owes the registry: identity, the
-// running build, the device name pair, free storage, a pending lastInstall
-// report, and the config echo. Field shapes match the wire, so a server can
-// forward them verbatim.
+// running build, the device name pair, free storage, pending lastInstall and
+// lastDecline reports, and the config echo. Field shapes match the wire, so a
+// server can forward them verbatim.
 const checkin = await myRegistry.checkIn(ota.report())
 
 // A check-in that never completed is not proof of health: no settle (the

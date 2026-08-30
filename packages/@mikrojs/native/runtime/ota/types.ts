@@ -197,6 +197,19 @@ export interface ConfigErrorReport {
   message: string
 }
 
+/** Why the last offered build was not taken. Without it a registry that waits
+ *  for `running.checksum` to turn into the offered checksum cannot tell a
+ *  device still working through a download from one that has permanently
+ *  stopped trying. */
+export interface DeclineReport {
+  /** The declined build, 64 lowercase hex characters. */
+  checksum: string
+  /** A module outcome ({@link DeclineReason}) or the app's own word for a
+   *  reason only it can see, at most 64 characters. */
+  reason: DeclineReason | (string & {})
+  detail?: string
+}
+
 /** The check-in body a device owes its registry, as `ota.report()` builds it.
  *  Field shapes match the wire, so a client (or the proxy behind it) can
  *  forward fields verbatim into `POST /api/v1/checkin`. */
@@ -221,6 +234,10 @@ export interface CheckinReport {
   configRev?: string
   /** A rolled-back document to report; see {@link ConfigState.error}. */
   configError?: ConfigErrorReport
+  /** Why the last offered build was not taken. Present after `applyOffer`
+   *  declined one or the app recorded its own via `decline()`, until a
+   *  `settle()` marks it delivered. */
+  lastDecline?: DeclineReport
 }
 
 /** What `ota.settle()` took from a completed check-in's response. */
@@ -268,7 +285,11 @@ export interface Ota {
   /** Run the full update policy: skip checks and the retry limit, download
    *  via the `download` callback, and verification. Compatibility is not
    *  re-checked: the registry selected this build for the reported firmware,
-   *  and a mismatched archive fails its checksum or fails to load. */
+   *  and a mismatched archive fails its checksum or fails to load.
+   *
+   *  An offer it does not stage is recorded for the registry the way
+   *  `decline()` records one, except `'current'` and `'trial-pending'`,
+   *  which are not declines. */
   applyOffer(
     offer: Offer,
     download: DownloadFn,
@@ -358,10 +379,29 @@ export interface Ota {
    */
   configState(): ConfigState
   /**
+   * Record why an offered build was not taken, for the next `report()` to
+   * carry as `lastDecline` and a later `settle()` to mark delivered — the
+   * same lifecycle as `lastInstall`. `applyOffer` records its own outcomes,
+   * so this is for a reason only the app can see: its own download budget
+   * spent, a build its policy refuses. Without a recorded decline the
+   * registry cannot tell a device still working through a download from one
+   * that has stopped, and shows the update pending forever.
+   *
+   * Persisted on the device, so it survives a deep sleep: on a wake-cycle
+   * device the decline always lands after that wake's check-in, and the next
+   * wake's `report()` is its first chance to travel. Recording again
+   * overwrites; only the last decline stands. Throws a `TypeError` on a
+   * checksum that is not 64 lowercase hex characters or a `reason` past 64
+   * characters, since the registry would reject the whole check-in body;
+   * `detail` is free text and is cut to 256 characters instead.
+   */
+  decline(checksum: string, reason: DeclineReason | (string & {}), detail?: string): void
+  /**
    * The check-in body the device owes its registry, assembled: identity,
    * `running()`, the name pair, free storage, the pending `lastInstall`
-   * report, and what `configState()` resolves. One call instead of gathering
-   * the fields by hand, and the same facts the built-in client sends.
+   * report, a recorded `lastDecline`, and what `configState()` resolves. One
+   * call instead of gathering the fields by hand, and the same facts the
+   * built-in client sends.
    *
    * Call `reconcile()` first, on every boot: it is what surfaces the
    * `lastInstall` report this reads (`settle()` marks it delivered).

@@ -116,6 +116,40 @@ void MIKOtaStore::SetInFlight(bool in_flight) {
     env_->kv_set_i32(env_->opaque, "ota.inflight", in_flight ? 1 : 0);
 }
 
+bool MIKOtaStore::GetDecline(MIKOtaDeclineRecord* out) const {
+    if (!env_ || !env_->kv_get_str) return false;
+    if (!env_->kv_get_str(env_->opaque, "ota.declined", out->checksum, sizeof(out->checksum)) ||
+        out->checksum[0] == '\0') {
+        return false;
+    }
+    if (!env_->kv_get_str(env_->opaque, "ota.declReason", out->reason, sizeof(out->reason)) ||
+        out->reason[0] == '\0') {
+        return false;
+    }
+    if (!env_->kv_get_str(env_->opaque, "ota.declDetail", out->detail, sizeof(out->detail))) {
+        out->detail[0] = '\0';
+    }
+    return true;
+}
+
+void MIKOtaStore::SetDecline(const MIKOtaDeclineRecord& record) {
+    if (!env_ || !env_->kv_set_str) return;
+    env_->kv_set_str(env_->opaque, "ota.declined", record.checksum);
+    env_->kv_set_str(env_->opaque, "ota.declReason", record.reason);
+    if (record.detail[0]) {
+        env_->kv_set_str(env_->opaque, "ota.declDetail", record.detail);
+    } else if (env_->kv_remove) {
+        env_->kv_remove(env_->opaque, "ota.declDetail");
+    }
+}
+
+void MIKOtaStore::ClearDecline() {
+    if (!env_ || !env_->kv_remove) return;
+    env_->kv_remove(env_->opaque, "ota.declined");
+    env_->kv_remove(env_->opaque, "ota.declReason");
+    env_->kv_remove(env_->opaque, "ota.declDetail");
+}
+
 // ── Offer parsing ────────────────────────────────────────────────────────────
 
 bool mik__ota_parse_offer(const char* url, const char* checksum, int64_t size, bool allow_insecure,

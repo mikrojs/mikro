@@ -277,6 +277,32 @@ export function parseOffer(raw, opts) {
   return {url, checksum, size}
 }
 
+// The own-transport decline record, persisted the way the device stores it in
+// NVS: an own-transport decline lands after that wake's check-in, so it must
+// outlive the run to make the next report(). \`current\` and \`trial-pending\`
+// are never recorded — the policy working as intended is not a decline.
+function noteDecline(checksum, reason, detail) {
+  // The registry rejects a whole check-in body over a malformed lastDecline,
+  // so a checksum that cannot travel is not recorded.
+  if (!/^[0-9a-f]{64}$/.test(checksum)) return
+  const record = {checksum, reason}
+  if (typeof detail === 'string' && detail !== '') record.detail = detail.slice(0, 256)
+  sysSet('ota.decl', record)
+}
+
+export function decline(checksum, reason, detail) {
+  if (typeof checksum !== 'string' || !/^[0-9a-f]{64}$/.test(checksum)) {
+    throw new TypeError('decline(): checksum must be 64 lowercase hex characters')
+  }
+  if (typeof reason !== 'string' || reason === '' || reason.length > 64) {
+    throw new TypeError('decline(): reason must be 1 to 64 characters')
+  }
+  if (detail !== undefined && typeof detail !== 'string') {
+    throw new TypeError('decline(): detail must be a string')
+  }
+  noteDecline(checksum, reason, detail)
+}
+
 export function applyOffer(offer, download, options) {
   if (current.checksum === offer.checksum) return Promise.resolve(ok('current'))
   if (current.trial) return Promise.resolve(ok('trial-pending'))
@@ -295,12 +321,15 @@ export function applyOffer(offer, download, options) {
 
   return download(update).then((result) => {
     if (!result.ok) {
+      noteDecline(offer.checksum, 'download-failed', result.error.message)
       return err({name: 'DownloadFailed', message: result.error.message})
     }
     if (written !== offer.size) {
+      const message = 'size mismatch: ' + written + ' != ' + offer.size
+      noteDecline(offer.checksum, 'install-failed', message)
       return err({
         name: 'InstallFailed',
-        message: 'size mismatch: ' + written + ' != ' + offer.size,
+        message,
         kind: 'corrupt',
       })
     }
@@ -335,6 +364,8 @@ export function report() {
   const state = configState()
   if (state.rev !== undefined) out.configRev = state.rev
   if (state.error !== undefined) out.configError = state.error
+  const declined = sysGet('ota.decl')
+  if (typeof declined === 'object' && declined !== null) out.lastDecline = declined
   return out
 }
 
@@ -352,6 +383,8 @@ export function settle(raw, options) {
   // confirm comes first so it settles the document held before this delivery,
   // never the one about to be armed.
   confirm()
+  // The round completed, so the stored decline record was delivered.
+  sysRemove('ota.decl')
   if (!usable) return out
 
   // The name pair: [rev] or [rev, name]. No key means "no change" and never

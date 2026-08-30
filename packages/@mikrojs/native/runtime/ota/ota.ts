@@ -13,6 +13,7 @@ import {
   bearer,
   configState,
   confirm,
+  decline,
   parseConfig,
   parseOffer,
   reconcile,
@@ -38,6 +39,7 @@ const ota: Ota = {
   parseConfig,
   applyConfig,
   configState,
+  decline,
   report,
   settle,
 }

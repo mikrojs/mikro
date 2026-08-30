@@ -76,7 +76,7 @@ STUB_FUNCS(ota, "native:mikro/ota", "stageBegin", "stageWrite", "stageFinish", "
            "markValid", "revert", "running", "reconcile")
 STUB_FUNCS(ota_client, "native:mikro/ota_client", "check", "watch", "config",
            "reconcile", "running", "parseOffer", "applyOffer", "confirm", "revert", "bearer",
-           "registry", "parseConfig", "applyConfig", "configState", "report", "settle")
+           "registry", "parseConfig", "applyConfig", "configState", "decline", "report", "settle")
 
 STUB_CLASS(wifi, "native:mikro/wifi", "Wifi")
 STUB_CLASS(pwm, "native:mikro/pwm", "Pwm")

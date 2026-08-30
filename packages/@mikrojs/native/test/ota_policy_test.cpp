@@ -630,6 +630,61 @@ TEST_CASE("running: augments running with app version") {
     CHECK(std::string(run.version) == "2.3.4");
 }
 
+TEST_CASE("decline record: absent until set, and round-trips through the store") {
+    FakeOtaEnv env;
+    MIKOtaStore store(env.env());
+
+    MIKOtaDeclineRecord loaded;
+    CHECK(!store.GetDecline(&loaded));
+
+    MIKOtaDeclineRecord record;
+    snprintf(record.checksum, sizeof(record.checksum), "%s", std::string(64, 'a').c_str());
+    snprintf(record.reason, sizeof(record.reason), "exhausted");
+    snprintf(record.detail, sizeof(record.detail), "link dropped");
+    store.SetDecline(record);
+
+    REQUIRE(store.GetDecline(&loaded));
+    CHECK(std::string(loaded.checksum) == std::string(64, 'a'));
+    CHECK(std::string(loaded.reason) == "exhausted");
+    CHECK(std::string(loaded.detail) == "link dropped");
+}
+
+TEST_CASE("decline record: recording again overwrites, and an empty detail clears the old one") {
+    FakeOtaEnv env;
+    MIKOtaStore store(env.env());
+
+    MIKOtaDeclineRecord first;
+    snprintf(first.checksum, sizeof(first.checksum), "%s", std::string(64, 'a').c_str());
+    snprintf(first.reason, sizeof(first.reason), "download-failed");
+    snprintf(first.detail, sizeof(first.detail), "link dropped");
+    store.SetDecline(first);
+
+    MIKOtaDeclineRecord second;
+    snprintf(second.checksum, sizeof(second.checksum), "%s", std::string(64, 'b').c_str());
+    snprintf(second.reason, sizeof(second.reason), "abandoned");
+    store.SetDecline(second);
+
+    MIKOtaDeclineRecord loaded;
+    REQUIRE(store.GetDecline(&loaded));
+    CHECK(std::string(loaded.checksum) == std::string(64, 'b'));
+    CHECK(std::string(loaded.reason) == "abandoned");
+    CHECK(loaded.detail[0] == '\0');
+}
+
+TEST_CASE("decline record: cleared once a completed check-in delivered it") {
+    FakeOtaEnv env;
+    MIKOtaStore store(env.env());
+
+    MIKOtaDeclineRecord record;
+    snprintf(record.checksum, sizeof(record.checksum), "%s", std::string(64, 'c').c_str());
+    snprintf(record.reason, sizeof(record.reason), "exhausted");
+    store.SetDecline(record);
+    store.ClearDecline();
+
+    MIKOtaDeclineRecord loaded;
+    CHECK(!store.GetDecline(&loaded));
+}
+
 TEST_CASE("revert: reports a revert failure as InstallFailed") {
     FakeOtaEnv env;
     env.revert_ok = false;
