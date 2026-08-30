@@ -35,6 +35,7 @@ import {
 import {
   connectRepl as connectReplImpl,
   type ConnectReplOptions,
+  DeviceTimeoutError,
   type ReplEvent,
   type ReplSession,
 } from '../session.js'
@@ -336,6 +337,40 @@ describe('session', () => {
         CMD_DEPLOY_ABORT,
         CMD_RUNTIME_RESUME,
       ])
+
+      session.close()
+    })
+
+    it('deploy resumes the device when the pause is never acked', async () => {
+      const {transport, written, sendFrame} = createMockTransport()
+      const session = connectRepl(transport)
+      session.messages$.subscribe(() => {})
+
+      sendReady(sendFrame)
+
+      // The device answered the handshake but is now stuck in a blocking JS
+      // turn, so nothing acks CMD_RUNTIME_PAUSE. It still lands eventually,
+      // so the deploy has to leave a RESUME behind it or the app stays frozen.
+      vi.useFakeTimers()
+      try {
+        const settled = lastValueFrom(
+          session.deploy({
+            files: [{path: '/app/main.js', data: Buffer.from('hi')}],
+            restart: false,
+          }),
+        ).then(
+          () => null,
+          (err: unknown) => err,
+        )
+        await vi.advanceTimersByTimeAsync(31_000)
+
+        const err = await settled
+        expect(err).to.be.instanceOf(DeviceTimeoutError)
+        expect((err as DeviceTimeoutError).context).to.equal('runtime pause')
+        expect(written.map(parseWrittenType)).to.deep.equal([CMD_RUNTIME_PAUSE, CMD_RUNTIME_RESUME])
+      } finally {
+        vi.useRealTimers()
+      }
 
       session.close()
     })

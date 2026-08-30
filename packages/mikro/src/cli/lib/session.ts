@@ -407,10 +407,11 @@ const INSTALL_READY_TIMEOUT_MS = 60_000
 const HELLO_POLL_INTERVAL_MS = 250
 /** Timeout for protocol commands whose on-device work is near-instant
  * (pause, resume) but whose handler is interleaved with JS. The budget
- * isn't for the command itself — it's for the longest plausible
- * blocking JS native call (display SPI, flash write, etc.) that can
- * delay the next handler tick. */
-const JS_YIELD_TIMEOUT_MS = 10_000
+ * isn't for the command itself — it's for the longest plausible blocking
+ * JS turn that delays the next handler tick: the device reads the next
+ * command only between event-loop passes, so a TLS handshake, a WiFi
+ * connect, or a test file's top-level evaluation all push the ack out. */
+const JS_YIELD_TIMEOUT_MS = 30_000
 /** Body bytes per CMD_DEPLOY_PUT_CHUNK frame. Sized so a single TLV frame
  * (5-byte header + body) stays well below the device's USJ RX ring with
  * room for the next command's header to land alongside it. Larger chunks
@@ -721,18 +722,21 @@ export function connectRepl(
       alwaysRestart = false,
     } = options
 
-    // Freeze the device's JS runtime so user code can't interleave log
-    // output (raw or MSG_LOG) with deploy traffic during the checksum and
-    // upload phases. The device already pauses internally on the first
-    // deploy command, but that leaves a brief window before the first
-    // command arrives; sending PAUSE explicitly up front closes it.
-    // A reboot implicitly resumes; otherwise we send RESUME in the finally
-    // block. `didRestart` (not `shouldRestart`) drives that decision because
-    // the no-op/abort branch skips the restart even when shouldRestart=true.
-    await sendExpectOk(buildRuntimePauseCommand(), 'runtime pause', JS_YIELD_TIMEOUT_MS)
-
     let didRestart = false
+    let paused = false
     try {
+      // Freeze the device's JS runtime so user code can't interleave log
+      // output (raw or MSG_LOG) with deploy traffic during the checksum and
+      // upload phases. The device already pauses internally on the first
+      // deploy command, but that leaves a brief window before the first
+      // command arrives; sending PAUSE explicitly up front closes it.
+      // A reboot implicitly resumes; otherwise we send RESUME in the finally
+      // block. `didRestart` (not `shouldRestart`) drives that decision because
+      // the no-op/abort branch skips the restart even when shouldRestart=true.
+      // Inside the try so a PAUSE that times out still reaches that finally.
+      await sendExpectOk(buildRuntimePauseCommand(), 'runtime pause', JS_YIELD_TIMEOUT_MS)
+      paused = true
+
       // Compute local hashes
       const localHashes = new Map<string, Buffer>()
       for (const file of files) {
@@ -883,10 +887,19 @@ export function connectRepl(
       // Resume it so the user's app keeps running. Best-effort: a dropped
       // transport leaves the session_end hook to resume anyway.
       if (!didRestart) {
-        try {
-          await sendExpectOk(buildRuntimeResumeCommand(), 'runtime resume', JS_YIELD_TIMEOUT_MS)
-        } catch {
-          // Transport likely gone; session_end on device will resume.
+        if (paused) {
+          try {
+            await sendExpectOk(buildRuntimeResumeCommand(), 'runtime resume', JS_YIELD_TIMEOUT_MS)
+          } catch {
+            // Transport likely gone; session_end on device will resume.
+          }
+        } else {
+          // The PAUSE went unanswered but is still queued on the device: it
+          // takes effect whenever the blocking JS turn yields, freezing the
+          // app with nobody left to resume it (session_end never fires over
+          // USB-Serial/JTAG, which reports no EOF). Queue a RESUME behind it.
+          // Not awaited — the device is by definition not answering yet.
+          transport.write(buildRuntimeResumeCommand()).catch(() => {})
         }
       }
     }
@@ -924,13 +937,15 @@ export function connectRepl(
     const {envVars = [], restart: shouldRestart = true} = options
     const data = await readFile(tgzPath)
 
-    // Freeze the device's JS runtime for the duration of the upload + install,
-    // same as deploy(). A reboot implicitly resumes; otherwise RESUME fires in
-    // the finally block. `didRestart` drives that, not `shouldRestart`.
-    await sendExpectOk(buildRuntimePauseCommand(), 'runtime pause', JS_YIELD_TIMEOUT_MS)
-
     let didRestart = false
+    let paused = false
     try {
+      // Freeze the device's JS runtime for the duration of the upload + install,
+      // same as deploy(). A reboot implicitly resumes; otherwise RESUME fires in
+      // the finally block. `didRestart` drives that, not `shouldRestart`.
+      await sendExpectOk(buildRuntimePauseCommand(), 'runtime pause', JS_YIELD_TIMEOUT_MS)
+      paused = true
+
       // Env vars: diff against current device state, same protocol as deploy().
       const envChanged: string[] = []
       const envRemoved: string[] = []
@@ -1020,10 +1035,19 @@ export function connectRepl(
       yield {type: 'complete', deployed: true, stats: {put: 1, kept: 0}}
     } finally {
       if (!didRestart) {
-        try {
-          await sendExpectOk(buildRuntimeResumeCommand(), 'runtime resume', JS_YIELD_TIMEOUT_MS)
-        } catch {
-          // Transport likely gone; session_end on device will resume.
+        if (paused) {
+          try {
+            await sendExpectOk(buildRuntimeResumeCommand(), 'runtime resume', JS_YIELD_TIMEOUT_MS)
+          } catch {
+            // Transport likely gone; session_end on device will resume.
+          }
+        } else {
+          // The PAUSE went unanswered but is still queued on the device: it
+          // takes effect whenever the blocking JS turn yields, freezing the
+          // app with nobody left to resume it (session_end never fires over
+          // USB-Serial/JTAG, which reports no EOF). Queue a RESUME behind it.
+          // Not awaited — the device is by definition not answering yet.
+          transport.write(buildRuntimeResumeCommand()).catch(() => {})
         }
       }
     }
