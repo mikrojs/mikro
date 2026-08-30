@@ -1,7 +1,7 @@
 {
   "tests": {
     "test/abort.test.ts": {
-      "heapDelta": 12044
+      "heapDelta": 12032
     },
     "test/cbor.test.ts": {
       "heapDelta": 3496
@@ -19,19 +19,19 @@
       "heapDelta": 4252
     },
     "test/http-request-e2e.test.ts": {
-      "heapDelta": 4720
+      "heapDelta": 2280
     },
     "test/http-request-streaming.test.ts": {
-      "heapDelta": 2216
+      "heapDelta": 2248
     },
     "test/http-server-e2e.test.ts": {
-      "heapDelta": 3096
+      "heapDelta": 944
     },
     "test/import-meta.test.ts": {
       "heapDelta": 3296
     },
     "test/kv.test.ts": {
-      "heapDelta": 3560
+      "heapDelta": 3264
     },
     "test/logfile.test.ts": {
       "heapDelta": 4176
@@ -40,10 +40,10 @@
       "heapDelta": 26220
     },
     "test/modules-network.test.ts": {
-      "heapDelta": 40520
+      "heapDelta": 21756
     },
     "test/modules.test.ts": {
-      "heapDelta": 3200
+      "heapDelta": 3296
     },
     "test/observable.test.ts": {
       "heapDelta": 3872
@@ -52,7 +52,7 @@
       "heapDelta": 3560
     },
     "test/schema.test.ts": {
-      "heapDelta": 3560
+      "heapDelta": 3232
     },
     "test/smoke.test.ts": {
       "heapDelta": 3296
@@ -64,10 +64,10 @@
       "heapDelta": 168
     },
     "test/wifi-e2e.test.ts": {
-      "heapDelta": 41412
+      "heapDelta": 22724
     },
     "test/wifi-powersave.test.ts": {
-      "heapDelta": 37744
+      "heapDelta": 18984
     },
     "test/withUnload.test.ts": {
       "heapDelta": 6876
