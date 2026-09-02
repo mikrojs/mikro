@@ -119,8 +119,8 @@ void mik__repl_proto_send_output(uint8_t msg_type, const void* data, size_t len)
  * Returns false on transport EOF/error, when MIK_ProtocolExit() is
  * signalled from inside the pump (the supervisor's mechanism for ending
  * a test-file's serve loop after __testFileDone fires), or when MIK_Loop
- * reports the attached runtime has halted (e.g. an unhandled rejection
- * set stop_requested — a test that crashed mid-execution). */
+ * reports the attached runtime has halted without a panic grace window
+ * (e.g. an unhandled rejection in a test that crashed mid-execution). */
 bool mik__proto_read_exact(MIKReplTransport* transport, void* buf, size_t n) {
     const MIKPlatform* platform = MIK_GetPlatform();
     uint8_t* p = static_cast<uint8_t*>(buf);
@@ -133,11 +133,10 @@ bool mik__proto_read_exact(MIKReplTransport* transport, void* buf, size_t n) {
             return false;
         } else {
             if (repl_mik_rt && !repl_paused) {
-                if (MIK_Loop(repl_mik_rt) != 0) {
-                    /* Runtime halted (typically unhandled rejection sets
-                     * stop_requested). Further pumping is a no-op, so
-                     * exit the serve loop and let the caller swap in the
-                     * next runtime — or restart, in non-supervisor mode. */
+                /* A panic arms restart_at_us and MIK_Loop takes the action
+                 * itself at the deadline, so keep serving (--recover). Only
+                 * a plain stop (test supervisor) ends the serve loop. */
+                if (MIK_Loop(repl_mik_rt) != 0 && repl_mik_rt->restart_at_us == 0) {
                     s_exit_serve_loop = true;
                     return false;
                 }
