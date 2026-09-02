@@ -584,12 +584,7 @@ declare module 'native:mikro/ota_client' {
 
   // The mikro/ota policy surface.
   export const reconcile: Ota['reconcile']
-  export const running: Ota['running']
-  export const parseOffer: Ota['parseOffer']
   export const applyOffer: Ota['applyOffer']
-  export const parseConfig: Ota['parseConfig']
-  export const applyConfig: Ota['applyConfig']
-  export const configState: Ota['configState']
   export const decline: Ota['decline']
   export const report: Ota['report']
   export const settle: Ota['settle']

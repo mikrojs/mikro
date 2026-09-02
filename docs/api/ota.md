@@ -38,43 +38,6 @@ count, so a build that crash-loops the device still runs out of tries. Call it o
 startup. Calling it inside a polling loop resets the budget every pass and defeats the retry
 limit.
 
-### ota.running()
-
-```ts
-running(): RunningBuild
-```
-
-Returns the build that is currently executing, read from the live app. During a trial it
-reports the new build with `trial: true`; after a rollback it reports the previous one. A
-build that was only downloaded is never reported here.
-
-### ota.parseOffer(raw)
-
-```ts
-parseOffer(
-  raw: unknown,
-  opts?: {allowInsecure?: boolean},
-): Offer | undefined
-```
-
-Validates a value received from a registry into an `Offer`, or returns `undefined` if it is
-not a usable offer. Requires an `https` URL ending in `.tgz` and a non-empty checksum. Pass
-`{allowInsecure: true}` (dev only) to also accept an `http` URL when testing against a local
-registry.
-
-`parseOffer` does not check the download URL's host. The offer arrives in an authenticated
-check-in response from the enrolled registry, so the registry is trusted to name where the
-build lives: its own host, a CDN or object store on another host, or a signed URL with the
-signature in its query. Integrity comes from the checksum, verified over the whole download
-before install, so a wrong or hostile host yields a failed install rather than a bad one. Send
-the update key only to the registry's own origin (the reference client checks this before
-attaching it), so a build fetched elsewhere goes out as an unauthenticated request for what is,
-with the checksum, a public artifact.
-
-```ts
-const offer = ota.parseOffer(body)
-```
-
 ### ota.applyOffer(offer, download, options?)
 
 ```ts
@@ -251,88 +214,6 @@ check-in runs, but never before the app reads the config that causes it. Only a 
 actually serves the stored document is charged: a boot that runs on the defaults never spends a
 trial boot.
 
-### ota.parseConfig(raw)
-
-```ts
-parseConfig(raw: unknown): StoredConfig | undefined
-```
-
-Validates a config document received from a registry, or returns `undefined` if it is not a
-usable one. What [`parseOffer`](#ota-parseoffer-raw) is to an offer. Only a client that
-brings its own transport needs it; the built-in client validates what it receives itself.
-
-A usable document is an object with a non-empty `version` (the release the document was
-computed for, which decides where `applyConfig` puts it), an optional `rev` short enough to
-store intact, and a `doc` that is an object or absent. An absent `doc` is the clear, not a
-malformed document.
-
-Whether the document survives encoding is settled by `applyConfig`, which is where the stored
-bytes are made. A value CBOR cannot carry, a function or a cycle, passes here and comes back
-from `applyConfig` as `'invalid'`.
-
-```ts
-const config = ota.parseConfig(body.config)
-```
-
-### ota.applyConfig(config, options?)
-
-```ts
-applyConfig(
-  config: StoredConfig,
-  options?: {trialBoots?: number},
-): ConfigWrite
-```
-
-Stores a config document. This is the write side of what [`ota.config()`](#ota-config) reads,
-for a client that received a document over its own transport.
-
-The `version` stamp decides where the document lands. Stamped for the running release, it is
-applied: the document it replaces is kept as the rollback baseline, and a trial is armed.
-Stamped for another release, it is staged for the build it names, and applies when that build
-installs. The return value says which happened, and says when nothing did. See
-[ConfigWrite](#configwrite).
-
-```ts
-const write = ota.applyConfig(config, {trialBoots: 4})
-if (write === 'failed') {
-  // Nothing was written. Keep echoing the rev from configState() so the
-  // registry serves the document again on the next check-in.
-}
-```
-
-A delivery to the running release goes on trial, the same as one from the built-in client.
-Each boot whose first `ota.config()` read serves the document spends one of `trialBoots`
-(default 1), and the budget spent with no `ota.confirm()` in between restores the previous
-document and reports the failure to the registry as `configError`. On a device that wakes
-from deep sleep, every wake is a boot, so raise `trialBoots` when a check-in can plausibly
-fail for several cycles in a row. Otherwise one failed check-in rolls back a good document.
-
-The app must read the document with `ota.config()` for `ota.confirm()` to keep it.
-
-### ota.configState()
-
-```ts
-configState(): ConfigState
-```
-
-What the device owes its registry about config: the `rev` to echo, and a document that failed
-its trial and was rolled back. A client that builds its own check-in body needs both. Without
-the echo the registry serves the same document at every check-in. Without the report a
-document that took the device down is served forever, and the operator is never told why.
-
-```ts
-const state = ota.configState()
-await myRegistry.checkIn({
-  running: ota.running(),
-  configRev: state.rev,
-  configError: state.error,
-})
-```
-
-After a rolled-back trial, `rev` is the failed document's rev rather than the restored one's.
-That is deliberate: the registry stops serving a document whose rev the device already echoes,
-which is what keeps a bad document from being sent again until an operator changes it.
-
 ### ota.decline(checksum, reason, detail?)
 
 ```ts
@@ -371,11 +252,11 @@ characters instead.
 report(): CheckinReport
 ```
 
-The check-in body the device owes its registry, assembled: identity, [`running()`](#ota-running),
+The check-in body the device owes its registry, assembled: identity, the running build,
 the device name pair, free storage, a pending `lastInstall` report, a recorded `lastDecline`,
-and what [`configState()`](#ota-configstate) resolves. It replaces gathering the fields by
-hand, and it sends the same facts the built-in client does. Field shapes match the wire, so a
-client (or the server proxying for it) can forward fields verbatim into `POST /api/v1/checkin`.
+and the config echo. It replaces gathering the fields by hand, and it sends the same facts
+the built-in client does. Field shapes match the wire, so a client (or the server proxying
+for it) can forward fields verbatim into `POST /api/v1/checkin`.
 
 ```ts
 ota.reconcile()
@@ -385,6 +266,11 @@ const checkin = await myRegistry.checkIn(ota.report())
 Call [`reconcile()`](#ota-reconcile) first, on every boot: it is what surfaces the
 `lastInstall` report this reads. [`settle()`](#ota-settle-raw-options) marks the report
 delivered once a round completes; until then every `report()` carries it.
+
+After a rolled-back config trial, `configRev` is the failed document's rev rather than the
+restored one's. That is deliberate: the registry stops serving a document whose rev the
+device already echoes, which is what keeps a bad document from being sent again until an
+operator changes it.
 
 ### ota.settle(raw, options?)
 
@@ -397,16 +283,29 @@ settle(
 
 Takes a **completed** check-in's response, whole. In order: confirms the running trial and a
 read config document's trial (exactly [`confirm()`](#ota-confirm)), adopts a delivered name
-pair, stores a delivered config document (exactly
-[`applyConfig`](#ota-applyconfig-config-options), with `trialBoots`), and validates the
-top-level offer fields (exactly [`parseOffer(raw)`](#ota-parseoffer-raw), with
-`allowInsecure`). An empty or null response is the registry's quiet round: nothing to
+pair, stores a delivered config document, and validates the top-level offer fields into the
+returned `offer`. An empty or null response is the registry's quiet round: nothing to
 deliver, and the confirm still happens, which is the point of calling. A response of any
 other shape never decoded: a captive portal handed back HTML, or a proxy sent an error
 page. That is not a completed round, so nothing settles and the confirm does not run.
 
 Never call it on a failed request. A check-in that did not complete proves nothing about the
 running build, and settling it would keep exactly what rollback exists to catch.
+
+A usable offer needs an `https` URL ending in `.tgz`, a non-empty checksum, and a positive
+size; `{allowInsecure: true}` (dev only) also accepts an `http` URL when testing against a
+local registry. The download URL's host is not checked: the offer arrives in an
+authenticated response from the enrolled registry, which is trusted to name where the build
+lives (its own host, a CDN, a signed URL), and integrity comes from the checksum, verified
+over the whole download before install. Send the update key only to the registry's own
+origin; a build fetched elsewhere is, with the checksum, a public artifact.
+
+A delivered config document goes on trial, the same as one from the built-in client. Each
+boot whose first `ota.config()` read serves the document spends one of `trialBoots` (default
+1), and the budget spent with no `ota.confirm()` in between restores the previous document
+and reports the failure to the registry as `configError`. On a device that wakes from deep
+sleep, every wake is a boot, so raise `trialBoots` when a check-in can plausibly fail for
+several cycles in a row.
 
 ```ts
 if (checkin.ok) {
@@ -499,29 +398,14 @@ interface Diagnostic {
 }
 ```
 
-### StoredConfig
-
-```ts
-interface StoredConfig {
-  rev?: string
-  version: string
-  doc?: unknown
-}
-```
-
-One config document, as a registry computed it and the device stores it. `rev` is the opaque
-token echoed on check-ins, `version` is the release the document was computed for, and `doc`
-is the deviation overlay a read resolves over the build's manifest defaults. An absent `doc`
-is the clear. The device stores and returns the document without understanding it: validation
-belongs to the writer, which already holds the schema.
-
 ### ConfigWrite
 
 ```ts
 type ConfigWrite = 'applied' | 'staged' | 'cleared' | 'unchanged' | 'failed' | 'invalid'
 ```
 
-What [`applyConfig`](#ota-applyconfig-config-options) did to the store.
+What [`settle()`](#ota-settle-raw-options) did to the config store, reported as
+`SettleOutcome.config` when the response carried a document.
 
 | Value         | Meaning                                                                                               |
 | ------------- | ----------------------------------------------------------------------------------------------------- |
@@ -532,20 +416,9 @@ What [`applyConfig`](#ota-applyconfig-config-options) did to the store.
 | `'failed'`    | Nothing was written: the store could not answer, or the running version could not be read. Transient. |
 | `'invalid'`   | Not a usable config document.                                                                         |
 
-Only `'applied'` and `'cleared'` change what the running build reads. On `'failed'`, keep
-echoing the rev from `configState()`, so the registry serves the document again.
-
-### ConfigState
-
-```ts
-interface ConfigState {
-  rev?: string
-  error?: {rev: string; message: string}
-}
-```
-
-The two config fields a check-in body owes the registry, from
-[`configState()`](#ota-configstate). Send them as `configRev` and `configError`.
+Only `'applied'` and `'cleared'` change what the running build reads. On `'failed'`, nothing
+was lost: the next `report()` still echoes the held rev, so the registry serves the document
+again.
 
 ### CheckinReport
 

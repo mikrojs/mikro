@@ -8,19 +8,14 @@
 
 import {config} from 'mikro/ota/config'
 import {
-  applyConfig,
   applyOffer,
   bearer,
-  configState,
   confirm,
   decline,
-  parseConfig,
-  parseOffer,
   reconcile,
   registry,
   report,
   revert,
-  running,
   settle,
 } from 'native:mikro/ota_client'
 
@@ -28,17 +23,12 @@ import type {Ota} from './types.js'
 
 const ota: Ota = {
   reconcile,
-  running,
-  parseOffer,
   applyOffer,
   confirm,
   revert,
   bearer,
   registry,
   config,
-  parseConfig,
-  applyConfig,
-  configState,
   decline,
   report,
   settle,

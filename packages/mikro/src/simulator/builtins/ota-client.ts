@@ -108,7 +108,7 @@ export function registry() {
 // and can be adopted here, but never burned down to a rollback: that needs the
 // power cycles only a device has.
 
-export function parseConfig(raw) {
+function parseConfig(raw) {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined
   const version = raw.version
   // Bounded by the buffers the device stores them in. A truncated rev would
@@ -128,7 +128,7 @@ export function parseConfig(raw) {
   return out
 }
 
-export function applyConfig(config, options) {
+function applyConfig(config, options) {
   const parsed = parseConfig(config)
   if (parsed === undefined) return 'invalid'
   const version = manifestVersion()
@@ -174,7 +174,7 @@ export function applyConfig(config, options) {
   return 'applied'
 }
 
-export function configState() {
+function configState() {
   const out = {}
   const report = sysGet('ota.cfgErr')
   const hasError =
@@ -222,7 +222,7 @@ function install(checksum) {
   current = {checksum, version: current.version, trial: true}
 }
 
-export function running() {
+function running() {
   // The version falls back to the manifest, the way mik__ota_policy_running
   // falls back to read_app_version: an app needs it to stamp what it delivers.
   const version = current.version === undefined ? manifestVersion() : current.version
@@ -264,7 +264,7 @@ export function reconcile() {
   return out
 }
 
-export function parseOffer(raw, opts) {
+function parseOffer(raw, opts) {
   if (typeof raw !== 'object' || raw === null) return undefined
   const url = raw.url
   const checksum = raw.checksum
@@ -402,7 +402,7 @@ export function settle(raw, options) {
   }
 
   // The offer fields are top-level in the response, so the whole body goes to
-  // the parser, exactly as ota.parseOffer(body) would.
+  // the offer parser.
   const offer = parseOffer(raw, options)
   if (offer !== undefined) out.offer = offer
   return out

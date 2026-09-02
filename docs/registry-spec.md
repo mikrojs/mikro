@@ -259,7 +259,7 @@ which future publishes conflict.
 
 ### 3. The offer object and the download
 
-The device passes a check-in response body straight to `ota.parseOffer()`. Anything that is not
+The device passes a check-in response body straight to `ota.settle()`. Anything that is not
 a valid offer is read as "no update": an empty body, `null`, `{}`, or a `204` all mean that. A
 valid offer is:
 
@@ -284,8 +284,9 @@ reports the failure through `lastInstall`, which takes the build off that device
 recovery works, but it costs a download and a failed install each time, so it is not a
 substitute for choosing correctly.
 
-`parseOffer` rejects an offer whose `url` path is not `https://….tgz`, whose `checksum` is empty,
-or whose `size` is not a positive integer. It does not check the `url`'s host. The check-in is
+The device rejects an offer whose `url` path is not `https://….tgz`, whose `checksum` is empty,
+or whose `size` is not a positive integer; `ota.settle()` and the built-in client apply the
+same rules. It does not check the `url`'s host. The check-in is
 authenticated, so the registry is trusted to say where the build lives, including a CDN or object
 store on a different host. (`allowInsecure` lets development setups accept `http`.)
 
@@ -512,8 +513,8 @@ on. Replace it freely, and keep the required half.
 
 Nothing in the fixed Mikro.js code sends the check-in request: the CLI and the runtime never call
 `/checkin`. Only the reference `examples/ota/app/updates.ts`, a file you copy and own, does. The
-runtime gives you the pieces around it: `ota.parseOffer`, `ota.applyOffer` (with a download
-callback you write), `ota.bearer()`, `ota.registry()`, and `ota.reconcile()`. How the device asks
+runtime gives you the pieces around it: `ota.report()`, `ota.settle()`, `ota.applyOffer` (with
+a download callback you write), `ota.bearer()`, `ota.registry()`, and `ota.reconcile()`. How the device asks
 a server what to run is up to you. Reasons to write your own instead of adopting this one:
 
 - **A different transport.** This is an HTTPS `POST`. Devices on MQTT, CoAP (Thread or another
@@ -1023,6 +1024,6 @@ channel's current one, or track a per-channel counter that only moves forward.
 
 - **The reference client is `examples/ota/app/updates.ts`** in the Mikro.js repo, an example you
   copy and adapt rather than a fixed client: it shows the `/checkin` request, how it consumes an
-  offer (`ota.parseOffer`), and the streaming download.
+  offer (`ota.settle`), and the streaming download.
 - Device and CLI behavior: the [Over-the-air Updates guide](/ota) and the
   [`ota` API reference](/api/ota).
