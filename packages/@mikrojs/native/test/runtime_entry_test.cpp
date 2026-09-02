@@ -374,7 +374,11 @@ static int64_t g_grace_now_us = 0;
 static int g_grace_restarts = 0;
 static int g_grace_sleeps = 0;
 
+/* Added on every clock read so a serve-loop wait makes time pass. */
+static int64_t g_grace_step_us = 0;
+
 static int64_t grace_boot_us(void) {
+    g_grace_now_us += g_grace_step_us;
     return g_grace_now_us;
 }
 static void grace_restart(void) {
@@ -389,6 +393,15 @@ static int grace_read(uint8_t*, size_t, void*) {
     return -1;
 }
 static void grace_write(const void*, size_t, void*) {}
+/* Idle transport: nothing to read until the panic action has fired, then
+ * EOF. Drives the serve loop's wait through a grace window. The call cap
+ * turns a wait that never reaches the deadline into a failure, not a hang. */
+static int g_grace_idle_reads = 0;
+static int grace_idle_read(uint8_t*, size_t, void*) {
+    if (g_grace_restarts + g_grace_sleeps > 0 || ++g_grace_idle_reads > 1000) return 0;
+    errno = EAGAIN;
+    return -1;
+}
 
 }  // namespace
 
@@ -411,6 +424,7 @@ TEST_CASE("MIK_Stop arms a grace window; the deadline triggers the panic action"
     g_grace_now_us = 1000;
     g_grace_restarts = 0;
     g_grace_sleeps = 0;
+    g_grace_step_us = 0;
 
     /* restart mode */
     {
@@ -481,4 +495,53 @@ TEST_CASE("MIK_Stop arms a grace window; the deadline triggers the panic action"
         MIK_ProtocolClose();
         MIK_FreeRuntime(rt);
     }
+}
+
+/* On device the loop idles inside the transport read, so that is where a
+ * panic lands. The read must keep serving through the grace window instead
+ * of bailing on the first non-zero MIK_Loop, or the firmware restarts at
+ * once from its transport-closed path and onPanic (delay, deep sleep) never
+ * happens. */
+TEST_CASE("The serve loop waits out the grace window and takes the panic action" *
+          doctest::test_suite("entry")) {
+    MIKPlatform fake = *MIK_GetPlatform();
+    fake.get_boot_us = grace_boot_us;
+    fake.restart = grace_restart;
+    fake.deep_sleep_us = grace_deep_sleep;
+    PlatformGuard guard(&fake);
+    g_grace_now_us = 1000;
+    g_grace_restarts = 0;
+    g_grace_sleeps = 0;
+    g_grace_step_us = 100 * 1000;
+    g_grace_idle_reads = 0;
+
+    MIKRuntime* rt = MIK_NewRuntime();
+    REQUIRE(rt != nullptr);
+    MIKConfig config;
+    MIK_DefaultConfig(&config);
+    config.panic_mode = MIK_PANIC_DEEP_SLEEP;
+    config.panic_sleep_duration_ms = 5000;
+    MIK_SetConfig(rt, &config);
+    MIKReplTransport transport = {};
+    transport.read = grace_idle_read;
+    transport.write = grace_write;
+    MIK_ProtocolOpen(&transport);
+    MIK_ProtocolAttach(rt);
+
+    /* The panic must happen inside the read's own MIK_Loop pass: that is
+     * the pass that returns non-zero, and the one the old code bailed on. */
+    JSContext* ctx = MIK_GetJSContext(rt);
+    static const char src[] = "setTimeout(() => { throw new Error('boom') }, 0)";
+    JSValue v = MIK_EvalScriptContent(ctx, src, sizeof(src) - 1);
+    REQUIRE_FALSE(JS_IsException(v));
+    JS_FreeValue(ctx, v);
+
+    uint8_t byte;
+    CHECK_FALSE(mik__proto_read_exact(&transport, &byte, 1));
+    /* EOF came only after the panic action, not on the panic itself. */
+    CHECK(g_grace_sleeps == 1);
+
+    MIK_ProtocolDetach();
+    MIK_ProtocolClose();
+    MIK_FreeRuntime(rt);
 }
