@@ -262,6 +262,9 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
 
     memcpy(&mik_rt->options, options, sizeof(*options));
     MIK_DefaultConfig(&mik_rt->config);
+    /* Runtimes that never see MIK_SetConfig (host tests, the Node addon)
+     * still get the default blocking budget. */
+    mik__watchdog_arm(mik_rt);
 
     /* Switch the QuickJS heap to PSRAM before constructing the runtime,
      * so JS_NewRuntime2 and every subsequent QuickJS allocation lands
@@ -346,6 +349,9 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
     /* unhandled promise rejection tracker */
     JS_SetHostPromiseRejectionTracker(rt, mik__promise_rejection_tracker, NULL);
 
+    /* Blocking watchdog: polled every 10k branches/calls. */
+    JS_SetInterruptHandler(rt, mik__watchdog_interrupt, mik_rt);
+
     /* Register internal C modules */
     JSModuleDef* sys_mod = JS_NewCModule(ctx, "native:mikro/sys", mik__sys_module_init);
     CHECK_NOT_NULL(sys_mod);
@@ -360,6 +366,7 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
     mik__result_init(ctx);
     mik__cbor_init(ctx);
     mik__udp_init(ctx);
+    mik__watchdog_init(ctx);
     mik__observable_init(ctx);
 
     /* Native mikrojs modules (replace bytecode builtins). The http client
@@ -666,13 +673,21 @@ void mik__execute_jobs(JSContext* ctx) {
 
 /* main loop which calls the user JS callbacks */
 int MIK_Loop(MIKRuntime* mik_rt) {
+    const MIKPlatform* platform = MIK_GetPlatform();
+    /* Feed the hardware watchdog before the grace-window return below, so
+     * a long onPanic.delay never counts against it. */
+    if (platform->feed_watchdog) {
+        platform->feed_watchdog();
+    }
+    /* One blocking budget per pass, not per job: a fresh budget per job
+     * would let `while (true) await 0` spin forever unnoticed. */
+    mik__blocking_begin(mik_rt);
     /* Deferred restart (see MIK_Stop): once the grace window elapses, reboot
      * the device. While we're still in the window, return 0 without pumping
      * timers/consumers so the protocol serve loop keeps reading host
      * commands without firing any more user JS on the dead runtime. The
      * serve loop also skips its microtask drain on this condition. */
     if (mik_rt->restart_at_us > 0) {
-        const MIKPlatform* platform = MIK_GetPlatform();
         if (platform->get_boot_us() >= mik_rt->restart_at_us) {
             /* The grace window has elapsed; take the configured panic action.
              * In deep-sleep mode the timer wake reboots the chip, so the wake
@@ -680,12 +695,18 @@ int MIK_Loop(MIKRuntime* mik_rt) {
              * design (the CPU is suspended). If the platform has no deep-sleep
              * hook (hosts), fall through to a plain restart. */
             if (mik_rt->config.panic_mode == MIK_PANIC_DEEP_SLEEP && platform->deep_sleep_us) {
+                mik__print_error_line("[panic] deep-sleeping for %d ms",
+                                      mik_rt->config.panic_sleep_duration_ms);
                 platform->deep_sleep_us((uint64_t)mik_rt->config.panic_sleep_duration_ms * 1000);
             }
+            mik__print_error_line("[panic] restarting");
             platform->restart();
         }
         return 0;
     }
+    /* Feed/awake deadlines: a feed miss lands in the exception branch below,
+     * an awake overrun in the stop_requested one. */
+    mik__watchdog_check(mik_rt);
     if (mik_rt->stop_requested) {
         return 1;
     }
@@ -730,6 +751,7 @@ void MIK_SetConfig(MIKRuntime* mik_rt, const MIKConfig* config) {
     if (config->fs_read_max > 0) {
         mik_rt->fs_read_max = config->fs_read_max;
     }
+    mik__watchdog_arm(mik_rt);
 }
 
 /* Record a profile entry for the entry module loaded via MIK_EvalModule.
@@ -850,6 +872,15 @@ void MIK_Stop(MIKRuntime* mik_rt) {
         const MIKPlatform* platform = MIK_GetPlatform();
         mik_rt->restart_at_us =
             platform->get_boot_us() + (int64_t)mik_rt->config.panic_restart_delay_ms * 1000;
+        /* Say what comes next: with deep sleep the device goes silent. */
+        if (mik_rt->config.panic_mode == MIK_PANIC_DEEP_SLEEP && platform->deep_sleep_us) {
+            mik__print_error_line("[panic] deep-sleeping for %d ms in %d ms",
+                                  mik_rt->config.panic_sleep_duration_ms,
+                                  mik_rt->config.panic_restart_delay_ms);
+        } else {
+            mik__print_error_line("[panic] restarting in %d ms",
+                                  mik_rt->config.panic_restart_delay_ms);
+        }
     }
 }
 
@@ -974,6 +1005,7 @@ JSValue MIK_EvalModuleContent(JSContext* ctx, const char* filename, const char* 
     const char* eval_src = pp_source ? pp_source : content;
     size_t eval_len = pp_source ? pp_len : len;
 
+    mik__blocking_begin(mik_rt);
     /* Compile then run to be able to set import.meta */
     JSValue ret =
         JS_Eval(ctx, eval_src, eval_len, filename, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
@@ -987,6 +1019,7 @@ JSValue MIK_EvalModuleContent(JSContext* ctx, const char* filename, const char* 
 }
 
 JSValue MIK_EvalScriptContent(JSContext* ctx, const char* content, size_t len) {
+    mik__blocking_begin(MIK_GetRuntime(ctx));
     return JS_Eval(ctx, content, len, "<eval>", JS_EVAL_TYPE_GLOBAL);
 }
 
@@ -1009,6 +1042,7 @@ JSValue MIK_EvalScript(JSContext* ctx, const char* filename) {
     /* Add null termination, required by JS_Eval. */
     dbuf_putc(&dbuf, '\0');
 
+    mik__blocking_begin(MIK_GetRuntime(ctx));
     ret = JS_Eval(ctx, (char*)dbuf.buf, dbuf_size - 1, filename, JS_EVAL_TYPE_GLOBAL);
 
     dbuf_free(&dbuf);
@@ -1054,6 +1088,7 @@ JSValue MIK_EvalModule(JSContext* ctx, const char* filename, bool is_main) {
     dbuf_size = dbuf.size;
 
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+    mik__blocking_begin(mik_rt);
     bool profile = mik_rt != nullptr && mik_rt->profile_enabled;
     int64_t malloc_before = 0;
     size_t entries_before = 0;

@@ -28,6 +28,11 @@ const config = {
       // "unused".
       entry: ['app/*.ts'],
     },
+    'dev/watchdog': {
+      // One entry per watchdog, picked with `pnpm dev:<name>`; same shape as
+      // examples/sleep.
+      entry: ['app/*.ts'],
+    },
     'packages/mikro': {
       entry: ['src/cli/cliWrapper.ts', 'src/cli/cli.ts', 'src/_exports/*.ts'],
       project: ['src/**/*.{ts,tsx}'],

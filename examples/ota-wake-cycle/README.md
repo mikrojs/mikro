@@ -23,6 +23,28 @@ as a clean trial boot**. With the default `trialBoots: 1`, one wake without WiFi
 roll back a healthy build; the example passes `trialBoots: 3` so a build gets three wakes
 to reach the registry before the firmware reverts it.
 
+## Bounding the wake cycle
+
+`mikro.config.ts` sets an awake limit:
+
+```ts
+watchdog: {awake: 120_000},
+onPanic: {mode: 'deepSleep', delay: 0, duration: 60_000},
+```
+
+A cycle that never ends, because WiFi never associates or a fetch never settles, would
+keep the device awake until the battery is flat. The awake limit cuts the cycle at two
+minutes and `onPanic` deep-sleeps for the normal interval, so the device stays on its
+schedule and checks in again on the next wake. Nothing in app code can extend the limit.
+
+Two minutes is far above a normal cycle here, which takes a few seconds. It has to clear
+the slowest cycle instead: WiFi retries, a TLS handshake, the check-in, and a full download
+in one wake. A limit shorter than a download does not stop the update, since downloads
+resume on the next wake, but every cut cycle pays the WiFi and TLS setup again. Keeping
+the check-in at the top of the cycle, as this example does, means a device stuck in a bad
+cycle still receives the fix over the air. See the
+[watchdog docs](https://mikrojs.dev/api/watchdog) for the other limits.
+
 ## Registry, enrollment, and environment
 
 Identical to the [`ota` example](../ota#the-registry): run its registry

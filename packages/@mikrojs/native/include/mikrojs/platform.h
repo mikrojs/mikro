@@ -19,6 +19,9 @@ typedef struct MIKPlatform {
      *  deep sleep (hosts), where callers fall back to restart(). */
     void (*deep_sleep_us)(uint64_t us);
     void (*yield)(void);
+    /** Feed the hardware task watchdog for the calling task. NULL where the
+     *  platform has none (hosts) or the watchdog is compiled out. */
+    void (*feed_watchdog)(void);
     size_t (*get_free_system_mem)(void);
     size_t (*get_min_free_system_mem)(void); /* All-time low watermark */
     size_t (*get_total_system_mem)(void);

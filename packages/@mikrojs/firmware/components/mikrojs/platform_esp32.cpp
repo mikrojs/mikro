@@ -14,6 +14,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <soc/soc_caps.h>
+#if CONFIG_ESP_TASK_WDT_EN
+#include <esp_task_wdt.h>
+#endif
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -53,7 +56,20 @@ static void esp32_deep_sleep_us(uint64_t us) {
     /* Never reached */
 }
 
+/* task_wdt.c is only compiled under CONFIG_ESP_TASK_WDT_EN (the header has no
+ * guard), so every TWDT call is wrapped; the test firmware turns it off. */
+#if CONFIG_ESP_TASK_WDT_EN
+static void esp32_feed_watchdog(void) {
+    esp_task_wdt_reset();
+}
+#endif
+
 static void esp32_yield(void) {
+    /* Every cooperative yield feeds the TWDT: between jobs, in the serve
+     * loop's wait, and while the app is paused. */
+#if CONFIG_ESP_TASK_WDT_EN
+    esp_task_wdt_reset();
+#endif
     vTaskDelay(1);
 }
 
@@ -321,6 +337,11 @@ static const MIKPlatform esp32_platform = {
     .restart = esp32_restart,
     .deep_sleep_us = esp32_deep_sleep_us,
     .yield = esp32_yield,
+#if CONFIG_ESP_TASK_WDT_EN
+    .feed_watchdog = esp32_feed_watchdog,
+#else
+    .feed_watchdog = nullptr,
+#endif
     .get_free_system_mem = esp32_get_free_system_mem,
     .get_min_free_system_mem = esp32_get_min_free_system_mem,
     .get_total_system_mem = esp32_get_total_system_mem,

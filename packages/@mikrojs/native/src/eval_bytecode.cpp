@@ -19,6 +19,7 @@ int mik__eval_bytecode(JSContext* ctx, const uint8_t* buf, size_t buf_len, bool 
         }
     }
 
+    mik__blocking_begin(MIK_GetRuntime(ctx));
     JSValue val = JS_EvalFunction(ctx, obj);
     if (JS_IsException(val)) {
         mik_dump_error(ctx);

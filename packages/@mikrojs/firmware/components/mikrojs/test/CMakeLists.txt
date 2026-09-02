@@ -24,6 +24,7 @@ set(_MIK_TEST_SRCS
     timers_js_test.cpp
     timers_test.cpp
     udp_test.cpp
+    watchdog_test.cpp
     wifi_test.cpp
 )
 if(CONFIG_BT_ENABLED)

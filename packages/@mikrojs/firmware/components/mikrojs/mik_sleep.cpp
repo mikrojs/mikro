@@ -3,6 +3,7 @@
 #include "esp_sleep.h"
 #include "soc/soc_caps.h"
 
+#include "mikrojs/platform.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 #include "mikrojs_esp32.h"
@@ -273,6 +274,12 @@ static JSValue mik__sleep_light(JSContext* ctx, JSValue this_val, int argc, JSVa
     mik__serial_io_detach_usb();
     esp_err_t err = esp_light_sleep_start();
     mik__serial_io_attach_usb();
+
+    /* esp_timer keeps counting through light sleep, so without this the
+     * sleep would count against the blocking and feed limits and the TWDT. */
+    const MIKPlatform* platform = MIK_GetPlatform();
+    if (platform->feed_watchdog) platform->feed_watchdog();
+    mik__watchdog_wake(MIK_GetRuntime(ctx));
 
     if (err != ESP_OK)
         return JS_ThrowInternalError(ctx, "light sleep failed: %s", esp_err_to_name(err));

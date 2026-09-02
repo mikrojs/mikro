@@ -1495,3 +1495,50 @@ TEST_CASE("stdout.write routes to LOG frames while the protocol serves" *
 
     proto_teardown();
 }
+
+/* ── Watchdog: REPL eval ─────────────────────────────────────────── */
+
+namespace {
+int64_t g_wd_now_us = 1000;
+/* Every read advances 100 ms, so a spinning eval "takes" time. */
+int64_t wd_step_boot_us(void) {
+    g_wd_now_us += 100 * 1000;
+    return g_wd_now_us;
+}
+void wd_noop_yield(void) {}
+}  // namespace
+
+TEST_CASE("REPL eval of an endless loop is interrupted and the session survives" *
+          doctest::test_suite("repl_protocol")) {
+    MIKPlatform fake = *MIK_GetPlatform();
+    fake.get_boot_us = wd_step_boot_us;
+    fake.yield = wd_noop_yield;
+    PlatformGuard guard(&fake);
+    g_wd_now_us = 1000;
+
+    proto_setup();
+    MIKConfig config;
+    MIK_DefaultConfig(&config);
+    config.blocking_timeout_ms = 1000;
+    MIK_SetConfig(proto_rt, &config);
+
+    std::vector<uint8_t> input;
+    append_frame(input, MIK_CMD_HELLO, "");
+    append_frame(input, MIK_CMD_EVAL, "while (true) {}");
+    append_frame(input, MIK_CMD_EVAL, "1 + 1");
+    append_frame(input, MIK_CMD_EXIT, "");
+    auto frames = run_protocol(input);
+
+    /* A synchronous throw from the eval: reported, no panic, no restart. */
+    auto errors = find_frames(frames, MIK_MSG_EVAL_ERROR);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0]->payload.find("interrupted") != std::string::npos);
+    auto results = find_frames(frames, MIK_MSG_RESULT);
+    REQUIRE(results.size() == 1);
+    CHECK(results[0]->payload == "2");
+    CHECK(proto_rt->restart_at_us == 0);
+    CHECK_FALSE(MIK_IsStopRequested(proto_rt));
+    CHECK_FALSE(proto_rt->blocking_tripped);
+
+    proto_teardown();
+}

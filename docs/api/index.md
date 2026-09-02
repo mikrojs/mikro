@@ -38,6 +38,7 @@ import {request} from 'mikro/http/request'
 | [http/server](/api/http-server)   | HTTP server (handler + routing in userland)      |
 | [udp](/api/udp)                   | UDP datagram sockets (IPv4 and IPv6)             |
 | [sleep](/api/sleep)               | Delays, deep sleep, light sleep, wakeup sources  |
+| [watchdog](/api/watchdog)         | Restart a device that froze or stopped working   |
 | [sntp](/api/sntp)                 | Network time synchronization                     |
 | [kv](/api/kv)                     | Key-value storage (RTC memory + NVS flash)       |
 | [fs](/api/fs)                     | Filesystem I/O with streaming reads              |

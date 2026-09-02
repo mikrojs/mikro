@@ -263,6 +263,11 @@ bool mik__report_uncaught(JSContext* ctx, JSValue exc, bool in_promise) {
         }
     }
 
+    /* A blocking-watchdog timeout reaches here either through mik_dump_error
+     * (which already reported it; this is then a no-op) or as an unhandled
+     * rejection when the interrupted turn was a module evaluation. */
+    mik__watchdog_report_blocking(MIK_GetRuntime(ctx));
+
     /* Fixed-size stack buffer so this function never allocates from the
      * C++ heap. Previously we used std::string + mik_inspect here; both
      * can throw std::bad_alloc under memory pressure, and with

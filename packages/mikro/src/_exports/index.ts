@@ -138,10 +138,28 @@ export type MikroJSPanicAction =
   | {mode: 'restart'; delay?: number}
   | {mode: 'deepSleep'; delay?: number; duration: number}
 
+export interface MikroJSWatchdogConfig {
+  /** Max ms one event-loop turn may hold the loop before it is interrupted.
+   *  Default 30000. `false` disables. */
+  blocking?: number | false
+  /** Max ms between `watchdog.feed()` calls before `onPanic` acts. The app
+   *  decides what counts as progress; this decides how long without it is
+   *  too long. Off by default. */
+  feed?: number
+  /** Max ms the device may stay awake in one wake cycle before `onPanic`
+   *  acts. Unlike `feed`, nothing can extend it. For apps that wake, work,
+   *  and deep-sleep; leave unset on a device that stays powered. Off by
+   *  default. */
+  awake?: number
+}
+
 export interface MikroJSConfig {
   /** Behavior after an uncaught exception. Default:
    * `{mode: 'restart', delay: 1000}`. */
   onPanic?: MikroJSPanicAction
+  /** Watchdog limits. All three route through `onPanic` when they fire.
+   * See the `watchdog` section of the config docs. */
+  watchdog?: MikroJSWatchdogConfig
   /** The app's OTA config schema, built with `mikro/schema`. Serialized into
    * `mikro.app.json` at `mikro ota pack` and sent to the registry at push, so
    * a registry can render a config form and validate what it serves. Import

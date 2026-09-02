@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "mikrojs/mikrojs.h"
+#include "mikrojs/platform.h"
 #include "mikrojs/private.h"
 
 JSValue mik_new_error(JSContext* ctx, int err) {
@@ -38,7 +39,27 @@ static void mik_dump_obj(JSContext* ctx, FILE* f, JSValue val) {
     }
 }
 
+void mik__print_error_line(const char* fmt, ...) {
+    char buf[256];
+    va_list args;
+    va_start(args, fmt);
+    int n = vsnprintf(buf, sizeof(buf) - 2, fmt, args);
+    va_end(args);
+    if (n < 0) return;
+    size_t len = (size_t)n;
+    /* vsnprintf wrote at most sizeof(buf) - 3 chars plus a NUL. */
+    if (len > sizeof(buf) - 3) len = sizeof(buf) - 3;
+    if (mik__repl_is_protocol_mode()) {
+        mik__repl_proto_send_output(MIK_MSG_ERROR, buf, len);
+        return;
+    }
+    buf[len++] = '\r';
+    buf[len++] = '\n';
+    MIK_GetPlatform()->stderr_write(buf, len);
+}
+
 void mik_dump_error(JSContext* ctx) {
+    mik__watchdog_report_blocking(MIK_GetRuntime(ctx));
     JSValue exception_val = JS_GetException(ctx);
     mik_dump_error1(ctx, exception_val);
     JS_FreeValue(ctx, exception_val);

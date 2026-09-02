@@ -57,6 +57,18 @@ constexpr size_t kTarBlock = 512;
 constexpr size_t kTarName = 100;  // ustar name field width
 constexpr int kMaxNameDepth = 8;  // path components a member may create
 
+// The boot install and the deploy-time verify run on the main task with no
+// MIK_Loop pass in between, so flash-bound loops feed the task watchdog here.
+// The host test has no platform and nothing to feed.
+#ifdef MIK_OTA_HOST_TEST
+void feed_watchdog(void) {}
+#else
+void feed_watchdog(void) {
+    const MIKPlatform* platform = MIK_GetPlatform();
+    if (platform->feed_watchdog) platform->feed_watchdog();
+}
+#endif
+
 // Classified failure cause carried back to JS. `corrupt` means the bytes are
 // deterministically bad (gzip/tar/SHA) so retrying identical bytes can't help;
 // `transient` is fs/mount/io; `oom` is an allocation failure.
@@ -201,7 +213,10 @@ bool sha256_file(const char* path, char out[65]) {
     Sha256 c;
     sha256_init(&c);
     size_t n;
-    while ((n = fread(buf, 1, kChunk, f)) > 0) sha256_update(&c, buf, n);
+    while ((n = fread(buf, 1, kChunk, f)) > 0) {
+        feed_watchdog();
+        sha256_update(&c, buf, n);
+    }
     bool read_err = ferror(f) != 0;
     free(buf);
     fclose(f);
@@ -564,6 +579,7 @@ bool unpack_tgz(const char* in_path, const char* dest_dir, const char** err, Ota
     unsigned char tail[8];   // rolling last-8-bytes of the file == the gzip trailer
     size_t tail_len = 0;
     for (;;) {
+        feed_watchdog();
         if (avail_in == 0 && !eof) {
             size_t in_n = fread(inbuf, 1, kChunk, in);
             // A read error also returns 0. Distinguish it from real EOF: treating
@@ -834,6 +850,7 @@ void rmtree_at(char* path, size_t cap, int depth) {
     dirent* ent;
     while ((ent = readdir(d)) != nullptr) {
         if (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, "..")) continue;
+        feed_watchdog();
         const int n = snprintf(path + base, cap - base, "/%s", ent->d_name);
         if (n < 0 || (size_t)n >= cap - base) {
             path[base] = 0;  // would truncate to a different path; skip it

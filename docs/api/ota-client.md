@@ -46,6 +46,10 @@ if (checked.status === 'staged') restart()
 deepSleep(60 * 60_000)
 ```
 
+Keep the check before the cycle's work. With a [`watchdog.awake`](/api/watchdog#choosing-an-awake-limit)
+limit set, a cycle that gets stuck later still checks in at the top of every wake, so a fix
+can arrive over the air.
+
 The result says what happened, and only `'staged'` requires action:
 
 ```ts

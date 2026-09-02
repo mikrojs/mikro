@@ -1,0 +1,26 @@
+{
+  "name": "mikrojs-watchdog-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dev fixture with one entry per watchdog, each written to set it off. Used to check the watchdog lines and the restart on a device.",
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "files": [
+    "dist",
+    "app"
+  ],
+  "type": "module",
+  "main": "./app/blocking.ts",
+  "scripts": {
+    "dev": "mikro dev",
+    "dev:awake": "mikro dev app/awake.ts",
+    "dev:blocking": "mikro dev app/blocking.ts",
+    "dev:blocking-microtask": "mikro dev app/blocking-microtask.ts",
+    "dev:blocking-regex": "mikro dev app/blocking-regex.ts",
+    "dev:feed": "mikro dev app/feed.ts",
+    "dev:lightsleep": "mikro dev app/lightsleep.ts"
+  },
+  "dependencies": {
+    "mikro": "workspace:*"
+  }
+}

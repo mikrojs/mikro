@@ -54,7 +54,17 @@ typedef struct MIKConfig {
     char log_dir[64];
     uint32_t log_max_size;
     MIKLogFlush log_flush;
+    /* Watchdog budgets in ms, 0 = disabled. Mirror of the `watchdog` key in
+     * the host-side TS config. blocking: one event-loop turn holding the
+     * loop; feed: gap between watchdog.feed() calls; awake: time since boot. */
+    int blocking_timeout_ms;
+    int feed_timeout_ms;
+    int awake_timeout_ms;
 } MIKConfig;
+
+/* Shipped blocking default. The ESP32 side static_asserts this against the
+ * hardware TWDT timeout so the two cannot drift out of order. */
+#define MIK_WATCHDOG_BLOCKING_DEFAULT_MS 30000
 
 void MIK_DefaultConfig(MIKConfig* config);
 int MIK_LoadConfig(const char* base_path, MIKConfig* config);

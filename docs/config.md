@@ -21,17 +21,20 @@ export default defineConfig({
 
 These options are bundled into the deployed app and read by the firmware at boot.
 
-| Option            | Type                | Default                          | Description                                      |
-| ----------------- | ------------------- | -------------------------------- | ------------------------------------------------ |
-| `onPanic`         | `object`            | `{mode: 'restart', delay: 1000}` | What the device does after an uncaught exception |
-| `stackSize`       | `number` (bytes)    | firmware default                 | QuickJS C stack size                             |
-| `memReserved`     | `number` (bytes)    | `65536` (64 KB)                  | Heap reserved for native subsystems              |
-| `wifi.country`    | `WifiCountryCode`   | none                             | WiFi regulatory country code                     |
-| `wifi.hostname`   | `string`            | device name, else `mikrojs-<id>` | DHCP hostname advertised by the STA interface    |
-| `logFile`         | `true \| object`    | off                              | Enable on-device file logging                    |
-| `logFile.dir`     | `string`            | `'/appfs/logs'`                  | Directory the log file lives in                  |
-| `logFile.maxSize` | `number \| string`  | `'64k'`                          | Rotate when file exceeds this size               |
-| `logFile.flush`   | `'line' \| 'error'` | `'error'`                        | When to flush buffered writes to flash           |
+| Option              | Type                | Default                          | Description                                      |
+| ------------------- | ------------------- | -------------------------------- | ------------------------------------------------ |
+| `onPanic`           | `object`            | `{mode: 'restart', delay: 1000}` | What the device does after an uncaught exception |
+| `watchdog.blocking` | `number \| false`   | `30000`                          | Max ms one event-loop turn may hold the loop     |
+| `watchdog.feed`     | `number`            | off                              | Max ms between `watchdog.feed()` calls           |
+| `watchdog.awake`    | `number`            | off                              | Max ms awake per wake cycle                      |
+| `stackSize`         | `number` (bytes)    | firmware default                 | QuickJS C stack size                             |
+| `memReserved`       | `number` (bytes)    | `65536` (64 KB)                  | Heap reserved for native subsystems              |
+| `wifi.country`      | `WifiCountryCode`   | none                             | WiFi regulatory country code                     |
+| `wifi.hostname`     | `string`            | device name, else `mikrojs-<id>` | DHCP hostname advertised by the STA interface    |
+| `logFile`           | `true \| object`    | off                              | Enable on-device file logging                    |
+| `logFile.dir`       | `string`            | `'/appfs/logs'`                  | Directory the log file lives in                  |
+| `logFile.maxSize`   | `number \| string`  | `'64k'`                          | Rotate when file exceeds this size               |
+| `logFile.flush`     | `'line' \| 'error'` | `'error'`                        | When to flush buffered writes to flash           |
 
 ### `onPanic`
 
@@ -48,6 +51,28 @@ onPanic: {mode: 'deepSleep', delay: 0, duration: 600000}
 ```
 
 See [Error Handling](/error-handling) for details.
+
+### `watchdog`
+
+Limits for the three watchdogs. Each one restarts the device through `onPanic` when it fires, so `delay` and the deep-sleep action apply to all of them. See the [watchdog API page](/api/watchdog) for what each one catches and how to size them.
+
+- **`blocking`**: how long one turn of the event loop may hold the device before the running code is interrupted with a stack trace. Default `30000`. Set `false` to disable.
+- **`feed`**: how long the app may go without calling `watchdog.feed()`. Off unless set. The app defines what progress means; this sets how long without it is too long.
+- **`awake`**: how long the device may stay awake in one wake cycle, counted from boot. Off unless set. Nothing can extend it, so it bounds the whole cycle. Only for apps that wake, work, and deep-sleep; on a device that stays powered it is a reboot timer.
+
+A wake-cycle app pairs `awake` with the deep-sleep panic action, and drops it on the bench with a per-environment override. Overrides replace the whole `watchdog` group, so `watchdog: {}` in `development` removes `awake` and leaves `blocking` at its default:
+
+```ts twoslash
+import {defineConfig} from 'mikro'
+
+export default defineConfig({
+  onPanic: {mode: 'deepSleep', delay: 0, duration: 600_000},
+  watchdog: {awake: 120_000},
+  env: {development: {watchdog: {}}},
+})
+```
+
+Values below 1000 ms are raised to 1000 at boot with a warning.
 
 ### `stackSize`
 

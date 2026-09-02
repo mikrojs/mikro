@@ -327,6 +327,12 @@ cost of the connection, or a limited power budget. The two modes of the built-in
 those decisions, made for the two common kinds of app. Always-on apps get a jittered background
 cadence. Apps that sleep get one check per wake.
 
+An app that sleeps usually also sets a [`watchdog.awake`](/api/watchdog#choosing-an-awake-limit)
+limit. Check in early in the cycle, before the work that might go wrong, so a device stuck in
+a bad cycle still receives the fix. A limit shorter than a download does not block the update:
+downloads resume across reboots, so it lands over several cycles, each paying the connection
+setup again.
+
 ## Relation to `mikro dev` and `mikro deploy`
 
 OTA installs the same app build as `mikro dev` and `mikro deploy`, through the same engine.

@@ -146,7 +146,7 @@ static void counting_yield(void) {
 TEST_CASE("Long promise-job storms yield to the platform periodically" *
           doctest::test_suite("runtime")) {
     /* A chain of already-settled promises drains as one synchronous storm of
-     * jobs. On ESP32 that starves the FreeRTOS idle task and trips the task
+     * jobs. On ESP32 that starves the FreeRTOS idle task and sets off the task
      * watchdog, so mik__execute_jobs must call platform->yield() about once
      * per second of continuous work. */
     const MIKPlatform* orig = MIK_GetPlatform();
@@ -159,6 +159,11 @@ TEST_CASE("Long promise-job storms yield to the platform periodically" *
     MIK_SetPlatform(&fake);
 
     MIKRuntime* rt = MIK_NewRuntime();
+    /* The stepping clock would look like a blocked loop to the watchdog. */
+    MIKConfig config;
+    MIK_DefaultConfig(&config);
+    config.blocking_timeout_ms = 0;
+    MIK_SetConfig(rt, &config);
     JSContext* ctx = MIK_GetJSContext(rt);
     const char* src =
         "let p = Promise.resolve();"
@@ -195,6 +200,11 @@ TEST_CASE("Waking after a long idle period does not inject a spurious yield" *
     MIK_SetPlatform(&fake);
 
     MIKRuntime* rt = MIK_NewRuntime();
+    /* The stepping clock would look like a blocked loop to the watchdog. */
+    MIKConfig config;
+    MIK_DefaultConfig(&config);
+    config.blocking_timeout_ms = 0;
+    MIK_SetConfig(rt, &config);
     JSContext* ctx = MIK_GetJSContext(rt);
 
     /* A short burst to seed the busy-interval timestamp. */
