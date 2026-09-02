@@ -183,6 +183,10 @@
       "development": "./src/_exports/udp.ts",
       "import": "./dist/_exports/udp.js"
     },
+    "./watchdog": {
+      "development": "./src/_exports/watchdog.ts",
+      "import": "./dist/_exports/watchdog.js"
+    },
     "./wifi": {
       "development": "./src/_exports/wifi.ts",
       "import": "./dist/_exports/wifi.js"
@@ -228,6 +232,7 @@
       "./tsconfig": "./tsconfig.base.json",
       "./uart": "./dist/_exports/uart.js",
       "./udp": "./dist/_exports/udp.js",
+      "./watchdog": "./dist/_exports/watchdog.js",
       "./runtime": "./runtime.d.ts",
       "./package.json": "./package.json"
     }

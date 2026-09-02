@@ -135,6 +135,7 @@ export default defineConfig({
           {text: 'http/server', link: '/api/http-server'},
           {text: 'udp', link: '/api/udp'},
           {text: 'sleep', link: '/api/sleep'},
+          {text: 'watchdog', link: '/api/watchdog'},
           {text: 'sntp', link: '/api/sntp'},
           {text: 'kv', link: '/api/kv'},
           {text: 'fs', link: '/api/fs'},

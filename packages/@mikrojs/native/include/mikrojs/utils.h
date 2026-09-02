@@ -68,6 +68,11 @@ void mik_assert(const struct AssertionInfo info);
     }
 
 void mik_call_handler(JSContext* ctx, JSValue func, int argc, JSValue* argv);
+/* Print one always-visible error line the way console.error does: an error
+ * frame in protocol mode, stderr otherwise. platform->log is filtered per
+ * tag on the device and silent by default, so lines that precede a reboot
+ * (watchdog lines, panic actions) go through here instead. */
+void mik__print_error_line(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void mik_dump_error(JSContext* ctx);
 void mik_dump_error1(JSContext* ctx, JSValue exception_val);
 

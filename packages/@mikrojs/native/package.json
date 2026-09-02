@@ -86,6 +86,7 @@
     "./runtime/test/types": "./runtime/test/types.ts",
     "./runtime/uart/types": "./runtime/uart/types.ts",
     "./runtime/udp/types": "./runtime/udp/types.ts",
+    "./runtime/watchdog/types": "./runtime/watchdog/types.ts",
     "./runtime/wifi/types": "./runtime/wifi/types.ts"
   },
   "publishConfig": {
@@ -126,6 +127,7 @@
       "./runtime/test/types": "./runtime/test/types.ts",
       "./runtime/uart/types": "./runtime/uart/types.ts",
       "./runtime/udp/types": "./runtime/udp/types.ts",
+      "./runtime/watchdog/types": "./runtime/watchdog/types.ts",
       "./runtime/wifi/types": "./runtime/wifi/types.ts"
     }
   },

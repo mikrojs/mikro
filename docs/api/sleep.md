@@ -35,6 +35,8 @@ function deepSleep(sources: DeepWakeupSources | number): never
 
 Enter deep sleep until one of the configured `sources` wakes the device. The chip resets on wake, so your program restarts from the beginning. Use [`rtcStorage`](/api/kv) to persist state across deep sleep cycles.
 
+An app that wakes, works, and sleeps again should also set an [`awake` limit](/api/watchdog#awake) in `mikro.config.ts`, so a cycle that never reaches `deepSleep` is cut off instead of draining the battery.
+
 Pass a number as shorthand for a timer-only wakeup in milliseconds:
 
 ```ts twoslash

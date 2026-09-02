@@ -68,6 +68,16 @@ CONFIG_ESP_EVENT_POST_FROM_IRAM_ISR=n
 # Without this, the 128-byte RX FIFO overflows during deploy.
 CONFIG_UART_ISR_IN_IRAM=y
 
+# --- Task watchdog ---
+# The main task (which runs the JS runtime) subscribes in MIK_Main and is fed
+# from MIK_Loop and platform->yield. PANIC makes a timeout reset the chip
+# instead of only logging; it also applies to the idle-task checks, so any
+# task that starves idle for the timeout reboots the device. The JS blocking
+# watchdog (30 s default) must fire first; mik_main.cpp asserts the order.
+# 60 is the Kconfig ceiling.
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
+
 # --- LittleFS ---
 # Track modification time so fs.stat() / fs.readDir() surface mtime
 # (exposed as ms-since-epoch on the StatResult object).

@@ -610,6 +610,7 @@ static bool handle_directive_impl(JSContext* ctx, const char* line, std::string&
             out.append("App is already paused\n");
         } else {
             repl_paused = true;
+            mik__watchdog_pause_begin(repl_mik_rt);
             out.append("App paused (timers, callbacks suspended). Use /resume to continue.\n");
         }
         return true;
@@ -620,6 +621,7 @@ static bool handle_directive_impl(JSContext* ctx, const char* line, std::string&
             out.append("App is not paused\n");
         } else {
             repl_paused = false;
+            mik__watchdog_pause_end(repl_mik_rt);
             out.append("App resumed\n");
         }
         return true;
@@ -851,6 +853,13 @@ bool mik__repl_is_paused(void) {
 }
 
 void mik__repl_set_paused(bool paused) {
+    if (paused != repl_paused) {
+        if (paused) {
+            mik__watchdog_pause_begin(repl_mik_rt);
+        } else {
+            mik__watchdog_pause_end(repl_mik_rt);
+        }
+    }
     repl_paused = paused;
 }
 
@@ -1034,6 +1043,9 @@ void MIK_ProtocolClose(void) {
     }
     repl_active = false;
     repl_protocol_mode = false;
+    if (repl_paused) {
+        mik__watchdog_pause_end(repl_mik_rt);
+    }
     repl_paused = false;
     repl_transport = nullptr;
     repl_ctx = nullptr;
@@ -1081,6 +1093,7 @@ void MIK_ProtocolServeLoop(void) {
 
                 repl_evaluating = true;
                 repl_async_skipped = false;
+                mik__blocking_begin(repl_mik_rt);
                 JSValue result = repl_eval_and_pump(ctx, code.c_str(), code.size());
                 repl_evaluating = false;
 
@@ -1092,6 +1105,10 @@ void MIK_ProtocolServeLoop(void) {
 
                 if (JS_IsException(result)) {
                     JSValue exc = JS_GetException(ctx);
+
+                    /* A synchronous throw never reaches mik_dump_error, so
+                     * consume the blocking-timeout flag here. */
+                    mik__watchdog_report_blocking(repl_mik_rt);
 
                     /* Format the error */
                     std::string msg = "Uncaught ";

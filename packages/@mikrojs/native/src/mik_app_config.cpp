@@ -1,5 +1,6 @@
 #include "mikrojs/mikrojs.h"
 
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -24,6 +25,9 @@ void MIK_DefaultConfig(MIKConfig* config) {
     config->log_dir[0] = '\0';
     config->log_max_size = 64 * 1024;
     config->log_flush = MIK_LOG_FLUSH_ERROR;
+    config->blocking_timeout_ms = MIK_WATCHDOG_BLOCKING_DEFAULT_MS;
+    config->feed_timeout_ms = 0;
+    config->awake_timeout_ms = 0;
 }
 
 /* Minimal JSON parser for config file — avoids cJSON dependency.
@@ -58,6 +62,34 @@ static bool mik__json_get_number(const char* json, const char* key, double* out)
     if (end == p) return false;
     *out = val;
     return true;
+}
+
+static bool mik__json_is_false(const char* json, const char* key) {
+    char pattern[128];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    const char* p = strstr(json, pattern);
+    if (!p) return false;
+    p += strlen(pattern);
+    while (*p == ' ' || *p == '\t' || *p == ':') p++;
+    return strncmp(p, "false", 5) == 0;
+}
+
+/* Watchdog budget in ms. `false` and 0 disable; other values below 1 s
+ * clamp up with a warning, since a smaller budget fires on ordinary work. */
+static int mik__json_get_watchdog_ms(const MIKPlatform* platform, const char* json,
+                                     const char* key, int current) {
+    if (mik__json_is_false(json, key)) return 0;
+    double num_val;
+    if (!mik__json_get_number(json, key, &num_val)) return current;
+    if (num_val == 0) return 0;
+    if (num_val < 1000) {
+        platform->log(MIK_LOG_WARN, TAG, "%s below 1000 ms (%ld); clamping to 1000", key,
+                      (long)num_val);
+        return 1000;
+    }
+    /* Past INT_MAX the cast would wrap negative and silently disable it. */
+    if (num_val > INT_MAX) return INT_MAX;
+    return (int)num_val;
 }
 
 /* Read a JSON file into a malloc'd buffer. Caller must free(). Returns NULL on failure. */
@@ -333,6 +365,12 @@ int MIK_LoadConfig(const char* base_path, MIKConfig* config) {
             if (mik__json_get_number(buf, "onPanic.duration", &num_val)) {
                 config->panic_sleep_duration_ms = (int)num_val;
             }
+            config->blocking_timeout_ms = mik__json_get_watchdog_ms(
+                platform, buf, "watchdog.blocking", config->blocking_timeout_ms);
+            config->feed_timeout_ms = mik__json_get_watchdog_ms(platform, buf, "watchdog.feed",
+                                                                config->feed_timeout_ms);
+            config->awake_timeout_ms = mik__json_get_watchdog_ms(
+                platform, buf, "watchdog.awake", config->awake_timeout_ms);
             if (mik__json_get_number(buf, "stackSize", &num_val)) {
                 config->stack_size = (size_t)num_val;
             }

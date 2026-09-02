@@ -13,6 +13,9 @@
 #include "esp_littlefs.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#if CONFIG_ESP_TASK_WDT_EN
+#include "esp_task_wdt.h"
+#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mikrojs.h"
@@ -21,6 +24,20 @@
 #include "nvs_flash.h"
 
 static const char* TAG = "mikrojs";
+
+#if CONFIG_ESP_TASK_WDT_INIT
+/* Ordering invariant: the JS blocking watchdog interrupts (with a stack trace)
+ * before the hardware TWDT resets the chip. The margin covers unwinding and
+ * printing the trace. onPanic.delay is not part of the sum: MIK_Loop feeds
+ * the TWDT through the grace window. CONFIG_ESP_TASK_WDT_TIMEOUT_S only
+ * exists under CONFIG_ESP_TASK_WDT_INIT. */
+#define MIK_TWDT_MARGIN_S 5
+static_assert(MIK_WATCHDOG_BLOCKING_DEFAULT_MS / 1000 + MIK_TWDT_MARGIN_S <
+                  CONFIG_ESP_TASK_WDT_TIMEOUT_S,
+              "watchdog.blocking default (30 s) must fire before the task watchdog: set "
+              "CONFIG_ESP_TASK_WDT_TIMEOUT_S=60 in sdkconfig, or delete sdkconfig and re-run "
+              "`idf.py set-target` so sdkconfig.defaults applies");
+#endif
 
 /* Error handler armed during a normal boot: when the app hits a fatal JS error
  * (uncaught exception or unhandled rejection) while running an OTA trial build,
@@ -188,6 +205,9 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
     /* Restart: drain payload (should be 0), then restart */
     if (cmd_type == MIK_CMD_RESTART) {
         mik__proto_drain(transport, payload_len);
+        /* Say why: a silent reset is indistinguishable from a crash. */
+        printf("[mikrojs] restart requested by host\n");
+        fflush(stdout);
         esp_restart();
         return true; /* unreachable */
     }
@@ -261,7 +281,15 @@ static esp_err_t mount_littlefs(const char* base_path, const char* partition_lab
     conf.partition_label = partition_label;
     conf.format_if_mount_failed = true;
 
+#if CONFIG_ESP_TASK_WDT_EN
+    /* A first-boot format runs for seconds inside this one call, where no
+     * feed can reach; unsubscribe the main task for its duration. */
+    esp_task_wdt_delete(NULL);
+#endif
     esp_err_t ret = esp_vfs_littlefs_register(&conf);
+#if CONFIG_ESP_TASK_WDT_EN
+    esp_task_wdt_add(NULL);
+#endif
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to mount LittleFS partition '%s' at '%s': %s", partition_label,
                  base_path, esp_err_to_name(ret));
@@ -328,6 +356,17 @@ void MIK_Main(void) {
         printf("\n*** SAFE MODE: autorun skipped, dropping to REPL ***\n\n");
     }
 
+#if CONFIG_ESP_TASK_WDT_EN
+    /* Watch the main task: a hang in native code below JS now resets the
+     * chip instead of sitting forever. Fed from MIK_Loop and platform->yield. */
+    {
+        esp_err_t err = esp_task_wdt_add(NULL);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Could not add the main task to the task watchdog: %s", esp_err_to_name(err));
+        }
+    }
+#endif
+
     /* Initialize NVS (needed for env vars, secrets, and WiFi) */
     {
         esp_err_t err = nvs_flash_init();
@@ -370,6 +409,22 @@ void MIK_Main(void) {
     /* Load app config (mikro.config.json) if present */
     MIKConfig app_config;
     MIK_LoadConfig("/appfs", &app_config);
+
+#if CONFIG_ESP_TASK_WDT_INIT
+    /* Same ordering invariant as the static_assert above, for a configured
+     * value. Clamp and warn rather than fail, as the memReserved clamp does. */
+    {
+        constexpr int kMaxBlockingMs = (CONFIG_ESP_TASK_WDT_TIMEOUT_S - MIK_TWDT_MARGIN_S) * 1000;
+        if (app_config.blocking_timeout_ms > kMaxBlockingMs) {
+            ESP_LOGW(TAG,
+                     "watchdog.blocking %d ms must stay %d s under the %d s task watchdog; "
+                     "clamping to %d ms",
+                     app_config.blocking_timeout_ms, MIK_TWDT_MARGIN_S,
+                     CONFIG_ESP_TASK_WDT_TIMEOUT_S, kMaxBlockingMs);
+            app_config.blocking_timeout_ms = kMaxBlockingMs;
+        }
+    }
+#endif
 
     /* Start file logging if configured (no-op when log_file is empty). */
     mik_logfile_init(&app_config);
@@ -710,6 +765,9 @@ void MIK_Main(void) {
     MIK_ProtocolClose();
     MIK_FreeTests(test_paths, test_count);
 
-    /* If we get here, the transport died. Restart. */
+    /* If we get here, the transport died. Restart, and say so: this reset
+     * reads as "software" on the next boot, same as a host restart. */
+    printf("[mikrojs] console transport closed, restarting\n");
+    fflush(stdout);
     esp_restart();
 }

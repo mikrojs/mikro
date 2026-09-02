@@ -31,6 +31,24 @@ pnpm mikro dev app/deep-ext1.ts
 - `deep-ext0.ts`: button or jumper between **GPIO 0** and **GND**. **ESP32 / S2 / S3 only** — throws "EXT0 wakeup is not supported on this chip" on C6/C3/H2. mikrojs configures the internal RTC pull-up automatically.
 - `deep-ext1.ts`: button or jumper between **GPIO 0** and **GND**. Labelled **D0** on the XIAO ESP32-C6, **D1** on the XIAO ESP32-S3. mikrojs configures the chip's internal RTC pull (up for `any-low`, down for `any-high`) automatically.
 
+## Bounding a wake cycle
+
+A real wake-cycle app should also set an awake limit, so a cycle that never reaches `deepSleep` is cut off instead of draining the battery. `deep-timer.ts` is awake for about 2 seconds per cycle (three blinks, a one-second pause, and the boot itself), then sleeps for 5 seconds. The config for an app shaped like that:
+
+```ts
+import {defineConfig} from 'mikro'
+
+export default defineConfig({
+  // Cut any cycle that is still running after 30 s. A normal cycle here
+  // takes about 2 s; the limit covers a slow boot or a stuck await.
+  watchdog: {awake: 30_000},
+  // Then sleep for the usual interval, so the schedule stays intact.
+  onPanic: {mode: 'deepSleep', delay: 0, duration: 5_000},
+})
+```
+
+This example does not set it, because the entries share one `mikro.config.ts` and the light-sleep entries never deep-sleep: with the limit set, `light-timer.ts` would reboot every 30 seconds. See the [watchdog docs](https://mikrojs.dev/api/watchdog#choosing-an-awake-limit) for how to size the limit when a cycle includes WiFi or an OTA download.
+
 ## Porting to a non-XIAO board
 
 `app/led.ts` knows the built-in LED pin for the chips listed in `LED_PIN_BY_CHIP`. On any other chip it falls back to GPIO 15 with a runtime warning. If your board's LED is on a different pin, add an entry to that map (or just edit the fallback).

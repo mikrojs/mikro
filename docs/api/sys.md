@@ -135,6 +135,8 @@ On ESP32 this maps the ESP-IDF reset reason: a clean [`restart()`](#restart) rep
 
 Possible values: `'power-on'`, `'software'`, `'panic'`, `'watchdog'`, `'interrupt-watchdog'`, `'task-watchdog'`, `'brownout'`, `'deep-sleep'`, `'external'`, `'sdio'`, `'usb'`, `'jtag'`, `'efuse'`, `'power-glitch'`, `'cpu-lockup'`, or `'unknown'`.
 
+`'task-watchdog'` means the hardware task watchdog reset the device because native code below the JavaScript layer stopped responding. The JavaScript-level [watchdogs](/api/watchdog) do not produce it: they restart through the normal panic path, so the next boot reports `'software'`, or `'deep-sleep'` when `onPanic` deep-sleeps the device.
+
 ### exit(exitCode?)
 
 ```ts

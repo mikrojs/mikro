@@ -75,6 +75,7 @@ idf_component_register(
     "${MIK_SRC_DIR}/mik_sys_codec.cpp"
     "${MIK_SRC_DIR}/mik_result.cpp"
     "${MIK_SRC_DIR}/mik_udp.cpp"
+    "${MIK_SRC_DIR}/mik_watchdog.cpp"
     "${MIK_SRC_DIR}/mik_observable.cpp"
     "${MIK_SRC_DIR}/mikrojs.cpp"
     # nanocbor CBOR codec
@@ -196,7 +197,7 @@ include("${MIK_BYTECODE_CMAKE}")
 # Force linker to include self-registering native modules
 set(_MIK_MODULES cbor pin i2c i2s spi http http_server wifi rtc nvs_kv sntp sleep neopixel pwm uart ota)
 list(APPEND _MIK_MODULES ota_client)
-set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/server i2c i2s kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp)
+set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/server i2c i2s kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp watchdog)
 if(CONFIG_BT_ENABLED)
     list(APPEND _MIK_MODULES ble)
     list(APPEND _MIK_BYTECODE_MODULES ble)

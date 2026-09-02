@@ -170,6 +170,10 @@ declare module 'native:mikro/pin' {
   export function analogReadMillivolts(pin: number, attenuation: number): Result<number, PinError>
 }
 
+declare module 'native:mikro/watchdog' {
+  export function feed(): void
+}
+
 declare module 'native:mikro/sleep' {
   import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'
 

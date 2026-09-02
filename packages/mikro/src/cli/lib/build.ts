@@ -194,9 +194,9 @@ export function loadConfig(entry: string, env?: MikroEnv): Promise<MikroJSConfig
 const DEFAULT_LOG_DIR = '/appfs/logs'
 
 // Strip host-only sections, normalize K/M-suffixed sizes, and flatten the
-// `wifi: {country, hostname}` and `logFile: {...}` groups into dotted-key
-// form so the device-side JSON parser (mik_app_config.cpp) can read them
-// without a nested-object pass.
+// `wifi: {country, hostname}`, `logFile: {...}` and `watchdog: {...}` groups
+// into dotted-key form so the device-side JSON parser (mik_app_config.cpp)
+// can read them without a nested-object pass.
 function serializeRuntimeConfig(config: MikroJSConfig): Record<string, unknown> {
   // `env` is resolved away at load time; drop it defensively so the override
   // map can never leak into the device JSON. `otaConfigSchema` is host-only
@@ -210,6 +210,7 @@ function serializeRuntimeConfig(config: MikroJSConfig): Record<string, unknown> 
     logFile,
     fsReadMax,
     onPanic,
+    watchdog,
     ...rest
   } = config
   const out: Record<string, unknown> = {...rest}
@@ -220,6 +221,14 @@ function serializeRuntimeConfig(config: MikroJSConfig): Record<string, unknown> 
     out['onPanic.mode'] = onPanic.mode
     if (onPanic.delay !== undefined) out['onPanic.delay'] = onPanic.delay
     if (onPanic.mode === 'deepSleep') out['onPanic.duration'] = onPanic.duration
+  }
+  if (watchdog !== undefined) {
+    // The device reads numbers only; `false` becomes the 0 it treats as disabled.
+    if (watchdog.blocking !== undefined) {
+      out['watchdog.blocking'] = watchdog.blocking === false ? 0 : watchdog.blocking
+    }
+    if (watchdog.feed !== undefined) out['watchdog.feed'] = watchdog.feed
+    if (watchdog.awake !== undefined) out['watchdog.awake'] = watchdog.awake
   }
   if (logFile !== undefined) {
     const opts = logFile === true ? {} : logFile

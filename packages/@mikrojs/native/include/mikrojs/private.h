@@ -80,6 +80,21 @@ struct MIKRuntime {
      * the host can still deploy/clean/--recover during the grace window,
      * then platform->restart() fires from MIK_Loop. */
     int64_t restart_at_us;
+    /* Watchdog state (mik_watchdog.cpp). All per-runtime, no atomics needed.
+     * blocking_start_us == 0 means "stamp on the next interrupt poll"; the
+     * handler switches itself off when it fires and back on at mik__blocking_begin. */
+    int64_t blocking_start_us;
+    bool blocking_armed;
+    /* Set when the limit is hit, consumed by the error dump that reports it. */
+    bool blocking_tripped;
+    /* Feed deadline: last feed()/re-stamp; feed_armed clears when it fires. */
+    int64_t feed_last_us;
+    bool feed_armed;
+    /* Awake budget: deploy-pause time credited against get_boot_us(). */
+    int64_t awake_pause_offset_us;
+    bool awake_armed;
+    /* Boot-clock stamp of the current pause; 0 = not paused. */
+    int64_t pause_start_us;
     const char* fs_base_path;
     const char* fs_root;  /* Sandbox root for mikrojs/fs operations (separate from module resolution) */
     size_t fs_limit;      /* Max bytes for fs_root (0 = unlimited) */
@@ -295,6 +310,31 @@ JSModuleDef* mik__udp_init(JSContext* ctx);
 /* Observable module (mik_observable.cpp) */
 JSModuleDef* mik__observable_init(JSContext* ctx);
 void mik__observable_dispatch_free(struct MIKRuntime* mik_rt);
+
+/* Watchdog (mik_watchdog.cpp). */
+/* Start a fresh blocking budget: top of each MIK_Loop pass, eval entry
+ * points, REPL eval, and on return from a deliberately blocking native
+ * (lightSleep). One store; the interrupt handler stamps on its next poll. */
+void mik__blocking_begin(struct MIKRuntime* mik_rt);
+/* JS_SetInterruptHandler callback; opaque is the MIKRuntime*. */
+int mik__watchdog_interrupt(JSRuntime* rt, void* opaque);
+/* If the blocking deadline was hit, log the watchdog line and clear the
+ * flag. Returns whether it did; callers print the error trace after. */
+bool mik__watchdog_report_blocking(struct MIKRuntime* mik_rt);
+/* Switch feed/awake on from mik_rt->config. Called once the config is set. */
+void mik__watchdog_arm(struct MIKRuntime* mik_rt);
+/* Feed and awake checks. Runs at the top of MIK_Loop after the restart_at_us
+ * branch; a feed miss throws an uncatchable error into mik_rt->ctx, on an
+ * awake overrun calls MIK_Stop directly. */
+void mik__watchdog_check(struct MIKRuntime* mik_rt);
+/* On return from lightSleep: fresh blocking budget and feed window. */
+void mik__watchdog_wake(struct MIKRuntime* mik_rt);
+/* Deploy/REPL pause bookkeeping: re-stamp the feed clock and credit the
+ * paused span to the awake budget. */
+void mik__watchdog_pause_begin(struct MIKRuntime* mik_rt);
+void mik__watchdog_pause_end(struct MIKRuntime* mik_rt);
+/* Registers native:mikro/watchdog (feed) on ctx. */
+void mik__watchdog_init(JSContext* ctx);
 
 bool mik__repl_is_evaluating(void);
 

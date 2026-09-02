@@ -162,6 +162,13 @@ static bool manifest_matches(const ChecksumsManifest& m, const char* name, uint1
 
 /* ── Filesystem helpers ──────────────────────────────────────────── */
 
+/* Deploy handlers run on the main task without returning to MIK_Loop, so
+ * loops that touch flash per iteration feed the task watchdog themselves. */
+static void feed_watchdog(void) {
+    const MIKPlatform* platform = MIK_GetPlatform();
+    if (platform->feed_watchdog) platform->feed_watchdog();
+}
+
 static void mkdirs(const char* path) {
     char tmp[512];
     snprintf(tmp, sizeof(tmp), "%s", path);
@@ -182,6 +189,7 @@ static void rmdir_recursive(const char* path) {
     struct dirent* entry;
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        feed_watchdog();
 
         char full[512];
         snprintf(full, sizeof(full), "%s/%s", path, entry->d_name);
@@ -221,6 +229,7 @@ static bool copy_file(const char* src, const char* dst) {
     bool ok = true;
     int saved_errno = 0;
     while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+        feed_watchdog();
         if (fwrite(buf, 1, n, out) != n) {
             saved_errno = errno;
             ok = false;
@@ -490,6 +499,7 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
             while (remaining > 0) {
                 uint32_t chunk = remaining > sizeof(buf) ? sizeof(buf) : remaining;
                 if (!mik__proto_read_exact(transport, buf, chunk)) return false;
+                feed_watchdog();
                 if (fwrite(buf, 1, chunk, s_put_file) != chunk) {
                     /* Write failure: keep the protocol in sync by draining
                      * the rest of this chunk's bytes, then abort the PUT. */

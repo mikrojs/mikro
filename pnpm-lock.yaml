@@ -215,6 +215,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/mikro
 
+  dev/watchdog:
+    dependencies:
+      mikro:
+        specifier: workspace:*
+        version: link:../../packages/mikro
+
   docs:
     devDependencies:
       '@shikijs/vitepress-twoslash':
