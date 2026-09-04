@@ -384,7 +384,7 @@ A run prints them before the first file and records them under the same rules as
 
 [`mikro profile`](/cli#mikro-profile) reads the same figures on demand, without deploying a test manifest, and records them with `--write`.
 
-The figures describe the config the device booted with. A project that overrides [`memReserved`](/config#memreserved) for its `test` environment will see a test run and `mikro profile` disagree, since the reserve sets the JS budget; the recorded `memReserved` is what tells the two apart.
+The figures describe the config the device booted with. A project that overrides [`memReserved`](/config#memreserved) for its `test` environment boots a test run and `mikro profile` with different reserves, so the js figure is compared with the reserve added back and a reserve change on its own never reads as a regression. The recorded `memReserved` says which reserve the stored figure was taken at.
 
 `beforeAll` warmup (module init, `wifi.connect`, a throwaway TLS handshake) is folded into the baseline automatically.
 

@@ -22,6 +22,7 @@ import {
   formatBootLine,
   formatBytes,
   formatHeapExceeded,
+  formatHeapStale,
   formatMemorySummary,
   formatSuiteBreakdown,
   runTestManifest,
@@ -479,10 +480,9 @@ function renderLeakReport(result: TestFileResult): void {
       break
     }
     case 'stale': {
-      const under = (result.heapSnapshotStored ?? 0) - (result.heapDelta ?? 0)
       // eslint-disable-next-line no-console
       console.error(
-        `  ${dim(`heap snapshot stale for ${chip}: now ${formatBytes(result.heapDelta ?? 0)} (stored ${formatBytes(result.heapSnapshotStored ?? 0)}, -${formatBytes(under)}). Re-run with -u to record it.`)}`,
+        `  ${dim(`heap snapshot stale for ${chip}: ${formatHeapStale(result)}. Re-run with -u to record it.`)}`,
       )
       break
     }
@@ -571,11 +571,7 @@ function renderAlertSummary(
     console.error(`    ${dim('Re-run with -u to accept.')}`)
   }
   if (stale.length > 0) {
-    const items = stale
-      .map(
-        (r) => `${rel(r.file)} (-${formatBytes((r.heapSnapshotStored ?? 0) - (r.heapDelta ?? 0))})`,
-      )
-      .join(', ')
+    const items = stale.map((r) => `${rel(r.file)} (${formatHeapStale(r)})`).join(', ')
     // eslint-disable-next-line no-console
     console.error(`  ${dim(`heap stale: ${items}`)}`)
   }

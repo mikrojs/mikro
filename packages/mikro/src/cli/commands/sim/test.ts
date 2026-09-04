@@ -19,6 +19,7 @@ import {
   discoverTestFiles,
   formatBytes,
   formatHeapExceeded,
+  formatHeapStale,
   formatMemorySummary,
   formatSuiteBreakdown,
   runTestManifest,
@@ -364,9 +365,8 @@ function renderLeakReport(result: TestFileResult): void {
       break
     }
     case 'stale': {
-      const under = (result.heapSnapshotStored ?? 0) - (result.heapDelta ?? 0)
       console.error(
-        `  ${dim(`heap snapshot stale for ${chip}: now ${formatBytes(result.heapDelta ?? 0)} (stored ${formatBytes(result.heapSnapshotStored ?? 0)}, -${formatBytes(under)}). Re-run with -u to record it.`)}`,
+        `  ${dim(`heap snapshot stale for ${chip}: ${formatHeapStale(result)}. Re-run with -u to record it.`)}`,
       )
       break
     }
