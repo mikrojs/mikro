@@ -18,7 +18,9 @@ import {SimAlreadyRunningError} from '../../lib/simPid.js'
 import {
   discoverTestFiles,
   formatBytes,
+  formatHeapExceeded,
   formatMemorySummary,
+  formatSuiteBreakdown,
   runTestManifest,
   type TestFileResult,
   type TestRunOptions,
@@ -357,10 +359,8 @@ function renderLeakReport(result: TestFileResult): void {
       break
     }
     case 'exceeded': {
-      const over = (result.heapDelta ?? 0) - (result.heapSnapshotStored ?? 0)
-      console.error(
-        `  ${yellow(`⚠ heap snapshot exceeded for ${chip}: +${formatBytes(over)} over ${formatBytes(result.heapSnapshotStored ?? 0)}. Re-run with -u to accept.`)}`,
-      )
+      console.error(`  ${formatHeapExceeded(result, chip)}`)
+      for (const line of formatSuiteBreakdown(result)) console.error(line)
       break
     }
     case 'stale': {

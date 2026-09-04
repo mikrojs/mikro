@@ -39,10 +39,11 @@ static MIKReplTransport* repl_transport = nullptr;
 static uint8_t ready_buf[384];
 static size_t ready_len = 0;
 
-/* Memory left for the app, captured once when the first runtime attaches: that
- * happens before the entry is evaluated, so these describe the floor the app is
- * handed rather than whatever is left whenever a client happens to connect.
- * Reported on MSG_READY so `mikro profile` is a read, not a deploy. */
+/* Memory left for the app, captured once from the boot path (see
+ * MIK_CaptureBootMemory) before the entry is evaluated, so these describe the
+ * floor the app is handed rather than whatever is left whenever a client
+ * happens to connect. Reported on MSG_READY so reading them is a read, not a
+ * deploy. */
 static bool boot_mem_captured = false;
 static uint32_t boot_heap_free = 0;
 static uint32_t boot_system_free = 0;
@@ -1002,23 +1003,26 @@ void MIK_ProtocolOpen(MIKReplTransport* transport) {
 
 }
 
+void MIK_CaptureBootMemory(MIKRuntime* mik_rt) {
+    if (!mik_rt || boot_mem_captured) return;
+    JSMemoryUsage mem;
+    JS_ComputeMemoryUsage(JS_GetRuntime(MIK_GetJSContext(mik_rt)), &mem);
+    boot_heap_free = mem.malloc_limit > (int64_t)mem.malloc_size
+                         ? (uint32_t)(mem.malloc_limit - (int64_t)mem.malloc_size)
+                         : 0;
+    boot_system_free = (uint32_t)MIK_GetPlatform()->get_free_system_mem();
+    boot_mem_reserved = mik_rt->config.mem_reserved;
+    boot_mem_captured = true;
+}
+
 void MIK_ProtocolAttach(MIKRuntime* mik_rt) {
     if (!mik_rt) return;
     repl_ctx = MIK_GetJSContext(mik_rt);
     repl_mik_rt = mik_rt;
-    /* First attach only. In test mode a fresh runtime attaches per file, and
-     * those would otherwise overwrite the boot floor with per-test figures. */
-    if (!boot_mem_captured) {
-        JSMemoryUsage mem;
-        JS_ComputeMemoryUsage(JS_GetRuntime(repl_ctx), &mem);
-        boot_heap_free =
-            mem.malloc_limit > (int64_t)mem.malloc_size
-                ? (uint32_t)(mem.malloc_limit - (int64_t)mem.malloc_size)
-                : 0;
-        boot_system_free = (uint32_t)MIK_GetPlatform()->get_free_system_mem();
-        boot_mem_reserved = mik_rt->config.mem_reserved;
-        boot_mem_captured = true;
-    }
+    /* Fallback for boot paths that don't capture explicitly. First attach
+     * only: in test mode a fresh runtime attaches per file, and those would
+     * otherwise overwrite the boot floor with per-test figures. */
+    MIK_CaptureBootMemory(mik_rt);
 }
 
 void MIK_ProtocolDetach(void) {

@@ -18,11 +18,23 @@
  *   - Ordinal counting breaks as soon as any e:6 is missed or any file
  *     runs out of order.
  */
-import {firstValueFrom, Subject} from 'rxjs'
-import {describe, expect, it, vi} from 'vitest'
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs'
+import {tmpdir} from 'node:os'
+import * as pathlib from 'node:path'
 
+import {firstValueFrom, Subject} from 'rxjs'
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
+
+import {readSnapshot, writeSnapshot} from '../heapSnapshots.js'
 import type {ReadyEvent, ReplEvent, ReplSession, TestEvent} from '../session.js'
-import {collectManifestEvents, type TestManifestCallbacks} from '../testRunner.js'
+import {
+  applyHeapSnapshot,
+  collectManifestEvents,
+  formatHeapExceeded,
+  formatSuiteBreakdown,
+  type TestFileResult,
+  type TestManifestCallbacks,
+} from '../testRunner.js'
 
 // ── Mock session ────────────────────────────────────────────────────
 
@@ -372,6 +384,177 @@ describe('collectManifestEvents', () => {
     expect(results[0]!.error).toMatch(/Fatal error/i)
     expect(results[1]!.error).toBeUndefined()
     expect(results[2]!.error).toBeUndefined()
+  })
+})
+
+describe('collectManifestEvents heap figures', () => {
+  const TIMEOUT = 60_000
+  const testFiles = ['/cwd/test/a.test.ts']
+
+  async function reduce(events: TestEvent[]): Promise<TestFileResult> {
+    const {session, emit} = mockSession()
+    const {cb} = recorder()
+    const promise = collectManifestEvents(session, testFiles, TIMEOUT, cb)
+    await Promise.resolve()
+    emit(announce(1, 1, '/app/test/a.test.js'))
+    for (const event of events) emit(event)
+    emit(manifestDone())
+    return (await promise)[0]!
+  }
+
+  it('hr is the retained figure, even when the endpoints disagree', async () => {
+    // A file with two beforeAlls: the endpoints span only the last suite,
+    // while hr sums every suite against its own baseline.
+    const result = await reduce([
+      testEvent({e: 6, p: 6, f: 0, k: 0, o: 0, d: 1, hb: 50_000, ha: 50_152, hr: 3520}),
+    ])
+    expect(result.heapDelta).toBe(3520)
+  })
+
+  it('falls back to the endpoints for firmware predating hr', async () => {
+    const result = await reduce([
+      testEvent({e: 6, p: 1, f: 0, k: 0, o: 0, d: 1, hb: 50_000, ha: 50_152}),
+    ])
+    expect(result.heapDelta).toBe(152)
+  })
+
+  it('suite_end with hr feeds the per-suite breakdown, in run order', async () => {
+    const result = await reduce([
+      testEvent({e: 5, s: 'lifecycle', hr: 120}),
+      testEvent({e: 5, s: 'over wifi', hr: 3400, su: 71_680}),
+      testEvent({e: 6, p: 6, f: 0, k: 0, o: 0, d: 1, hr: 3520, su: 71_680}),
+    ])
+    expect(result.suites).toEqual([
+      {name: 'lifecycle', retained: 120},
+      {name: 'over wifi', retained: 3400, sysUsed: 71_680},
+    ])
+    expect(result.sysUsed).toBe(71_680)
+  })
+
+  it('a suite_end without hr (skipped suite, old firmware) records no suite', async () => {
+    const result = await reduce([
+      testEvent({e: 5, s: 'gated off'}),
+      testEvent({e: 6, p: 1, f: 0, k: 0, o: 0, d: 1, hr: 10}),
+    ])
+    expect(result.suites).toBeUndefined()
+  })
+})
+
+describe('applyHeapSnapshot', () => {
+  let root: string
+  const chip = 'esp32c6'
+
+  beforeEach(() => {
+    root = mkdtempSync(pathlib.join(tmpdir(), 'heap-gate-'))
+  })
+  afterEach(() => {
+    rmSync(root, {recursive: true, force: true})
+  })
+
+  /** Create the test file so the snapshot's prune-on-write keeps its entry. */
+  function fileResult(figures: Partial<TestFileResult>): TestFileResult {
+    const file = pathlib.join(root, 'test/a.test.ts')
+    mkdirSync(pathlib.dirname(file), {recursive: true})
+    writeFileSync(file, '')
+    return {file, events: [], passed: 1, failed: 0, skipped: 0, todo: 0, duration: 1, ...figures}
+  }
+
+  it('a retained regression trips the gate and names itself', () => {
+    const result = fileResult({heapDelta: 4000, sysUsed: 70_000})
+    writeSnapshot(root, result.file, chip, {heapDelta: 3000, sysUsed: 70_000})
+    applyHeapSnapshot(result, root, chip, {})
+    expect(result.heapSnapshotAction).toBe('exceeded')
+    expect(result.heapSnapshotExceeded).toEqual(['retained'])
+  })
+
+  it('a peak regression trips the gate on its own, with retention inside its band', () => {
+    // 3010 is 10 bytes over 3000, inside the 256-byte floor; the peak is
+    // 8KB over, past its 5% band.
+    const result = fileResult({heapDelta: 3010, sysUsed: 78_000})
+    writeSnapshot(root, result.file, chip, {heapDelta: 3000, sysUsed: 70_000})
+    applyHeapSnapshot(result, root, chip, {})
+    expect(result.heapSnapshotAction).toBe('exceeded')
+    expect(result.heapSnapshotExceeded).toEqual(['peak'])
+  })
+
+  it('peak drift inside its wider band is ok where the retained band would trip', () => {
+    // +1500 on 70000 is 2.1%: over the 1% retained band, under the 5% peak band.
+    const result = fileResult({heapDelta: 3000, sysUsed: 71_500})
+    writeSnapshot(root, result.file, chip, {heapDelta: 3000, sysUsed: 70_000})
+    applyHeapSnapshot(result, root, chip, {})
+    expect(result.heapSnapshotAction).toBe('ok')
+    expect(result.heapSnapshotExceeded).toBeUndefined()
+  })
+
+  it('an entry recorded without a peak reads as stale until -u adds one', () => {
+    const result = fileResult({heapDelta: 3000, sysUsed: 70_000})
+    writeSnapshot(root, result.file, chip, {heapDelta: 3000})
+    applyHeapSnapshot(result, root, chip, {})
+    expect(result.heapSnapshotAction).toBe('stale')
+    expect(readSnapshot(root, result.file, chip)).toEqual({heapDelta: 3000})
+
+    applyHeapSnapshot(result, root, chip, {updateHeapSnapshots: true})
+    expect(result.heapSnapshotAction).toBe('updated')
+    expect(readSnapshot(root, result.file, chip)).toEqual({heapDelta: 3000, sysUsed: 70_000})
+  })
+
+  it('a host entry never gains a peak', () => {
+    const result = fileResult({heapDelta: 3000})
+    writeSnapshot(root, result.file, 'simulator', {heapDelta: 3000})
+    applyHeapSnapshot(result, root, 'simulator', {updateHeapSnapshots: true})
+    expect(result.heapSnapshotAction).toBe('ok')
+    expect(readSnapshot(root, result.file, 'simulator')).toEqual({heapDelta: 3000})
+  })
+
+  it('a file with failures leaves the snapshot alone', () => {
+    const result = fileResult({heapDelta: 9000, sysUsed: 90_000, failed: 1})
+    writeSnapshot(root, result.file, chip, {heapDelta: 3000, sysUsed: 70_000})
+    applyHeapSnapshot(result, root, chip, {updateHeapSnapshots: true})
+    expect(result.heapSnapshotAction).toBe('skipped')
+    expect(readSnapshot(root, result.file, chip)).toEqual({heapDelta: 3000, sysUsed: 70_000})
+  })
+})
+
+describe('exceeded rendering', () => {
+  const base: TestFileResult = {
+    file: '/cwd/test/a.test.ts',
+    events: [],
+    passed: 6,
+    failed: 0,
+    skipped: 0,
+    todo: 0,
+    duration: 1,
+    heapDelta: 3010,
+    heapSnapshotStored: 3000,
+    sysUsed: 78_000,
+    sysUsedStored: 70_000,
+    heapSnapshotAction: 'exceeded',
+    suites: [
+      {name: 'lifecycle', retained: 2500, sysUsed: 4000},
+      {name: 'over wifi', retained: 510, sysUsed: 78_000},
+    ],
+  }
+
+  it('names only the figure that cleared its tolerance', () => {
+    const line = formatHeapExceeded({...base, heapSnapshotExceeded: ['peak']}, 'esp32c6')
+    expect(line).toContain('peak +7.8KB over 68.4KB')
+    expect(line).not.toContain('retained')
+  })
+
+  it('names both when both tripped', () => {
+    const line = formatHeapExceeded(
+      {...base, heapDelta: 4000, heapSnapshotExceeded: ['retained', 'peak']},
+      'esp32c6',
+    )
+    expect(line).toContain('retained +1000B over 2.9KB')
+    expect(line).toContain('peak +7.8KB over 68.4KB')
+  })
+
+  it('orders the breakdown by the figure that tripped', () => {
+    const byPeak = formatSuiteBreakdown({...base, heapSnapshotExceeded: ['peak']})
+    expect(byPeak[0]).toContain('over wifi')
+    const byRetained = formatSuiteBreakdown({...base, heapSnapshotExceeded: ['retained']})
+    expect(byRetained[0]).toContain('lifecycle')
   })
 })
 

@@ -400,6 +400,17 @@ void MIK_ProtocolClose(void);
  * and must detach before freeing. */
 void MIK_ProtocolAttach(MIKRuntime* mik_rt);
 
+/* Record what `mik_rt` was handed at boot, reported on MSG_READY. Call once,
+ * from the boot path, at the point the app's entry is about to be evaluated:
+ * the figures then describe the floor an app starts from rather than whatever
+ * happens to be free when a client connects. Later calls are ignored, so a
+ * supervisor that swaps runtimes can't overwrite the boot reading with a
+ * per-test one. MIK_ProtocolAttach calls this itself, which covers embedders
+ * that never call it; a boot path with a test supervisor should call it
+ * explicitly, before the supervisor allocates, so both modes report the same
+ * figure. */
+void MIK_CaptureBootMemory(MIKRuntime* mik_rt);
+
 /* Unbind the current runtime. Call before MIK_FreeRuntime when swapping
  * runtimes mid-session. The session remains open. */
 void MIK_ProtocolDetach(void);

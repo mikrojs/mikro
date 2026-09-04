@@ -29,40 +29,62 @@ interface Suite {
 
 const suites: Suite[] = []
 let currentSuite: Suite | null = null
-let heapBaseline = 0
-/** Free system heap (bytes) at the baseline point, or 0 on the host (no
- *  system heap). Reference point for the "peak" figure: baseline free minus
- *  the run's low-water is the most the suite needed at once. Recaptured after
- *  each suite's beforeAll, in step with heapBaseline, so warmup is excluded
- *  from the figure. */
+/** JS heap (bytes) the file still holds above baseline, summed over suites.
+ *  Retention accumulates, so a per-suite figure is added rather than
+ *  replacing the last one: a leak in suite 1 is still a leak once suite 5
+ *  has run. */
+let heapRetained = 0
+/** Baseline the running suite is measured against. Set to the previous
+ *  suite's closing heap, or recaptured after a beforeAll so that suite's
+ *  warmup is excluded. */
+let suiteBaseline = 0
+/** Free system heap (bytes) at the start of the run, or 0 on the host (no
+ *  system heap). Never recaptured: sysUsed is a peak, and warmup (module
+ *  loads, TLS, wifi) is memory the file genuinely needed at once, so
+ *  excluding it would understate how close the run came to OOM. Retention is
+ *  the figure that wants warmup excluded, and it has its own baseline. */
 let sysFreeStart = 0
 /** Lowest free system heap (bytes) sampled (post-gc) this run, or 0 on the
- *  host. The suite's closest sampled approach to OOM. The module re-inits
+ *  host. The file's closest sampled approach to OOM. The module re-inits
  *  for each test file (fresh runtime per file), so this is a true per-file
  *  figure, not a process-lifetime watermark shared across files. */
 let sysFreeFloor = 0
+/** Free system heap at the running suite's start, for its own peak. */
+let suiteFreeStart = 0
+/** Lowest free system heap sampled during the running suite. */
+let suiteFreeFloor = 0
 
 /**
- * Recapture the heap baseline. Called by the harness after each suite's
+ * Recapture the suite baseline. Called by the harness after each suite's
  * beforeAll resolves so warmup allocations (module loads, fetch/TLS
  * lazy-init, wifi connection) don't count toward heapDelta. A microtask
  * yield before the gc lets the beforeAll async frame's locals become
  * collectible — otherwise the baseline would be inflated by vars that
  * were still pinned by the suspended closure when beforeAll resolved,
- * and heapAfter would come in lower than baseline (negative delta).
+ * and the suite would close below its baseline (negative delta).
  */
-async function captureHeapBaseline(): Promise<void> {
+async function captureSuiteBaseline(): Promise<void> {
   await Promise.resolve()
   gc()
+  const {heapUsed} = memoryUsage()
+  suiteBaseline = heapUsed
+}
+
+/**
+ * Close out the running suite: fold its retention into the file total and
+ * start the next suite from where this one ended. Returns the suite's own
+ * figures for the suite_end event, which is what a reader needs to find the
+ * suite behind a file-level regression.
+ */
+function closeSuite(): {retained: number; sysUsed: number} {
+  gc()
   const {heapUsed, systemFree} = memoryUsage()
-  heapBaseline = heapUsed
-  // Recapture the system-heap baseline and reset the per-file low-water in
-  // step with heapBaseline, so warmup (module loads, TLS, wifi) is excluded
-  // from sysUsed the same way it is from heapDelta.
-  if (systemFree > 0) {
-    sysFreeStart = systemFree
-    sysFreeFloor = systemFree
-  }
+  const retained = heapUsed - suiteBaseline
+  heapRetained += retained
+  suiteBaseline = heapUsed
+  if (systemFree > 0 && systemFree < suiteFreeFloor) suiteFreeFloor = systemFree
+  const sysUsed = suiteFreeStart > suiteFreeFloor ? suiteFreeStart - suiteFreeFloor : 0
+  return {retained, sysUsed}
 }
 
 function newSuite(name: string, flags: {skip?: boolean; only?: boolean; todo?: boolean}): Suite {
@@ -372,7 +394,7 @@ type TestEvent =
   | {e: 2; s: string; t: string; d: number}
   | {e: 3; s: string; t: string; d: number; m: string}
   | {e: 4; s: string; t: string}
-  | {e: 5; s: string}
+  | {e: 5; s: string; hr?: number; su?: number}
   | {
       e: 6
       p: number
@@ -382,6 +404,7 @@ type TestEvent =
       d: number
       hb?: number
       ha?: number
+      hr?: number
       su?: number
       sf?: number
       tb?: number
@@ -425,6 +448,7 @@ function emitHeap(): void {
   if (mem.systemFree > 0) {
     evt.f = mem.systemFree
     if (sysFreeFloor === 0 || mem.systemFree < sysFreeFloor) sysFreeFloor = mem.systemFree
+    if (suiteFreeFloor === 0 || mem.systemFree < suiteFreeFloor) suiteFreeFloor = mem.systemFree
   }
   if (mem.systemMinFree > 0) evt.mf = mem.systemMinFree
   emit(evt)
@@ -445,9 +469,10 @@ async function run(): Promise<void> {
   // folded into the baseline automatically.
   gc()
   // Destructure to primitives so the live memoryUsage() object isn't held
-  // while heapBaseline is captured (it would otherwise be counted in it).
+  // while the baseline is captured (it would otherwise be counted in it).
   const {heapUsed: startHeap, systemFree: startFree} = memoryUsage()
-  heapBaseline = startHeap
+  heapRetained = 0
+  suiteBaseline = startHeap
   if (startFree > 0) {
     sysFreeStart = startFree
     sysFreeFloor = startFree
@@ -459,7 +484,10 @@ async function run(): Promise<void> {
   const hasOnly = suites.some((s) => s.only || s.tests.some((t) => t.only))
 
   for (const suite of suites) {
+    // Open this suite's own peak window on the post-gc sample emitHeap takes.
+    suiteFreeFloor = 0
     emitHeap()
+    suiteFreeStart = suiteFreeFloor
     emit({e: 1, s: suite.name, n: suite.tests.length})
 
     if (suite.skip) {
@@ -527,11 +555,10 @@ async function run(): Promise<void> {
         continue
       }
       // Recapture the baseline now that beforeAll has fully resolved and
-      // its closure frame is eligible for collection. Multi-suite files
-      // let the last successful beforeAll set the baseline — fine because
-      // every earlier suite's test allocations have already been bounded
-      // by the previous (stricter) baseline.
-      await captureHeapBaseline()
+      // its closure frame is eligible for collection. Only this suite is
+      // measured against it: earlier suites were already closed out into
+      // heapRetained, so their allocations survive the recapture.
+      await captureSuiteBaseline()
     }
 
     for (const t of suite.tests) {
@@ -600,7 +627,10 @@ async function run(): Promise<void> {
       }
     }
 
-    emit({e: 5, s: suite.name})
+    const closed = closeSuite()
+    const endEvt: TestEvent = {e: 5, s: suite.name, hr: closed.retained}
+    if (closed.sysUsed > 0) endEvt.su = closed.sysUsed
+    emit(endEvt)
   }
 
   gc()
@@ -610,14 +640,20 @@ async function run(): Promise<void> {
   if (endFree > 0 && (sysFreeFloor === 0 || endFree < sysFreeFloor)) {
     sysFreeFloor = endFree
   }
+  // Fold in whatever ran outside a suite's own accounting: a file with no
+  // suites at all, and the skip/todo bookkeeping between them.
+  heapRetained += heapAfter - suiteBaseline
   const timersAfter = activeTimers()
   const pendingAfter = pendingHttpCount()
 
   // Per-file system-heap figures. sysFreeFloor is the lowest free heap we
   // sampled (post-gc) this run; sysUsed is how far free heap fell from the
-  // baseline to that low. They sum back to the baseline free, so "peak" and
-  // "min free" read as one story. Samples are taken between tests, so a
-  // transient peak inside a single test can dip below what sysFreeFloor saw.
+  // run's start to that low. They sum back to the starting free, so "peak"
+  // and "min free" read as one story. Measured from the start of the run and
+  // never rebaselined: unlike retention, a peak wants warmup counted, since
+  // memory a beforeAll takes is memory the file needed at once. Samples are
+  // taken between tests, so a transient peak inside a single test can dip
+  // below what sysFreeFloor saw.
   const sysUsed = sysFreeStart > sysFreeFloor ? sysFreeStart - sysFreeFloor : 0
 
   const doneEvt: TestEvent = {
@@ -627,8 +663,9 @@ async function run(): Promise<void> {
     k: skipped,
     o: todo,
     d: elapsedMs(startTime),
-    hb: heapBaseline,
+    hb: startHeap,
     ha: heapAfter,
+    hr: heapRetained,
     tb: timersBefore,
     ta: timersAfter,
     pb: pendingBefore,

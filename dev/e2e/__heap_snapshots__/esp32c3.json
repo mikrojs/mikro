@@ -1,61 +1,80 @@
 {
   "tests": {
     "test/abort.test.ts": {
-      "heapDelta": 12088
+      "heapDelta": 12384,
+      "sysUsed": 11220
     },
     "test/cbor.test.ts": {
-      "heapDelta": 3496
+      "heapDelta": 3800,
+      "sysUsed": 4072
     },
     "test/env.test.ts": {
-      "heapDelta": 3568
+      "heapDelta": 3872,
+      "sysUsed": 4092
     },
     "test/fs-stream.test.ts": {
-      "heapDelta": 3896
+      "heapDelta": 4232,
+      "sysUsed": 6108
     },
     "test/fs.test.ts": {
-      "heapDelta": 3752
+      "heapDelta": 4072,
+      "sysUsed": 4084
     },
     "test/globals.test.ts": {
-      "heapDelta": 4272
+      "heapDelta": 4568,
+      "sysUsed": 6328
     },
     "test/import-meta.test.ts": {
-      "heapDelta": 3304
+      "heapDelta": 3608,
+      "sysUsed": 4116
     },
     "test/kv.test.ts": {
-      "heapDelta": 3272
+      "heapDelta": 3592,
+      "sysUsed": 4116
     },
     "test/logfile.test.ts": {
-      "heapDelta": 4184
+      "heapDelta": 4520,
+      "sysUsed": 7112
     },
     "test/modules-hw.test.ts": {
-      "heapDelta": 26288
+      "heapDelta": 26600,
+      "sysUsed": 29420
     },
     "test/modules-network.test.ts": {
-      "heapDelta": 21804
+      "heapDelta": 22096,
+      "sysUsed": 58840
     },
     "test/modules.test.ts": {
-      "heapDelta": 3304
+      "heapDelta": 3592,
+      "sysUsed": 4084
     },
     "test/observable.test.ts": {
-      "heapDelta": 3880
+      "heapDelta": 4184,
+      "sysUsed": 4220
     },
     "test/result.test.ts": {
-      "heapDelta": 3568
+      "heapDelta": 3872,
+      "sysUsed": 6108
     },
     "test/schema.test.ts": {
-      "heapDelta": 3240
+      "heapDelta": 3544,
+      "sysUsed": 6116
     },
     "test/smoke.test.ts": {
-      "heapDelta": 3304
+      "heapDelta": 3608,
+      "sysUsed": 4076
     },
     "test/sys.test.ts": {
-      "heapDelta": 3304
+      "heapDelta": 3608,
+      "sysUsed": 4084
     },
     "test/udp.test.ts": {
-      "heapDelta": 3520
+      "heapDelta": 3488,
+      "sysUsed": 5264
     },
     "test/withUnload.test.ts": {
-      "heapDelta": 6440
+      "heapDelta": 6748,
+      "sysUsed": 10816
     }
   },
   "boot": {

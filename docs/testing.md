@@ -335,23 +335,30 @@ These show up as `⚠` warnings in the test output.
 
 ### Heap snapshots
 
-The first run writes each file's measured heap delta to `__heap_snapshots__/<chip>.json` in the project root, keyed by the test's path:
+The first run writes each file's measured figures to `__heap_snapshots__/<chip>.json` in the project root, keyed by the test's path:
 
 ```json
 // __heap_snapshots__/esp32c6.json
 {
   "tests": {
     "test/smoke.test.ts": {"heapDelta": 3296},
-    "test/wifi-powersave.test.ts": {"heapDelta": 37692}
+    "test/wifi-powersave.test.ts": {"heapDelta": 37692, "sysUsed": 71680}
   }
 }
 ```
+
+Two figures, because they fail differently:
+
+- `heapDelta` is **retention**: JS heap the file still holds when it finishes, summed over its suites. A leak grows it run over run. It counts QuickJS allocations only, so native memory (TLS records, wifi buffers, drivers) is invisible to it.
+- `sysUsed` is a **peak**: how far free system heap fell from the start of the run to its lowest sampled point, which is how close the file came to running out. Device-only, so entries measured on the host simulator carry none.
+
+A file can be clean on one and regress on the other, so a run flags whichever moved. Retention is measured from a baseline recaptured after each suite's `beforeAll`, which keeps warmup (module loads, TLS setup, `wifi.connect`) from reading as a leak. The peak is measured from the start of the run and never rebaselined: memory a `beforeAll` takes is memory the file genuinely needed at once.
 
 There's a file per chip because the same test retains different amounts on different targets: pointer size, which native modules are built in, and sdkconfig defaults all move the number. A run only touches the file for the chip it ran against.
 
 Commit these files. Subsequent runs compare against the stored value and warn if it's exceeded. When a refactor legitimately changes the footprint, rerun with `-u` (`--update-heap`) to overwrite them; the diff lands with the code change.
 
-Runs drift by a few bytes on their own, so a snapshot is only flagged, and only rewritten, once the change clears a tolerance. The default is 256 bytes or 1% of the stored value, whichever is larger; `--heap-tolerance` overrides it:
+Runs drift by a few bytes on their own, so a snapshot is only flagged, and only rewritten, once the change clears a tolerance. For `heapDelta` the default is 256 bytes or 1% of the stored value, whichever is larger. `sysUsed` gets a wider band, 2KB or 5%, because a peak moves with wifi buffer timing and TLS record sizes and is sampled between tests rather than continuously. `--heap-tolerance` overrides both:
 
 ```sh
 mikro test --heap-tolerance 1k
@@ -361,7 +368,7 @@ The same tolerance governs flagging and rewriting, so anything a run warns about
 
 A file with failures, or whose tests were all skipped, leaves its snapshot untouched, with or without `-u`: a skipped run measures an empty file, and a failing run measures a broken one.
 
-The same file also holds `boot` figures: the JS budget and free system heap a device leaves for an app, read from the ready handshake, plus the `memReserved` the device booted with. They are written by [`mikro profile`](/cli#mikro-profile), never by a test run. By the time a test runs, the harness is resident, which would inflate them:
+The same file also holds `boot` figures: the JS budget and free system heap a device leaves for an app, read from the ready handshake, plus the `memReserved` the device booted with. The device captures them at boot, before the test supervisor allocates anything, so they describe the floor your app starts from rather than the run that read them:
 
 ```json
 // __heap_snapshots__/esp32c6.json
@@ -372,6 +379,12 @@ The same file also holds `boot` figures: the JS budget and free system heap a de
   }
 }
 ```
+
+A run prints them before the first file and records them under the same rules as the per-test figures: a chip it has never seen is written, and `-u` overwrites once the drift clears the tolerance. This is worth having because a per-test `heapDelta` is measured against a baseline taken inside that run, so firmware that leaves 20KB less for everything moves no per-test figure at all.
+
+[`mikro profile`](/cli#mikro-profile) reads the same figures on demand, without deploying a test manifest, and records them with `--write`.
+
+The figures describe the config the device booted with. A project that overrides [`memReserved`](/config#memreserved) for its `test` environment will see a test run and `mikro profile` disagree, since the reserve sets the JS budget; the recorded `memReserved` is what tells the two apart.
 
 `beforeAll` warmup (module init, `wifi.connect`, a throwaway TLS handshake) is folded into the baseline automatically.
 

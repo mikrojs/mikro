@@ -236,7 +236,7 @@ mikro test [PATTERN]
 | `--no-minify`           | Skip minification                                                                                       |
 | `--no-bytecode`         | Skip bytecode compilation                                                                               |
 | `-t, --timeout MS`      | Per-file timeout in ms (default: `60000`)                                                               |
-| `-u, --update-heap`     | Overwrite committed heap snapshots with this run's measurements                                         |
+| `-u, --update-heap`     | Overwrite committed heap snapshots with this run's measurements, boot figures included                  |
 | `--heap-tolerance SIZE` | Heap drift below which a snapshot is neither flagged nor rewritten                                      |
 | `--diagnostics`         | Show per-test heap progress and supervisor announcements                                                |
 | `-y, --yes`             | Skip confirmation prompt                                                                                |
@@ -292,20 +292,20 @@ There are two ceilings, and either one can be the first you hit:
 - **js**: the JS budget left before `mem_limit` throws `InternalError: out of memory`. This is the figure the firmware boot banner prints.
 - **system**: the free chip heap that native allocations draw on (TLS records, WiFi buffers, drivers).
 
-QuickJS allocates out of the system heap, so JS growth is capped by whichever is smaller. Both are recorded as `boot` in `__heap_snapshots__/<chip>.json`, the same file [`mikro test`](#mikro-test) writes per-test figures to.
+QuickJS allocates out of the system heap, so JS growth is capped by whichever is smaller. Both are stored as `boot` in `__heap_snapshots__/<chip>.json`, the same file [`mikro test`](#mikro-test) writes per-test figures to. A test run reads the same handshake and records them, so the usual way to keep the figures current is to run the suite. This command reports them on demand and writes only with `--write`.
 
 They track the firmware and the project's runtime configuration rather than app code, so they move when sdkconfig, native modules, or the ESP-IDF version move. They also move when [`memReserved`](/config#memreserved) changes, since `mem_limit` is derived as free heap minus that reserve. `memReserved` moves **js** one-for-one and leaves **system** untouched, which is what tells a reserve change apart from a real firmware regression.
 
-The device reports both in the ready handshake, captured before it evaluated your app, so a normal run only connects and reads. There is one exception: when the device booted with a different `memReserved` than the project config, the reading would describe the old reserve, so the command offers to deploy the project first. Accepting replaces the app on the device with a production build.
+The device reports both in the ready handshake, captured at boot before it evaluated your app, so a normal run only connects and reads. There is one exception: when the device booted with a different `memReserved` than the project config, the reading would describe the old reserve, so the command offers to deploy the project first. Accepting replaces the app on the device with a production build.
 
 | Option                  | Description                                                     |
 | ----------------------- | --------------------------------------------------------------- |
 | `-p, --port PORT`       | Serial port (auto-detected if omitted)                          |
-| `-u, --update-heap`     | Overwrite the committed boot snapshot with this run's reading   |
+| `--write`               | Record this run's reading as the committed boot snapshot        |
 | `--heap-tolerance SIZE` | Drift below which the snapshot is neither flagged nor rewritten |
 | `--json`                | Output as JSON                                                  |
 
-When a reading shows less free memory than the stored figure, the command reports a regression and exits non-zero; more free memory is reported as an improvement worth recording. A move in either ceiling counts, and `-u` records both.
+When a reading shows less free memory than the stored figure, the command reports a regression and exits non-zero; more free memory is reported as an improvement worth recording. A move in either ceiling counts, and `--write` records both.
 
 ::: tip
 Firmware predating this handshake field does not report the figures, and the command says so. Rebuild and flash to get them.
