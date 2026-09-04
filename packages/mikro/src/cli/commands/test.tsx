@@ -17,9 +17,13 @@ import {getMikroDir, resolveProjectRoot} from '../lib/projectRoot.js'
 import {openSession} from '../lib/serial/openSession.js'
 import type {TestEvent} from '../lib/session.js'
 import {
+  type BootSnapshotResult,
   discoverTestFiles,
+  formatBootLine,
   formatBytes,
+  formatHeapExceeded,
   formatMemorySummary,
+  formatSuiteBreakdown,
   runTestManifest,
   type TestFileResult,
   type TestRunOptions,
@@ -68,7 +72,7 @@ export const args = command(
     ),
     updateHeapSnapshots: optional(
       flag('-u', '--update-heap', {
-        description: message`Overwrite committed heap snapshots (__heap_snapshots__/<chip>.json) with the current run's heapDelta. Drift under the tolerance is left alone.`,
+        description: message`Overwrite committed heap snapshots (__heap_snapshots__/<chip>.json) with this run's per-test retained and peak figures and the device's boot figures. Drift under the tolerance is left alone.`,
       }),
     ),
     heapTolerance: optional(
@@ -198,6 +202,7 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
 
   const startTime = Date.now()
   let results: TestFileResult[]
+  let boot: BootSnapshotResult | undefined
 
   try {
     results = await runTestManifest(session, testFiles, options, {
@@ -246,6 +251,20 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
           return
         }
         renderTestEvent(event, config.diagnostics === true)
+      },
+      onBoot: (result) => {
+        boot = result
+        if (jsonOutput) {
+          agentEmit({
+            type: 'boot',
+            chip: result.chip,
+            action: result.action,
+            ...result.measured,
+            ...(result.stored ? {stored: result.stored} : {}),
+          })
+          return
+        }
+        log(`  ${formatBootLine(result, '-u')}`)
       },
       onDeployEvent: (event) => {
         if (jsonOutput) {
@@ -303,6 +322,7 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
       ...totals,
       total: totals.passed + totals.failed + totals.skipped + totals.todo,
       erroredFiles: erroredFiles.length,
+      ...(boot ? {boot} : {}),
       files: results.map((r) => ({
         file: pathlib.relative(cwd, r.file),
         passed: r.passed,
@@ -323,7 +343,7 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
       })),
     })
   } else {
-    renderAlertSummary(results, cwd)
+    renderAlertSummary(results, cwd, boot)
     renderAggregate(totals, erroredFiles.length, results.length, Date.now() - startTime)
   }
 
@@ -450,11 +470,12 @@ function renderLeakReport(result: TestFileResult): void {
       break
     }
     case 'exceeded': {
-      const over = (result.heapDelta ?? 0) - (result.heapSnapshotStored ?? 0)
       // eslint-disable-next-line no-console
-      console.error(
-        `  ${yellow(`⚠ heap snapshot exceeded for ${chip}: +${formatBytes(over)} over ${formatBytes(result.heapSnapshotStored ?? 0)}. Re-run with -u to accept.`)}`,
-      )
+      console.error(`  ${formatHeapExceeded(result, chip)}`)
+      for (const line of formatSuiteBreakdown(result)) {
+        // eslint-disable-next-line no-console
+        console.error(line)
+      }
       break
     }
     case 'stale': {
@@ -508,18 +529,26 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-function renderAlertSummary(results: TestFileResult[], cwd: string): void {
+function renderAlertSummary(
+  results: TestFileResult[],
+  cwd: string,
+  boot: BootSnapshotResult | undefined,
+): void {
   const errored = results.filter((r) => r.error)
   const exceeded = results.filter((r) => r.heapSnapshotAction === 'exceeded')
   const stale = results.filter((r) => r.heapSnapshotAction === 'stale')
   const timerLeaks = results.filter((r) => (r.timerDelta ?? 0) > 0)
   const httpLeaks = results.filter((r) => (r.pendingDelta ?? 0) > 0)
+  // The boot line prints before the first file, hundreds of lines up by the
+  // time a suite finishes, so repeat a regression here.
+  const bootExceeded = boot?.action === 'exceeded' ? boot : undefined
   if (
     errored.length === 0 &&
     exceeded.length === 0 &&
     stale.length === 0 &&
     timerLeaks.length === 0 &&
-    httpLeaks.length === 0
+    httpLeaks.length === 0 &&
+    bootExceeded === undefined
   ) {
     return
   }
@@ -549,6 +578,11 @@ function renderAlertSummary(results: TestFileResult[], cwd: string): void {
       .join(', ')
     // eslint-disable-next-line no-console
     console.error(`  ${dim(`heap stale: ${items}`)}`)
+  }
+  if (bootExceeded) {
+    // The line carries its own ⚠ and instruction, so this only labels it.
+    // eslint-disable-next-line no-console
+    console.error(`  ${dim('boot:')} ${formatBootLine(bootExceeded, '-u')}`)
   }
   if (timerLeaks.length > 0) {
     const items = timerLeaks.map((r) => `${rel(r.file)} (${r.timerDelta})`).join(', ')

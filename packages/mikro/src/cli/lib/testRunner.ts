@@ -19,7 +19,18 @@ import {
 import type {Minifier, MinifyLevel} from '../../_exports/index.js'
 import {buildTests, entryRootDir} from './build.js'
 import {collectFiles, type EnvVar} from './deploy.js'
-import {classifyHeapSnapshot, heapTolerance, readSnapshot, writeSnapshot} from './heapSnapshots.js'
+import {
+  applyBootSnapshot,
+  type BootFigures,
+  type BootSnapshotAction,
+  classifyHeapSnapshot,
+  DEFAULT_MEM_RESERVED,
+  heapTolerance,
+  readSnapshot,
+  sysTolerance,
+  type TestFigures,
+  writeSnapshot,
+} from './heapSnapshots.js'
 import {resolveProjectRoot} from './projectRoot.js'
 import type {DeployEvent, ReplEvent, ReplSession, TestEvent} from './session.js'
 
@@ -87,13 +98,38 @@ export interface TestFileResult {
   pendingDelta?: number
   /** Chip reported by the device (e.g. "esp32c6", "simulator"). Snapshot key. */
   chip?: string
+  /** Per-suite retention and peak, in run order. Attribution for a file-level
+   *  regression: the snapshot says the file grew, this says which suite did
+   *  it. Deliberately not snapshotted — suite names churn, and a per-suite
+   *  delta is too small to gate on. */
+  suites?: {name: string; retained: number; sysUsed?: number}[]
   /** Stored snapshot value for this chip (if a snapshot existed) */
   heapSnapshotStored?: number
+  /** Stored peak for this chip, when the snapshot recorded one. */
+  sysUsedStored?: number
   /** On an `updated` action, the value that was there before. `heapSnapshotStored`
    *  holds the newly written one, so the diff needs both. */
   heapSnapshotPrevious?: number
   /** What happened to the heap snapshot this run */
   heapSnapshotAction?: HeapSnapshotAction
+  /** On an `exceeded` action, the figures that cleared their tolerance. A
+   *  regression in either one trips the gate, so the message and the suite
+   *  breakdown need to know which. */
+  heapSnapshotExceeded?: HeapFigure[]
+}
+
+/** The two per-file figures a snapshot gates on. */
+export type HeapFigure = 'retained' | 'peak'
+
+/** The boot figures a run read from the ready handshake, and what became of
+ *  the chip's boot snapshot. Device-only: the host sim reports no memory
+ *  figures, so a sim run produces none of this. */
+export interface BootSnapshotResult {
+  chip: string
+  measured: BootFigures
+  /** The figures on file before this run. Absent when nothing was recorded. */
+  stored?: BootFigures
+  action: BootSnapshotAction
 }
 
 export interface TestRunOptions {
@@ -106,7 +142,8 @@ export interface TestRunOptions {
   buildDir: string
   /** Value of MIKRO_ENV to set during the test run (e.g. 'test', 'simulator'). */
   mikroEnv: string
-  /** If true, write the current heapDelta as the new snapshot for the current chip. */
+  /** If true, write the current heapDelta (and boot figures) as the new
+   *  snapshot for the current chip. */
   updateHeapSnapshots?: boolean
   /** Drift (bytes) below which a snapshot is neither flagged nor rewritten.
    *  Undefined uses max(256B, 1% of stored). */
@@ -157,6 +194,9 @@ export interface TestManifestCallbacks {
   onLog?: (level: string, text: string, file: string) => void
   /** Deploy-phase progress. Fired for each DeployEvent before tests start. */
   onDeployEvent?: (event: DeployEvent) => void
+  /** Fired once after the deploy, before the first file runs, when the device
+   *  reported its boot figures. */
+  onBoot?: (result: BootSnapshotResult) => void
   /** Generic progress messages. */
   log?: (msg: string) => void
 }
@@ -222,6 +262,25 @@ export async function runTestManifest(
   const chip = ready.chip ?? 'unknown'
   const snapshotRoot = resolveProjectRoot()
 
+  // The same handshake carries what the device left for an app, captured at
+  // boot before the supervisor allocated anything, so it describes the app
+  // floor rather than this run. Free to read, so record it here instead of
+  // asking for a separate `mikro profile`. Absent on the host sim and on
+  // firmware predating the field.
+  if (ready.heapFree !== undefined && ready.systemFree !== undefined) {
+    const measured: BootFigures = {
+      heapFree: ready.heapFree,
+      systemFree: ready.systemFree,
+      memReserved: ready.memReserved ?? DEFAULT_MEM_RESERVED,
+    }
+    const outcome = applyBootSnapshot(snapshotRoot, chip, measured, {
+      seed: true,
+      update: options.updateHeapSnapshots === true,
+      tolerance: options.heapTolerance,
+    })
+    cb.onBoot?.({chip, measured, ...outcome})
+  }
+
   const wrappedCb: TestManifestCallbacks = {
     ...cb,
     onFileDone: (result, index, total) => {
@@ -240,11 +299,11 @@ export async function runTestManifest(
  * TestFileResult so messages like "heap snapshot exceeded" can appear alongside
  * the file's pass/fail summary.
  */
-function applyHeapSnapshot(
+export function applyHeapSnapshot(
   result: TestFileResult,
   root: string,
   chip: string,
-  options: TestRunOptions,
+  options: Pick<TestRunOptions, 'updateHeapSnapshots' | 'heapTolerance'>,
 ): void {
   result.chip = chip
   if (typeof result.heapDelta !== 'number') return
@@ -258,35 +317,75 @@ function applyHeapSnapshot(
   // permanent placeholders, not a sign this environment skipped the file.
   if (result.failed > 0 || (result.passed === 0 && result.skipped > 0)) {
     if (stored !== undefined) {
-      result.heapSnapshotStored = stored
+      result.heapSnapshotStored = stored.heapDelta
+      result.sysUsedStored = stored.sysUsed
       result.heapSnapshotAction = 'skipped'
     }
     return
   }
+  const measured: TestFigures = {
+    heapDelta: result.heapDelta,
+    ...(typeof result.sysUsed === 'number' ? {sysUsed: result.sysUsed} : {}),
+  }
   // Seed a missing entry even without the flag, so a new test file or a chip
   // seen for the first time records itself instead of going unmeasured.
   if (stored === undefined) {
-    writeSnapshot(root, result.file, chip, result.heapDelta)
+    writeSnapshot(root, result.file, chip, measured)
     result.heapSnapshotAction = 'created'
-    result.heapSnapshotStored = result.heapDelta
+    result.heapSnapshotStored = measured.heapDelta
+    result.sysUsedStored = measured.sysUsed
     return
   }
-  const tolerance = heapTolerance(stored, options.heapTolerance)
-  result.heapSnapshotStored = stored
+  result.heapSnapshotStored = stored.heapDelta
+  result.sysUsedStored = stored.sysUsed
+  // Retention and peak fail differently, so a regression in either counts,
+  // the way either boot ceiling does. Each gets the band that suits it.
+  const verdicts: {figure: HeapFigure; verdict: HeapSnapshotAction}[] = [
+    {
+      figure: 'retained',
+      verdict: classifyHeapSnapshot(
+        result.heapDelta,
+        stored.heapDelta,
+        heapTolerance(stored.heapDelta, options.heapTolerance),
+      ),
+    },
+  ]
+  if (typeof measured.sysUsed === 'number' && typeof stored.sysUsed === 'number') {
+    verdicts.push({
+      figure: 'peak',
+      verdict: classifyHeapSnapshot(
+        measured.sysUsed,
+        stored.sysUsed,
+        sysTolerance(stored.sysUsed, options.heapTolerance),
+      ),
+    })
+  } else if (typeof measured.sysUsed === 'number') {
+    // Recorded before peaks were tracked. Nothing to compare against, but the
+    // entry is stale in the sense that matters: -u would add a figure.
+    verdicts.push({figure: 'peak', verdict: 'stale'})
+  }
+  const moved = verdicts.some((v) => v.verdict !== 'ok')
+  const exceeded = verdicts.filter((v) => v.verdict === 'exceeded').map((v) => v.figure)
   if (options.updateHeapSnapshots === true) {
     // Leave drift under the tolerance alone: rewriting on a couple of bytes
     // is pure diff noise.
-    if (Math.abs(result.heapDelta - stored) <= tolerance) {
+    if (!moved) {
       result.heapSnapshotAction = 'ok'
       return
     }
-    writeSnapshot(root, result.file, chip, result.heapDelta)
+    writeSnapshot(root, result.file, chip, measured)
     result.heapSnapshotAction = 'updated'
-    result.heapSnapshotPrevious = stored
-    result.heapSnapshotStored = result.heapDelta
+    result.heapSnapshotPrevious = stored.heapDelta
+    result.heapSnapshotStored = measured.heapDelta
+    result.sysUsedStored = measured.sysUsed
     return
   }
-  result.heapSnapshotAction = classifyHeapSnapshot(result.heapDelta, stored, tolerance)
+  if (exceeded.length > 0) {
+    result.heapSnapshotAction = 'exceeded'
+    result.heapSnapshotExceeded = exceeded
+    return
+  }
+  result.heapSnapshotAction = moved ? 'stale' : 'ok'
 }
 
 /** Format a byte count for human-readable test output. */
@@ -327,6 +426,94 @@ export function formatMemorySummary(result: TestFileResult): string[] {
     parts.push(`retained ${formatBytes(result.heapDelta)}`)
   }
   return parts
+}
+
+const green = (t: string) => `\x1b[32m${t}\x1b[0m`
+const red = (t: string) => `\x1b[31m${t}\x1b[0m`
+const yellow = (t: string) => `\x1b[33m${t}\x1b[0m`
+const dim = (t: string) => `\x1b[2m${t}\x1b[0m`
+
+/** One segment per ceiling, e.g. `js 218KB → 221KB (+3KB)`. More free is the
+ *  win here, so the colours invert relative to the retained-heap diff. */
+function figure(label: string, now: number, before: number | undefined): string {
+  const value = formatBytes(now)
+  if (before === undefined || before === now) return `${label} ${value}`
+  const change = now - before
+  const delta = change > 0 ? green(`+${formatBytes(change)}`) : red(formatBytes(change))
+  return `${label} ${dim(`${formatBytes(before)} → ${value} (`)}${delta}${dim(')')}`
+}
+
+/**
+ * The boot reading as one line, shared by `mikro test` and `mikro profile` so
+ * the same figure doesn't render two ways:
+ *
+ *   esp32c6  js 218KB → 221KB (+3KB)   system 249.1KB → 252.4KB (+3.3KB)
+ *
+ * `updateFlag` is the option that would record the reading, which differs
+ * between the two commands.
+ */
+export function formatBootLine(result: BootSnapshotResult, updateFlag: string): string {
+  const {measured, stored} = result
+  const body = `${figure('js', measured.heapFree, stored?.heapFree)}   ${figure(
+    'system',
+    measured.systemFree,
+    stored?.systemFree,
+  )}`
+  const suffix =
+    result.action === 'created'
+      ? dim(' (wrote boot snapshot)')
+      : result.action === 'updated'
+        ? dim(' (updated boot snapshot)')
+        : result.action === 'unrecorded'
+          ? dim(` (nothing recorded yet; re-run with ${updateFlag} to record it)`)
+          : result.action === 'exceeded'
+            ? yellow(` ⚠ less than the stored figure. Re-run with ${updateFlag} to accept.`)
+            : result.action === 'stale'
+              ? dim(` (re-run with ${updateFlag} to record it)`)
+              : ''
+  return `${result.chip}  ${body}${suffix}`
+}
+
+/**
+ * The "heap snapshot exceeded" line, shared by `mikro test` and `mikro sim
+ * test`. Names only the figures that cleared their tolerance: retention and
+ * peak have separate bands and either can trip the gate on its own, so listing
+ * a few bytes of retained drift next to a real peak regression would point
+ * the reader at the wrong number.
+ */
+export function formatHeapExceeded(result: TestFileResult, chip: string): string {
+  const tripped = result.heapSnapshotExceeded ?? []
+  const moved: string[] = []
+  if (tripped.includes('retained')) {
+    const over = (result.heapDelta ?? 0) - (result.heapSnapshotStored ?? 0)
+    moved.push(`retained +${formatBytes(over)} over ${formatBytes(result.heapSnapshotStored ?? 0)}`)
+  }
+  if (tripped.includes('peak') && result.sysUsed !== undefined) {
+    const over = result.sysUsed - (result.sysUsedStored ?? 0)
+    moved.push(`peak +${formatBytes(over)} over ${formatBytes(result.sysUsedStored ?? 0)}`)
+  }
+  const body = moved.length > 0 ? moved.join(', ') : 'moved'
+  return yellow(`⚠ heap snapshot exceeded for ${chip}: ${body}. Re-run with -u to accept.`)
+}
+
+/**
+ * The suites behind a file-level regression, heaviest first. A file figure
+ * says a file grew; without this the reader has to bisect by hand to find out
+ * which part of it did. Ordered by the figure that tripped: when only the
+ * peak regressed, the suite that retained the most is not the one to look at.
+ */
+export function formatSuiteBreakdown(result: TestFileResult): string[] {
+  const suites = result.suites ?? []
+  if (suites.length < 2) return []
+  const tripped = result.heapSnapshotExceeded ?? []
+  const byPeak = tripped.includes('peak') && !tripped.includes('retained')
+  return [...suites]
+    .sort((a, b) => (byPeak ? (b.sysUsed ?? 0) - (a.sysUsed ?? 0) : b.retained - a.retained))
+    .slice(0, 3)
+    .map((s) => {
+      const peak = s.sysUsed === undefined ? '' : `, peak ${formatBytes(s.sysUsed)}`
+      return dim(`    ${s.name}: retained ${formatBytes(s.retained)}${peak}`)
+    })
 }
 
 function emptyResult(file: string): TestFileResult {
@@ -628,6 +815,16 @@ export async function collectManifestEvents(
     else if (e === 3) result.failed++
     else if (e === 4) result.skipped++
     else if (e === 9) result.todo++
+    else if (e === 5 && typeof d.hr === 'number') {
+      result.suites = [
+        ...(result.suites ?? []),
+        {
+          name: d.s as string,
+          retained: d.hr as number,
+          ...(typeof d.su === 'number' ? {sysUsed: d.su as number} : {}),
+        },
+      ]
+    }
 
     const emits: Emit[] = [{kind: 'event', event, file: currentFile}]
 
@@ -638,7 +835,12 @@ export async function collectManifestEvents(
       result.skipped = (d.k as number) ?? result.skipped
       result.todo = (d.o as number) ?? result.todo
       result.duration = (d.d as number) ?? 0
-      if (typeof d.hb === 'number' && typeof d.ha === 'number') {
+      // `hr` sums each suite's retention against its own baseline. Firmware
+      // predating it reports only the endpoints, where a file with more than
+      // one beforeAll measures just the last suite.
+      if (typeof d.hr === 'number') {
+        result.heapDelta = d.hr as number
+      } else if (typeof d.hb === 'number' && typeof d.ha === 'number') {
         result.heapDelta = (d.ha as number) - (d.hb as number)
       }
       if (typeof d.su === 'number') result.sysUsed = d.su as number

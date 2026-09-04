@@ -606,6 +606,14 @@ void MIK_Main(void) {
     transport.session_end = platform_session_end;
     transport.session_end_ctx = nullptr;
 
+    /* Record the memory the app starts from, taken here rather than at the
+     * first runtime attach: in test mode that attach comes after the test path
+     * list, the supervisor's scratch buffer, the test helper globals and a
+     * runtime free/create cycle, so the reading would describe the harness
+     * instead of the app. Nothing below this line has run yet in either mode,
+     * so both report the same figure. */
+    MIK_CaptureBootMemory(mik_rt);
+
     /* Test-harness mode: if package.json carries a non-empty "tests" array,
      * run each listed file in its own fresh runtime through one transport
      * session. The test runtime calls __testFileDone after emitting its

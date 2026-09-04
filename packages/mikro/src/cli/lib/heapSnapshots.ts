@@ -19,8 +19,13 @@ const SNAPSHOT_DIR = '__heap_snapshots__'
 interface HeapSnapshotFile {
   /** What the device leaves for an app to consume, read from the ready
    *  handshake and captured before the app was evaluated. Moves with the
-   *  firmware and the project's runtime config, not with app code. Written by
-   *  `mikro profile`, never by a test run.
+   *  firmware and the project's runtime config, not with app code. Recorded by
+   *  a test run (which reads it for free from the handshake it already does)
+   *  and by `mikro profile --write`.
+   *
+   *  The figures describe the config the device booted with, so a project whose
+   *  `test` env overrides `memReserved` will see the two disagree: the recorded
+   *  `memReserved` is what tells them apart.
    *
    *  Two ceilings, because either can bind first: `heapFree` is the JS budget
    *  left before `mem_limit` throws, and `systemFree` is the chip heap that
@@ -33,7 +38,22 @@ interface HeapSnapshotFile {
    *  `systemFree` alone. `memReserved` is recorded alongside them so a diff
    *  shows which of the two happened. */
   boot?: {heapFree: number; systemFree: number; memReserved: number}
-  tests: {[testPath: string]: {heapDelta: number}}
+  tests: {[testPath: string]: TestFigures}
+}
+
+/** What one test file cost, as recorded for a chip. Two figures because they
+ *  fail differently: `heapDelta` is retention (a leak grows it run over run),
+ *  `sysUsed` is a peak (how close the file came to OOM at its worst moment).
+ *  A file can be clean on one and regress on the other. */
+export interface TestFigures {
+  /** Retained JS heap (bytes) above baseline at the end of the run, summed
+   *  over suites. QuickJS `malloc_size` only, so native allocations (TLS
+   *  records, wifi buffers, drivers) are invisible to it. */
+  heapDelta: number
+  /** Peak system heap (bytes): how far free heap fell from the start of the
+   *  run to its sampled low. Device-only, so entries measured on the host sim
+   *  carry none. Includes warmup, unlike `heapDelta`. */
+  sysUsed?: number
 }
 
 export function snapshotFilePath(root: string, chip: string): string {
@@ -55,12 +75,21 @@ function readFile(path: string): HeapSnapshotFile {
   }
 }
 
-export function readSnapshot(root: string, testFile: string, chip: string): number | undefined {
+export function readSnapshot(
+  root: string,
+  testFile: string,
+  chip: string,
+): TestFigures | undefined {
   const data = readFile(snapshotFilePath(root, chip))
-  return data.tests[snapshotKey(root, testFile)]?.heapDelta
+  return data.tests[snapshotKey(root, testFile)]
 }
 
 export type BootFigures = NonNullable<HeapSnapshotFile['boot']>
+
+/** Reserve a device falls back to when its config names none. Matches the
+ *  firmware fallback in mik_app_config.cpp, and fills `memReserved` for
+ *  firmware old enough not to report it. */
+export const DEFAULT_MEM_RESERVED = 64 * 1024
 
 export function readBootSnapshot(root: string, chip: string): BootFigures | undefined {
   return readFile(snapshotFilePath(root, chip)).boot
@@ -73,16 +102,59 @@ export function writeBootSnapshot(root: string, chip: string, boot: BootFigures)
   writeAtomic(path, {...data, boot})
 }
 
+export type BootSnapshotAction = 'created' | 'ok' | 'exceeded' | 'updated' | 'stale' | 'unrecorded'
+
+export interface BootSnapshotOutcome {
+  action: BootSnapshotAction
+  /** The figures on file before this run. Absent when nothing was recorded. */
+  stored?: BootFigures
+}
+
+/**
+ * Compare a boot reading against the stored one and record it when asked.
+ * Shared by `mikro test` and `mikro profile` so one figure can't mean two
+ * things depending on which command wrote it.
+ *
+ * `seed` and `update` are separate because the commands differ: a test run
+ * records a chip it has never seen (the alternative is going unmeasured until
+ * someone remembers to profile it) but only overwrites under `-u`, while
+ * `mikro profile` writes nothing at all without `--write`.
+ */
+export function applyBootSnapshot(
+  root: string,
+  chip: string,
+  measured: BootFigures,
+  options: {seed: boolean; update: boolean; tolerance?: number | undefined},
+): BootSnapshotOutcome {
+  const stored = readBootSnapshot(root, chip)
+  if (stored === undefined) {
+    if (!options.seed) return {action: 'unrecorded'}
+    writeBootSnapshot(root, chip, measured)
+    return {action: 'created'}
+  }
+  // Either ceiling can bind first, so a regression in either one counts.
+  const verdicts = (['heapFree', 'systemFree'] as const).map((k) =>
+    classifyBootSnapshot(measured[k], stored[k], heapTolerance(stored[k], options.tolerance)),
+  )
+  const moved = verdicts.some((v) => v !== 'ok')
+  if (!moved) return {action: 'ok', stored}
+  if (options.update) {
+    writeBootSnapshot(root, chip, measured)
+    return {action: 'updated', stored}
+  }
+  return {action: verdicts.includes('exceeded') ? 'exceeded' : 'stale', stored}
+}
+
 export function writeSnapshot(
   root: string,
   testFile: string,
   chip: string,
-  heapDelta: number,
+  figures: TestFigures,
 ): void {
   const path = snapshotFilePath(root, chip)
   const data = readFile(path)
   const key = snapshotKey(root, testFile)
-  const tests = {...data.tests, [key]: {heapDelta}}
+  const tests = {...data.tests, [key]: figures}
 
   // Sort for stable diffs, and drop entries whose test file is gone. The old
   // one-file-per-test layout self-pruned by being visible; an orphan key inside
@@ -115,6 +187,20 @@ function writeAtomic(path: string, data: HeapSnapshotFile): void {
  */
 export function heapTolerance(stored: number, override?: number): number {
   return override ?? Math.max(256, Math.floor(stored * 0.01))
+}
+
+/**
+ * Band for the system-heap peak, wider than the retained-heap one because the
+ * figure is noisier: it moves with wifi buffer timing and TLS record sizes,
+ * and it is sampled between tests rather than continuously, so the same run
+ * twice does not land on the same byte. A 1% band on a 70KB wifi peak would
+ * alert on every run.
+ *
+ * The explicit `--heap-tolerance` override applies here too, as it does to
+ * both boot ceilings: one knob, deliberately set, beats two.
+ */
+export function sysTolerance(stored: number, override?: number): number {
+  return override ?? Math.max(2048, Math.floor(stored * 0.05))
 }
 
 /**

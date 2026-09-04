@@ -1,61 +1,61 @@
 {
   "tests": {
     "test/abort.test.ts": {
-      "heapDelta": 14566
+      "heapDelta": 14942
     },
     "test/cbor.test.ts": {
-      "heapDelta": 4293
+      "heapDelta": 4669
     },
     "test/env.test.ts": {
-      "heapDelta": 4397
+      "heapDelta": 4773
     },
     "test/fs-stream.test.ts": {
-      "heapDelta": 4885
+      "heapDelta": 5293
     },
     "test/fs.test.ts": {
-      "heapDelta": 4677
+      "heapDelta": 5085
     },
     "test/globals.test.ts": {
-      "heapDelta": 5280
+      "heapDelta": 5656
     },
     "test/import-meta.test.ts": {
-      "heapDelta": 4037
+      "heapDelta": 4413
     },
     "test/kv.test.ts": {
-      "heapDelta": 6701
+      "heapDelta": 4709
     },
     "test/modules-hw.test.ts": {
       "heapDelta": 44243
     },
     "test/modules-network.test.ts": {
-      "heapDelta": 62981
+      "heapDelta": 40566
     },
     "test/modules.test.ts": {
-      "heapDelta": 3941
+      "heapDelta": 4413
     },
     "test/observable.test.ts": {
-      "heapDelta": 4869
+      "heapDelta": 5245
     },
     "test/result.test.ts": {
-      "heapDelta": 4397
+      "heapDelta": 4773
     },
     "test/schema.test.ts": {
       "heapDelta": 4461
     },
     "test/smoke.test.ts": {
-      "heapDelta": 4037
+      "heapDelta": 4413
     },
     "test/sys.test.ts": {
-      "heapDelta": 4037
+      "heapDelta": 4413
     },
     "test/udp.test.ts": {
-      "heapDelta": 544
+      "heapDelta": 5501
     },
     "test/wifi-e2e.test.ts": {
-      "heapDelta": 65005
+      "heapDelta": 42734
     },
     "test/withUnload.test.ts": {
-      "heapDelta": 8685
+      "heapDelta": 9061
     }
   }
 }
