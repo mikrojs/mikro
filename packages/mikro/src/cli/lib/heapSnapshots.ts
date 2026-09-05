@@ -23,9 +23,10 @@ interface HeapSnapshotFile {
    *  a test run (which reads it for free from the handshake it already does)
    *  and by `mikro profile --write`.
    *
-   *  The figures describe the config the device booted with, so a project whose
-   *  `test` env overrides `memReserved` will see the two disagree: the recorded
-   *  `memReserved` is what tells them apart.
+   *  The figures describe the config the device booted with. A project whose
+   *  `test` env overrides `memReserved` boots a test run and `mikro profile`
+   *  with different reserves, so the js ceiling is compared as
+   *  `heapFree + memReserved`, which the reserve cannot move.
    *
    *  Two ceilings, because either can bind first: `heapFree` is the JS budget
    *  left before `mem_limit` throws, and `systemFree` is the chip heap that
@@ -132,10 +133,19 @@ export function applyBootSnapshot(
     writeBootSnapshot(root, chip, measured)
     return {action: 'created'}
   }
-  // Either ceiling can bind first, so a regression in either one counts.
-  const verdicts = (['heapFree', 'systemFree'] as const).map((k) =>
-    classifyBootSnapshot(measured[k], stored[k], heapTolerance(stored[k], options.tolerance)),
-  )
+  // Either ceiling can bind first, so a regression in either one counts. The
+  // js ceiling is compared with the reserve added back: a test run and
+  // `mikro profile` can boot the device with different memReserved, and
+  // without this each would flag the other's figure.
+  const js = {measured: jsBudget(measured), stored: jsBudget(stored)}
+  const verdicts = [
+    classifyBootSnapshot(js.measured, js.stored, heapTolerance(js.stored, options.tolerance)),
+    classifyBootSnapshot(
+      measured.systemFree,
+      stored.systemFree,
+      heapTolerance(stored.systemFree, options.tolerance),
+    ),
+  ]
   const moved = verdicts.some((v) => v !== 'ok')
   if (!moved) return {action: 'ok', stored}
   if (options.update) {
@@ -143,6 +153,13 @@ export function applyBootSnapshot(
     return {action: 'updated', stored}
   }
   return {action: verdicts.includes('exceeded') ? 'exceeded' : 'stale', stored}
+}
+
+/** The js ceiling with the reserve added back: what the device had for JS
+ *  before `memReserved` was taken off it. Invariant under a reserve change, so
+ *  two boots with different reserves compare like for like. */
+export function jsBudget(boot: BootFigures): number {
+  return boot.heapFree + boot.memReserved
 }
 
 export function writeSnapshot(

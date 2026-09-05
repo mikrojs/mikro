@@ -30,7 +30,9 @@ import type {ReadyEvent, ReplEvent, ReplSession, TestEvent} from '../session.js'
 import {
   applyHeapSnapshot,
   collectManifestEvents,
+  formatBootLine,
   formatHeapExceeded,
+  formatHeapStale,
   formatSuiteBreakdown,
   type TestFileResult,
   type TestManifestCallbacks,
@@ -491,6 +493,7 @@ describe('applyHeapSnapshot', () => {
     writeSnapshot(root, result.file, chip, {heapDelta: 3000})
     applyHeapSnapshot(result, root, chip, {})
     expect(result.heapSnapshotAction).toBe('stale')
+    expect(result.heapSnapshotStale).toEqual(['peak'])
     expect(readSnapshot(root, result.file, chip)).toEqual({heapDelta: 3000})
 
     applyHeapSnapshot(result, root, chip, {updateHeapSnapshots: true})
@@ -555,6 +558,64 @@ describe('exceeded rendering', () => {
     expect(byPeak[0]).toContain('over wifi')
     const byRetained = formatSuiteBreakdown({...base, heapSnapshotExceeded: ['retained']})
     expect(byRetained[0]).toContain('lifecycle')
+  })
+})
+
+describe('stale rendering', () => {
+  const base: TestFileResult = {
+    file: '/cwd/test/a.test.ts',
+    events: [],
+    passed: 6,
+    failed: 0,
+    skipped: 0,
+    todo: 0,
+    duration: 1,
+    heapDelta: 3000,
+    heapSnapshotStored: 3000,
+    sysUsed: 70_000,
+    heapSnapshotAction: 'stale',
+  }
+
+  it('a peak-only stale says no peak was recorded, not -0B', () => {
+    const body = formatHeapStale({...base, heapSnapshotStale: ['peak']})
+    expect(body).toBe('no peak recorded')
+  })
+
+  it('a retained drop reports how far under the stored figure it fell', () => {
+    const body = formatHeapStale({...base, heapDelta: 2500, heapSnapshotStale: ['retained']})
+    expect(body).toBe('retained -500B under 2.9KB')
+  })
+
+  it('a peak drop reports against the stored peak', () => {
+    const body = formatHeapStale({
+      ...base,
+      sysUsed: 60_000,
+      sysUsedStored: 70_000,
+      heapSnapshotStale: ['peak'],
+    })
+    expect(body).toBe('peak -9.8KB under 68.4KB')
+  })
+})
+
+describe('boot line across a memReserved change', () => {
+  const stored = {heapFree: 223232, systemFree: 241664, memReserved: 65536}
+
+  it("shows the stored js figure at this run's reserve and says so", () => {
+    // 16KB more reserve, 16KB less JS budget: the same device.
+    const measured = {
+      heapFree: stored.heapFree - 16384,
+      systemFree: stored.systemFree,
+      memReserved: stored.memReserved + 16384,
+    }
+    const line = formatBootLine({chip: 'esp32c6', measured, stored, action: 'ok'}, '-u')
+    expect(line).toContain('js 202KB')
+    expect(line).not.toContain('→')
+    expect(line).toContain('stored at memReserved 64KB, shown at 80KB')
+  })
+
+  it('says nothing extra when the reserve matches', () => {
+    const line = formatBootLine({chip: 'esp32c6', measured: stored, stored, action: 'ok'}, '-u')
+    expect(line).not.toContain('memReserved')
   })
 })
 

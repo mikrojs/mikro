@@ -26,6 +26,7 @@ import {
   classifyHeapSnapshot,
   DEFAULT_MEM_RESERVED,
   heapTolerance,
+  jsBudget,
   readSnapshot,
   sysTolerance,
   type TestFigures,
@@ -116,6 +117,9 @@ export interface TestFileResult {
    *  regression in either one trips the gate, so the message and the suite
    *  breakdown need to know which. */
   heapSnapshotExceeded?: HeapFigure[]
+  /** On a `stale` action, the figures that moved under their band or have no
+   *  stored counterpart yet. A peak-only stale has no retained delta to show. */
+  heapSnapshotStale?: HeapFigure[]
 }
 
 /** The two per-file figures a snapshot gates on. */
@@ -385,7 +389,12 @@ export function applyHeapSnapshot(
     result.heapSnapshotExceeded = exceeded
     return
   }
-  result.heapSnapshotAction = moved ? 'stale' : 'ok'
+  if (moved) {
+    result.heapSnapshotAction = 'stale'
+    result.heapSnapshotStale = verdicts.filter((v) => v.verdict === 'stale').map((v) => v.figure)
+    return
+  }
+  result.heapSnapshotAction = 'ok'
 }
 
 /** Format a byte count for human-readable test output. */
@@ -454,11 +463,22 @@ function figure(label: string, now: number, before: number | undefined): string 
  */
 export function formatBootLine(result: BootSnapshotResult, updateFlag: string): string {
   const {measured, stored} = result
-  const body = `${figure('js', measured.heapFree, stored?.heapFree)}   ${figure(
+  // The gate compares js with the reserve added back, so show the stored
+  // figure at this run's reserve; the raw one would read as a regression
+  // whenever the two boots used different memReserved.
+  const reserveMoved = stored !== undefined && stored.memReserved !== measured.memReserved
+  const storedJs = stored === undefined ? undefined : jsBudget(stored) - measured.memReserved
+  const body = `${figure('js', measured.heapFree, storedJs)}   ${figure(
     'system',
     measured.systemFree,
     stored?.systemFree,
-  )}`
+  )}${
+    reserveMoved
+      ? dim(
+          `   (stored at memReserved ${formatBytes(stored.memReserved)}, shown at ${formatBytes(measured.memReserved)})`,
+        )
+      : ''
+  }`
   const suffix =
     result.action === 'created'
       ? dim(' (wrote boot snapshot)')
@@ -494,6 +514,32 @@ export function formatHeapExceeded(result: TestFileResult, chip: string): string
   }
   const body = moved.length > 0 ? moved.join(', ') : 'moved'
   return yellow(`⚠ heap snapshot exceeded for ${chip}: ${body}. Re-run with -u to accept.`)
+}
+
+/**
+ * The body of the "heap snapshot stale" line, shared by `mikro test` and
+ * `mikro sim test`. Names the figures that went stale: an entry recorded
+ * before peaks were tracked has no retained delta to report, and printing one
+ * would read as "-0B".
+ */
+export function formatHeapStale(result: TestFileResult): string {
+  const stale = result.heapSnapshotStale ?? []
+  const parts: string[] = []
+  if (stale.includes('retained')) {
+    const under = (result.heapSnapshotStored ?? 0) - (result.heapDelta ?? 0)
+    parts.push(
+      `retained -${formatBytes(under)} under ${formatBytes(result.heapSnapshotStored ?? 0)}`,
+    )
+  }
+  if (stale.includes('peak')) {
+    if (result.sysUsedStored === undefined) {
+      parts.push('no peak recorded')
+    } else {
+      const under = result.sysUsedStored - (result.sysUsed ?? 0)
+      parts.push(`peak -${formatBytes(under)} under ${formatBytes(result.sysUsedStored)}`)
+    }
+  }
+  return parts.length > 0 ? parts.join(', ') : 'moved'
 }
 
 /**

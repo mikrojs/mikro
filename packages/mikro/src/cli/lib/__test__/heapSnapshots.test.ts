@@ -207,6 +207,43 @@ describe('applyBootSnapshot', () => {
   })
 })
 
+describe('applyBootSnapshot across a memReserved change', () => {
+  const BOOT = {heapFree: 223232, systemFree: 241664, memReserved: 65536}
+
+  test('a reserve change alone is not a regression in either direction', () => {
+    writeBootSnapshot(root, 'esp32c6', BOOT)
+    // A test env reserving 16KB more sees 16KB less JS budget, and nothing else.
+    const testEnv = {
+      ...BOOT,
+      heapFree: BOOT.heapFree - 16384,
+      memReserved: BOOT.memReserved + 16384,
+    }
+    expect(applyBootSnapshot(root, 'esp32c6', testEnv, {seed: true, update: false})).toEqual({
+      action: 'ok',
+      stored: BOOT,
+    })
+    // And the production reading compared against a test-env record.
+    writeBootSnapshot(root, 'esp32c6', testEnv)
+    expect(applyBootSnapshot(root, 'esp32c6', BOOT, {seed: true, update: false})).toEqual({
+      action: 'ok',
+      stored: testEnv,
+    })
+  })
+
+  test('a reserve change does not hide a real regression', () => {
+    writeBootSnapshot(root, 'esp32c6', BOOT)
+    const measured = {
+      ...BOOT,
+      heapFree: BOOT.heapFree + 16384 - 8192,
+      memReserved: BOOT.memReserved - 16384,
+    }
+    expect(applyBootSnapshot(root, 'esp32c6', measured, {seed: true, update: false})).toEqual({
+      action: 'exceeded',
+      stored: BOOT,
+    })
+  })
+})
+
 describe('classifyBootSnapshot', () => {
   test('less free heap than stored is the regression', () => {
     expect(classifyBootSnapshot(241664 - 300, 241664, 256)).toBe('exceeded')
