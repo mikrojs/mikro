@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.1 (2026-09-05)
+
+### Features
+
+- **firmware:** enable custom firmware to disable WiFi stack ([#363](https://github.com/mikrojs/mikro/pull/363))
+
 ## 0.20.0 (2026-09-05)
 
 ### Breaking changes
