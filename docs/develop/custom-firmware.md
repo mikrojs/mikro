@@ -164,5 +164,6 @@ The firmware archive must be a `.tar.gz` containing `flasher_args.json` and the 
 ## Overriding defaults
 
 - **sdkconfig**: Add a local `sdkconfig.defaults` file. It takes priority over the firmware package defaults.
+- **WiFi**: Set `CONFIG_MIKROJS_WIFI=n` in that file to leave the WiFi driver and the `mikro/wifi` module out. This frees about 20 KB of internal RAM for apps that do all their networking over another link, such as a cellular modem. IDF's own `CONFIG_ESP_WIFI_ENABLED` cannot be turned off on WiFi-capable chips.
 - **Partition table**: Add a local `partitions.csv` file.
 - **main.cpp**: Provide your own `main/` directory with custom initialization.

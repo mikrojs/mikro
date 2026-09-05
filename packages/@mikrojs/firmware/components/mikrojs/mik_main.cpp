@@ -320,12 +320,14 @@ void MIK_Main(void) {
      * the low-level radio driver is linked, even when no higher-level
      * stack is compiled in. WiFi and BLE each require both silicon support
      * and a corresponding `mikrojs/wifi`/`mikrojs/ble` JS module — we gate
-     * on the CONFIG_* flags as a proxy. 802.15.4 is deliberately omitted
-     * until a `mikrojs/zigbee` or `mikrojs/thread` module ships. */
+     * on the flags that compile those modules in: CONFIG_MIKROJS_WIFI (the
+     * component's own switch, since IDF forces CONFIG_ESP_WIFI_ENABLED on
+     * for capable silicon) and CONFIG_BT_ENABLED. 802.15.4 is deliberately
+     * omitted until a `mikrojs/zigbee` or `mikrojs/thread` module ships. */
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
 
-#if CONFIG_ESP_WIFI_ENABLED
+#if CONFIG_MIKROJS_WIFI
     bool has_wifi = (chip_info.features & CHIP_FEATURE_WIFI_BGN) != 0;
 #else
     bool has_wifi = false;

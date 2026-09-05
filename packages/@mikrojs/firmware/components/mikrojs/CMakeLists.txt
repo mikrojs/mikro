@@ -41,6 +41,17 @@ if(CONFIG_BT_ENABLED)
     list(APPEND _MIK_BLE_SRCS "mik_ble.cpp" "mik_ble_c_shim.c")
 endif()
 
+# The WiFi driver and the `wifi` native module only compile under
+# CONFIG_MIKROJS_WIFI. Nothing else references esp_wifi, so leaving
+# mik_wifi.cpp out is what drops net80211, pp and wpa_supplicant from the
+# link (about 20 KB of static RAM). `esp_wifi` stays in REQUIRES
+# unconditionally: IDF expands REQUIRES before sdkconfig is loaded, so a
+# CONFIG_-gated entry would always be empty there.
+set(_MIK_WIFI_SRCS "")
+if(CONFIG_MIKROJS_WIFI)
+    list(APPEND _MIK_WIFI_SRCS "mik_wifi.cpp")
+endif()
+
 # mik_ota.cpp includes <miniz.h> for tinfl (gunzip). On the esp32c6 the
 # implementation is in the chip mask ROM and the header comes from the
 # always-available `esp_rom` common dependency, so no REQUIRES entry is needed.
@@ -118,7 +129,7 @@ idf_component_register(
     "mik_spi.cpp"
     "mik_sntp.cpp"
     "mik_uart.cpp"
-    "mik_wifi.cpp"
+    ${_MIK_WIFI_SRCS}
 )
 
 # QuickJS headers as SYSTEM includes (suppresses warnings)
@@ -195,8 +206,11 @@ endif()
 include("${MIK_BYTECODE_CMAKE}")
 
 # Force linker to include self-registering native modules
-set(_MIK_MODULES cbor pin i2c i2s spi http http_server wifi rtc nvs_kv sntp sleep neopixel pwm uart ota)
+set(_MIK_MODULES cbor pin i2c i2s spi http http_server rtc nvs_kv sntp sleep neopixel pwm uart ota)
 list(APPEND _MIK_MODULES ota_client)
+if(CONFIG_MIKROJS_WIFI)
+    list(APPEND _MIK_MODULES wifi)
+endif()
 set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/server i2c i2s kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy observable/operators ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp watchdog)
 if(CONFIG_BT_ENABLED)
     list(APPEND _MIK_MODULES ble)
