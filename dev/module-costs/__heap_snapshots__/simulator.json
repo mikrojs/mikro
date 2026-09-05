@@ -1,0 +1,94 @@
+{
+  "tests": {
+    "test/_baseline.test.ts": {
+      "heapDelta": 4309
+    },
+    "test/cbor.test.ts": {
+      "heapDelta": 5853
+    },
+    "test/env.test.ts": {
+      "heapDelta": 6709
+    },
+    "test/fs.test.ts": {
+      "heapDelta": 12473
+    },
+    "test/http-helpers.test.ts": {
+      "heapDelta": 7781
+    },
+    "test/http-request.test.ts": {
+      "heapDelta": 6005
+    },
+    "test/i2c.test.ts": {
+      "heapDelta": 11738
+    },
+    "test/inspect.test.ts": {
+      "heapDelta": 4933
+    },
+    "test/kv-nvs.test.ts": {
+      "heapDelta": 28903
+    },
+    "test/kv-rtc.test.ts": {
+      "heapDelta": 22470
+    },
+    "test/module.test.ts": {
+      "heapDelta": 6075
+    },
+    "test/neopixel.test.ts": {
+      "heapDelta": 11357
+    },
+    "test/observable-operators.test.ts": {
+      "heapDelta": 14439
+    },
+    "test/observable.test.ts": {
+      "heapDelta": 7109
+    },
+    "test/ota-client.test.ts": {
+      "heapDelta": 61615
+    },
+    "test/ota.test.ts": {
+      "heapDelta": 62823
+    },
+    "test/pin.test.ts": {
+      "heapDelta": 12522
+    },
+    "test/pwm.test.ts": {
+      "heapDelta": 11942
+    },
+    "test/reader.test.ts": {
+      "heapDelta": 11569
+    },
+    "test/result.test.ts": {
+      "heapDelta": 5045
+    },
+    "test/schema.test.ts": {
+      "heapDelta": 10953
+    },
+    "test/sleep.test.ts": {
+      "heapDelta": 7030
+    },
+    "test/sntp.test.ts": {
+      "heapDelta": 9976
+    },
+    "test/spi.test.ts": {
+      "heapDelta": 10791
+    },
+    "test/stdio.test.ts": {
+      "heapDelta": 9019
+    },
+    "test/stream.test.ts": {
+      "heapDelta": 10071
+    },
+    "test/uart.test.ts": {
+      "heapDelta": 12366
+    },
+    "test/udp.test.ts": {
+      "heapDelta": 11683
+    },
+    "test/watchdog.test.ts": {
+      "heapDelta": 5917
+    },
+    "test/wifi.test.ts": {
+      "heapDelta": 32973
+    }
+  }
+}

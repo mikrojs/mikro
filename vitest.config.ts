@@ -12,6 +12,7 @@ export default defineConfig({
       'packages/@mikrojs/schema/vitest.config.ts',
       'packages/@repo/releaser/vitest.config.ts',
       'packages/create-mikro/vitest.config.ts',
+      'dev/module-costs/vitest.config.ts',
     ],
   },
 })
