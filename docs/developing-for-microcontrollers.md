@@ -43,6 +43,7 @@ WiFi + HTTPS is the biggest consumer. A simple blinky uses almost nothing, but a
 
 - Connect to WiFi once and stay connected, rather than reconnecting per request.
 - Talk to local endpoints over plain HTTP when RAM is scarce. TLS costs up to ~40 KB per handshake.
+- If your app never uses WiFi (it networks over a cellular modem, say), build [custom firmware](./develop/custom-firmware#overriding-defaults) with `CONFIG_MIKROJS_WIFI=n`. The WiFi driver takes about 20 KB of RAM at boot even when the radio is never started.
 - Concatenating strings in a loop allocates a new string every iteration. Push to an array and `.join()` once.
 - Load modules only when you need them, with a dynamic import:
 

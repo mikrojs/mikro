@@ -22,6 +22,32 @@ menu "mikrojs console"
 
 endmenu
 
+menu "mikrojs WiFi"
+
+    config MIKROJS_WIFI
+        bool "Compile the WiFi driver and the mikro/wifi module"
+        default y
+        depends on SOC_WIFI_SUPPORTED
+        help
+            When enabled, the firmware links the ESP-IDF WiFi driver
+            (net80211, pp, wpa_supplicant) and provides the `mikro/wifi`
+            module. The driver takes about 20 KB of internal RAM at boot
+            whether or not the radio is ever started.
+
+            Disable for apps that do all their networking over another
+            link (a cellular modem on a UART, for instance) to get that
+            RAM back. `import 'mikro/wifi'` then throws ReferenceError:
+            Native module 'native:mikro/wifi' is not available, the boot
+            banner lists no WiFi radio and BoardInfo.features omits
+            "wifi". HTTP and SNTP still compile; they need a network
+            interface from elsewhere.
+
+            IDF's own CONFIG_ESP_WIFI_ENABLED cannot do this: it has no
+            prompt on WiFi-capable chips, so setting it to n in
+            sdkconfig.defaults is silently reverted to y.
+
+endmenu
+
 menu "mikrojs runtime memory"
 
     config MIKROJS_QUICKJS_HEAP_PSRAM

@@ -192,7 +192,7 @@ static JSValue mik__sys_board(JSContext* ctx) {
      * has it AND the stack behind it was compiled in. */
     JSValue features = JS_NewArray(ctx);
     uint32_t fi = 0;
-#ifdef CONFIG_ESP_WIFI_ENABLED
+#ifdef CONFIG_MIKROJS_WIFI
     if (chip_info.features & CHIP_FEATURE_WIFI_BGN)
         JS_SetPropertyUint32(ctx, features, fi++, JS_NewString(ctx, "wifi"));
 #endif

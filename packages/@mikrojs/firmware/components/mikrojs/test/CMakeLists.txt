@@ -1,5 +1,7 @@
 # ble_test.cpp references mik__ble_consume which is only defined when
-# NimBLE (CONFIG_BT_ENABLED) is available. Exclude it for BT-less builds.
+# NimBLE (CONFIG_BT_ENABLED) is available, and wifi_test.cpp references
+# mik__wifi_consume which needs CONFIG_MIKROJS_WIFI. Exclude each for
+# builds without its stack.
 set(_MIK_TEST_SRCS
     abort_test.cpp
     fs_js_test.cpp
@@ -25,10 +27,12 @@ set(_MIK_TEST_SRCS
     timers_test.cpp
     udp_test.cpp
     watchdog_test.cpp
-    wifi_test.cpp
 )
 if(CONFIG_BT_ENABLED)
     list(APPEND _MIK_TEST_SRCS ble_test.cpp)
+endif()
+if(CONFIG_MIKROJS_WIFI)
+    list(APPEND _MIK_TEST_SRCS wifi_test.cpp)
 endif()
 
 idf_component_register(SRCS ${_MIK_TEST_SRCS}
