@@ -1,0 +1,141 @@
+{
+  "tests": {
+    "test/_baseline.test.ts": {
+      "heapDelta": 3528,
+      "sysUsed": 5064
+    },
+    "test/ble.test.ts": {
+      "heapDelta": 21988,
+      "sysUsed": 24928
+    },
+    "test/cbor.test.ts": {
+      "heapDelta": 4656,
+      "sysUsed": 7276
+    },
+    "test/env.test.ts": {
+      "heapDelta": 5404,
+      "sysUsed": 7468
+    },
+    "test/fs.test.ts": {
+      "heapDelta": 9860,
+      "sysUsed": 14896
+    },
+    "test/http-helpers.test.ts": {
+      "heapDelta": 6152,
+      "sysUsed": 9472
+    },
+    "test/http-request.test.ts": {
+      "heapDelta": 4760,
+      "sysUsed": 8256
+    },
+    "test/http-server.test.ts": {
+      "heapDelta": 16688,
+      "sysUsed": 20296
+    },
+    "test/i2c.test.ts": {
+      "heapDelta": 7572,
+      "sysUsed": 10704
+    },
+    "test/i2s.test.ts": {
+      "heapDelta": 7260,
+      "sysUsed": 11564
+    },
+    "test/inspect.test.ts": {
+      "heapDelta": 4104,
+      "sysUsed": 7064
+    },
+    "test/kv-nvs.test.ts": {
+      "heapDelta": 16692,
+      "sysUsed": 19744
+    },
+    "test/kv-rtc.test.ts": {
+      "heapDelta": 15496,
+      "sysUsed": 18060
+    },
+    "test/module.test.ts": {
+      "heapDelta": 4928,
+      "sysUsed": 7520
+    },
+    "test/neopixel.test.ts": {
+      "heapDelta": 7680,
+      "sysUsed": 10820
+    },
+    "test/observable-operators.test.ts": {
+      "heapDelta": 11832,
+      "sysUsed": 15844
+    },
+    "test/observable.test.ts": {
+      "heapDelta": 5704,
+      "sysUsed": 9284
+    },
+    "test/ota-client.test.ts": {
+      "heapDelta": 7532,
+      "sysUsed": 12416
+    },
+    "test/ota.test.ts": {
+      "heapDelta": 8696,
+      "sysUsed": 13316
+    },
+    "test/pin.test.ts": {
+      "heapDelta": 8328,
+      "sysUsed": 12560
+    },
+    "test/pwm.test.ts": {
+      "heapDelta": 7292,
+      "sysUsed": 10608
+    },
+    "test/reader.test.ts": {
+      "heapDelta": 9780,
+      "sysUsed": 14232
+    },
+    "test/result.test.ts": {
+      "heapDelta": 4080,
+      "sysUsed": 8044
+    },
+    "test/schema.test.ts": {
+      "heapDelta": 8388,
+      "sysUsed": 11140
+    },
+    "test/sleep.test.ts": {
+      "heapDelta": 5688,
+      "sysUsed": 9868
+    },
+    "test/sntp.test.ts": {
+      "heapDelta": 7360,
+      "sysUsed": 10864
+    },
+    "test/spi.test.ts": {
+      "heapDelta": 7188,
+      "sysUsed": 10500
+    },
+    "test/stdio.test.ts": {
+      "heapDelta": 7204,
+      "sysUsed": 11060
+    },
+    "test/stream.test.ts": {
+      "heapDelta": 8496,
+      "sysUsed": 12664
+    },
+    "test/uart.test.ts": {
+      "heapDelta": 7588,
+      "sysUsed": 10620
+    },
+    "test/udp.test.ts": {
+      "heapDelta": 9692,
+      "sysUsed": 14512
+    },
+    "test/watchdog.test.ts": {
+      "heapDelta": 4736,
+      "sysUsed": 7276
+    },
+    "test/wifi.test.ts": {
+      "heapDelta": 17216,
+      "sysUsed": 54140
+    }
+  },
+  "boot": {
+    "heapFree": 220292,
+    "systemFree": 275668,
+    "memReserved": 65536
+  }
+}

@@ -55,7 +55,7 @@
     "test:js": "vitest run",
     "test:lib": "cmake -B packages/@mikrojs/native/build-test -DBUILD_TESTING=ON packages/@mikrojs/native && cmake --build packages/@mikrojs/native/build-test && ctest --test-dir packages/@mikrojs/native/build-test --output-on-failure",
     "test:ota-unpack": "packages/@mikrojs/firmware/components/mikrojs/test/ota_host/run.sh",
-    "test:sim": "pnpm --filter @repo/e2e run test:sim",
+    "test:sim": "pnpm --filter @repo/e2e --filter @repo/module-costs run test:sim",
     "trust:setup": "./scripts/trust-setup.ts",
     "typecheck": "pnpm -r --if-present run typecheck",
     "watch": "pnpm dev"

@@ -1,0 +1,20 @@
+{
+  "name": "@repo/module-costs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Measures the retained heap of importing each builtin module, one fresh runtime per module",
+  "type": "module",
+  "scripts": {
+    "report": "node scripts/report.ts",
+    "test": "mikro test",
+    "test:sim": "mikro sim test",
+    "typecheck": "tsc -p tsconfig.json && tsc -p scripts"
+  },
+  "dependencies": {
+    "mikro": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:node24",
+    "vitest": "catalog:"
+  }
+}

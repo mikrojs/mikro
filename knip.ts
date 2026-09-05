@@ -28,6 +28,11 @@ const config = {
       // "unused".
       entry: ['app/*.ts'],
     },
+    'dev/module-costs': {
+      // Every test/*.test.ts is a `mikro test` entry (one per builtin, run on
+      // the device or simulator), not imported by anything.
+      entry: ['test/*.test.ts'],
+    },
     'dev/watchdog': {
       // One entry per watchdog, picked with `pnpm dev:<name>`; same shape as
       // examples/sleep.
