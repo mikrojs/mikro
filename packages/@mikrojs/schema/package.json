@@ -1,6 +1,6 @@
 {
   "name": "@mikrojs/schema",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "Schema DSL for Mikro.js: declare a shape once, infer its type, validate against it, and publish it for a registry to render a form from",
   "keywords": [
     "esp32",

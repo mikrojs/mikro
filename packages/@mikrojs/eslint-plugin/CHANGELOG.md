@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.20.0 (2026-09-05)
+
+### Breaking changes
+
+- **ota:** drop the step primitives report() and settle() subsume ([#355](https://github.com/mikrojs/mikro/pull/355))
+
+### Features
+
+- **dev:** census the retained heap of importing each builtin ([#362](https://github.com/mikrojs/mikro/pull/362))
+- **watchdog:** add watchdog support ([#359](https://github.com/mikrojs/mikro/pull/359))
+- **ota:** let own-transport clients report a declined offer ([#353](https://github.com/mikrojs/mikro/pull/353))
+
+### Bug fixes
+
+- **test:** keep the boot gate steady across a memReserved change ([#361](https://github.com/mikrojs/mikro/pull/361))
+- **test:** measure retained heap per suite ([#360](https://github.com/mikrojs/mikro/pull/360))
+- **repl:** keep serving through the panic grace window ([#358](https://github.com/mikrojs/mikro/pull/358))
+- resume device when runtime pause times out during deploy ([#356](https://github.com/mikrojs/mikro/pull/356))
+
+### Other
+
+- **e2e:** update heap snapshots after memory optimization ([#357](https://github.com/mikrojs/mikro/pull/357))
+
 ## 0.19.0 (2026-08-30)
 
 ### Breaking changes
