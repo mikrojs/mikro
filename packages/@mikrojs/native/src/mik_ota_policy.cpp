@@ -13,6 +13,11 @@ namespace mikrojs {
 /* Staging attempts for one url before a checksum is abandoned. */
 constexpr int32_t MIK__OTA_MAX_TRIES = 3;
 
+/* The contract is 64 lowercase hex (see decline(), which enforces the format).
+ * Only the length is checked here, because a shorter checksum round-trips
+ * fine and the registry is free to use one. */
+constexpr size_t MIK__OTA_CHECKSUM_MAX = 64;
+
 const char* mik__ota_outcome_to_str(MIKOtaApplyOutcome outcome) {
     switch (outcome) {
         case MIKOtaApplyOutcome::kStaged:
@@ -48,10 +53,23 @@ std::string url_digest(const std::string& url) {
 
 }  // namespace
 
+MIKOtaKvStatus MIKOtaStore::ReadStr(const char* key, char* out, size_t max_len) const {
+    if (!env_ || !env_->kv_get_str) return MIK_OTA_KV_ABSENT;
+    MIKOtaKvStatus status = env_->kv_get_str(env_->opaque, key, out, max_len);
+    if (status == MIK_OTA_KV_ERROR) read_failed_ = true;
+    return status;
+}
+
+MIKOtaKvStatus MIKOtaStore::ReadI32(const char* key, int32_t* out) const {
+    if (!env_ || !env_->kv_get_i32) return MIK_OTA_KV_ABSENT;
+    MIKOtaKvStatus status = env_->kv_get_i32(env_->opaque, key, out);
+    if (status == MIK_OTA_KV_ERROR) read_failed_ = true;
+    return status;
+}
+
 bool MIKOtaStore::UrlMatches(const std::string& url) const {
-    if (!env_ || !env_->kv_get_str) return false;
     char buf[17] = {};
-    if (!env_->kv_get_str(env_->opaque, "ota.url", buf, sizeof(buf))) return false;
+    if (ReadStr("ota.url", buf, sizeof(buf)) != MIK_OTA_KV_OK) return false;
     return url_digest(url) == buf;
 }
 
@@ -61,9 +79,8 @@ void MIKOtaStore::SetUrl(const std::string& url) {
 }
 
 std::string MIKOtaStore::GetAttempt() const {
-    if (!env_ || !env_->kv_get_str) return "";
     char buf[128] = {};
-    if (env_->kv_get_str(env_->opaque, "ota.att", buf, sizeof(buf))) {
+    if (ReadStr("ota.att", buf, sizeof(buf)) == MIK_OTA_KV_OK) {
         return buf;
     }
     return "";
@@ -75,12 +92,14 @@ void MIKOtaStore::SetAttempt(const std::string& checksum) {
 }
 
 int32_t MIKOtaStore::GetTries() const {
-    if (!env_ || !env_->kv_get_i32) return 0;
     int32_t val = 0;
-    if (env_->kv_get_i32(env_->opaque, "ota.tries", &val)) {
+    if (ReadI32("ota.tries", &val) == MIK_OTA_KV_OK) {
         return val;
     }
-    return 0;
+    /* An unreadable budget counts as spent, which is what stops the attempt in
+     * apply_begin. Defaulting to "fully available" is the one mistake here that
+     * ends in a build reinstalling itself forever. */
+    return read_failed_ ? MIK__OTA_MAX_TRIES : 0;
 }
 
 void MIKOtaStore::SetTries(int32_t n) {
@@ -89,9 +108,8 @@ void MIKOtaStore::SetTries(int32_t n) {
 }
 
 std::string MIKOtaStore::GetBad() const {
-    if (!env_ || !env_->kv_get_str) return "";
     char buf[128] = {};
-    if (env_->kv_get_str(env_->opaque, "ota.bad", buf, sizeof(buf))) {
+    if (ReadStr("ota.bad", buf, sizeof(buf)) == MIK_OTA_KV_OK) {
         return buf;
     }
     return "";
@@ -103,9 +121,8 @@ void MIKOtaStore::SetBad(const std::string& checksum) {
 }
 
 bool MIKOtaStore::GetInFlight() const {
-    if (!env_ || !env_->kv_get_i32) return false;
     int32_t val = 0;
-    if (env_->kv_get_i32(env_->opaque, "ota.inflight", &val)) {
+    if (ReadI32("ota.inflight", &val) == MIK_OTA_KV_OK) {
         return val == 1;
     }
     return false;
@@ -117,16 +134,15 @@ void MIKOtaStore::SetInFlight(bool in_flight) {
 }
 
 bool MIKOtaStore::GetDecline(MIKOtaDeclineRecord* out) const {
-    if (!env_ || !env_->kv_get_str) return false;
-    if (!env_->kv_get_str(env_->opaque, "ota.declined", out->checksum, sizeof(out->checksum)) ||
+    if (ReadStr("ota.declined", out->checksum, sizeof(out->checksum)) != MIK_OTA_KV_OK ||
         out->checksum[0] == '\0') {
         return false;
     }
-    if (!env_->kv_get_str(env_->opaque, "ota.declReason", out->reason, sizeof(out->reason)) ||
+    if (ReadStr("ota.declReason", out->reason, sizeof(out->reason)) != MIK_OTA_KV_OK ||
         out->reason[0] == '\0') {
         return false;
     }
-    if (!env_->kv_get_str(env_->opaque, "ota.declDetail", out->detail, sizeof(out->detail))) {
+    if (ReadStr("ota.declDetail", out->detail, sizeof(out->detail)) != MIK_OTA_KV_OK) {
         out->detail[0] = '\0';
     }
     return true;
@@ -181,6 +197,18 @@ bool mik__ota_parse_offer(const char* url, const char* checksum, int64_t size, b
         return false;
     }
 
+    /* ota.att and ota.bad read back through a 128-byte buffer, and a stored
+     * value too long to decode reports a failed read, not an absent one. That
+     * stops every later offer, including a good one, and nothing rewrites the
+     * key. Bound it here, at the one place untrusted registry fields become an
+     * offer, rather than letting an unreadable value into the store. */
+    if (strlen(checksum) > MIK__OTA_CHECKSUM_MAX) {
+        if (out_warn_reason) {
+            *out_warn_reason = "checksum too long";
+        }
+        return false;
+    }
+
     if (size <= 0) {
         if (out_warn_reason) {
             *out_warn_reason = "invalid size";
@@ -202,7 +230,10 @@ MIKOtaReconcileOutcome mik__ota_policy_reconcile(const MIKOtaEnv* env) {
     MIKOtaStore store(env);
     if (store.GetInFlight()) {
         store.SetInFlight(false);
-    } else {
+    } else if (!store.ReadFailed()) {
+        /* Only a boot we can prove was clean hands the budget back. An
+         * unreadable flag reads as "not in flight", and the attempt it would
+         * forget is the one that just took the device down. */
         store.SetTries(0);
     }
     MIKOtaReconcileOutcome outcome = {};
@@ -345,7 +376,23 @@ bool mik__ota_policy_apply_begin(const MIKOtaEnv* env, const MIKOtaOffer& offer,
 
     // (d) device has given up on this build
     MIKOtaStore store(env);
-    if (!offer.checksum.empty() && offer.checksum == store.GetBad()) {
+    std::string bad = store.GetBad();
+    bool url_matches = store.UrlMatches(offer.url);
+    std::string attempt = store.GetAttempt();
+
+    // Read first, then decide: every value above reads as absent when the store
+    // could not answer, and each of those defaults grants the attempt
+    // something: no abandoned build, a url that never matched (a fresh
+    // budget). A store this device cannot read is one it has no business
+    // re-keying, and the heap pressure behind the failure is no state to start
+    // a download in anyway. Nothing is written here, so the next boot decides
+    // on the real values.
+    if (store.ReadFailed()) {
+        if (out_outcome) *out_outcome = MIKOtaApplyOutcome::kExhausted;
+        return true;
+    }
+
+    if (!offer.checksum.empty() && offer.checksum == bad) {
         if (out_outcome) *out_outcome = MIKOtaApplyOutcome::kAbandoned;
         return true;
     }
@@ -354,7 +401,7 @@ bool mik__ota_policy_apply_begin(const MIKOtaEnv* env, const MIKOtaOffer& offer,
     // attempts against this exact build at this exact url; the checksum is not
     // abandoned, because everything counted here is transient by construction
     // (a corrupt build is abandoned in apply_end instead).
-    if (!store.UrlMatches(offer.url) || offer.checksum != store.GetAttempt()) {
+    if (!url_matches || offer.checksum != attempt) {
         store.SetUrl(offer.url);
         store.SetAttempt(offer.checksum);
         store.SetTries(0);

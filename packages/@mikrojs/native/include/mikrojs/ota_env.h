@@ -146,13 +146,15 @@ struct MIKOtaEnv {
     MIKOtaKvStatus (*kv_get_blob)(void* opaque, const char* key, uint8_t* out_buf,
                                   size_t* inout_len);
     bool (*kv_set_blob)(void* opaque, const char* key, const uint8_t* data, size_t len);
-    /* NOTE: the string and integer getters are still two-valued. Their callers
-     * (the retry-budget store) read a failure as absence, which hands the budget
-     * back a boot early. Same class of bug as the blob case above; worth the same
-     * treatment when the policy's error handling is revisited. */
-    bool (*kv_get_str)(void* opaque, const char* key, char* out_buf, size_t max_len);
+    /* Same contract as kv_get_blob: absent and failed are different answers.
+     * The retry budget lives behind these two, and every fallback a caller
+     * would pick for "absent" grants the device more than it has earned: an
+     * unspent budget, a url that looks new, no bad build on record. Stored
+     * bytes that do not decode report MIK_OTA_KV_ERROR too: garbage is not
+     * absence either. */
+    MIKOtaKvStatus (*kv_get_str)(void* opaque, const char* key, char* out_buf, size_t max_len);
     bool (*kv_set_str)(void* opaque, const char* key, const char* val);
-    bool (*kv_get_i32)(void* opaque, const char* key, int32_t* out_val);
+    MIKOtaKvStatus (*kv_get_i32)(void* opaque, const char* key, int32_t* out_val);
     bool (*kv_set_i32)(void* opaque, const char* key, int32_t val);
     bool (*kv_remove)(void* opaque, const char* key);
 

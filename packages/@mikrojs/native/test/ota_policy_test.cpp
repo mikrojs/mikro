@@ -81,6 +81,47 @@ TEST_CASE("parseOffer: rejects an empty checksum") {
     CHECK(warn == "missing checksum");
 }
 
+TEST_CASE("parseOffer: rejects a checksum too long to read back") {
+    // A checksum past the 128-byte read buffer still fits the 320-byte write
+    // buffer, so it stores and then fails to decode. A failed read is not an
+    // absent one: it stops every later offer, and nothing rewrites ota.att, so
+    // the device never takes another build. Bound it before it is stored.
+    MIKOtaOffer offer;
+    std::string warn;
+    std::string too_long(65, 'a');
+    CHECK(!mik__ota_parse_offer("https://updates.example.com/app.tgz", too_long.c_str(), 1024,
+                                false, &offer, &warn));
+    CHECK(warn == "checksum too long");
+
+    std::string at_limit(64, 'a');
+    CHECK(mik__ota_parse_offer("https://updates.example.com/app.tgz", at_limit.c_str(), 1024, false,
+                               &offer, &warn));
+}
+
+TEST_CASE("applyOffer: a checksum at the parser's limit round-trips through the store") {
+    // What makes the bound safe is that it sits under the 128-byte buffer
+    // GetAttempt reads back through. Nothing else ties those two numbers
+    // together, so raising the bound alone fails here instead of wedging a
+    // device that can no longer read its own ota.att.
+    FakeOtaEnv env;
+    MIKOtaOffer offer;
+    std::string warn;
+    std::string at_limit(64, 'a');
+    REQUIRE(mik__ota_parse_offer("https://updates.example.com/app-2.tgz", at_limit.c_str(), 1024,
+                                 false, &offer, &warn));
+
+    MIKOtaInstallOptions opts;
+    auto drain = [](MIKOtaUpdate&, MIKOtaError*) { return true; };
+    MIKOtaApplyOutcome outcome;
+    MIKOtaError err;
+    CHECK(mik__ota_policy_apply_offer(env.env(), offer, drain, opts, &outcome, &err));
+    CHECK(outcome == MIKOtaApplyOutcome::kStaged);
+
+    MIKOtaStore store(env.env());
+    CHECK(store.GetAttempt() == at_limit);
+    CHECK(!store.ReadFailed());
+}
+
 TEST_CASE("parseOffer: rejects non-positive size") {
     MIKOtaOffer offer;
     std::string warn;
@@ -314,6 +355,133 @@ TEST_CASE("applyOffer: returns the budget on the next boot") {
     MIKOtaError err;
     CHECK(mik__ota_policy_apply_offer(env.env(), offer, drain, opts, &outcome, &err));
     CHECK(outcome == MIKOtaApplyOutcome::kStaged);
+}
+
+TEST_CASE("reconcile: keeps the budget when the in-flight flag cannot be read") {
+    // The flag is the only thing carrying a crashed attempt across the reboot,
+    // and an unreadable flag reads as "not in flight". Resetting on that hands
+    // the whole budget back for a crash that did happen, and nvs_open fails for
+    // want of heap, which is exactly the state a panicking build leaves.
+    FakeOtaEnv env;
+    MIKOtaStore seed(env.env());
+    seed.SetUrl("https://updates.example.com/app-2.tgz");
+    seed.SetAttempt("abc123");
+    seed.SetTries(2);
+    seed.SetInFlight(true);
+
+    env.fail_value_keys.insert("ota.inflight");
+    mik__ota_policy_reconcile(env.env());
+    env.fail_value_keys.clear();
+
+    CHECK(MIKOtaStore(env.env()).GetTries() == 2);
+}
+
+TEST_CASE("reconcile: still returns the budget on a boot it can read as clean") {
+    FakeOtaEnv env;
+    MIKOtaStore seed(env.env());
+    seed.SetTries(3);
+    seed.SetInFlight(false);
+
+    mik__ota_policy_reconcile(env.env());
+
+    CHECK(MIKOtaStore(env.env()).GetTries() == 0);
+}
+
+TEST_CASE("applyOffer: does not attempt an install against a store it cannot read") {
+    // Every value the decision rests on reads as absent when the store cannot
+    // answer, and each of those defaults grants the attempt something: no
+    // abandoned build, a url that never matched, an unspent budget. Refuse the
+    // round instead, and leave the stored state alone for the next boot.
+    FakeOtaEnv env;
+    MIKOtaStore seed(env.env());
+    seed.SetUrl("https://updates.example.com/app-2.tgz");
+    seed.SetAttempt("abc123");
+    seed.SetTries(2);
+
+    env.fail_value_reads = true;
+
+    MIKOtaOffer offer = {"https://updates.example.com/app-2.tgz", "abc123", 1024};
+    MIKOtaInstallOptions opts;
+    bool downloaded = false;
+    auto drain = [&downloaded](MIKOtaUpdate&, MIKOtaError*) {
+        downloaded = true;
+        return true;
+    };
+
+    MIKOtaApplyOutcome outcome;
+    MIKOtaError err;
+    CHECK(mik__ota_policy_apply_offer(env.env(), offer, drain, opts, &outcome, &err));
+    CHECK(outcome == MIKOtaApplyOutcome::kExhausted);
+    CHECK(!downloaded);
+
+    env.fail_value_reads = false;
+    CHECK(env.kv_i32s["ota.tries"] == 2);
+    CHECK(env.kv_strings["ota.att"] == "abc123");
+}
+
+TEST_CASE("applyOffer: an unreadable url does not re-key the budget to zero") {
+    // The re-key exists so a genuinely new target starts fresh. A url that
+    // cannot be read is not a new target, and treating it as one is how a
+    // build that fails three times gets a fourth, fifth and sixth attempt.
+    FakeOtaEnv env;
+    MIKOtaStore seed(env.env());
+    seed.SetUrl("https://updates.example.com/app-2.tgz");
+    seed.SetAttempt("abc123");
+    seed.SetTries(3);
+
+    env.fail_value_keys.insert("ota.url");
+
+    MIKOtaOffer offer = {"https://updates.example.com/app-2.tgz", "abc123", 1024};
+    MIKOtaInstallOptions opts;
+    auto drain = [](MIKOtaUpdate&, MIKOtaError*) { return true; };
+
+    MIKOtaApplyOutcome outcome;
+    MIKOtaError err;
+    CHECK(mik__ota_policy_apply_offer(env.env(), offer, drain, opts, &outcome, &err));
+    CHECK(outcome == MIKOtaApplyOutcome::kExhausted);
+
+    env.fail_value_keys.clear();
+    CHECK(env.kv_i32s["ota.tries"] == 3);
+}
+
+TEST_CASE("applyOffer: an unreadable budget stops the attempt on its own") {
+    // The url and checksum still read, so the pre-read gate lets this through
+    // and only the budget read fails. GetTries answers with the maximum, which
+    // is what has to stop the attempt here.
+    FakeOtaEnv env;
+    MIKOtaStore seed(env.env());
+    seed.SetUrl("https://updates.example.com/app-2.tgz");
+    seed.SetAttempt("abc123");
+    seed.SetTries(1);
+
+    env.fail_value_keys.insert("ota.tries");
+
+    MIKOtaOffer offer = {"https://updates.example.com/app-2.tgz", "abc123", 1024};
+    MIKOtaInstallOptions opts;
+    bool downloaded = false;
+    auto drain = [&downloaded](MIKOtaUpdate&, MIKOtaError*) {
+        downloaded = true;
+        return true;
+    };
+
+    MIKOtaApplyOutcome outcome;
+    MIKOtaError err;
+    CHECK(mik__ota_policy_apply_offer(env.env(), offer, drain, opts, &outcome, &err));
+    CHECK(outcome == MIKOtaApplyOutcome::kExhausted);
+    CHECK(!downloaded);
+}
+
+TEST_CASE("store: an unreadable budget reads as spent, an absent one as unspent") {
+    FakeOtaEnv env;
+
+    // A device that has never staged anything must still get its three tries.
+    CHECK(MIKOtaStore(env.env()).GetTries() == 0);
+    CHECK(!MIKOtaStore(env.env()).ReadFailed());
+
+    env.fail_value_keys.insert("ota.tries");
+    MIKOtaStore starved(env.env());
+    CHECK(starved.GetTries() == 3);
+    CHECK(starved.ReadFailed());
 }
 
 TEST_CASE("applyOffer: does not abandon the checksum when staging cannot begin") {

@@ -92,8 +92,24 @@ public:
     void SetDecline(const MIKOtaDeclineRecord& record);
     void ClearDecline();
 
+    /* True once any read on this store has failed (as opposed to finding the
+     * key absent). Each getter has to answer with something, and the honest
+     * fallback for an unreadable key is the same everywhere: nothing stored.
+     * That reads as an unspent budget, a url that never matched, no abandoned
+     * build, every one of them more permission than the device has earned.
+     * Callers that are about to widen what the device may do consult this
+     * instead, and do nothing on an unreadable store; the next boot re-reads
+     * the real values. Latches for the life of one policy operation, which is
+     * how long a store lives. */
+    bool ReadFailed() const { return read_failed_; }
+
 private:
+    /* Runs every read through one place so the latch cannot be forgotten. */
+    MIKOtaKvStatus ReadStr(const char* key, char* out, size_t max_len) const;
+    MIKOtaKvStatus ReadI32(const char* key, int32_t* out) const;
+
     const MIKOtaEnv* env_;
+    mutable bool read_failed_ = false;
 };
 
 /* Validate untrusted offer fields into a well-formed MIKOtaOffer */
