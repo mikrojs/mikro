@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "@octokit/rest": "^22.0.0",
-    "@optique/core": "^1.0.2",
-    "@optique/run": "^1.0.2",
+    "@optique/core": "catalog:",
+    "@optique/run": "catalog:",
     "conventional-changelog-conventionalcommits": "^9.1.0",
     "conventional-commits-parser": "^6.4.0",
     "semver": "^7.7.4"

@@ -23,6 +23,8 @@ blockExoticSubdeps: true
 
 catalog:
   '@eslint/js': ^10.0.1
+  '@optique/core': ^1.2.5
+  '@optique/run': ^1.2.5
   '@vitest/coverage-v8': ^4.1.7
   'env-paths': ^4.0.0
   eslint: ^10.2.1
