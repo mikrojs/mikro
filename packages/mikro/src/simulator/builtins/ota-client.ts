@@ -216,6 +216,9 @@ let current = {checksum: undefined, version: undefined, trial: false}
 let previous = undefined // rollback target
 let staged = undefined // {checksum} pending a next-boot install
 let pendingReport = {reverted: false} // pending reconcile report
+// Set by report() when the decline record made it into the body, so settle()
+// clears only a record the registry has seen, as the device does.
+let declineReported = false
 
 function install(checksum) {
   previous = current.checksum === undefined ? undefined : {checksum: current.checksum}
@@ -365,7 +368,8 @@ export function report() {
   if (state.rev !== undefined) out.configRev = state.rev
   if (state.error !== undefined) out.configError = state.error
   const declined = sysGet('ota.decl')
-  if (typeof declined === 'object' && declined !== null) out.lastDecline = declined
+  declineReported = typeof declined === 'object' && declined !== null
+  if (declineReported) out.lastDecline = declined
   return out
 }
 
@@ -383,8 +387,12 @@ export function settle(raw, options) {
   // confirm comes first so it settles the document held before this delivery,
   // never the one about to be armed.
   confirm()
-  // The round completed, so the stored decline record was delivered.
-  sysRemove('ota.decl')
+  // The round completed, so the stored decline record was delivered if
+  // report() carried it.
+  if (declineReported) {
+    sysRemove('ota.decl')
+    declineReported = false
+  }
   if (!usable) return out
 
   // The name pair: [rev] or [rev, name]. No key means "no change" and never
