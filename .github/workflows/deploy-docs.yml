@@ -15,7 +15,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-docs-${{ github.event_name == 'release' && 'production' || 'preview' }}
+  group: deploy-docs-${{ github.event_name == 'release' && 'production' ||
+    'preview' }}
   cancel-in-progress: false
 
 jobs:
@@ -23,7 +24,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: ./.github/actions/setup-pnpm
 
@@ -54,7 +55,7 @@ jobs:
     if: github.event_name == 'release' && github.event.release.prerelease == false
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.release.tag_name }}
 

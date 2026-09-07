@@ -15,6 +15,7 @@ export default defineConfig({
 
   packageMode: {
     node: 'minor',
+    typescript: 'minor', // waiting for 7.1, need API
     '@types/node': 'minor',
   },
 })

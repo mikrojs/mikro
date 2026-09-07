@@ -28,7 +28,7 @@ jobs:
       contents: read
       pull-requests: read # for `releaser plan` to look up the merged PR's head ref
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -101,7 +101,8 @@ jobs:
         if: steps.plan.outputs.should_run == 'true'
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: pnpm --silent releaser changelog --version ${{ steps.next.outputs.version }}
+        run: pnpm --silent releaser changelog --version ${{ steps.next.outputs.version
+          }}
 
       - name: Sync workspace lockfile
         if: steps.plan.outputs.should_run == 'true'

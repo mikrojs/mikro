@@ -819,13 +819,11 @@ export function createRepl(options: {
   )
   const connectionTimeout$ = timer(timeoutMs).pipe(
     takeUntil(ready$),
-    map(
-      (): ReplAction => ({
-        type: 'setError',
-        message: `Connection timed out after ${timeoutMs / 1000}s`,
-        suppressLogEntry: true,
-      }),
-    ),
+    map((): ReplAction => ({
+      type: 'setError',
+      message: `Connection timed out after ${timeoutMs / 1000}s`,
+      suppressLogEntry: true,
+    })),
   )
 
   // Surface firmware-incompat errors as a setError action so the user sees

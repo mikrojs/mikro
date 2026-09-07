@@ -145,16 +145,16 @@
   "dependencies": {
     "@mikrojs/quickjs": "workspace:*",
     "cmake-js": "^8.0.0",
-    "node-addon-api": "^8.7.0",
+    "node-addon-api": "^8.9.2",
     "node-gyp-build": "^4.8.4"
   },
   "devDependencies": {
     "@mikrojs/registry": "workspace:*",
     "@mikrojs/schema": "workspace:*",
-    "@swc/core": "^1.15.30",
+    "@swc/core": "^1.16.2",
     "@types/node": "catalog:node24",
-    "esbuild": "^0.28.0",
-    "terser": "^5.46.2"
+    "esbuild": "^0.28.2",
+    "terser": "^5.51.2"
   },
   "engines": {
     "node": ">=24.0.0"

@@ -25,19 +25,19 @@ catalog:
   '@eslint/js': ^10.0.1
   '@optique/core': ^1.2.5
   '@optique/run': ^1.2.5
-  '@vitest/coverage-v8': ^4.1.7
+  '@vitest/coverage-v8': ^5.0.0
   'env-paths': ^4.0.0
-  eslint: ^10.2.1
+  eslint: ^10.10.0
   eslint-plugin-import: ^2.32.0
-  eslint-plugin-package-json: ^1.0.0
+  eslint-plugin-package-json: ^1.8.0
   eslint-plugin-react-hooks: ^7.1.1
-  eslint-plugin-simple-import-sort: ^13.0.0
-  globals: ^17.5.0
-  tsx: ^4.22.0
+  eslint-plugin-simple-import-sort: ^14.0.0
+  globals: ^17.12.0
+  tsx: ^4.23.13
   typescript: ^6.0.3
-  typescript-eslint: ^8.59.0
-  vite: ^8.0.10
-  vitest: ^4.1.7
+  typescript-eslint: ^8.69.0
+  vite: ^8.2.2
+  vitest: ^5.0.0
 
 catalogs:
   node24:

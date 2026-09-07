@@ -27,7 +27,8 @@ on:
 #   - PR previews: serialize per PR (avoid out-of-order publishes from rapid pushes).
 #   - Latest releases (push to main) / dispatches: serialize per mode/branch.
 concurrency:
-  group: release-${{ github.event.pull_request.number || github.event.inputs.mode || 'main' }}
+  group: release-${{ github.event.pull_request.number || github.event.inputs.mode
+    || 'main' }}
   cancel-in-progress: false
 
 permissions:
@@ -48,7 +49,7 @@ jobs:
     steps:
       # `releaser plan` computes the version too — it needs git history for
       # conventional-recommended-bump. fetch-depth: 0 is required.
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-pnpm
@@ -65,7 +66,8 @@ jobs:
       # endpoints on a PR require the pull-requests permission even though the
       # URL is /issues/.../labels).
       - name: Generate mikrodroid token
-        if: steps.plan.outputs.mode == 'pr-preview' || steps.plan.outputs.mode == 'release-preview'
+        if: steps.plan.outputs.mode == 'pr-preview' || steps.plan.outputs.mode ==
+          'release-preview'
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
@@ -78,7 +80,8 @@ jobs:
       # left in a "still labeled" state if any downstream step fails. The
       # label is a trigger, not a status — status lives in the Actions UI.
       - name: Remove preview label
-        if: steps.plan.outputs.mode == 'pr-preview' || steps.plan.outputs.mode == 'release-preview'
+        if: steps.plan.outputs.mode == 'pr-preview' || steps.plan.outputs.mode ==
+          'release-preview'
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -102,10 +105,11 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Init submodules
-        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
+          packages/@mikrojs/native/deps/nanocbor
 
       - uses: ./.github/actions/setup-pnpm
 
@@ -125,7 +129,8 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # ratchet:actions/upload-artifact@v7
         with:
           name: prebuild-${{ matrix.platform }}-${{ matrix.arch }}
-          path: packages/@mikrojs/native/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/
+          path: packages/@mikrojs/native/prebuilds/${{ matrix.platform }}-${{ matrix.arch
+            }}/
           if-no-files-found: error
           retention-days: 7
 
@@ -136,9 +141,10 @@ jobs:
     outputs:
       chips: ${{ steps.read.outputs.chips }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - id: read
-        run: echo "chips=$(jq -c .chips packages/@mikrojs/firmware/chips.json)" >> "$GITHUB_OUTPUT"
+        run: echo "chips=$(jq -c .chips packages/@mikrojs/firmware/chips.json)" >>
+          "$GITHUB_OUTPUT"
 
   build-firmware:
     needs: [plan, firmware-setup]
@@ -150,7 +156,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: espressif/idf:v6.1
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
 
@@ -186,7 +192,7 @@ jobs:
           permission-contents: write # tag push + GitHub Release
           permission-pull-requests: write # PR-preview conversation comments
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -196,7 +202,8 @@ jobs:
         # nanocbor must be checked out so the `deps/nanocbor` entries in
         # @mikrojs/native's `files` match at pack time — the published
         # ESP-IDF component compiles nanocbor straight from the package.
-        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
+          packages/@mikrojs/native/deps/nanocbor
 
       - uses: ./.github/actions/setup-pnpm
         with:
@@ -216,7 +223,8 @@ jobs:
       # firmware-build action — using one source of truth ensures sys.version
       # in the firmware matches the version published to npm.
       - name: Set version
-        run: pnpm --silent releaser bump --mode release --set ${{ needs.plan.outputs.version }}
+        run: pnpm --silent releaser bump --mode release --set ${{
+          needs.plan.outputs.version }}
 
       - run: pnpm -r --if-present run build:ts
 
@@ -312,7 +320,8 @@ jobs:
             --firmware-dir packages/@mikrojs/firmware/prebuilds
 
       - name: Comment on PR (preview modes only)
-        if: (needs.plan.outputs.mode == 'pr-preview' || needs.plan.outputs.mode == 'release-preview') && inputs.dry_run != true
+        if: (needs.plan.outputs.mode == 'pr-preview' || needs.plan.outputs.mode ==
+          'release-preview') && inputs.dry_run != true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}

@@ -64,17 +64,15 @@ const MODULE_NAMES = [
 
 function getRuntimeModules(outDir: string): RuntimeModule[] {
   const genTargetPath = pathlib.resolve(outDir)
-  return MODULE_NAMES.map(
-    (name): RuntimeModule => ({
-      name,
-      entry: pathlib.join(RUNTIME_MODULES_DIR, `${name}.ts`),
-      target: pathlib.join(genTargetPath, `mikrojs_${name}.h`),
-      esbuildOptions: {
-        minify: true,
-        bundle: true,
-      },
-    }),
-  )
+  return MODULE_NAMES.map((name): RuntimeModule => ({
+    name,
+    entry: pathlib.join(RUNTIME_MODULES_DIR, `${name}.ts`),
+    target: pathlib.join(genTargetPath, `mikrojs_${name}.h`),
+    esbuildOptions: {
+      minify: true,
+      bundle: true,
+    },
+  }))
 }
 
 /**

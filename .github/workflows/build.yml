@@ -10,11 +10,11 @@ jobs:
   packages:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: pnpm
@@ -25,11 +25,11 @@ jobs:
   docs:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: pnpm
@@ -40,14 +40,15 @@ jobs:
   lib:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Init submodules
-        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
+          packages/@mikrojs/native/deps/nanocbor
 
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: pnpm
@@ -58,21 +59,23 @@ jobs:
       # @mikrojs/registry, which it imports from that package's built dist.
       - run: pnpm build:ts
 
-      - run: cmake -B packages/@mikrojs/native/build packages/@mikrojs/native -DBUILD_TESTING=ON
+      - run: cmake -B packages/@mikrojs/native/build packages/@mikrojs/native
+          -DBUILD_TESTING=ON
       - run: cmake --build packages/@mikrojs/native/build
       - run: ctest --test-dir packages/@mikrojs/native/build --output-on-failure
 
   sanitizers:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Init submodules
-        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
+          packages/@mikrojs/native/deps/nanocbor
 
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: pnpm
@@ -85,9 +88,10 @@ jobs:
 
       - run: >
           cmake -B packages/@mikrojs/native/build-asan packages/@mikrojs/native
-          -DBUILD_TESTING=ON
-          -DCMAKE_C_FLAGS="-fsanitize=address,undefined -g -fno-omit-frame-pointer"
-          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -g -fno-omit-frame-pointer"
+          -DBUILD_TESTING=ON -DCMAKE_C_FLAGS="-fsanitize=address,undefined -g
+          -fno-omit-frame-pointer"
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -g
+          -fno-omit-frame-pointer"
           -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
       - run: cmake --build packages/@mikrojs/native/build-asan
       - run: ctest --test-dir packages/@mikrojs/native/build-asan --output-on-failure
@@ -99,14 +103,15 @@ jobs:
   coverage:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Init submodules
-        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
+        run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
+          packages/@mikrojs/native/deps/nanocbor
 
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
 
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: pnpm
@@ -119,9 +124,11 @@ jobs:
 
       - run: pip install gcovr
 
-      - run: cmake -B packages/@mikrojs/native/build-coverage packages/@mikrojs/native -DBUILD_TESTING=ON -DMIKROJS_COVERAGE=ON
+      - run: cmake -B packages/@mikrojs/native/build-coverage packages/@mikrojs/native
+          -DBUILD_TESTING=ON -DMIKROJS_COVERAGE=ON
       - run: cmake --build packages/@mikrojs/native/build-coverage
-      - run: ctest --test-dir packages/@mikrojs/native/build-coverage --output-on-failure
+      - run: ctest --test-dir packages/@mikrojs/native/build-coverage
+          --output-on-failure
 
       # gcovr.cfg holds the filters and the fail-under-line ratchet
       - run: gcovr build-coverage
