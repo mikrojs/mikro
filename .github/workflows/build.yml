@@ -12,14 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2
         with:
-          node-version: 24
-          cache: pnpm
+          runtime: node@24
+          cache: true
+          require-lockfile: true
 
-      - run: pnpm install --frozen-lockfile
       - run: pnpm build:ts
 
   docs:
@@ -27,14 +25,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2
         with:
-          node-version: 24
-          cache: pnpm
+          runtime: node@24
+          cache: true
+          require-lockfile: true
 
-      - run: pnpm install --frozen-lockfile
       - run: pnpm build:docs
 
   lib:
@@ -46,14 +42,11 @@ jobs:
         run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
           packages/@mikrojs/native/deps/nanocbor
 
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2
         with:
-          node-version: 24
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+          runtime: node@24
+          cache: true
+          require-lockfile: true
 
       # The test build generates check-in wire fixtures from
       # @mikrojs/registry, which it imports from that package's built dist.
@@ -73,14 +66,11 @@ jobs:
         run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
           packages/@mikrojs/native/deps/nanocbor
 
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2
         with:
-          node-version: 24
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+          runtime: node@24
+          cache: true
+          require-lockfile: true
 
       # The test build generates check-in wire fixtures from
       # @mikrojs/registry, which it imports from that package's built dist.
@@ -109,14 +99,11 @@ jobs:
         run: git submodule update --init packages/@mikrojs/quickjs/deps/quickjs
           packages/@mikrojs/native/deps/nanocbor
 
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2
         with:
-          node-version: 24
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+          runtime: node@24
+          cache: true
+          require-lockfile: true
 
       # The test build generates check-in wire fixtures from
       # @mikrojs/registry, which it imports from that package's built dist.

@@ -8,26 +8,18 @@ inputs:
     description: Pass --ignore-scripts to pnpm install (skips postinstall hooks like
       cmake-js)
     default: 'false'
-  registry-url:
-    description: Optional npm registry URL (sets up auth)
-    default: ''
 runs:
   using: composite
   steps:
-    - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
-
-    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+    # pnpm/setup has no --ignore-scripts input, so that path installs in the
+    # step below instead.
+    - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2
       with:
-        node-version: ${{ inputs.node-version }}
-        cache: pnpm
-        registry-url: ${{ inputs.registry-url }}
+        runtime: node@${{ inputs.node-version }}
+        cache: true
+        install: ${{ inputs.ignore-scripts != 'true' }}
+        require-lockfile: true
 
-    - shell: bash
-      env:
-        IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
-      run: |
-        if [ "$IGNORE_SCRIPTS" = "true" ]; then
-          pnpm install --frozen-lockfile --ignore-scripts
-        else
-          pnpm install --frozen-lockfile
-        fi
+    - if: inputs.ignore-scripts == 'true'
+      shell: bash
+      run: pnpm install --frozen-lockfile --ignore-scripts

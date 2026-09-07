@@ -208,7 +208,6 @@ jobs:
       - uses: ./.github/actions/setup-pnpm
         with:
           ignore-scripts: 'true' # no C++ toolchain on this runner; pure-TS dists only
-          registry-url: https://registry.npmjs.org
 
       # ignore-scripts skips the @mikrojs/quickjs postinstall that applies the
       # mikrojs-local QuickJS patches. Apply them explicitly so the packed
@@ -293,9 +292,10 @@ jobs:
             ${{ inputs.dry_run && '--dry-run' || '' }}
         env:
           # OIDC trusted publishing: no token needed. Trust relationships are
-          # configured per package via `pnpm trust:setup`. Token fallback
-          # (uncomment if a package's trusted publisher isn't yet configured):
-          # NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # configured per package via `pnpm trust:setup`. Token fallback (if a
+          # package's trusted publisher isn't yet configured): add a step that
+          # appends `//registry.npmjs.org/:_authToken=$NPM_TOKEN` to ~/.npmrc.
+          # Nothing writes one now that setup-node is gone.
           NPM_CONFIG_PROVENANCE: 'true'
           GITHUB_REPOSITORY: ${{ github.repository }}
 
