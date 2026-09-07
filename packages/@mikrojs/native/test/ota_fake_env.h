@@ -272,13 +272,14 @@ public:
         c_env_.kv_set_blob = [](void* op, const char* k, const uint8_t* d, size_t l) -> bool {
             return static_cast<FakeOtaEnv*>(op)->KvSetBlob(k, d, l);
         };
-        c_env_.kv_get_str = [](void* op, const char* k, char* out, size_t max_len) -> bool {
+        c_env_.kv_get_str = [](void* op, const char* k, char* out,
+                               size_t max_len) -> MIKOtaKvStatus {
             return static_cast<FakeOtaEnv*>(op)->KvGetStr(k, out, max_len);
         };
         c_env_.kv_set_str = [](void* op, const char* k, const char* val) -> bool {
             return static_cast<FakeOtaEnv*>(op)->KvSetStr(k, val);
         };
-        c_env_.kv_get_i32 = [](void* op, const char* k, int32_t* out) -> bool {
+        c_env_.kv_get_i32 = [](void* op, const char* k, int32_t* out) -> MIKOtaKvStatus {
             return static_cast<FakeOtaEnv*>(op)->KvGetI32(k, out);
         };
         c_env_.kv_set_i32 = [](void* op, const char* k, int32_t val) -> bool {
@@ -497,6 +498,11 @@ public:
      * answer, which is what heap pressure actually looks like. */
     std::set<std::string> fail_blob_keys;
 
+    /* The same two knobs for the string and integer getters. The retry budget
+     * lives behind those, so this is what exercises the crash-loop bound. */
+    bool fail_value_reads = false;
+    std::set<std::string> fail_value_keys;
+
     MIKOtaKvStatus KvGetBlob(const char* k, uint8_t* out, size_t* len) {
         if (fail_blob_reads || fail_blob_keys.count(k)) return MIK_OTA_KV_ERROR;
         auto it = kv_blobs.find(k);
@@ -514,11 +520,17 @@ public:
         kv_blobs[k] = std::vector<uint8_t>(d, d + l);
         return true;
     }
-    bool KvGetStr(const char* k, char* out, size_t max_len) {
+    MIKOtaKvStatus KvGetStr(const char* k, char* out, size_t max_len) {
+        if (fail_value_reads || fail_value_keys.count(k)) return MIK_OTA_KV_ERROR;
         auto it = kv_strings.find(k);
-        if (it == kv_strings.end()) return false;
+        if (it == kv_strings.end()) return MIK_OTA_KV_ABSENT;
+        /* The device decodes into the caller's buffer and reports a failed read
+         * past it rather than truncating (mik__kv_decode_str). A fake that
+         * truncates instead answers OK with a value that was never stored, and
+         * hides the wedge a value too long to read back leaves behind. */
+        if (it->second.size() + 1 > max_len) return MIK_OTA_KV_ERROR;
         snprintf(out, max_len, "%s", it->second.c_str());
-        return true;
+        return MIK_OTA_KV_OK;
     }
     bool KvSetStr(const char* k, const char* val) {
         /* The device encodes into a 320-byte buffer and fails past it rather
@@ -529,11 +541,12 @@ public:
         kv_strings[k] = value;
         return true;
     }
-    bool KvGetI32(const char* k, int32_t* out) {
+    MIKOtaKvStatus KvGetI32(const char* k, int32_t* out) {
+        if (fail_value_reads || fail_value_keys.count(k)) return MIK_OTA_KV_ERROR;
         auto it = kv_i32s.find(k);
-        if (it == kv_i32s.end()) return false;
+        if (it == kv_i32s.end()) return MIK_OTA_KV_ABSENT;
         *out = it->second;
-        return true;
+        return MIK_OTA_KV_OK;
     }
     bool KvSetI32(const char* k, int32_t val) {
         kv_i32s[k] = val;

@@ -354,7 +354,8 @@ JSValue kv_string_or_undefined(JSContext* ctx, const char* key) {
     MIKOtaClientState* state = state_of(ctx);
     if (!state || !state->env || !state->env->kv_get_str) return JS_UNDEFINED;
     char buf[256] = {};
-    if (!state->env->kv_get_str(state->env->opaque, key, buf, sizeof(buf)) || buf[0] == '\0') {
+    if (state->env->kv_get_str(state->env->opaque, key, buf, sizeof(buf)) != MIK_OTA_KV_OK ||
+        buf[0] == '\0') {
         return JS_UNDEFINED;
     }
     return JS_NewString(ctx, buf);

@@ -105,11 +105,13 @@ bool env_kv_set_blob(void*, const char* key, const uint8_t* data, size_t len) {
     return kv_write_blob(key, data, len);
 }
 
-bool env_kv_get_str(void*, const char* key, char* out, size_t max_len) {
+MIKOtaKvStatus env_kv_get_str(void*, const char* key, char* out, size_t max_len) {
     uint8_t buf[320];
     size_t len = sizeof(buf);
-    if (kv_read_blob(key, buf, &len) != MIK_OTA_KV_OK) return false;
-    return mik__kv_decode_str(buf, len, out, max_len);
+    MIKOtaKvStatus status = kv_read_blob(key, buf, &len);
+    if (status != MIK_OTA_KV_OK) return status;
+    /* Stored bytes that will not decode are corruption, not absence. */
+    return mik__kv_decode_str(buf, len, out, max_len) ? MIK_OTA_KV_OK : MIK_OTA_KV_ERROR;
 }
 
 bool env_kv_set_str(void*, const char* key, const char* value) {
@@ -119,11 +121,12 @@ bool env_kv_set_str(void*, const char* key, const char* value) {
     return kv_write_blob(key, buf, needed);
 }
 
-bool env_kv_get_i32(void*, const char* key, int32_t* out) {
+MIKOtaKvStatus env_kv_get_i32(void*, const char* key, int32_t* out) {
     uint8_t buf[16];
     size_t len = sizeof(buf);
-    if (kv_read_blob(key, buf, &len) != MIK_OTA_KV_OK) return false;
-    return mik__kv_decode_i32(buf, len, out);
+    MIKOtaKvStatus status = kv_read_blob(key, buf, &len);
+    if (status != MIK_OTA_KV_OK) return status;
+    return mik__kv_decode_i32(buf, len, out) ? MIK_OTA_KV_OK : MIK_OTA_KV_ERROR;
 }
 
 bool env_kv_set_i32(void*, const char* key, int32_t value) {

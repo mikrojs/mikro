@@ -354,10 +354,13 @@ bool MIKOtaClient::Enrollment(std::string* out_url, std::string* out_bearer) con
     char url[256] = {};
     char bearer[128] = {};
     if (!env_ || !env_->kv_get_str) return false;
-    if (!env_->kv_get_str(env_->opaque, "ota.registry", url, sizeof(url)) || url[0] == '\0') {
+    /* A read that failed reads as "not enrolled", which only makes the client
+     * skip the round. Erring the other way would send a half-read update key. */
+    if (env_->kv_get_str(env_->opaque, "ota.registry", url, sizeof(url)) != MIK_OTA_KV_OK ||
+        url[0] == '\0') {
         return false;
     }
-    if (!env_->kv_get_str(env_->opaque, "ota.updateKey", bearer, sizeof(bearer)) ||
+    if (env_->kv_get_str(env_->opaque, "ota.updateKey", bearer, sizeof(bearer)) != MIK_OTA_KV_OK ||
         bearer[0] == '\0') {
         return false;
     }
