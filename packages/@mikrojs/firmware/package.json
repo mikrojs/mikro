@@ -51,7 +51,7 @@
   "dependencies": {
     "@mikrojs/native": "workspace:*",
     "@mikrojs/quickjs": "workspace:*",
-    "esbuild": "^0.28.0"
+    "esbuild": "^0.28.2"
   },
   "engines": {
     "node": ">=24.0.0"

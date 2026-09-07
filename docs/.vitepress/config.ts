@@ -7,15 +7,10 @@ import {abbrPlugin} from './markdown-abbr.js'
 
 export default defineConfig({
   title: 'Mikro.js',
-  tagline: 'Mikro.js - Modern JavaScript, type safety and instant refresh on real hardware',
   appearance: 'dark',
 
   vite: {
-    plugins: [
-      //@ts-expect-error
-      groupIconVitePlugin(),
-      llmstxt({domain: 'https://mikrojs.dev'}),
-    ],
+    plugins: [groupIconVitePlugin(), llmstxt({domain: 'https://mikrojs.dev'})],
     esbuild: {
       target: 'es2023',
     },

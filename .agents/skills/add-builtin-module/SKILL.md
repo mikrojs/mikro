@@ -119,9 +119,7 @@ import {type Result, err, ok} from 'mikro/result'
 export function createDevice(config: DeviceConfig): Result<Device, InitError> {
   const result = native.init(config)
   if (!result.ok) return err({type: 'InitFailed', message: result.error ?? 'unknown'})
-  return ok({
-    /* device methods */
-  })
+  return ok({/* device methods */})
 }
 ```
 

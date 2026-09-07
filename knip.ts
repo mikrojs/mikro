@@ -119,10 +119,12 @@ const config = {
   ],
   ignoreDependencies: ['unbarrelify', 'taze'],
   // zizmor and gcovr are installed system-wide (brew/uv/pipx), not via npm.
-  // open/xdg-open are OS-provided (macOS/Linux), used by coverage:lib:open.
-  // `packages/` is how knip reads the `test:ota-unpack` script, which runs a
-  // shell script by path rather than invoking a binary off PATH.
-  ignoreBinaries: ['cmake', 'ctest', 'zizmor', 'gcovr', 'open', 'xdg-open', 'packages/'],
+  // xdg-open is OS-provided, used by coverage:lib:open. strip and cc are
+  // toolchain binaries shelled out to from backfill.ts and quickjs postinstall.
+  ignoreBinaries: ['cmake', 'ctest', 'zizmor', 'gcovr', 'xdg-open', 'strip', 'cc'],
+  // backfill.ts runs the memory_bench binary it just built by path; knip reports
+  // the path prefix as an unresolved import.
+  ignoreUnresolved: ['packages/'],
   // Knip can't trace `import * as` namespace member access or type-only re-exports
   // through barrel files. All remaining "unused" exports/types have been manually
   // verified as used.

@@ -22,9 +22,9 @@
   },
   "devDependencies": {
     "@types/node": "catalog:node24",
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.28.2",
     "tsx": "catalog:",
     "typescript": "catalog:",
-    "wrangler": "^4.85.0"
+    "wrangler": "^4.129.0"
   }
 }

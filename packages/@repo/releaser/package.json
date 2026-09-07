@@ -13,16 +13,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@octokit/rest": "^22.0.0",
+    "@octokit/rest": "^22.0.1",
     "@optique/core": "catalog:",
     "@optique/run": "catalog:",
-    "conventional-changelog-conventionalcommits": "^9.1.0",
-    "conventional-commits-parser": "^6.4.0",
-    "semver": "^7.7.4"
+    "conventional-changelog-conventionalcommits": "^10.4.0",
+    "conventional-commits-parser": "^7.1.2",
+    "semver": "^7.8.5"
   },
   "devDependencies": {
     "@types/node": "catalog:node24",
-    "@types/semver": "^7.7.1",
+    "@types/semver": "^7.8.0",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
