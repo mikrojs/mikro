@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest'
 
+import {string} from '../../schema/schema.js'
 import {makeCreateValue, type NativeKvFns} from '../shared.js'
 
 function fakeNative(setResult: ReturnType<NativeKvFns['set']>): NativeKvFns {
@@ -59,6 +60,21 @@ describe('read failures', () => {
     expect(removed).toEqual([])
     expect(written).toEqual([])
     expect(seen).toHaveLength(1)
+  })
+
+  it('keeps the stored value when the read succeeded but a handler throws', () => {
+    // The value decoded fine, so nothing about it is corrupt: a throw from
+    // parse() or from onReadError must not be read as the corruption marker.
+    const {native, removed} = recordingNative(() => 42)
+    const createValue = makeCreateValue(native)
+    const v = createValue('k', {
+      schema: string(),
+      onReadError: () => {
+        throw new TypeError('handler bug')
+      },
+    }) as {get: () => unknown}
+    expect(() => v.get()).toThrow('handler bug')
+    expect(removed).toEqual([])
   })
 
   it('returns undefined on a transient failure with no onReadError', () => {

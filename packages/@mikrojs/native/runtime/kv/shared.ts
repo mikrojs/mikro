@@ -58,18 +58,12 @@ export function makeCreateValue(native: NativeKvFns) {
     const onReadError = options?.onReadError ?? (() => undefined)
 
     function doGet(): unknown {
+      let v: unknown
+      // Only the native read is guarded: a throw from parse() or from the
+      // handler itself is a caller bug, and treating it as corruption would
+      // delete data that read back fine.
       try {
-        const v = native.get(key)
-        if (v === undefined) return hasInitialValue ? initialValue : undefined
-        if (schema) {
-          const result = parse(schema, v)
-          if (!result.ok) {
-            // Schema mismatch: data decoded fine, don't delete it
-            return onReadError(result.error)
-          }
-          return result.value
-        }
-        return v
+        v = native.get(key)
       } catch (e) {
         // TypeError is the native's corruption marker (stored bytes that do
         // not decode): delete and heal. Anything else is a transient read
@@ -83,6 +77,14 @@ export function makeCreateValue(native: NativeKvFns) {
         }
         return onReadError(e)
       }
+      if (v === undefined) return hasInitialValue ? initialValue : undefined
+      if (schema) {
+        const result = parse(schema, v)
+        // Schema mismatch: data decoded fine, don't delete it
+        if (!result.ok) return onReadError(result.error)
+        return result.value
+      }
+      return v
     }
 
     function doSet(value: unknown) {
