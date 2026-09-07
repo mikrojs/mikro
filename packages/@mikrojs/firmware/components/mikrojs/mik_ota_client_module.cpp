@@ -75,6 +75,10 @@ struct MIKOtaClientState {
      * only copy left after ota.reconcile() ran. settle() marks it delivered. */
     bool has_last_install = false;
     MIKOtaDiagnostic last_install = {};
+    /* Set by report() when the stored decline made it into the body, so settle()
+     * clears only a record the registry has seen. A read that failed leaves the
+     * record for the next round. */
+    bool decline_reported = false;
 };
 
 int mik__ota_client_slot = -1;
@@ -911,7 +915,8 @@ JSValue ota_report(JSContext* ctx, JSValue, int, JSValue*) {
      * decline(). Without it a registry cannot tell a device still working
      * through a download from one that has stopped. */
     MIKOtaDeclineRecord declined;
-    if (mikrojs::MIKOtaStore(env).GetDecline(&declined)) {
+    state->decline_reported = mikrojs::MIKOtaStore(env).GetDecline(&declined);
+    if (state->decline_reported) {
         JSValue last = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, last, "checksum", JS_NewString(ctx, declined.checksum));
         JS_SetPropertyStr(ctx, last, "reason", JS_NewString(ctx, declined.reason));
@@ -960,10 +965,13 @@ JSValue ota_settle(JSContext* ctx, JSValue, int argc, JSValue* argv) {
     /* Confirm before the deliveries, as the built-in does: it must settle the
      * document held BEFORE this round, never the one about to be armed. */
     mikrojs::mik__ota_policy_confirm(state->env);
-    /* The round completed, so the cached install report and the stored decline
-     * record were delivered. */
+    /* The round completed, so the cached install report was delivered, and so
+     * was the stored decline record if report() carried it. */
     state->has_last_install = false;
-    mikrojs::MIKOtaStore(state->env).ClearDecline();
+    if (state->decline_reported) {
+        mikrojs::MIKOtaStore(state->env).ClearDecline();
+        state->decline_reported = false;
+    }
 
     bool renamed = false;
     if (usable) {
