@@ -162,6 +162,53 @@ TEST_CASE_FIXTURE(TimerFixture, "setInterval repeats until cleared" *
     CHECK(global_int("__ticks") == 3);
 }
 
+namespace {
+
+/* Lets a JS callback consume fake clock time, standing in for a slow callback. */
+static JSValue js_advance_ms(JSContext* ctx, JSValue, int, JSValue* argv) {
+    int32_t ms = 0;
+    JS_ToInt32(ctx, &ms, argv[0]);
+    g_now_us += static_cast<int64_t>(ms) * 1000;
+    return JS_UNDEFINED;
+}
+
+}  // namespace
+
+TEST_CASE_FIXTURE(TimerFixture, "setInterval is drift-free and never bursts after a stall" *
+                                    doctest::test_suite("timers")) {
+    JSValue g = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, g, "__advance", JS_NewCFunction(ctx, js_advance_ms, "__advance", 1));
+    JS_FreeValue(ctx, g);
+
+    /* scheduled at t=1ms with a 10ms period: deadlines 11, 21, 31, ...; every
+     * callback burns 6ms of the period */
+    eval("globalThis.__ticks = 0\n"
+         "setInterval(() => { globalThis.__ticks++; __advance(6) }, 10)\n");
+    REQUIRE(rt->timers->entries.size() == 1);
+    const auto& entry = rt->timers->entries[0];
+    CHECK(entry.next_deadline == 11000);
+
+    advance_ms(11); /* t=12: fires 1ms late, callback ends at t=18 */
+    MIK_Loop(rt);
+    CHECK(global_int("__ticks") == 1);
+    CHECK(entry.next_deadline == 21000); /* previous deadline + period, not 12 + 10 or 18 + 10 */
+
+    advance_ms(3); /* t=21: exactly on the grid */
+    MIK_Loop(rt);
+    CHECK(global_int("__ticks") == 2);
+    CHECK(entry.next_deadline == 31000);
+
+    advance_ms(28); /* t=55: stalled past the 31, 41 and 51 deadlines */
+    MIK_Loop(rt);
+    CHECK(global_int("__ticks") == 3); /* one fire, not three */
+    CHECK(entry.next_deadline == 65000); /* resumes from now (55) + period */
+    MIK_Loop(rt); /* t=61: nothing to catch up */
+    CHECK(global_int("__ticks") == 3);
+    advance_ms(4); /* t=65 */
+    MIK_Loop(rt);
+    CHECK(global_int("__ticks") == 4);
+}
+
 TEST_CASE_FIXTURE(TimerFixture, "an interval can clear itself mid-callback" *
                                     doctest::test_suite("timers")) {
     eval("globalThis.__self = 0\n"
