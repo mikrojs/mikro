@@ -65,7 +65,7 @@ When `mik__timers_consume()` runs:
 
 1. Get current time from `platform->get_boot_us()`
 2. Collect IDs of all due timers into a stack buffer (up to 16 per iteration)
-3. For interval timers, reset `next_deadline` to `now + timeout` before calling the callback (prevents re-firing if the callback takes longer than the interval; note this means intervals can drift relative to the original schedule)
+3. For interval timers, advance `next_deadline` by `timeout` before calling the callback, so the rate stays exact and the phase does not drift as long as the callback fits within the period. If the advanced deadline is still at or before `now` (the loop stalled for a whole period, or the callback runs longer than the interval), `next_deadline` becomes `now + timeout` instead: the timer resumes from now rather than firing back-to-back to catch up
 4. For each due timer ID, re-find the timer entry (a previous callback in the same batch may have cleared it), then duplicate the function and arguments and call `JS_Call()`
 5. After calling, free the duplicated values
 6. For `setTimeout` timers, unschedule after firing

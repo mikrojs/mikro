@@ -155,9 +155,13 @@ void mik__timers_consume(JSContext* ctx) {
             if (due_count < MIK_MAX_DUE_TIMERS) {
                 due_ids[due_count++] = entry.id;
             }
-            // Update interval deadlines before executing callbacks
+            // Drift-free: advance from the previous deadline, not from now, so the rate
+            // stays exact. After a stall of a whole period, resume from now; never burst.
             if (entry.is_interval) {
-                entry.next_deadline = entry.timeout + platform->get_boot_us();
+                entry.next_deadline += entry.timeout;
+                if (entry.next_deadline <= now) {
+                    entry.next_deadline = now + entry.timeout;
+                }
             }
         }
     }
