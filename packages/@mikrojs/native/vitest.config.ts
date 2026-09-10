@@ -10,7 +10,10 @@ export default defineConfig({
     alias: [
       {
         find: 'mikro/observable/operators',
-        replacement: path.resolve(import.meta.dirname, 'runtime/observable/operators.ts'),
+        replacement: path.resolve(
+          import.meta.dirname,
+          'runtime/observable/native-operators.node-shim.ts',
+        ),
       },
       {
         find: 'mikro/observable',

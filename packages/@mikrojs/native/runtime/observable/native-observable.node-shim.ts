@@ -167,7 +167,7 @@ class Subscription {
   }
 }
 
-type SubscribeCallback<T> = (sub: Subscriber<T>) => void
+type SubscribeCallback<T> = (sub: Subscriber<T>) => void | (() => void)
 
 export class Observable<Ok, Err = never> {
   // The shim doesn't actually use `_phantom` at runtime; the type parameters are
@@ -183,15 +183,46 @@ export class Observable<Ok, Err = never> {
   }
 
   subscribe(observer?: unknown): Subscription {
-    if (!dispatchActive) panicked = false
     const sub = new Subscriber<unknown>(observer)
+    this.start(sub)
+    return new Subscription(sub)
+  }
+
+  /* Run the producer against a subscriber built by the caller. */
+  private start(sub: Subscriber<unknown>): void {
+    if (!dispatchActive) panicked = false
+    let teardown: void | (() => void)
     try {
-      this.#cb(sub)
+      teardown = this.#cb(sub)
     } catch (err) {
       sub.closeSilently()
       throw err
     }
-    return new Subscription(sub)
+    /* A returned function is a teardown, as if passed to addTeardown() last. */
+    if (typeof teardown === 'function') sub.addTeardown(teardown)
+  }
+
+  /* For the operators shim, mirroring forward() in mik_observable.cpp: the
+   * upstream subscriber joins `down`'s teardowns before the producer runs, so
+   * a chain that completes during setup already closes it, and a closed
+   * `down` subscribes nothing. */
+  static forward(
+    source: Observable<unknown, unknown>,
+    down: {closed: boolean; addTeardown(fn: () => void): void},
+    observer: unknown,
+  ): void {
+    if (down.closed) return
+    const up = new Subscriber<unknown>(observer)
+    down.addTeardown(() => up.closeSilently())
+    source.start(up)
+  }
+
+  /* Subscribe and hand back a handle the caller closes itself (switchMap's
+   * inner stream, whose lifetime the operator manages). */
+  static start(source: Observable<unknown, unknown>, observer: unknown): {close(): void} {
+    const up = new Subscriber<unknown>(observer)
+    source.start(up)
+    return {close: () => up.closeSilently()}
   }
 
   pipe(...ops: Array<(o: Observable<unknown, unknown>) => Observable<unknown, unknown>>) {
@@ -203,39 +234,6 @@ export class Observable<Ok, Err = never> {
       current = op(current)
     }
     return current
-  }
-
-  static from(src: unknown): Observable<unknown, unknown> {
-    if (src instanceof Observable) return src
-    if (
-      src != null &&
-      (typeof src === 'object' || typeof src === 'function') &&
-      typeof (src as {then?: unknown}).then === 'function'
-    ) {
-      // Promise-shaped
-      return new Observable<unknown>((sub) => {
-        ;(src as PromiseLike<unknown>).then((value) => {
-          if (sub.closed) return
-          sub.next(value)
-          if (sub.closed) return
-          sub.complete()
-        })
-      })
-    }
-    if (
-      src != null &&
-      (typeof src === 'object' || typeof src === 'string') &&
-      typeof (src as {[Symbol.iterator]?: unknown})[Symbol.iterator] === 'function'
-    ) {
-      return new Observable<unknown>((sub) => {
-        for (const value of src as Iterable<unknown>) {
-          if (sub.closed || panicked) return
-          sub.next(value)
-        }
-        if (!sub.closed) sub.complete()
-      })
-    }
-    throw new TypeError('Observable.from: source must be a Promise, Iterable, or Observable')
   }
 
   static withEmitters<Ok, Err = never>(): {
@@ -281,4 +279,42 @@ export class Observable<Ok, Err = never> {
 
     return {observable: observable as unknown as Observable<Ok, Err>, next, complete}
   }
+}
+
+/* Mirrors the C module exports: from(source) and of(...values). */
+export function from(src: unknown): Observable<unknown, unknown> {
+  if (
+    src != null &&
+    (typeof src === 'object' || typeof src === 'function') &&
+    typeof (src as {then?: unknown}).then === 'function'
+  ) {
+    // Promise-shaped
+    return new Observable<unknown>((sub) => {
+      ;(src as PromiseLike<unknown>).then((value) => {
+        if (sub.closed) return
+        sub.next(value)
+        if (sub.closed) return
+        sub.complete()
+      })
+    })
+  }
+  if (
+    src != null &&
+    (typeof src === 'object' || typeof src === 'string') &&
+    typeof (src as {[Symbol.iterator]?: unknown})[Symbol.iterator] === 'function'
+  ) {
+    return new Observable<unknown>((sub) => {
+      for (const value of src as Iterable<unknown>) {
+        if (sub.closed || panicked) return
+        sub.next(value)
+      }
+      if (!sub.closed) sub.complete()
+    })
+  }
+  throw new TypeError('from: source must be a Promise or an Iterable')
+}
+
+/* of(...values): from() over the argument array. */
+export function of(...values: unknown[]): Observable<unknown, unknown> {
+  return from(values)
 }

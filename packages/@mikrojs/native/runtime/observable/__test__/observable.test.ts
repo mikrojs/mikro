@@ -1,4 +1,4 @@
-import {Observable} from 'mikro/observable'
+import {from, Observable} from 'mikro/observable'
 import {filter, finalize, map, take, takeUntil} from 'mikro/observable/operators'
 import {describe, expect, test, vi} from 'vitest'
 
@@ -175,12 +175,33 @@ describe('Observable primitive', () => {
       }).subscribe(),
     ).toThrow('producer-fail')
   })
+
+  test('a function returned from the subscribe callback is a teardown', () => {
+    const trace: string[] = []
+    const sub = new Observable<number>((s) => {
+      s.addTeardown(() => trace.push('added'))
+      return () => trace.push('returned')
+    }).subscribe()
+    expect(trace).toEqual([])
+    sub.unsubscribe()
+    /* Registered last, so it runs first. */
+    expect(trace).toEqual(['returned', 'added'])
+  })
+
+  test('a returned teardown runs at once when setup already completed', () => {
+    const trace: string[] = []
+    new Observable<number>((s) => {
+      s.complete()
+      return () => trace.push('returned')
+    }).subscribe()
+    expect(trace).toEqual(['returned'])
+  })
 })
 
-describe('Observable.from', () => {
+describe('from', () => {
   test('iterable drains synchronously', () => {
     const log: Array<number | string> = []
-    Observable.from([10, 20, 30]).subscribe({
+    from([10, 20, 30]).subscribe({
       next: (v) => log.push(v),
       complete: () => log.push('done'),
     })
@@ -189,7 +210,7 @@ describe('Observable.from', () => {
 
   test('promise emits then completes', async () => {
     const log: Array<unknown> = []
-    Observable.from(Promise.resolve('hi')).subscribe({
+    from(Promise.resolve('hi')).subscribe({
       next: (v) => log.push(v),
       complete: () => log.push('done'),
     })
@@ -197,19 +218,8 @@ describe('Observable.from', () => {
     expect(log).toEqual(['hi', 'done'])
   })
 
-  test('passthrough on Observable instances', () => {
-    const a = new Observable<number>((sub) => {
-      sub.next(1)
-      sub.complete()
-    })
-    const b = Observable.from(a)
-    expect(b).toBe(a)
-  })
-
   test('rejects unsupported sources', () => {
-    expect(() => Observable.from(42 as unknown as Iterable<number>)).toThrow(
-      /Promise, Iterable, or Observable/,
-    )
+    expect(() => from(42 as unknown as Iterable<number>)).toThrow(/Promise or an Iterable/)
   })
 })
 
@@ -323,7 +333,7 @@ describe('dispatch queue', () => {
       s.complete()
     }).subscribe(() => {
       let got: number | string = 'none'
-      Observable.from([7]).subscribe((x) => {
+      from([7]).subscribe((x) => {
         got = x as number
       })
       log.push(`inline:${got}`)
@@ -356,7 +366,7 @@ describe('dispatch queue', () => {
 describe('pipe + operators', () => {
   test('map transforms values', () => {
     const seen: number[] = []
-    Observable.from([1, 2, 3])
+    from([1, 2, 3])
       .pipe(map((v) => v * 10))
       .subscribe((v) => seen.push(v))
     expect(seen).toEqual([10, 20, 30])
@@ -364,7 +374,7 @@ describe('pipe + operators', () => {
 
   test('filter drops values', () => {
     const seen: number[] = []
-    Observable.from([1, 2, 3, 4])
+    from([1, 2, 3, 4])
       .pipe(filter((v) => v % 2 === 0))
       .subscribe((v) => seen.push(v))
     expect(seen).toEqual([2, 4])
@@ -372,7 +382,7 @@ describe('pipe + operators', () => {
 
   test('take limits emissions and completes', () => {
     const log: Array<number | string> = []
-    Observable.from([1, 2, 3, 4, 5])
+    from([1, 2, 3, 4, 5])
       .pipe(take(2))
       .subscribe({
         next: (v) => log.push(v),
@@ -383,7 +393,7 @@ describe('pipe + operators', () => {
 
   test('take(0) completes immediately', () => {
     const log: Array<number | string> = []
-    Observable.from([1, 2, 3])
+    from([1, 2, 3])
       .pipe(take(0))
       .subscribe({
         next: (v) => log.push(v),
@@ -407,9 +417,40 @@ describe('pipe + operators', () => {
     expect(log).toEqual([1, 2, 'done'])
   })
 
+  test('takeUntil with a predicate delivers the matching value, then completes', () => {
+    const seen: unknown[] = []
+    from([1, 2, 3, 4])
+      .pipe(takeUntil((n) => n === 3))
+      .subscribe({next: (v) => seen.push(v), complete: () => seen.push('done')})
+    expect(seen).toEqual([1, 2, 3, 'done'])
+  })
+
+  test('takeUntil with inclusive false drops the matching value', () => {
+    const seen: unknown[] = []
+    from([1, 2, 3, 4])
+      .pipe(takeUntil((n) => n === 3, {inclusive: false}))
+      .subscribe({next: (v) => seen.push(v), complete: () => seen.push('done')})
+    expect(seen).toEqual([1, 2, 'done'])
+  })
+
+  test('takeUntil with a predicate releases the source once it fires', () => {
+    let released = false
+    const source = new Observable<number>((s) => {
+      s.addTeardown(() => {
+        released = true
+      })
+      s.next(1)
+      s.next(2)
+    })
+    const seen: number[] = []
+    source.pipe(takeUntil((n) => n === 1)).subscribe((v) => seen.push(v))
+    expect(seen).toEqual([1])
+    expect(released).toBe(true)
+  })
+
   test('takeUntil leaves source alone if notifier merely completes', () => {
     const {observable: source, next: emit} = Observable.withEmitters<number>()
-    const empty = Observable.from<number>([]) // completes without emitting
+    const empty = from<number>([]) // completes without emitting
     const seen: number[] = []
     source.pipe(takeUntil(empty)).subscribe((v) => seen.push(v))
     emit(1)
@@ -419,7 +460,7 @@ describe('pipe + operators', () => {
 
   test('finalize fires on natural completion', () => {
     const events: string[] = []
-    Observable.from([1, 2])
+    from([1, 2])
       .pipe(finalize(() => events.push('finalized')))
       .subscribe({
         next: (v) => events.push(`v:${v}`),
@@ -443,7 +484,7 @@ describe('pipe + operators', () => {
 
   test('chains compose left to right', () => {
     const seen: number[] = []
-    Observable.from([1, 2, 3, 4, 5])
+    from([1, 2, 3, 4, 5])
       .pipe(
         map((v) => v + 1),
         filter((v) => v % 2 === 0),
@@ -456,7 +497,7 @@ describe('pipe + operators', () => {
 
   test('pipe with no operators returns source-equivalent', () => {
     const seen: number[] = []
-    Observable.from([1, 2])
+    from([1, 2])
       .pipe()
       .subscribe((v) => seen.push(v))
     expect(seen).toEqual([1, 2])
@@ -465,7 +506,7 @@ describe('pipe + operators', () => {
   test('map fn throw panics and stops delivery', () => {
     const captured = captureScheduledThrows()
     const seen: number[] = []
-    Observable.from([1, 2, 3])
+    from([1, 2, 3])
       .pipe(
         map((value) => {
           if (value === 2) throw new Error('boom')

@@ -1,9 +1,11 @@
 import type {Observable, Subscriber, Subscription} from '@mikrojs/native/runtime/observable/types'
+import {filter, map, pipe} from 'mikro/observable/operators'
 import type {Result} from 'mikro/result'
 import {expectTypeOf, test} from 'vitest'
 
 declare const observable: Observable<number>
 declare const fallible: Observable<number, MyError>
+declare const mixed: Observable<unknown>
 declare const _sub: Subscriber<string>
 declare const _fallibleSub: Subscriber<string, MyError>
 
@@ -46,4 +48,32 @@ test('subscribe with no args is allowed', () => {
 
 test('subscribe with empty observer object is allowed', () => {
   observable.subscribe({})
+})
+
+test('filter with a type guard narrows the output', () => {
+  const isNumber = (v: unknown): v is number => typeof v === 'number'
+  mixed.pipe(filter(isNumber)).subscribe((v) => {
+    expectTypeOf(v).toEqualTypeOf<number>()
+  })
+  observable.pipe(filter((n) => n > 1)).subscribe((v) => {
+    expectTypeOf(v).toEqualTypeOf<number>()
+  })
+})
+
+test('pipe chains beyond six operators keep their types', () => {
+  const inc = map((n: number) => n + 1)
+  observable.pipe(inc, inc, inc, inc, inc, inc, inc, inc, inc).subscribe((v) => {
+    expectTypeOf(v).toEqualTypeOf<number>()
+  })
+  const op = pipe(inc, inc, inc, inc, inc, inc, inc, inc, inc)
+  op(observable).subscribe((v) => {
+    expectTypeOf(v).toEqualTypeOf<number>()
+  })
+  /* Past nine the result is unknown, but the first nine are still checked. */
+  observable.pipe(inc, inc, inc, inc, inc, inc, inc, inc, inc, inc).subscribe((v) => {
+    expectTypeOf(v).toEqualTypeOf<unknown>()
+  })
+  const toStr = map((n: number) => `${n}`)
+  // @ts-expect-error the third operator receives a string, not a number
+  observable.pipe(inc, toStr, inc, inc, inc, inc, inc, inc, inc, inc)
 })

@@ -1,11 +1,12 @@
-import {Observable} from 'mikro/observable'
+import {from, Observable} from 'mikro/observable'
 import {filter, finalize, map, take, takeUntil} from 'mikro/observable/operators'
 import {assert, describe, test} from 'mikro/test'
 
 /* On-device sanity for the Observable runtime: verifies the C++ class
- * registers under `native:mikro/observable`, the operator bytecode bundle loads
- * and runs, and the runtime's microtask + Promise integration behaves the
- * same as the host doctests. The exhaustive behavioral coverage lives in
+ * registers under `native:mikro/observable`, the native operators module
+ * `mikro/observable/operators` resolves, and the runtime's microtask +
+ * Promise integration behaves the same as the host doctests.
+ * The exhaustive behavioral coverage lives in
  * packages/@mikrojs/native/test/observable_test.cpp; this file only checks
  * the integration paths most likely to drift between host and device. */
 
@@ -123,10 +124,10 @@ describe('observable', () => {
     assert.equal(finalized, 1)
   })
 
-  test('Observable.from(iterable) drains synchronously', () => {
+  test('from(iterable) drains synchronously', () => {
     const seen: number[] = []
     let completed = false
-    Observable.from([10, 20, 30]).subscribe({
+    from([10, 20, 30]).subscribe({
       next: (v) => seen.push(v),
       complete: () => {
         completed = true
@@ -136,10 +137,10 @@ describe('observable', () => {
     assert.equal(completed, true)
   })
 
-  test('Observable.from(promise) emits then completes', async () => {
+  test('from(promise) emits then completes', async () => {
     const seen: number[] = []
     let completed = false
-    Observable.from(Promise.resolve(42)).subscribe({
+    from(Promise.resolve(42)).subscribe({
       next: (v) => seen.push(v),
       complete: () => {
         completed = true
