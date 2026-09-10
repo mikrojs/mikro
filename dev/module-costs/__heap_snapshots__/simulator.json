@@ -37,10 +37,10 @@
       "heapDelta": 11357
     },
     "test/observable-operators.test.ts": {
-      "heapDelta": 14439
+      "heapDelta": 10981
     },
     "test/observable.test.ts": {
-      "heapDelta": 7109
+      "heapDelta": 11217
     },
     "test/ota-client.test.ts": {
       "heapDelta": 61615

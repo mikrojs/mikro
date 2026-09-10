@@ -251,6 +251,7 @@ static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_n
         } c_modules[] = {
             {"mikro/http/helpers", mik__http_helpers_load},
             {"mikro/http/request", mik__http_request_load},
+            {"mikro/observable/operators", mik__observable_operators_load},
             {"mikro/wifi", mik__wifi_client_load},
         };
         for (const auto& cm : c_modules) {

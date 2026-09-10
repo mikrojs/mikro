@@ -310,6 +310,8 @@ JSModuleDef* mik__udp_init(JSContext* ctx);
 /* Observable module (mik_observable.cpp) */
 JSModuleDef* mik__observable_init(JSContext* ctx);
 void mik__observable_dispatch_free(struct MIKRuntime* mik_rt);
+/* mikro/observable/operators, loaded lazily through the C-module table. */
+JSModuleDef* mik__observable_operators_load(JSContext* ctx);
 
 /* Watchdog (mik_watchdog.cpp). */
 /* Start a fresh blocking budget: top of each MIK_Loop pass, eval entry

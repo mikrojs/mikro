@@ -61,12 +61,12 @@
       "sysUsed": 10820
     },
     "test/observable-operators.test.ts": {
-      "heapDelta": 11832,
-      "sysUsed": 15844
+      "heapDelta": 8504,
+      "sysUsed": 10192
     },
     "test/observable.test.ts": {
-      "heapDelta": 5704,
-      "sysUsed": 9284
+      "heapDelta": 9164,
+      "sysUsed": 13352
     },
     "test/ota-client.test.ts": {
       "heapDelta": 7532,

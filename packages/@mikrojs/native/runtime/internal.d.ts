@@ -62,7 +62,7 @@ declare module 'native:mikro/result' {
 }
 
 declare module 'native:mikro/observable' {
-  export {Observable} from '@mikrojs/native/runtime/observable/types'
+  export {from, Observable, of} from '@mikrojs/native/runtime/observable/types'
 }
 
 declare module 'native:mikro/sys' {

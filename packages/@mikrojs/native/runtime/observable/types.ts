@@ -20,7 +20,8 @@ export interface Subscriber<Ok, Err = never> {
   readonly closed: boolean
 }
 
-export type SubscribeCallback<Ok, Err> = (subscriber: Subscriber<Ok, Err>) => void
+/* May return a teardown function, registered as if passed to addTeardown() last. */
+export type SubscribeCallback<Ok, Err> = (subscriber: Subscriber<Ok, Err>) => void | (() => void)
 
 export interface Subscription {
   unsubscribe(): void
@@ -66,11 +67,49 @@ export declare class Observable<Ok, Err = never> {
     op5: OperatorFunction<D, Err, E, Err>,
     op6: OperatorFunction<E, Err, F, Err>,
   ): Observable<F, Err>
-
-  static from<X, E>(p: Promise<Result<X, E>>): Observable<X, E>
-  static from<T>(p: Promise<T>): Observable<T, never>
-  static from<T>(it: Iterable<T>): Observable<T, never>
-  static from<Ok, Err>(o: Observable<Ok, Err>): Observable<Ok, Err>
+  pipe<A, B, C, D, E, F, G>(
+    op1: OperatorFunction<Ok, Err, A, Err>,
+    op2: OperatorFunction<A, Err, B, Err>,
+    op3: OperatorFunction<B, Err, C, Err>,
+    op4: OperatorFunction<C, Err, D, Err>,
+    op5: OperatorFunction<D, Err, E, Err>,
+    op6: OperatorFunction<E, Err, F, Err>,
+    op7: OperatorFunction<F, Err, G, Err>,
+  ): Observable<G, Err>
+  pipe<A, B, C, D, E, F, G, H>(
+    op1: OperatorFunction<Ok, Err, A, Err>,
+    op2: OperatorFunction<A, Err, B, Err>,
+    op3: OperatorFunction<B, Err, C, Err>,
+    op4: OperatorFunction<C, Err, D, Err>,
+    op5: OperatorFunction<D, Err, E, Err>,
+    op6: OperatorFunction<E, Err, F, Err>,
+    op7: OperatorFunction<F, Err, G, Err>,
+    op8: OperatorFunction<G, Err, H, Err>,
+  ): Observable<H, Err>
+  pipe<A, B, C, D, E, F, G, H, I>(
+    op1: OperatorFunction<Ok, Err, A, Err>,
+    op2: OperatorFunction<A, Err, B, Err>,
+    op3: OperatorFunction<B, Err, C, Err>,
+    op4: OperatorFunction<C, Err, D, Err>,
+    op5: OperatorFunction<D, Err, E, Err>,
+    op6: OperatorFunction<E, Err, F, Err>,
+    op7: OperatorFunction<F, Err, G, Err>,
+    op8: OperatorFunction<G, Err, H, Err>,
+    op9: OperatorFunction<H, Err, I, Err>,
+  ): Observable<I, Err>
+  /* Longer chains still compose; type them by hand from the result. */
+  pipe<A, B, C, D, E, F, G, H, I>(
+    op1: OperatorFunction<Ok, Err, A, Err>,
+    op2: OperatorFunction<A, Err, B, Err>,
+    op3: OperatorFunction<B, Err, C, Err>,
+    op4: OperatorFunction<C, Err, D, Err>,
+    op5: OperatorFunction<D, Err, E, Err>,
+    op6: OperatorFunction<E, Err, F, Err>,
+    op7: OperatorFunction<F, Err, G, Err>,
+    op8: OperatorFunction<G, Err, H, Err>,
+    op9: OperatorFunction<H, Err, I, Err>,
+    ...ops: Array<OperatorFunction<any, any, any, any>>
+  ): Observable<unknown, Err>
 
   static withEmitters<Ok, Err = never>(): {
     observable: Observable<Ok, Err>
@@ -78,3 +117,19 @@ export declare class Observable<Ok, Err = never> {
     complete: () => void
   }
 }
+
+/* A state container: values pushed through `next` run through `pipeline`,
+ * and the latest result is replayed to each new subscriber. */
+export declare function state<In, Out>(
+  pipeline: (source: Observable<In>) => Observable<Out>,
+): readonly [value: Observable<Out>, set: (value: In) => void, complete: () => void]
+
+/* Resolve with the first value, or undefined if the source completes without one. */
+export declare function firstValueFrom<T>(source: Observable<T>): Promise<T | undefined>
+
+/* Emit a promise's value, or an iterable's elements in order, then complete. */
+export declare function from<T>(source: Promise<T>): Observable<T>
+export declare function from<T>(source: Iterable<T>): Observable<T>
+
+/* Emit the given values, then complete. */
+export declare function of<T>(...values: T[]): Observable<T>

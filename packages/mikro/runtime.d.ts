@@ -5,13 +5,13 @@ declare module '*.txt' {
   export default mod
 }
 
-/* @mikrojs/native runtime files (e.g. observable/operators.ts) get pulled
- * into mikrojs's typecheck via `_exports/observable/operators.ts` and need
- * the `native:mikro/observable` ambient resolvable from this package too. The
+/* @mikrojs/native runtime files that import `native:mikro/observable` can get
+ * pulled into mikrojs's typecheck through `_exports/*` and need the ambient
+ * resolvable from this package too. The
  * authoritative declaration lives in @mikrojs/native/runtime/internal.d.ts;
  * this mirror keeps mikrojs's tsc from going to `any`. */
 declare module 'native:mikro/observable' {
-  export {Observable} from '@mikrojs/native/runtime/observable/types'
+  export {from, Observable, of} from '@mikrojs/native/runtime/observable/types'
 }
 
 declare interface LogFn {
