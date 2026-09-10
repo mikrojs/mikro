@@ -13,7 +13,7 @@ runs:
   steps:
     # pnpm/setup has no --ignore-scripts input, so that path installs in the
     # step below instead.
-    - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2
+    - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2
       with:
         runtime: node@${{ inputs.node-version }}
         cache: true
