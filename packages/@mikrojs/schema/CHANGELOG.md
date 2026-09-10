@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.20.2 (2026-09-10)
+
+### Features
+
+- **observable:** add state() and a full operator set ([#383](https://github.com/mikrojs/mikro/pull/383))
+
+### Bug fixes
+
+- **timers:** make intervals drift-free ([#381](https://github.com/mikrojs/mikro/pull/381))
+- **deps:** add `@optique` packages to catalog, update to v1.2.5 ([#371](https://github.com/mikrojs/mikro/pull/371))
+- **ota:** stop a failed nvs read from handing back the retry budget ([#369](https://github.com/mikrojs/mikro/pull/369))
+- **ota:** keep a decline record in case nvs read fails ([#370](https://github.com/mikrojs/mikro/pull/370))
+- **kv:** stop a throwing read handler from deleting stored data ([#368](https://github.com/mikrojs/mikro/pull/368))
+- improve error logging pattern ([#367](https://github.com/mikrojs/mikro/pull/367))
+- **runtime:** report failing imports instead of silently hanging ([#365](https://github.com/mikrojs/mikro/pull/365))
+
+### Other
+
+- **deps:** update zizmorcore/zizmor-action action to v0.6.4 ([#382](https://github.com/mikrojs/mikro/pull/382))
+- add heap memory snapshots for esp32 ([#380](https://github.com/mikrojs/mikro/pull/380))
+- **deps:** update dependency oxfmt to ^0.67.0 ([#379](https://github.com/mikrojs/mikro/pull/379))
+- consolidate pnpm and node setup with pnpm/setup v2 action ([#376](https://github.com/mikrojs/mikro/pull/376))
+- **deps:** update dependencies and actions to latest ([#372](https://github.com/mikrojs/mikro/pull/372))
+- exclude submodule dependencies from taze version checking ([#374](https://github.com/mikrojs/mikro/pull/374))
+
 ## 0.20.1 (2026-09-05)
 
 ### Features
