@@ -1,26 +1,31 @@
+#include <cmath>
 #include <cstring>
 
 #include "driver/i2c_master.h"
+#include "soc/soc_caps.h"
+#include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
+#include "mikrojs_esp32.h"
 
-#define MIK_I2C_TAG "native:mikro/i2c"
 #define MIK_I2C_DEFAULT_FREQ 100000
 #define MIK_I2C_DEFAULT_TIMEOUT_MS 100
 #define MIK_I2C_SCAN_START 0x08
 #define MIK_I2C_SCAN_END 0x77
 #define MIK_I2C_MAX_PENDING_WRITE 256
+#define MIK_I2C_MAX_READ 65535
 
 static JSClassID mik_i2c_class_id;
 
 typedef struct {
     i2c_master_bus_handle_t bus;
-    int32_t port;       // 0 or 1
-    int32_t sda;
-    int32_t scl;
+    int port;
+    int sda;
+    int scl;
     uint32_t freq;
-    int32_t timeout_ms;
-    bool begun;
+    int timeout_ms;
+    bool active;
+    bool warned_after_end;
     /* Pending write buffer for stop=false (used with transmit_receive) */
     uint8_t pending_write[MIK_I2C_MAX_PENDING_WRITE];
     size_t pending_write_len;
@@ -49,16 +54,36 @@ static esp_err_t mik__i2c_add_device(MIKI2CState* s, uint16_t addr,
     return i2c_master_bus_add_device(s->bus, &dev_cfg, out_dev);
 }
 
+/* Deletes the bus and releases its GPIO pins. */
+static void mik__i2c_release(MIKI2CState* s) {
+    mik__i2c_clear_pending(s);
+    i2c_del_master_bus(s->bus);
+    s->bus = nullptr;
+    const int gpios[] = {s->sda, s->scl};
+    mik__release_gpios(gpios, countof(gpios), "I2c");
+    s->active = false;
+}
+
+/* True when the handle was ended; the first such call prints a warning. */
+static bool mik__i2c_ended(MIKI2CState* s, const char* call) {
+    if (s->active) return false;
+    mik__warn_after_end(&s->warned_after_end, "I2c", s->port, call, "bus");
+    return true;
+}
+
+/* JS_UNDEFINED for a 7-bit address, else the InvalidParam Result. */
+static JSValue mik__i2c_check_address(JSContext* ctx, double addr) {
+    if (addr >= 0 && addr <= 0x7f && std::trunc(addr) == addr) return JS_UNDEFINED;
+    return mik__result_err_named(ctx, "InvalidParam",
+                                 "address must be an integer from 0 to 0x7f, got %g", addr);
+}
+
 /* ── Finalizer ─────────────────────────────────────────────────────── */
 
 static void mik__i2c_finalizer(JSRuntime* rt, JSValue val) {
     auto* s = static_cast<MIKI2CState*>(JS_GetOpaque(val, mik_i2c_class_id));
     if (!s) return;
-    if (s->begun) {
-        i2c_del_master_bus(s->bus);
-        const int gpios[] = {s->sda, s->scl};
-        mik__release_gpios(gpios, countof(gpios), "I2c");
-    }
+    if (s->active) mik__i2c_release(s);
     free(s);
 }
 
@@ -67,169 +92,115 @@ static JSClassDef mik_i2c_class = {
     .finalizer = mik__i2c_finalizer,
 };
 
-/* ── Constructor ───────────────────────────────────────────────────── */
+/* ── Factory ───────────────────────────────────────────────────────── */
 
-static JSValue js_i2c_constructor(JSContext* ctx, JSValue new_target, int argc, JSValue* argv) {
-    if (argc < 1) return JS_ThrowTypeError(ctx, "I2c requires busNo argument");
-
+/* I2c(bus, {sda, scl, freq?, timeout?}) → Result<I2c, I2cError> */
+static JSValue js_i2c(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     int32_t port;
-    if (JS_ToInt32(ctx, &port, argv[0])) return JS_EXCEPTION;
-    if (port < 0 || port > 1) return JS_ThrowRangeError(ctx, "busNo must be 0 or 1");
+    JSValueConst options;
+    int32_t sda32, scl32;
+    double freq = MIK_I2C_DEFAULT_FREQ;
+    double timeout = MIK_I2C_DEFAULT_TIMEOUT_MS;
+    if (mik__to_int_arg(ctx, argc >= 1 ? argv[0] : JS_UNDEFINED, "bus", &port) ||
+        mik__options_arg(ctx, argc, argv, 1, true, &options) ||
+        mik__int_option(ctx, options, "sda", true, &sda32) ||
+        mik__int_option(ctx, options, "scl", true, &scl32) ||
+        mik__number_option(ctx, options, "freq", false, &freq) ||
+        mik__number_option(ctx, options, "timeout", false, &timeout))
+        return JS_EXCEPTION;
+    int sda = sda32, scl = scl32;
 
-    auto* s = static_cast<MIKI2CState*>(calloc(1, sizeof(MIKI2CState)));
-    if (!s) return JS_ThrowOutOfMemory(ctx);
-
-    s->port = port;
-    s->sda = -1;
-    s->scl = -1;
-    s->freq = MIK_I2C_DEFAULT_FREQ;
-    s->timeout_ms = MIK_I2C_DEFAULT_TIMEOUT_MS;
-    s->begun = false;
-    mik__i2c_clear_pending(s);
-
-    /* Parse options object */
-    if (argc >= 2 && JS_IsObject(argv[1])) {
-        JSValue opts = argv[1];
-        JSValue v;
-
-        v = JS_GetPropertyStr(ctx, opts, "sda");
-        if (!JS_IsUndefined(v)) {
-            if (JS_ToInt32(ctx, &s->sda, v)) {
-                JS_FreeValue(ctx, v);
-                free(s);
-                return JS_EXCEPTION;
-            }
-        }
-        JS_FreeValue(ctx, v);
-
-        v = JS_GetPropertyStr(ctx, opts, "scl");
-        if (!JS_IsUndefined(v)) {
-            if (JS_ToInt32(ctx, &s->scl, v)) {
-                JS_FreeValue(ctx, v);
-                free(s);
-                return JS_EXCEPTION;
-            }
-        }
-        JS_FreeValue(ctx, v);
-
-        v = JS_GetPropertyStr(ctx, opts, "freq");
-        if (!JS_IsUndefined(v)) {
-            int32_t freq;
-            if (JS_ToInt32(ctx, &freq, v)) {
-                JS_FreeValue(ctx, v);
-                free(s);
-                return JS_EXCEPTION;
-            }
-            s->freq = static_cast<uint32_t>(freq);
-        }
-        JS_FreeValue(ctx, v);
-
-        v = JS_GetPropertyStr(ctx, opts, "timeout");
-        if (!JS_IsUndefined(v)) {
-            if (JS_ToInt32(ctx, &s->timeout_ms, v)) {
-                JS_FreeValue(ctx, v);
-                free(s);
-                return JS_EXCEPTION;
-            }
-        }
-        JS_FreeValue(ctx, v);
+    /* Only the HP controllers: the C6's second I2C_NUM is the LP controller. */
+    const int max_bus = SOC_HP_I2C_NUM - 1;
+    if (port < 0 || port > max_bus) {
+        if (max_bus == 0)
+            return mik__result_err_named(ctx, "InvalidParam", "bus must be 0 on %s, got %d",
+                                         CONFIG_IDF_TARGET, (int)port);
+        return mik__result_err_named(ctx, "InvalidParam", "bus must be 0 to %d on %s, got %d",
+                                     max_bus, CONFIG_IDF_TARGET, (int)port);
     }
-
-    JSValue obj = JS_NewObjectClass(ctx, mik_i2c_class_id);
-    if (JS_IsException(obj)) {
-        free(s);
-        return obj;
-    }
-    JS_SetOpaque(obj, s);
-    return obj;
-}
-
-/* ── Methods ───────────────────────────────────────────────────────── */
-
-static JSValue js_i2c_begin(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    auto* s = mik__i2c_get(ctx, this_val);
-    if (!s) return JS_EXCEPTION;
-    if (s->begun) return mik__result_ok_void(ctx);  // idempotent
-
-    if (s->sda < 0 || s->scl < 0) return mik__result_err_tag(ctx, "MissingPins");
-
-    const int gpios[] = {s->sda, s->scl};
+    if (!(freq >= 1 && freq <= UINT32_MAX))
+        return mik__result_err_named(ctx, "InvalidParam", "freq must be at least 1 Hz, got %g",
+                                     freq);
+    if (!(timeout >= 0 && timeout <= INT32_MAX))
+        return mik__result_err_named(ctx, "InvalidParam", "timeout must be 0 ms or more, got %g",
+                                     timeout);
+    const MIKGpioCheck checks[] = {{sda, true}, {scl, true}};
+    JSValue invalid = mik__gpio_check(ctx, checks, countof(checks));
+    if (!JS_IsUndefined(invalid)) return invalid;
+    const int gpios[] = {sda, scl};
     JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "I2c");
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
     i2c_master_bus_config_t bus_cfg = {};
-    bus_cfg.i2c_port = static_cast<i2c_port_num_t>(s->port);
-    bus_cfg.sda_io_num = static_cast<gpio_num_t>(s->sda);
-    bus_cfg.scl_io_num = static_cast<gpio_num_t>(s->scl);
+    bus_cfg.i2c_port = static_cast<i2c_port_num_t>(port);
+    bus_cfg.sda_io_num = static_cast<gpio_num_t>(sda);
+    bus_cfg.scl_io_num = static_cast<gpio_num_t>(scl);
     bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
     bus_cfg.glitch_ignore_cnt = 7;
     bus_cfg.flags.enable_internal_pullup = true;
 
-    esp_err_t err = i2c_new_master_bus(&bus_cfg, &s->bus);
+    i2c_master_bus_handle_t bus = nullptr;
+    esp_err_t err = i2c_new_master_bus(&bus_cfg, &bus);
     if (err != ESP_OK) {
         mik__release_gpios(gpios, countof(gpios), "I2c");
-        return mik__result_err_named(ctx, "BusInitFailed",
-                                     "failed to initialize I2C bus %d: %s", s->port,
-                                     esp_err_to_name(err));
+        return mik__result_err_named(ctx, "BusInitFailed", "failed to initialize I2C bus %d: %s",
+                                     (int)port, esp_err_to_name(err));
     }
 
-    s->begun = true;
-    mik__i2c_clear_pending(s);
-    return mik__result_ok_void(ctx);
+    auto* s = static_cast<MIKI2CState*>(calloc(1, sizeof(MIKI2CState)));
+    if (!s) {
+        i2c_del_master_bus(bus);
+        mik__release_gpios(gpios, countof(gpios), "I2c");
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    s->bus = bus;
+    s->port = port;
+    s->sda = sda;
+    s->scl = scl;
+    s->freq = static_cast<uint32_t>(freq);
+    s->timeout_ms = static_cast<int>(timeout);
+    s->active = true;
+
+    JSValue obj = JS_NewObjectClass(ctx, mik_i2c_class_id);
+    if (JS_IsException(obj)) {
+        mik__i2c_release(s);
+        free(s);
+        return obj;
+    }
+    JS_SetOpaque(obj, s);
+    return mik__result_ok(ctx, obj);
 }
 
+/* ── Methods ───────────────────────────────────────────────────────── */
+
+/* end() — deletes the bus; calling it again does nothing */
 static JSValue js_i2c_end(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__i2c_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_ok_void(ctx);  // idempotent
-
-    mik__i2c_clear_pending(s);
-    esp_err_t err = i2c_del_master_bus(s->bus);
-    if (err != ESP_OK)
-        return mik__result_err_named(ctx, "BusDeinitFailed",
-                                     "failed to deinitialize I2C bus: %s", esp_err_to_name(err));
-
-    s->bus = nullptr;
-    s->begun = false;
-    const int gpios[] = {s->sda, s->scl};
-    mik__release_gpios(gpios, countof(gpios), "I2c");
-    return mik__result_ok_void(ctx);
+    if (s->active) mik__i2c_release(s);
+    return JS_UNDEFINED;
 }
 
 static JSValue js_i2c_write(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__i2c_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_err_tag(ctx, "NotStarted");
 
-    int32_t addr;
-    if (JS_ToInt32(ctx, &addr, argv[0])) return JS_EXCEPTION;
-
+    double addr_num;
+    if (mik__to_number_arg(ctx, argv[0], "address", &addr_num)) return JS_EXCEPTION;
     size_t data_len;
-    uint8_t* data;
-
-    /* Try typed array (Uint8Array) first, then raw ArrayBuffer */
-    size_t offset, elem_size, buf_len;
-    JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[1], &offset, &data_len, &elem_size);
-    if (!JS_IsException(ab)) {
-        /* data_len keeps the view length; the full backing buffer goes to a
-         * throwaway so a subarray view isn't over-read. */
-        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
-        JS_FreeValue(ctx, ab);
-        if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 2");
-        data += offset;
-    } else {
-        /* Clear the pending exception from GetTypedArrayBuffer and try raw ArrayBuffer */
-        JSValue exc = JS_GetException(ctx);
-        JS_FreeValue(ctx, exc);
-        data = JS_GetArrayBuffer(ctx, &data_len, argv[1]);
-        if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 2");
-    }
-
+    uint8_t* data = mik__bytes_arg(ctx, argv[1], "data", &data_len);
+    if (!data) return JS_EXCEPTION;
     /* Check stop parameter (default: true) */
     bool stop = true;
     if (argc >= 3 && !JS_IsUndefined(argv[2])) {
+        if (!JS_IsBool(argv[2])) return JS_ThrowTypeError(ctx, "stop must be a boolean");
         stop = JS_ToBool(ctx, argv[2]);
     }
+    if (mik__i2c_ended(s, "write()")) return mik__result_ok_void(ctx);
+    JSValue invalid = mik__i2c_check_address(ctx, addr_num);
+    if (!JS_IsUndefined(invalid)) return invalid;
+    auto addr = static_cast<uint16_t>(addr_num);
 
     if (!stop) {
         /* Buffer write data for later transmit_receive */
@@ -237,7 +208,7 @@ static JSValue js_i2c_write(JSContext* ctx, JSValue this_val, int argc, JSValue*
             return mik__result_err_tag(ctx, "WriteTooLarge");
         memcpy(s->pending_write, data, data_len);
         s->pending_write_len = data_len;
-        s->pending_write_addr = static_cast<uint16_t>(addr);
+        s->pending_write_addr = addr;
         s->has_pending_write = true;
         return mik__result_ok_void(ctx);
     }
@@ -246,7 +217,7 @@ static JSValue js_i2c_write(JSContext* ctx, JSValue this_val, int argc, JSValue*
     mik__i2c_clear_pending(s);
 
     i2c_master_dev_handle_t dev;
-    esp_err_t err = mik__i2c_add_device(s, static_cast<uint16_t>(addr), &dev);
+    esp_err_t err = mik__i2c_add_device(s, addr, &dev);
     if (err != ESP_OK)
         return mik__result_err_named(ctx, "AddDeviceFailed",
                                      "failed to add I2C device 0x%02x: %s", addr,
@@ -266,21 +237,29 @@ static JSValue js_i2c_write(JSContext* ctx, JSValue this_val, int argc, JSValue*
 static JSValue js_i2c_read(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__i2c_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_err_tag(ctx, "NotStarted");
 
-    int32_t addr;
-    if (JS_ToInt32(ctx, &addr, argv[0])) return JS_EXCEPTION;
-
-    int32_t bytes;
-    if (JS_ToInt32(ctx, &bytes, argv[1])) return JS_EXCEPTION;
-    if (bytes <= 0) return JS_ThrowRangeError(ctx, "read length must be > 0");
+    double addr_num;
+    double length;
+    if (mik__to_number_arg(ctx, argv[0], "address", &addr_num) ||
+        mik__to_number_arg(ctx, argv[1], "bytes", &length))
+        return JS_EXCEPTION;
+    if (mik__i2c_ended(s, "read()"))
+        return mik__result_ok(ctx, JS_NewUint8ArrayCopy(ctx, nullptr, 0));
+    JSValue invalid = mik__i2c_check_address(ctx, addr_num);
+    if (!JS_IsUndefined(invalid)) return invalid;
+    auto addr = static_cast<uint16_t>(addr_num);
+    if (!(length >= 1 && length <= MIK_I2C_MAX_READ && std::trunc(length) == length))
+        return mik__result_err_named(ctx, "InvalidParam",
+                                     "bytes must be an integer from 1 to %d, got %g",
+                                     MIK_I2C_MAX_READ, length);
+    auto bytes = static_cast<size_t>(length);
 
     /* Allocate with js_malloc — MIK_NewUint8Array takes ownership and frees via js_free_rt */
     auto* buf = static_cast<uint8_t*>(js_malloc(ctx, bytes));
     if (!buf) return JS_EXCEPTION;
 
     i2c_master_dev_handle_t dev;
-    esp_err_t err = mik__i2c_add_device(s, static_cast<uint16_t>(addr), &dev);
+    esp_err_t err = mik__i2c_add_device(s, addr, &dev);
     if (err != ESP_OK) {
         js_free(ctx, buf);
         return mik__result_err_named(ctx, "AddDeviceFailed",
@@ -288,7 +267,7 @@ static JSValue js_i2c_read(JSContext* ctx, JSValue this_val, int argc, JSValue* 
                                      esp_err_to_name(err));
     }
 
-    if (s->has_pending_write && s->pending_write_addr == static_cast<uint16_t>(addr)) {
+    if (s->has_pending_write && s->pending_write_addr == addr) {
         /* Combined write-read (ReSTART) via transmit_receive */
         err = i2c_master_transmit_receive(dev, s->pending_write, s->pending_write_len, buf, bytes,
                                           s->timeout_ms);
@@ -314,7 +293,8 @@ static JSValue js_i2c_read(JSContext* ctx, JSValue this_val, int argc, JSValue* 
 static JSValue js_i2c_scan(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__i2c_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_err_tag(ctx, "NotStarted");
+    if (mik__i2c_ended(s, "scan()"))
+        return mik__result_ok(ctx, JS_NewUint8ArrayCopy(ctx, nullptr, 0));
 
     /* Worst case: all addresses respond */
     uint8_t found[MIK_I2C_SCAN_END - MIK_I2C_SCAN_START + 1];
@@ -339,7 +319,6 @@ static JSValue js_i2c_scan(JSContext* ctx, JSValue this_val, int argc, JSValue* 
 /* ── Prototype ─────────────────────────────────────────────────────── */
 
 static const JSCFunctionListEntry mik_i2c_proto_funcs[] = {
-    MIK_CFUNC_DEF("begin", 0, js_i2c_begin),
     MIK_CFUNC_DEF("end", 0, js_i2c_end),
     MIK_CFUNC_DEF("write", 3, js_i2c_write),
     MIK_CFUNC_DEF("read", 2, js_i2c_read),
@@ -349,8 +328,7 @@ static const JSCFunctionListEntry mik_i2c_proto_funcs[] = {
 /* ── Module init ───────────────────────────────────────────────────── */
 
 static int mik__i2c_module_init(JSContext* ctx, JSModuleDef* m) {
-    JSValue ctor = JS_NewCFunction2(ctx, js_i2c_constructor, "I2c", 2, JS_CFUNC_constructor, 0);
-    JS_SetModuleExport(ctx, m, "I2c", ctor);
+    JS_SetModuleExport(ctx, m, "I2c", JS_NewCFunction(ctx, js_i2c, "I2c", 2));
     return 0;
 }
 
@@ -364,13 +342,13 @@ static JSModuleDef* mik__i2c_init(JSContext* ctx) {
     /* Create prototype with methods */
     JSValue proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, proto, mik_i2c_proto_funcs, countof(mik_i2c_proto_funcs));
-    JS_SetClassProto(ctx, mik_i2c_class_id, proto);  /* consumed */
+    JS_SetClassProto(ctx, mik_i2c_class_id, proto); /* consumed */
 
     /* Register module */
-    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/i2c", mik__i2c_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "mikro/i2c", mik__i2c_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "I2c");
     return m;
 }
 
-MIK_REGISTER_MODULE(i2c, "native:mikro/i2c", mik__i2c_init, nullptr, nullptr)
+MIK__REGISTER_PUBLIC_MODULE(i2c, "mikro/i2c", mik__i2c_init, nullptr, nullptr)

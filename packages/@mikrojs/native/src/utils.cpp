@@ -86,6 +86,25 @@ int mik__to_number_arg(JSContext* ctx, JSValueConst v, const char* name, double*
     return 0;
 }
 
+uint8_t* mik__bytes_arg(JSContext* ctx, JSValueConst v, const char* name, size_t* len) {
+    size_t offset, elem_size, buf_len;
+    JSValue ab = JS_GetTypedArrayBuffer(ctx, v, &offset, len, &elem_size);
+    uint8_t* data;
+    if (!JS_IsException(ab)) {
+        /* len keeps the view length; the full backing buffer goes to a
+         * throwaway so a subarray view isn't over-read. */
+        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
+        JS_FreeValue(ctx, ab);
+        if (data) data += offset;
+    } else {
+        JSValue exc = JS_GetException(ctx);
+        JS_FreeValue(ctx, exc);
+        data = JS_GetArrayBuffer(ctx, len, v);
+    }
+    if (!data) JS_ThrowTypeError(ctx, "%s must be a Uint8Array", name);
+    return data;
+}
+
 int mik__options_arg(JSContext* ctx, int argc, JSValueConst* argv, int index, bool required,
                      JSValueConst* out) {
     JSValueConst v = index < argc ? argv[index] : JS_UNDEFINED;

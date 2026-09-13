@@ -5,7 +5,7 @@ export type BuiltinModuleMap = {
   pwm: 'mikro/pwm'
   neopixel: 'mikro/neopixel'
   wifi: 'native:mikro/wifi'
-  i2c: 'native:mikro/i2c'
+  i2c: 'mikro/i2c'
   spi: 'mikro/spi'
   uart: 'native:mikro/uart'
   kv: 'native:mikro/rtc'

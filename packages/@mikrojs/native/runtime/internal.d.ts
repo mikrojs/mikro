@@ -225,38 +225,6 @@ declare module 'native:mikro/http_server' {
   export function respondEnd(id: number): void
   export function getHeader(id: number, name: string): string | undefined
 }
-declare module 'native:mikro/i2c' {
-  import type {I2cError} from '@mikrojs/native/runtime/i2c/types'
-  import type {Result} from 'mikro/result'
-
-  export interface I2cBaseOptions {
-    freq?: number
-    timeout?: number
-  }
-
-  export interface I2cOptionsWithPins extends I2cBaseOptions {
-    sda: number
-    scl: number
-  }
-
-  export type I2cOptions = I2cBaseOptions | I2cOptionsWithPins
-  export declare const I2c: {
-    prototype: I2c
-    new (busNo: 0 | 1, options?: I2cOptions): I2c
-  }
-
-  export interface I2c {
-    begin(): Result<void, I2cError>
-
-    end(): Result<void, I2cError>
-
-    read(address: number, bytes: number): Result<Uint8Array, I2cError>
-
-    write(address: number, data: Uint8Array, stop?: boolean): Result<void, I2cError>
-
-    scan(): Result<Uint8Array, I2cError>
-  }
-}
 
 declare module 'native:mikro/sntp' {
   import type {SntpError} from '@mikrojs/native/runtime/sntp/types'

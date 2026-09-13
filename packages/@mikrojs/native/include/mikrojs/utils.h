@@ -84,6 +84,9 @@ void mik__warn_after_end(bool* warned, const char* owner, int id, const char* ca
  * undefined unless required. */
 int mik__to_int_arg(JSContext* ctx, JSValueConst v, const char* name, int32_t* out);
 int mik__to_number_arg(JSContext* ctx, JSValueConst v, const char* name, double* out);
+/* Reads a Uint8Array (or ArrayBuffer) without copying; returns nullptr with a
+ * TypeError pending. */
+uint8_t* mik__bytes_arg(JSContext* ctx, JSValueConst v, const char* name, size_t* len);
 int mik__options_arg(JSContext* ctx, int argc, JSValueConst* argv, int index, bool required,
                      JSValueConst* out);
 int mik__int_option(JSContext* ctx, JSValueConst options, const char* name, bool required,

@@ -45,27 +45,6 @@ static bool mik__spi_ended(MIKSPIState* s, const char* call) {
     return true;
 }
 
-/* Reads a Uint8Array (or ArrayBuffer) argument. Returns nullptr with a
- * TypeError pending. */
-static uint8_t* mik__spi_bytes_arg(JSContext* ctx, JSValueConst v, size_t* len) {
-    size_t offset, elem_size, buf_len;
-    JSValue ab = JS_GetTypedArrayBuffer(ctx, v, &offset, len, &elem_size);
-    uint8_t* data;
-    if (!JS_IsException(ab)) {
-        /* len keeps the view length; the full backing buffer goes to a
-         * throwaway so a subarray view isn't over-read. */
-        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
-        JS_FreeValue(ctx, ab);
-        if (data) data += offset;
-    } else {
-        JSValue exc = JS_GetException(ctx);
-        JS_FreeValue(ctx, exc);
-        data = JS_GetArrayBuffer(ctx, len, v);
-    }
-    if (!data) JS_ThrowTypeError(ctx, "data must be a Uint8Array");
-    return data;
-}
-
 /* ── Finalizer ─────────────────────────────────────────────────────── */
 
 static void mik__spi_finalizer(JSRuntime* rt, JSValue val) {
@@ -194,7 +173,7 @@ static JSValue js_spi_transfer(JSContext* ctx, JSValue this_val, int argc, JSVal
     auto* s = mik__spi_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
     size_t data_len;
-    uint8_t* data = mik__spi_bytes_arg(ctx, argv[0], &data_len);
+    uint8_t* data = mik__bytes_arg(ctx, argv[0], "data", &data_len);
     if (!data) return JS_EXCEPTION;
     if (mik__spi_ended(s, "transfer()"))
         return mik__result_ok(ctx, JS_NewUint8ArrayCopy(ctx, nullptr, 0));
@@ -223,7 +202,7 @@ static JSValue js_spi_write(JSContext* ctx, JSValue this_val, int argc, JSValue*
     auto* s = mik__spi_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
     size_t data_len;
-    uint8_t* data = mik__spi_bytes_arg(ctx, argv[0], &data_len);
+    uint8_t* data = mik__bytes_arg(ctx, argv[0], "data", &data_len);
     if (!data) return JS_EXCEPTION;
     if (mik__spi_ended(s, "write()")) return mik__result_ok_void(ctx);
 
