@@ -1,3 +1,4 @@
+import type {GpioInUse} from '../gpio/types.js'
 import type {Result} from '../result/types.js'
 
 /**
@@ -22,6 +23,7 @@ export interface I2cOptionsWithPins extends I2cBaseOptions {
 export type I2cOptions = I2cBaseOptions | I2cOptionsWithPins
 
 export type I2cError =
+  | GpioInUse
   | {name: 'BusInitFailed'; message: string}
   | {name: 'BusDeinitFailed'; message: string}
   | {name: 'NotStarted'}

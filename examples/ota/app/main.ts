@@ -1,7 +1,7 @@
 import {env} from 'mikro/env'
+import {DigitalOut} from 'mikro/gpio'
 import {ota} from 'mikro/ota'
 import * as otaClient from 'mikro/ota/client'
-import {digitalWrite, pinMode} from 'mikro/pin'
 import {Pwm} from 'mikro/pwm'
 import {ok} from 'mikro/result'
 import {restart} from 'mikro/sys'
@@ -42,8 +42,7 @@ async function main(config: OtaConfig) {
 
   console.log('OTA Config: ', config)
   if (!config.on) {
-    pinMode(config.pin, 'OUTPUT').orPanic('Unable to set pin mode')
-    digitalWrite(config.pin, 1).orPanic('Unable to write pin')
+    DigitalOut(config.pin, {initial: 1}).orPanic('Unable to configure pin')
     return
   }
 

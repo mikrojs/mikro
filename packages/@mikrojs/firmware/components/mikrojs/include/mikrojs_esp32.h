@@ -103,6 +103,14 @@ void mik_logfile_resume(void);
  * No-op when file logging is disabled. */
 void mik_logfile_reset(void);
 
+/* Light-sleep GPIO wake (mik_gpio.cpp). A GPIO wake source makes the pin's
+ * interrupt level-triggered; with a DigitalIn edge handler attached, it fires
+ * repeatedly while the level holds. Call prepare before gpio_wakeup_enable and
+ * done after waking (or after a failed configuration): done disables the wake
+ * source and restores the any-edge interrupt of a live DigitalIn on that GPIO. */
+void mik__gpio_wake_prepare(int gpio);
+void mik__gpio_wake_done(int gpio);
+
 /* Serial binary I/O (mik_serial_io.cpp) */
 void mik__serial_binary_begin_no_echo(void);
 

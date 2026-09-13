@@ -13,23 +13,23 @@ Consider reading a sensor value:
 
 ```ts twoslash
 // @noErrors
-declare function analogRead(pin: number): number
+declare function readSensor(channel: number): number
 // ---cut---
 // Hypothetical API that throws on failure (NOT how Mikro.js works)
-const value = analogRead(34)
+const value = readSensor(34)
 console.log(`Sensor: ${value}`)
 ```
 
-This compiles without any warnings. TypeScript says `analogRead` returns `number`, so `value` is `number`. But at runtime, this can crash your program. If pin 34 isn't a valid ADC pin, the function throws. Nothing in the type signature tells you this can happen. You have to _know_ to add error handling.
+This compiles without any warnings. TypeScript says `readSensor` returns `number`, so `value` is `number`. But at runtime, this can crash your program. If channel 34 doesn't exist, the function throws. Nothing in the type signature tells you this can happen. You have to _know_ to add error handling.
 
 You might wrap it in try/catch:
 
 ```ts twoslash
 // @noErrors
-declare function analogRead(pin: number): number
+declare function readSensor(channel: number): number
 // ---cut---
 try {
-  const value = analogRead(34)
+  const value = readSensor(34)
   console.log(`Sensor: ${value}`)
 } catch (err) {
   //      ^?
@@ -41,16 +41,16 @@ try {
 
 `err` is `unknown`. Is it a string? An `Error`? Does it have a `.message`? A `.code`? You end up writing `if (err instanceof Error)` checks, guessing at property names, or logging the raw value.
 
-And this uncertainty is **contagious**. Any function that calls `analogRead` might also throw, but there's no way to know from its signature. You either wrap everything in try/catch defensively, or you don't and hope for the best. Neither option is good.
+And this uncertainty is **contagious**. Any function that calls `readSensor` might also throw, but there's no way to know from its signature. You either wrap everything in try/catch defensively, or you don't and hope for the best. Neither option is good.
 
 ## How Mikro.js handles errors
 
 Every Mikro.js function that can fail returns a [`Result`](/api/result):
 
 ```ts twoslash
-import {analogRead} from 'mikro/pin'
+import {AnalogIn} from 'mikro/gpio'
 
-const result = analogRead(34)
+const result = AnalogIn(34).andThen((sensor) => sensor.read())
 //    ^?
 //
 //
@@ -62,11 +62,11 @@ if (result.ok) {
     //
     //
     //
-    case 'InvalidAdcPin':
-      console.error('Pin 34 is not a valid ADC pin')
+    case 'InvalidGpio':
+      console.error('Cannot use GPIO 34 for the sensor:', result.error)
       break
-    case 'AdcInitFailed':
-      console.error('ADC hardware failed:', result.error)
+    case 'GpioInUse':
+      console.error('Cannot read the sensor on GPIO 34:', result.error)
       break
     default:
       console.error('Read failed:', result.error)
@@ -76,8 +76,8 @@ if (result.ok) {
 
 The key differences:
 
-- The type signature is honest: `analogRead` returns `Result<number, PinError>`, so you can see it might fail.
-- The error is typed: `PinError` is a union of specific variants, and TypeScript tells you exactly which errors are possible and what data each one carries.
+- The type signature is honest: `sensor.read()` returns `Result<number, GpioError>`, so you can see it might fail.
+- The error is typed: `GpioError` is a union of specific variants, and TypeScript tells you exactly which errors are possible and what data each one carries.
 - No try/catch needed: errors are values you check, not exceptions you catch.
 
 ## The Result type
@@ -103,15 +103,15 @@ The most common pattern is checking and returning early:
 
 ```ts twoslash
 import {ok, err, type Result} from 'mikro/result'
-import {analogRead, type PinError} from 'mikro/pin'
+import type {AnalogIn} from 'mikro/gpio'
 declare const PublishError: {
   NetworkError: (message: string) => {name: 'NetworkError'; message: string}
 }
 declare type PublishError = {name: 'NetworkError'; message: string}
 declare function publish(value: number): Promise<Result<void, PublishError>>
 // ---cut---
-async function readAndPublish(pin: number) {
-  const reading = analogRead(pin)
+async function readAndPublish(sensor: AnalogIn) {
+  const reading = sensor.read()
   if (!reading.ok) return reading
 
   const published = await publish(reading.value)
@@ -121,7 +121,7 @@ async function readAndPublish(pin: number) {
 }
 ```
 
-Notice how TypeScript infers a return type equivalent to `Result<void, PinError | PublishError>`, capturing every way the function can fail. Each early return propagates its own error type, and the caller sees exactly which errors are possible.
+Notice how TypeScript infers a return type equivalent to `Result<void, GpioError | PublishError>`, capturing every way the function can fail. Each early return propagates its own error type, and the caller sees exactly which errors are possible.
 
 If `publish` were to throw instead, that would be a panic: an unexpected bug, not a recoverable error. See [What about exceptions?](#what-about-exceptions) below.
 
@@ -130,17 +130,18 @@ If `publish` were to throw instead, that would be a panic: an unexpected bug, no
 Use `.map()` to transform the success value without unwrapping:
 
 ```ts twoslash
-import {analogReadMillivolts} from 'mikro/pin'
+import {AnalogIn} from 'mikro/gpio'
+const sensor = AnalogIn(34).orPanic('Failed to configure sensor pin')
 // ---cut---
-const voltage = analogReadMillivolts(34).map((mv) => mv / 1000)
+const voltage = sensor.readMillivolts().map((mv) => mv / 1000)
 ```
 
 Use `.andThen()` to chain operations that themselves return Results:
 
 ```ts twoslash
-import {pinMode, digitalWrite} from 'mikro/pin'
+import {AnalogIn} from 'mikro/gpio'
 // ---cut---
-const result = pinMode(4, 'OUTPUT').andThen(() => digitalWrite(4, 1))
+const result = AnalogIn(34).andThen((sensor) => sensor.readMillivolts())
 ```
 
 ### Converting to panics
@@ -148,9 +149,9 @@ const result = pinMode(4, 'OUTPUT').andThen(() => digitalWrite(4, 1))
 When failure is unrecoverable and you want to crash explicitly, use `.orPanic()`:
 
 ```ts twoslash
-import {analogRead} from 'mikro/pin'
+import {AnalogIn} from 'mikro/gpio'
 // ---cut---
-const value = analogRead(34).orPanic('ADC must work at this point')
+const sensor = AnalogIn(34).orPanic('ADC must work at this point')
 ```
 
 Use it sparingly, only when you've decided that failure at this point means the program cannot continue.
@@ -160,9 +161,10 @@ Use it sparingly, only when you've decided that failure at this point means the 
 Use `.match()` to handle both cases:
 
 ```ts twoslash
-import {analogRead} from 'mikro/pin'
+import {AnalogIn} from 'mikro/gpio'
+const sensor = AnalogIn(34).orPanic('Failed to configure sensor pin')
 // ---cut---
-const message = analogRead(34).match({
+const message = sensor.read().match({
   ok: (value) => `Reading: ${value}`,
   err: (error) => `Failed: ${error.name}`,
 })
@@ -291,7 +293,7 @@ Auto-restart only self-heals if the panic was transient. If the same panic recur
 Mikro.js includes an [ESLint plugin](/eslint-rules) that enforces these conventions. For example, the [`no-unhandled-result`](/eslint-rules#no-unhandled-result) rule warns you when a `Result` is ignored:
 
 ```ts
-pinMode(4, 'OUTPUT')
+sensor.read()
 // error: Result must be handled (@mikrojs/no-unhandled-result)
 ```
 
@@ -310,7 +312,7 @@ if (result.ok) {
 }
 
 // Early return on error
-const result = analogRead(pin)
+const result = sensor.read()
 if (!result.ok) return result
 
 // Log an error: context string, then the error itself (never %s / .name / .message)

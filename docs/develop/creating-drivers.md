@@ -309,6 +309,65 @@ declare module 'native:@my-scope/bme280/sensor' {
    console.log(result)
    ```
 
+## Claiming GPIO pins
+
+A GPIO pin has one owner at a time. `mikro/gpio`, `Pwm`, the bus modules and the console record their pins in a shared claim table, and a native driver that configures a pin must claim it there too. If it doesn't, the app gets no error when the driver and, for example, a `DigitalOut` drive the same pin.
+
+1. Claim each GPIO before you configure it, with `MIK_ClaimGpio(gpio, "Epaper")` from `mikrojs/mikrojs.h`. Pass your class name as a string literal. The table stores the pointer, and the app sees the name in `GpioInUse` errors.
+2. If a claim fails, release the GPIOs that the same call already claimed. Then report the owner that `MIK_GpioOwner(gpio)` returns.
+3. Release each GPIO in `end()` and in the finalizer with `MIK_ReleaseGpio(gpio, "Epaper")`. A release only frees a claim held under the same name, so a late release cannot free a pin that another module has claimed since.
+
+This `begin()` for an e-paper display claims the reset and busy pins. On a conflict it returns a `GpioInUse` error object instead of throwing:
+
+```cpp
+#include <string>
+
+#include <mikrojs/mikrojs.h>
+
+// begin(reset, busy): returns undefined, or a GpioInUse error object.
+static JSValue js_epaper_begin(JSContext* ctx, JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
+    int32_t gpios[2];
+    if (JS_ToInt32(ctx, &gpios[0], argv[0]) || JS_ToInt32(ctx, &gpios[1], argv[1]))
+        return JS_EXCEPTION;
+
+    for (int i = 0; i < 2; i++) {
+        if (MIK_ClaimGpio(gpios[i], "Epaper")) continue;
+
+        const char* owner = MIK_GpioOwner(gpios[i]);
+        std::string message =
+            "GPIO " + std::to_string(gpios[i]) + " is already in use by " + owner;
+        for (int j = 0; j < i; j++) MIK_ReleaseGpio(gpios[j], "Epaper");
+
+        JSValue error = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, error, "name", JS_NewString(ctx, "GpioInUse"));
+        JS_SetPropertyStr(ctx, error, "owner", JS_NewString(ctx, owner));
+        JS_SetPropertyStr(ctx, error, "message", JS_NewString(ctx, message.c_str()));
+        return error;
+    }
+
+    // Configure both pins here. If that fails, release both before you throw.
+    return JS_UNDEFINED;
+}
+```
+
+The TypeScript wrapper returns the error object as it is:
+
+```ts
+import type {GpioInUse} from 'mikro/gpio'
+import {err, ok, type Result} from 'mikro/result'
+
+import native from 'native:@my-scope/epaper/display'
+
+export function begin(reset: number, busy: number): Result<void, GpioInUse> {
+  const inUse = native.begin(reset, busy)
+  if (inUse !== undefined) return err(inUse)
+  return ok()
+}
+```
+
+Only code that configures a pin claims it. A TypeScript driver or helper that only reads or writes a pin takes a handle instead, for example `Encoder({a: DigitalIn(4), b: DigitalIn(5)})`, and never calls `end()` on it. Don't pass a handle to code that reconfigures the pin, such as passing `led` to something like `Pwm`. JavaScript cannot enforce that handover, so two objects would drive one pin. Claims are never shared; to share a pin, share its handle.
+
 ## Important notes
 
 - **Firmware builtin imports are external**: esbuild marks `mikro/*`, and any package that exports `./cmake` (your driver included), as external during bundling. They resolve at runtime in the firmware rather than being bundled into the app.

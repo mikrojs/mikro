@@ -210,7 +210,7 @@ A thin adapter that:
 - Compiles QuickJS and mikrojs sources directly (ESP-IDF requires `idf_component_register(SRCS ...)`)
 - Runs its own bytecode generation (esbuild bundle + qjsc compile) during the build
 - Provides `platform_esp32.cpp` (ESP-IDF platform implementation)
-- Contains ESP-specific modules: GPIO (`mik_pin.cpp`), WiFi (`mik_wifi.cpp`), HTTP (`mik_http.cpp`), serial I/O (`mik_serial_io.cpp`), deploy protocol (`mik_deploy.cpp`), config protocol (`mik_config.cpp`)
+- Contains ESP-specific modules: GPIO (`mik_gpio.cpp`), WiFi (`mik_wifi.cpp`), HTTP (`mik_http.cpp`), serial I/O (`mik_serial_io.cpp`), deploy protocol (`mik_deploy.cpp`), config protocol (`mik_config.cpp`)
 - ESP-specific public API in `include/mikrojs_esp32.h`
 - Backward-compatible wrapper headers in `include/` (forward to `mikrojs/` headers)
 - `MIK_Main()` entry point: the default firmware bootstrap (NVS, LittleFS, JS runtime, REPL, deploy/config protocols)
@@ -240,8 +240,8 @@ The `esp32/` directory in this repo is itself a thin consumer of `@mikrojs/firmw
 Platform-specific modules self-register via `MIK_REGISTER_MODULE()` at file scope and are lazily initialized on first import. No manual init calls in `main.cpp` are needed:
 
 ```c
-// In mik_pin.cpp:
-MIK_REGISTER_MODULE(pin, "native:pin", mik__pin_init, nullptr, nullptr)
+// In mik_sleep.cpp:
+MIK_REGISTER_MODULE(sleep, "native:mikro/sleep", mik__sleep_init, nullptr, nullptr)
 
 // In mik_http.cpp (with loop consumer):
 MIK_REGISTER_MODULE(http, "native:http", mik__http_init, mik__http_consume, mik__http_destroy)
@@ -331,6 +331,7 @@ When considering WinterTC or other standard APIs, only implement what has a demo
 - **Classes/interfaces**: `PascalCase` (e.g. `Spi`, `NeoPixel`, `WifiConnectionInfo`)
 - **Error types**: `PascalCaseError` (e.g. `SpiError`, `WifiError`, `PwmError`)
 - **Singleton instances**: `camelCase` (e.g. `wifi`, `sntp`)
+- **GPIO vocabulary**: `gpio` is the number (parameter and property name, e.g. `DigitalOut(gpio)`, `handle.gpio`); in prose, "GPIO pin" means the physical pin; board labels (`D7`) or roles (`led`) are aliases that live in board packages and app code, never in `mikro/*` signatures.
 
 ### Export Conventions
 
@@ -339,9 +340,17 @@ All public modules use **named exports only** (no default exports). This keeps i
 ```ts
 import {wifi} from 'mikro/wifi'
 import {Spi} from 'mikro/spi'
-import {pinMode, digitalWrite} from 'mikro/pin'
+import {DigitalOut} from 'mikro/gpio'
 import {sntp} from 'mikro/sntp'
 ```
+
+### Handle Factories
+
+The public API exposes no constructors and no `new`. Handles come from PascalCase factory functions that share the handle type's name and return a `Result` (`DigitalOut(15)` returns `Result<DigitalOut, GpioError>`, the way `fs.open` returns `Result<FileHandle, FSError>`). Declare the pair with declaration merging: `interface DigitalOut` plus `declare function DigitalOut(...)`. Implementations still use classes (native QuickJS classes or TS classes), because prototype methods are shared across instances. Older peripherals (`Pwm`, `NeoPixel`, `Spi`, `I2c`, `Uart`, `I2s`) still use `new` and move to factories in a later change.
+
+### GPIO Claims
+
+Every module or driver that configures a GPIO pin claims it with `MIK_ClaimGpio(gpio, "ClassName")` (or `mik__claim_gpios` for several, which on a conflict releases the ones it claimed and returns a `GpioInUse` Result) and releases it with `MIK_ReleaseGpio(gpio, "ClassName")` in `end()` and the finalizer. The console's GPIO pins are claimed at boot with owner `console`.
 
 ## Pre-commit Hooks
 

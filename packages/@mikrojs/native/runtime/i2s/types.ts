@@ -1,3 +1,4 @@
+import type {GpioInUse} from '../gpio/types.js'
 import type {Result} from '../result/types.js'
 
 /**
@@ -80,6 +81,7 @@ export interface I2sPdmRxOptions {
  * @public
  */
 export type I2sError =
+  | GpioInUse
   | {name: 'ChannelInitFailed'; message: string}
   | {name: 'InvalidParam'; message: string}
   | {name: 'WriteFailed'; message: string}

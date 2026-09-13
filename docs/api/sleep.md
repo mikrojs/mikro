@@ -52,7 +52,7 @@ import {deepSleep} from 'mikro/sleep'
 // ---cut---
 deepSleep({
   timer: 60 * 60 * 1000, // 1 hour
-  ext0: {pin: 4, level: 'low'}, // ...or a button press
+  ext0: {gpio: 4, level: 'low'}, // ...or a button press
 })
 ```
 
@@ -87,13 +87,14 @@ Each function takes its own source type. Combine sources by passing multiple fie
 ```ts
 type LightWakeupSources = {
   timer?: number
-  gpio?: {pin: number; level: 'high' | 'low'}
+  gpio?: number
+  level?: 'high' | 'low'
 }
 
 type DeepWakeupSources = {
   timer?: number
-  ext0?: {pin: RtcGpio; level: 'high' | 'low'}
-  ext1?: {pins: RtcGpio[]; mode: 'any-low' | 'any-high'}
+  ext0?: {gpio: RtcGpio; level: 'high' | 'low'}
+  ext1?: {gpios: RtcGpio[]; mode: 'any-low' | 'any-high'}
 }
 
 type RtcGpio = number
@@ -107,19 +108,19 @@ Milliseconds until wake. Fractional values are allowed, so `0.01` is 10 µs. Wor
 
 ### `gpio` (light sleep)
 
-Wake when `pin` reaches `level`. Any GPIO works.
+Wake when the GPIO numbered `gpio` reaches `level`. Any GPIO works, and only one can wake the chip. `level` is required when `gpio` is set.
 
 ### `ext0` (deep sleep)
 
-Wake when an RTC-capable pin reaches `level`. **ESP32, ESP32-S2, ESP32-S3 only** — throws on ESP32-C3, ESP32-C6, ESP32-H2 (use `ext1` instead).
+Wake when an RTC-capable GPIO reaches `level`. **ESP32, ESP32-S2, ESP32-S3 only** — throws on ESP32-C3, ESP32-C6, ESP32-H2 (use `ext1` instead).
 
 ### `ext1` (deep sleep)
 
-Wake as soon as any of the RTC-capable `pins` matches `mode`: `'any-low'` fires when one goes low; `'any-high'` fires when one goes high.
+Wake as soon as any of the RTC-capable `gpios` matches `mode`: `'any-low'` fires when one goes low; `'any-high'` fires when one goes high.
 
 ### `RtcGpio`
 
-Type alias for `number` documenting that the pin must be RTC-capable. Set varies per chip: ESP32-C6/H2 = 0–7, ESP32-C3 = 0–5, ESP32-S2/S3 = 0–21, ESP32 = subset of 0–39. Not statically validated; non-RTC pins throw at runtime.
+Type alias for `number` documenting that the GPIO must be RTC-capable. Set varies per chip: ESP32-C6/H2 = 0–7, ESP32-C3 = 0–5, ESP32-S2/S3 = 0–21, ESP32 = subset of 0–39. Not statically validated; non-RTC GPIOs throw at runtime.
 
 Invalid inputs (bad `level` string, pins that don't support wakeup, capability missing on the current chip) throw. These are programmer errors; fix the call rather than catching.
 

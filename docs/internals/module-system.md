@@ -39,10 +39,10 @@ When JavaScript executes an `import` statement, the module loader checks four so
 Virtual modules are source strings registered by the host process:
 
 ```c
-MIK_RegisterVirtualModule(mik_rt, "native:pin", js_source_code, source_len);
+MIK_RegisterVirtualModule(mik_rt, "native:mikro/sleep", js_source_code, source_len);
 ```
 
-They take precedence over all other sources. The primary use case is the Node.js addon, where virtual modules mock hardware APIs (like `native:pin`) on desktop so the TypeScript wrappers can be tested without device hardware.
+They take precedence over all other sources. The primary use case is the Node.js addon, where virtual modules mock hardware APIs (like `native:mikro/sleep`) on desktop so the TypeScript wrappers can be tested without device hardware.
 
 ### 2. Native modules
 
@@ -51,18 +51,18 @@ Native modules are C/C++ functions exposed to JavaScript. They use the `native:`
 Native modules self-register at program startup via GCC/Clang constructor attributes. The `MIK_REGISTER_MODULE` macro creates a descriptor with external linkage and a constructor that links it into a global list:
 
 ```c
-MIK_REGISTER_MODULE(pin, "native:pin", mik__pin_init, NULL, NULL);
-//                  ^id   ^name       ^init          ^consume ^destroy
+MIK_REGISTER_MODULE(sleep, "native:mikro/sleep", mik__sleep_init, NULL, NULL);
+//                  ^id    ^name                 ^init            ^consume ^destroy
 ```
 
 On first import, the loader walks the global linked list, finds the matching entry, and calls the init function. The init function creates a `JSModuleDef` and exports C functions:
 
 ```c
-static JSModuleDef* mik__pin_init(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "native:pin", mik__pin_module_init);
-    JS_AddModuleExport(ctx, m, "pinMode");
-    JS_AddModuleExport(ctx, m, "digitalWrite");
-    JS_AddModuleExport(ctx, m, "digitalRead");
+static JSModuleDef* mik__sleep_init(JSContext* ctx) {
+    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/sleep", mik__sleep_module_init);
+    JS_AddModuleExport(ctx, m, "deepSleep");
+    JS_AddModuleExport(ctx, m, "lightSleep");
+    JS_AddModuleExport(ctx, m, "getWakeupCause");
     return m;
 }
 ```
@@ -80,7 +80,7 @@ MIK_REGISTER_MODULE(wifi, "native:wifi",
 See [Event Loop: Loop consumers](/internals/event-loop#loop-consumers) for how consume/destroy work.
 
 ::: info Why the prefix?
-The `native:` prefix marks internal C/C++ modules. User code imports public APIs from `mikro/*` (for example `mikro/pin`), which are TypeScript wrappers compiled to bytecode builtins around the internal `native:*` modules.
+The `native:` prefix marks internal C/C++ modules. User code imports public APIs from `mikro/*` (for example `mikro/pwm`), which are TypeScript wrappers compiled to bytecode builtins around the internal `native:*` modules. A few `mikro/*` modules, such as `mikro/gpio`, are implemented entirely in C and registered under their public name.
 :::
 
 ### 3. Bytecode builtins
@@ -90,7 +90,7 @@ Bytecode builtins are TypeScript modules pre-compiled to QuickJS bytecode and em
 Core builtins (the `mikro/*` public API) are compiled during the CMake build and stored in a static table in `builtins.cpp`. External builtins from driver/board packages register via constructors, similar to native modules:
 
 ```c
-MIK_REGISTER_BUILTIN(pin, "mikro/pin", qjsc_pin, qjsc_pin_size);
+MIK_REGISTER_BUILTIN(pwm, "mikro/pwm", qjsc_pwm, qjsc_pwm_size);
 //                   ^id   ^name          ^data     ^size
 ```
 
@@ -131,18 +131,18 @@ Most hardware APIs follow a two-layer pattern:
 ```
 User code
     │
-    ▼  import {pinMode} from 'mikro/pin'
+    ▼  import {Pwm} from 'mikro/pwm'
 ┌────────────────────┐
-│ mikro/pin          │  TypeScript wrapper (bytecode builtin)
+│ mikro/pwm          │  TypeScript wrapper (bytecode builtin)
 │ - Type-safe API    │  - Validates arguments
 │ - Result types     │  - Maps enums to native values
-│ - Error mapping    │  - Returns typed Result<T, PinError>
+│ - Error mapping    │  - Returns typed Result<T, PwmError>
 └────────┬───────────┘
-         │  import * as native from 'native:pin'
+         │  import {Pwm} from 'native:mikro/pwm'
          ▼
 ┌────────────────────┐
-│ native:pin           │  C module (native)
-│ - Direct HW access │  - gpio_set_direction()
+│ native:mikro/pwm   │  C module (native)
+│ - Direct HW access │  - ledc_set_duty()
 │ - Raw results      │  - Returns {ok, value/error}
 └────────────────────┘
 ```

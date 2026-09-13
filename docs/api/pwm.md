@@ -26,17 +26,17 @@ led.end()
 
 ## Constructor
 
-### new Pwm(pin, options)
+### new Pwm(gpio, options)
 
 ```ts
-new Pwm(pin: number, options: PwmOptions)
+new Pwm(gpio: number, options: PwmOptions)
 ```
 
 Creates a PWM output on the given GPIO pin.
 
 **Parameters:**
 
-- `pin`: GPIO pin number
+- `gpio`: GPIO number
 - `options`: see [PwmOptions](#pwmoptions)
 
 ## Methods

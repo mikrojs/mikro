@@ -1,7 +1,7 @@
-/** Map of builtin name to its native:* module name */
+/** Map of builtin name to the module name it replaces */
 export type BuiltinModuleMap = {
   ble: 'native:mikro/ble'
-  pin: 'native:mikro/pin'
+  gpio: 'mikro/gpio'
   pwm: 'native:mikro/pwm'
   neopixel: 'native:mikro/neopixel'
   wifi: 'native:mikro/wifi'

@@ -1,3 +1,4 @@
+import type {GpioInUse} from '../gpio/types.js'
 import type {Result} from '../result/types.js'
 
 /**
@@ -32,6 +33,7 @@ export interface UartRxOnlyOptions extends UartBaseOptions {
 }
 
 export type UartError =
+  | GpioInUse
   | {name: 'DriverInstallFailed'; message: string}
   | {name: 'SetPinFailed'; message: string}
   | {name: 'InvalidParam'; message: string}

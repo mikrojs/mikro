@@ -37,5 +37,5 @@ endif()
 
 idf_component_register(SRCS ${_MIK_TEST_SRCS}
         INCLUDE_DIRS "."
-        REQUIRES unity mikrojs spi_flash
+        REQUIRES unity mikrojs spi_flash esp_driver_gpio
 )

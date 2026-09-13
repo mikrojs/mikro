@@ -202,36 +202,31 @@ my-project/
   app/main.ts
   sim/
     wifi.stub.ts     <- auto-created when your code uses WiFi
-    pin.stub.ts      <- auto-created when your code uses GPIO
+    gpio.stub.ts     <- auto-created when your code uses GPIO
   package.json
 ```
 
-Each stub is a module that exports a class implementing the builtin's interface (`SimWifi`, `SimPin`, `SimI2c`, and the rest from `mikro/sim`), replacing the native module in the simulator. The scaffolded stub implements every method with a sensible default; edit the bodies you care about:
+Each stub is a module with the same exports as the module it replaces, typed with the builtin's interface (`SimWifi`, `SimGpio`, `SimI2c`, and the rest from `mikro/sim`). The scaffolded stub implements every export with a sensible default; edit the parts you care about. For example, to log LED writes:
 
 ```ts twoslash
-// sim/pin.stub.ts
+// sim/gpio.stub.ts
 import {ok} from 'mikro/result'
-import type {SimPin} from 'mikro/sim'
+import type {SimGpio} from 'mikro/sim'
 
-export class Pin implements SimPin {
-  pinMode(pin: number, mode: number) {
-    console.log('[sim] pinMode:', pin, mode)
-    return ok()
-  }
-  digitalWrite(pin: number, value: number) {
-    console.log('[sim] digitalWrite:', pin, value)
-    return ok()
-  }
-  digitalRead(_pin: number) {
-    return 0
-  }
-  analogRead(_pin: number, _attenuation: number) {
-    return ok(2048)
-  }
-  analogReadMillivolts(_pin: number, _attenuation: number) {
-    return ok(1650)
-  }
+export const DigitalOut: SimGpio['DigitalOut'] = (gpio) => {
+  let released = false
+  return ok({
+    gpio,
+    write(level: 0 | 1) {
+      if (!released) console.log('[sim] GPIO %d:', gpio, level)
+    },
+    end() {
+      released = true
+    },
+  })
 }
+
+// DigitalIn and AnalogIn as scaffolded
 ```
 
 Stubs run inside QuickJS, the same runtime as your app, so Node.js APIs like `fetch` and filesystem access are not available.

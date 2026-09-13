@@ -37,7 +37,7 @@ if (!canWakeFromExt0()) {
   await sleep(500)
   console.log(`Deep sleeping. Pull GPIO ${BUTTON} LOW to wake (or wait 10 s)…`)
   deepSleep({
-    ext0: {pin: BUTTON, level: 'low'},
+    ext0: {gpio: BUTTON, level: 'low'},
     timer: 10_000,
   })
 }

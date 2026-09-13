@@ -108,13 +108,14 @@ If `sda` and `scl` are omitted, the bus uses the board's default I2C pins.
 
 ### I2cError
 
-| Variant           | Fields    | Description                    |
-| ----------------- | --------- | ------------------------------ |
-| `BusInitFailed`   | `message` | Failed to initialize the bus   |
-| `BusDeinitFailed` | `message` | Failed to deinitialize         |
-| `NotStarted`      | —         | `begin()` was not called       |
-| `MissingPins`     | —         | Pins required but not provided |
-| `AddDeviceFailed` | `message` | Failed to add device to bus    |
-| `WriteFailed`     | `message` | Write operation failed         |
-| `WriteTooLarge`   | —         | Write data exceeds buffer size |
-| `ReadFailed`      | `message` | Read operation failed          |
+| Variant           | Fields             | Description                                                |
+| ----------------- | ------------------ | ---------------------------------------------------------- |
+| `GpioInUse`       | `owner`, `message` | A pin is held by another handle, peripheral or the console |
+| `BusInitFailed`   | `message`          | Failed to initialize the bus                               |
+| `BusDeinitFailed` | `message`          | Failed to deinitialize                                     |
+| `NotStarted`      | —                  | `begin()` was not called                                   |
+| `MissingPins`     | —                  | Pins required but not provided                             |
+| `AddDeviceFailed` | `message`          | Failed to add device to bus                                |
+| `WriteFailed`     | `message`          | Write operation failed                                     |
+| `WriteTooLarge`   | —                  | Write data exceeds buffer size                             |
+| `ReadFailed`      | `message`          | Read operation failed                                      |

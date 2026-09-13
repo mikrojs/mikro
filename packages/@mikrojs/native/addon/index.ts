@@ -103,7 +103,7 @@ export class MikroRuntime {
   }
 
   /** Set a synchronous RPC handler called from QuickJS via native:mikro/host.call().
-   * The handler receives a method name (e.g. 'pin.pinMode') and JSON-encoded args,
+   * The handler receives a method name (e.g. 'http.fetch') and JSON-encoded args,
    * and must return a JSON-encoded result string (or a Promise of one for async). */
   setRpcHandler(handler: (method: string, argsJson: string) => string | Promise<string>): void {
     this.native.setRpcHandler(handler)

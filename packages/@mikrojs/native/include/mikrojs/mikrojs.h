@@ -267,7 +267,7 @@ int MIK_ReserveModuleSlot(void);
 typedef JSModuleDef* (*MIKModuleInitFn)(JSContext* ctx);
 
 typedef struct mik_module_desc_t {
-    const char* name;         /* module name, e.g. "native:mikro/pin" */
+    const char* name;         /* module name, e.g. "native:mikro/sleep" */
     MIKModuleInitFn init;     /* called on first import; returns the JSModuleDef */
     MIKLoopConsumeFn consume; /* event loop consumer (nullable) */
     MIKLoopDestroyFn destroy; /* cleanup on shutdown (nullable) */
@@ -292,6 +292,7 @@ extern mik_module_desc_t* mik__module_registry_head;
 #define MIK__REQUIRE_NATIVE_NS(name_) MIK__REQUIRE_PREFIX(name_, "native:" MIK_PACKAGE_NAME "/")
 #define MIK__REQUIRE_BUILTIN_NS(name_) MIK__REQUIRE_PREFIX(name_, MIK_PACKAGE_NAME "/")
 #else
+#define MIK__REQUIRE_PREFIX(name_, prefix_) static_assert(true, "")
 #define MIK__REQUIRE_NATIVE_NS(name_) static_assert(true, "")
 #define MIK__REQUIRE_BUILTIN_NS(name_) static_assert(true, "")
 #endif
@@ -300,6 +301,14 @@ extern mik_module_desc_t* mik__module_registry_head;
  * via -u flags (static symbols in static libraries get stripped). */
 #define MIK_REGISTER_MODULE(id, name_, init_, consume_, destroy_)              \
     MIK__REQUIRE_NATIVE_NS(name_);                                             \
+    MIK__MODULE_DESC(id, name_, init_, consume_, destroy_)
+/* A platform C module under its public mikro/ name (mikro/gpio on ESP-IDF), for
+ * modules with no bytecode layer. Core runtime only. */
+#define MIK__REGISTER_PUBLIC_MODULE(id, name_, init_, consume_, destroy_)      \
+    MIK__REQUIRE_BUILTIN_NS(name_);                                            \
+    MIK__REQUIRE_PREFIX(name_, "mikro/");                                      \
+    MIK__MODULE_DESC(id, name_, init_, consume_, destroy_)
+#define MIK__MODULE_DESC(id, name_, init_, consume_, destroy_)                 \
     mik_module_desc_t mik__mod_desc_##id = {                                   \
         name_, init_, consume_, destroy_, NULL};                               \
     static void __attribute__((constructor)) mik__register_mod_##id(void) {    \

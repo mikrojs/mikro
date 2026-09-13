@@ -191,6 +191,7 @@ Ambient type declarations for the `native:{scope}/{name}/{module}` native module
 - The ESP-IDF component directory is named `native/`. Its parent package name determines the logical component identity.
 - `mikrojs_force_include_modules()` and `mikrojs_force_include_builtins()` are required. Without them, the linker strips the self-registration constructors from the static library.
 - The `types` export condition in package.json prevents `native:*` imports from leaking to TypeScript consumers.
+- Claim every GPIO pin the driver configures with `MIK_ClaimGpio(gpio, "{ClassName}")` before configuring it, and release with `MIK_ReleaseGpio(gpio, "{ClassName}")` in `end()` and the finalizer. A failed claim is a typed `GpioInUse` error (`{name: 'GpioInUse', owner: MIK_GpioOwner(gpio), message}`); release the GPIOs claimed before it.
 - Use `heap_caps_malloc(size, MALLOC_CAP_DMA)` for DMA-capable buffers (internal SRAM only, limited).
 - Vendor C files (`.c`) compile fine, but C++ code including vendor headers may need manual struct initialization instead of vendor macros (due to `-Werror`).
 

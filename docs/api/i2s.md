@@ -199,13 +199,14 @@ interface I2sRx {
 
 ### I2sError
 
-| Variant             | Fields    | Description                                               |
-| ------------------- | --------- | --------------------------------------------------------- |
-| `ChannelInitFailed` | `message` | Channel allocation or mode init failed                    |
-| `InvalidParam`      | `message` | Invalid parameters (a sample width mismatch, for example) |
-| `WriteFailed`       | `message` | Transmit failed                                           |
-| `ReadFailed`        | `message` | Receive failed                                            |
-| `NotStarted`        | --        | `begin()` was not called                                  |
-| `QueueFull`         | --        | TX queue is full (producing faster than realtime)         |
-| `NoRxPin`           | --        | `capture()` called but no `din` configured                |
-| `NoTxPin`           | --        | `write()` called but no `dout` configured                 |
+| Variant             | Fields             | Description                                                |
+| ------------------- | ------------------ | ---------------------------------------------------------- |
+| `GpioInUse`         | `owner`, `message` | A pin is held by another handle, peripheral or the console |
+| `ChannelInitFailed` | `message`          | Channel allocation or mode init failed                     |
+| `InvalidParam`      | `message`          | Invalid parameters (a sample width mismatch, for example)  |
+| `WriteFailed`       | `message`          | Transmit failed                                            |
+| `ReadFailed`        | `message`          | Receive failed                                             |
+| `NotStarted`        | --                 | `begin()` was not called                                   |
+| `QueueFull`         | --                 | TX queue is full (producing faster than realtime)          |
+| `NoRxPin`           | --                 | `capture()` called but no `din` configured                 |
+| `NoTxPin`           | --                 | `write()` called but no `dout` configured                  |

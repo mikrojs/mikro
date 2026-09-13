@@ -83,7 +83,7 @@ TEST_CASE("native:mikro/sleep getWakeupCause returns a string", "[modules]") {
     teardown();
 }
 
-/* ── invalid gpio.level throws RangeError ────────────────────────── */
+/* ── invalid level throws RangeError ────────────────────────── */
 
 TEST_CASE("native:mikro/sleep lightSleep throws RangeError on invalid level", "[modules]") {
     setup();
@@ -91,7 +91,7 @@ TEST_CASE("native:mikro/sleep lightSleep throws RangeError on invalid level", "[
     JSValue ret = eval_module(R"(
         import { lightSleep } from "native:mikro/sleep";
         try {
-            lightSleep({gpio: {pin: 0, level: "bogus"}});
+            lightSleep({gpio: 0, level: "bogus"});
             globalThis.__threw = false;
         } catch (e) {
             globalThis.__threw = true;

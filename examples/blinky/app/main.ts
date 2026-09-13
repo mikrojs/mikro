@@ -1,18 +1,12 @@
-import {digitalWrite, pinMode} from 'mikro/pin'
+import {DigitalOut} from 'mikro/gpio'
 import {sleep} from 'mikro/sleep'
 
-let value: 0 | 1 = 0
 // GPIO 15 is the built-in LED on XIAO ESP32C6. Replace with your board's LED pin.
-const PIN = 15
+const led = DigitalOut(15).orPanic('Failed to configure LED pin')
 
-pinMode(PIN, 'OUTPUT').orPanic('Failed to configure LED pin')
-
+let level: 0 | 1 = 0
 while (true) {
-  value = value === 0 ? 1 : 0
-  const writeResult = digitalWrite(PIN, value)
-  if (!writeResult.ok) {
-    console.error('Write pin failed:', writeResult.error)
-  }
-
+  level = level ? 0 : 1
+  led.write(level)
   await sleep(1000)
 }

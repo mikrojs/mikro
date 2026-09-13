@@ -5,7 +5,7 @@ description: Blink an LED, the "hello world" of microcontrollers
 
 # Blinky
 
-The classic first program: blink an LED on and off. Uses the [pin](/api/pin) and [sleep](/api/sleep) APIs.
+The classic first program: blink an LED on and off. Uses the [gpio](/api/gpio) and [sleep](/api/sleep) APIs.
 
 ## Hardware
 
@@ -18,30 +18,25 @@ The classic first program: blink an LED on and off. Uses the [pin](/api/pin) and
 <template #code>
 
 ```ts twoslash
-import {digitalWrite, pinMode} from 'mikro/pin'
+import {DigitalOut} from 'mikro/gpio'
 import {sleep} from 'mikro/sleep'
 import {memoryUsage} from 'mikro/sys'
 
 const mem = memoryUsage()
 console.log('free heap: %dKB', (mem.heapTotal - mem.heapUsed) / 1000)
 
-let value: 0 | 1 = 0
 // GPIO 15 is the built-in LED on XIAO ESP32C6. Replace with your board's LED pin.
-const PIN = 15
+const led = DigitalOut(15).orPanic('Failed to configure LED pin')
 
-pinMode(PIN, 'OUTPUT').orPanic('Failed to configure LED pin')
-
+let level: 0 | 1 = 0
 while (true) {
-  value = value === 0 ? 1 : 0
-  console.log(value ? 'ON' : 'OFF')
+  level = level ? 0 : 1
+  console.log(level ? 'HIGH' : 'LOW')
 
   const mem = memoryUsage()
   console.log('free memory: %dKB', (mem.heapTotal - mem.heapUsed) / 1000)
 
-  const writeResult = digitalWrite(PIN, value)
-  if (!writeResult.ok) {
-    console.error('Write failed:', writeResult.error)
-  }
+  led.write(level)
 
   await sleep(1000)
 }
@@ -51,7 +46,7 @@ while (true) {
 <template #wiring>
 <BlinkyDiagram />
 
-Connect the LED's longer leg (anode) to GPIO 15 through a 220-ohm resistor. Connect the shorter leg (cathode) to GND. If your board has a built-in LED, check the board documentation for its pin number.
+Connect the LED's longer leg (anode) to GPIO 15 through a 220-ohm resistor. Connect the shorter leg (cathode) to GND. If your board has a built-in LED, check the board documentation for its GPIO number.
 
 </template>
 </CodeWiringTabs>
@@ -60,9 +55,9 @@ Connect the LED's longer leg (anode) to GPIO 15 through a 220-ohm resistor. Conn
 
 1. **Memory check.** `memoryUsage()` reports heap usage at startup. Useful for spotting leaks over time.
 
-2. **Pin setup.** `pinMode(PIN, 'OUTPUT')` configures the pin for output (GPIO 15 on XIAO ESP32C6). `.orPanic()` crashes with a clear message if this fails (for example on an invalid pin number).
+2. **Pin setup.** `DigitalOut(15)` claims GPIO 15 (the LED on XIAO ESP32C6) and configures it as an output. `.orPanic()` crashes with a clear message if this fails (for example on an invalid GPIO number, or a GPIO pin that is already in use).
 
-3. **Main loop.** Toggles the pin between HIGH and LOW every second. `digitalWrite` returns a [`Result`](/api/result), so the code checks `.ok` and logs the error variant name if it fails.
+3. **Main loop.** Switches the pin between `0` and `1` every second.
 
 4. **Async delay.** `await sleep(1000)` pauses for 1 second.
 

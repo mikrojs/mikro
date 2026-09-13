@@ -48,8 +48,8 @@
     "test/ota.test.ts": {
       "heapDelta": 62823
     },
-    "test/pin.test.ts": {
-      "heapDelta": 12522
+    "test/gpio.test.ts": {
+      "heapDelta": 20582
     },
     "test/pwm.test.ts": {
       "heapDelta": 11942

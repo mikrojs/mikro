@@ -1,12 +1,12 @@
 /**
- * Verifies every native:* simulator stub returns Result objects via the
+ * Verifies every simulator stub returns Result objects via the
  * `ok()` / `err()` factories from `mikro/result` rather than plain
  * `{ok: true}` / `{ok: false}` literals — the factories attach the
  * `.orPanic` / `.map` / `.match` / `.orDefault` / `.andThen` / `.mapErr`
  * prototype methods that user code relies on.
  *
  * Regression: most stubs originally returned plain object literals, so
- * `pinMode(15, 'OUTPUT').orPanic('…')` failed with `TypeError: not a
+ * `.orPanic('…')` on a stub result failed with `TypeError: not a
  * function` because the prototype was missing.
  *
  * Static source check rather than runtime probe: instantiating MikroRuntime

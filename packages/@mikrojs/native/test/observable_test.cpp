@@ -571,6 +571,41 @@ TEST_CASE("withEmitters: multicast to multiple subscribers" *
     MIK_FreeRuntime(rt);
 }
 
+TEST_CASE("mik__observable_multicast_new: C emitters reach JS subscribers" *
+          doctest::test_suite("observable")) {
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    /* Built before anything imports mikro/observable, as a C module would. */
+    JSValue observable, next, complete;
+    REQUIRE(mik__observable_multicast_new(ctx, &observable, &next, &complete) == 0);
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "__obs", observable);
+    JS_FreeValue(ctx, global);
+
+    JSValue rv = eval_module(ctx,
+                             "import {map} from 'mikro/observable/operators'\n"
+                             "const log = []\n"
+                             "globalThis.__obs.pipe(map(v => v * 2)).subscribe({\n"
+                             "  next: v => log.push(v),\n"
+                             "  complete: () => log.push('done')\n"
+                             "})\n"
+                             "globalThis.__log = log\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    JSValue arg = JS_NewInt32(ctx, 21);
+    JS_FreeValue(ctx, JS_Call(ctx, next, JS_UNDEFINED, 1, &arg));
+    JS_FreeValue(ctx, JS_Call(ctx, complete, JS_UNDEFINED, 0, nullptr));
+    JS_FreeValue(ctx, next);
+    JS_FreeValue(ctx, complete);
+
+    rv = eval_module(ctx, "globalThis.__joined = globalThis.__log.join(',')\n");
+    JS_FreeValue(ctx, rv);
+    CHECK(read_global_string(ctx, "__joined") == "42,done");
+    MIK_FreeRuntime(rt);
+}
+
 TEST_CASE("withEmitters: late subscriber after complete gets immediate complete" *
           doctest::test_suite("observable")) {
     auto* rt = MIK_NewRuntime();

@@ -77,7 +77,7 @@ int main() {
     dump("runtime_init", rt, false);
 
     /* Load runtime modules incrementally to attribute per-builtin memory
-     * cost. ESP-only modules (wifi, pin, fetch, pwm, spi, i2c, uart, sntp,
+     * cost. ESP-only modules (wifi, gpio, fetch, pwm, spi, i2c, uart, sntp,
      * neopixel, sleep, kv, test) depend on `native:*` modules that only
      * register in the firmware build; on host we link `native_stubs.cpp`
      * which provides no-op replacements so JS module evaluation succeeds.
@@ -98,7 +98,7 @@ int main() {
         {"+ fs", "import {readFile} from 'mikro/fs'"},
         {"+ reader", "import {BufferedReader} from 'mikro/reader'"},
         {"+ stream", "import {decodeUtf8, splitLines} from 'mikro/stream'"},
-        {"+ pin", "import {pinMode, digitalWrite} from 'mikro/pin'"},
+        {"+ gpio", "import {DigitalOut} from 'mikro/gpio'"},
         {"+ sleep", "import {sleep, deepSleep} from 'mikro/sleep'"},
         {"+ sntp", "import {sntp} from 'mikro/sntp'"},
         {"+ neopixel", "import {NeoPixel} from 'mikro/neopixel'"},

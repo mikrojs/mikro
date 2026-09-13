@@ -8,7 +8,7 @@
 #include "mikrojs/utils.h"
 #include "mikrojs_esp32.h"
 
-/* For deep-sleep wakeup, the chip's digital pad config (set by `pinMode`)
+/* For deep-sleep wakeup, the chip's digital pad config (set by `DigitalIn`)
  * doesn't persist — only the RTC-IO pad does. Without an explicit RTC
  * pull, EXT0/EXT1 pins float and trigger spurious wakes. Configure the
  * RTC pull to the opposite of the wake direction so the pin idles in
@@ -83,27 +83,36 @@ static bool mik__read_level(JSContext* ctx, JSValue obj, const char* key, int* o
     return ok;
 }
 
-static bool mik__configure_gpio(JSContext* ctx, JSValue sources) {
-    JSValue gpio = JS_GetPropertyStr(ctx, sources, "gpio");
-    if (JS_IsUndefined(gpio)) {
-        JS_FreeValue(ctx, gpio);
+static bool mik__configure_gpio(JSContext* ctx, JSValue sources, int* wake_gpio) {
+    JSValue gpio_val = JS_GetPropertyStr(ctx, sources, "gpio");
+    if (JS_IsUndefined(gpio_val)) {
+        JS_FreeValue(ctx, gpio_val);
         return true;
     }
-
-    JSValue pin_val = JS_GetPropertyStr(ctx, gpio, "pin");
-    int32_t pin;
-    bool ok = !JS_ToInt32(ctx, &pin, pin_val);
-    JS_FreeValue(ctx, pin_val);
+    if (!JS_IsNumber(gpio_val)) {
+        JS_FreeValue(ctx, gpio_val);
+        JS_ThrowTypeError(ctx, "gpio must be a number");
+        return false;
+    }
+    int32_t gpio;
+    bool ok = !JS_ToInt32(ctx, &gpio, gpio_val);
+    JS_FreeValue(ctx, gpio_val);
 
     int level = 0;
-    if (ok) ok = mik__read_level(ctx, gpio, "level", &level);
-    JS_FreeValue(ctx, gpio);
+    if (ok) ok = mik__read_level(ctx, sources, "level", &level);
     if (!ok) return false;
 
+    if (!GPIO_IS_VALID_GPIO(gpio)) {
+        JS_ThrowRangeError(ctx, "GPIO %d does not exist on %s", gpio, CONFIG_IDF_TARGET);
+        return false;
+    }
     gpio_int_type_t intr = (level == 1) ? GPIO_INTR_HIGH_LEVEL : GPIO_INTR_LOW_LEVEL;
-    esp_err_t err = gpio_wakeup_enable(static_cast<gpio_num_t>(pin), intr);
+    mik__gpio_wake_prepare(gpio);
+    *wake_gpio = gpio;
+    esp_err_t err = gpio_wakeup_enable(static_cast<gpio_num_t>(gpio), intr);
     if (err != ESP_OK) {
-        JS_ThrowInternalError(ctx, "GPIO wakeup on pin %d failed: %s", pin, esp_err_to_name(err));
+        JS_ThrowInternalError(ctx, "gpio_wakeup_enable failed on GPIO %d: %s", gpio,
+                              esp_err_to_name(err));
         return false;
     }
     err = esp_sleep_enable_gpio_wakeup();
@@ -121,20 +130,25 @@ static bool mik__configure_ext0(JSContext* ctx, JSValue sources) {
         return true;
     }
 #if SOC_PM_SUPPORT_EXT0_WAKEUP
-    JSValue pin_val = JS_GetPropertyStr(ctx, ext0, "pin");
-    int32_t pin;
-    bool ok = !JS_ToInt32(ctx, &pin, pin_val);
-    JS_FreeValue(ctx, pin_val);
+    JSValue gpio_val = JS_GetPropertyStr(ctx, ext0, "gpio");
+    int32_t gpio = 0;
+    bool ok = JS_IsNumber(gpio_val);
+    if (!ok)
+        JS_ThrowTypeError(ctx, "ext0.gpio must be a number");
+    else
+        ok = !JS_ToInt32(ctx, &gpio, gpio_val);
+    JS_FreeValue(ctx, gpio_val);
 
     int level = 0;
     if (ok) ok = mik__read_level(ctx, ext0, "level", &level);
     JS_FreeValue(ctx, ext0);
     if (!ok) return false;
 
-    mik__rtc_pull_for_wake(pin, level == 1);
-    esp_err_t err = esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(pin), level);
+    mik__rtc_pull_for_wake(gpio, level == 1);
+    esp_err_t err = esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(gpio), level);
     if (err != ESP_OK) {
-        JS_ThrowInternalError(ctx, "EXT0 wakeup on pin %d failed: %s", pin, esp_err_to_name(err));
+        JS_ThrowInternalError(ctx, "EXT0 wakeup on GPIO %d failed: %s", gpio,
+                              esp_err_to_name(err));
         return false;
     }
     return true;
@@ -152,11 +166,16 @@ static bool mik__configure_ext1(JSContext* ctx, JSValue sources) {
         return true;
     }
 #if SOC_PM_SUPPORT_EXT1_WAKEUP
-    JSValue pins_val = JS_GetPropertyStr(ctx, ext1, "pins");
-    JSValue len_val = JS_GetPropertyStr(ctx, pins_val, "length");
-    uint32_t pin_count;
-    bool ok = !JS_ToUint32(ctx, &pin_count, len_val);
-    JS_FreeValue(ctx, len_val);
+    JSValue pins_val = JS_GetPropertyStr(ctx, ext1, "gpios");
+    uint32_t pin_count = 0;
+    bool ok = JS_IsArray(pins_val);
+    if (!ok) {
+        JS_ThrowTypeError(ctx, "ext1.gpios must be an array");
+    } else {
+        JSValue len_val = JS_GetPropertyStr(ctx, pins_val, "length");
+        ok = !JS_ToUint32(ctx, &pin_count, len_val);
+        JS_FreeValue(ctx, len_val);
+    }
 
     uint64_t pin_mask = 0;
     for (uint32_t i = 0; ok && i < pin_count; i++) {
@@ -234,14 +253,14 @@ static bool mik__configure_ext1(JSContext* ctx, JSValue sources) {
 
 /* Clears any previously-configured sources, then applies the ones in
  * `sources`. Throws and returns false on any error. */
-static bool mik__configure_wakeup_sources(JSContext* ctx, JSValue sources) {
+static bool mik__configure_wakeup_sources(JSContext* ctx, JSValue sources, int* wake_gpio) {
     if (!JS_IsObject(sources)) {
         JS_ThrowTypeError(ctx, "wakeup sources must be an object");
         return false;
     }
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
     if (!mik__configure_timer(ctx, sources)) return false;
-    if (!mik__configure_gpio(ctx, sources)) return false;
+    if (!mik__configure_gpio(ctx, sources, wake_gpio)) return false;
     if (!mik__configure_ext0(ctx, sources)) return false;
     if (!mik__configure_ext1(ctx, sources)) return false;
     return true;
@@ -250,7 +269,11 @@ static bool mik__configure_wakeup_sources(JSContext* ctx, JSValue sources) {
 /* ── native:mikro/sleep JS module ─────────────────────────────────────────── */
 
 static JSValue mik__sleep_deep(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    if (!mik__configure_wakeup_sources(ctx, argv[0])) return JS_EXCEPTION;
+    int wake_gpio = -1;
+    if (!mik__configure_wakeup_sources(ctx, argv[0], &wake_gpio)) {
+        if (wake_gpio >= 0) mik__gpio_wake_done(wake_gpio);
+        return JS_EXCEPTION;
+    }
 
     /* Flush + close the file log so the buffered line buffer and stdio
      * buffer make it to flash; deep sleep reboots the chip otherwise. */
@@ -266,7 +289,11 @@ static JSValue mik__sleep_deep(JSContext* ctx, JSValue this_val, int argc, JSVal
 }
 
 static JSValue mik__sleep_light(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    if (!mik__configure_wakeup_sources(ctx, argv[0])) return JS_EXCEPTION;
+    int wake_gpio = -1;
+    if (!mik__configure_wakeup_sources(ctx, argv[0], &wake_gpio)) {
+        if (wake_gpio >= 0) mik__gpio_wake_done(wake_gpio);
+        return JS_EXCEPTION;
+    }
 
     /* Tear down USB before sleeping so the host sees a clean unplug,
      * not a silent enumerated-but-asleep device. This lets `mikro dev`
@@ -274,6 +301,7 @@ static JSValue mik__sleep_light(JSContext* ctx, JSValue this_val, int argc, JSVa
     mik__serial_io_detach_usb();
     esp_err_t err = esp_light_sleep_start();
     mik__serial_io_attach_usb();
+    if (wake_gpio >= 0) mik__gpio_wake_done(wake_gpio);
 
     /* esp_timer keeps counting through light sleep, so without this the
      * sleep would count against the blocking and feed limits and the TWDT. */

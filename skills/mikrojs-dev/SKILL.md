@@ -36,20 +36,21 @@ mikrojs runs JavaScript on ESP32 microcontrollers using QuickJS-NG. The runtime 
 mikrojs uses typed Result values instead of exceptions for expected errors. Every hardware API returns `Result<T, E>` where you check `.ok` before accessing `.value`.
 
 ```typescript
-import {pinMode, digitalWrite} from 'mikro/pin'
+import {AnalogIn, DigitalOut} from 'mikro/gpio'
 
 // Check the result
-const result = pinMode(4, 'OUTPUT')
+const result = DigitalOut(4)
 if (!result.ok) {
   console.error('Failed:', result.error)
   // result.error is a typed discriminated union
 }
 
 // Chain operations
-const value = analogRead(pin).map((raw) => raw / 4095)
+const sensor = AnalogIn(2).orPanic('Failed to configure sensor pin')
+const value = sensor.read().map((raw) => raw / 4095)
 
 // Crash on failure (for unrecoverable situations)
-pinMode(LED_PIN, 'OUTPUT').orPanic('LED pin must work')
+const led = DigitalOut(LED_PIN).orPanic('LED pin must work')
 ```
 
 **When to use what:**
@@ -271,7 +272,7 @@ When in doubt, prefer inlining small utilities over importing packages. Every im
 
 | Module     | Import                 | Purpose                     |
 | ---------- | ---------------------- | --------------------------- |
-| `pin`      | `mikrojs/pin`          | GPIO digital/analog I/O     |
+| `gpio`     | `mikro/gpio`           | GPIO digital/analog I/O     |
 | `pwm`      | `mikrojs/pwm`          | PWM output (LEDs, motors)   |
 | `i2c`      | `mikrojs/i2c`          | I2C bus communication       |
 | `spi`      | `mikrojs/spi`          | SPI bus communication       |

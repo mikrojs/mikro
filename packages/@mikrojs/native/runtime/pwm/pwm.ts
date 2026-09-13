@@ -7,8 +7,8 @@ import type {PwmError, PwmOptions} from './types.js'
 export class Pwm {
   #native: InstanceType<typeof NativePwm>
 
-  constructor(pin: number, options: PwmOptions) {
-    this.#native = new NativePwm(pin, options.freq, options.duty ?? 0)
+  constructor(gpio: number, options: PwmOptions) {
+    this.#native = new NativePwm(gpio, options.freq, options.duty ?? 0)
   }
 
   duty(value?: number): Result<number, PwmError> {
