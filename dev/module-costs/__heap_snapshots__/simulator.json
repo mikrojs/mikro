@@ -21,6 +21,9 @@
     "test/i2c.test.ts": {
       "heapDelta": 11738
     },
+    "test/i2s.test.ts": {
+      "heapDelta": 9172
+    },
     "test/inspect.test.ts": {
       "heapDelta": 4933
     },
@@ -79,7 +82,7 @@
       "heapDelta": 10071
     },
     "test/uart.test.ts": {
-      "heapDelta": 12366
+      "heapDelta": 13216
     },
     "test/udp.test.ts": {
       "heapDelta": 11683

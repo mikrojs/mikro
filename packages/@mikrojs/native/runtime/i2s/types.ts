@@ -1,3 +1,5 @@
+/* mikro/i2s, declared here and implemented in C (mik_i2s.cpp). */
+
 import type {GpioInUse} from '../gpio/types.js'
 import type {Result} from '../result/types.js'
 
@@ -58,7 +60,7 @@ export interface I2sStdTxRxOptions extends I2sStdBaseOptions {
 
 /**
  * PDM is receive-only and chip-dependent (classic ESP32 and S3 support it; some
- * C/H-series targets do not). On unsupported chips `begin()` returns
+ * C/H-series targets do not). On unsupported chips `I2s()` returns
  * `ChannelInitFailed`.
  *
  * @public
@@ -82,11 +84,11 @@ export interface I2sPdmRxOptions {
  */
 export type I2sError =
   | GpioInUse
+  | {name: 'InvalidGpio'; message: string}
   | {name: 'ChannelInitFailed'; message: string}
   | {name: 'InvalidParam'; message: string}
   | {name: 'WriteFailed'; message: string}
   | {name: 'ReadFailed'; message: string}
-  | {name: 'NotStarted'}
   | {name: 'QueueFull'}
   | {name: 'NoRxPin'}
   | {name: 'NoTxPin'}
@@ -124,18 +126,25 @@ export interface I2sRx {
 /**
  * @public
  */
-export interface I2sBase {
-  begin(): Result<void, I2sError>
-  end(): Result<void, I2sError>
+export interface I2s {
+  /**
+   * Stops the DMA, deletes the channels and releases the GPIO pins. Queued
+   * writes resolve with `ok()`. Calling it again does nothing. Afterwards
+   * `write()` resolves `ok()` and `capture()` returns an empty array; the first
+   * such call prints a warning.
+   */
+  end(): void
 }
 
 /**
+ * Claims the pins and starts I2S channels on a controller. Direction follows
+ * the pins: `dout` enables `write()`, `din` enables `capture()`.
  * @public
  */
-export declare const I2s: {
-  prototype: I2sBase
-  new (port: number, options: I2sStdTxRxOptions): I2sBase & I2sTx & I2sRx
-  new (port: number, options: I2sStdTxOptions): I2sBase & I2sTx
-  new (port: number, options: I2sStdRxOptions): I2sBase & I2sRx
-  new (port: number, options: I2sPdmRxOptions): I2sBase & I2sRx
-}
+export declare function I2s(
+  port: number,
+  options: I2sStdTxRxOptions,
+): Result<I2s & I2sTx & I2sRx, I2sError>
+export declare function I2s(port: number, options: I2sStdTxOptions): Result<I2s & I2sTx, I2sError>
+export declare function I2s(port: number, options: I2sStdRxOptions): Result<I2s & I2sRx, I2sError>
+export declare function I2s(port: number, options: I2sPdmRxOptions): Result<I2s & I2sRx, I2sError>

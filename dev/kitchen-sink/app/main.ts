@@ -79,25 +79,24 @@ console.log('gpio read:', readPin)
 logMem('after gpio')
 
 // --- pwm ---
-const pwm = new Pwm(2, {freq: 1000})
+const pwm = Pwm(2, {freq: 1000}).orPanic('pwm')
 console.log('pwm duty:', pwm.duty(0.5))
 await sleep(100)
-console.log('pwm end:', pwm.end())
+pwm.end()
 logMem('after pwm')
 
 // --- i2c ---
-const i2c = new I2c(0, {sda: 6, scl: 7})
-console.log('i2c begin:', i2c.begin())
+const i2c = I2c(0, {sda: 6, scl: 7}).orPanic('i2c')
 console.log('i2c scan:', i2c.scan())
-console.log('i2c end:', i2c.end())
+i2c.end()
 logMem('after i2c')
 
 // --- neopixel ---
-const neo = new NeoPixel(8, {count: 1})
+const neo = NeoPixel(8, {count: 1}).orPanic('neopixel')
 console.log('neopixel setPixel:', neo.setPixel(0, 255, 0, 0))
 console.log('neopixel show:', neo.show())
 console.log('neopixel clear:', neo.clear())
-console.log('neopixel end:', neo.end())
+neo.end()
 logMem('after neopixel')
 
 // --- wifi ---

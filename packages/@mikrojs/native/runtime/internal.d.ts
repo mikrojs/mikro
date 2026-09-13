@@ -225,66 +225,6 @@ declare module 'native:mikro/http_server' {
   export function respondEnd(id: number): void
   export function getHeader(id: number, name: string): string | undefined
 }
-declare module 'native:mikro/i2c' {
-  import type {I2cError} from '@mikrojs/native/runtime/i2c/types'
-  import type {Result} from 'mikro/result'
-
-  export interface I2cBaseOptions {
-    freq?: number
-    timeout?: number
-  }
-
-  export interface I2cOptionsWithPins extends I2cBaseOptions {
-    sda: number
-    scl: number
-  }
-
-  export type I2cOptions = I2cBaseOptions | I2cOptionsWithPins
-  export declare const I2c: {
-    prototype: I2c
-    new (busNo: 0 | 1, options?: I2cOptions): I2c
-  }
-
-  export interface I2c {
-    begin(): Result<void, I2cError>
-
-    end(): Result<void, I2cError>
-
-    read(address: number, bytes: number): Result<Uint8Array, I2cError>
-
-    write(address: number, data: Uint8Array, stop?: boolean): Result<void, I2cError>
-
-    scan(): Result<Uint8Array, I2cError>
-  }
-}
-declare module 'native:mikro/spi' {
-  import type {SpiError} from '@mikrojs/native/runtime/spi/types'
-  import type {Result} from 'mikro/result'
-
-  export interface SpiOptions {
-    clk: number
-    mosi: number
-    miso?: number
-    cs?: number
-    freq?: number
-    mode?: 0 | 1 | 2 | 3
-  }
-
-  export declare const Spi: {
-    prototype: Spi
-    new (hostNo: 1 | 2, options: SpiOptions): Spi
-  }
-
-  export interface Spi {
-    begin(): Result<void, SpiError>
-
-    end(): Result<void, SpiError>
-
-    transfer(data: Uint8Array): Result<Uint8Array, SpiError>
-
-    write(data: Uint8Array): Result<void, SpiError>
-  }
-}
 
 declare module 'native:mikro/sntp' {
   import type {SntpError} from '@mikrojs/native/runtime/sntp/types'
@@ -324,73 +264,6 @@ declare module 'native:mikro/nvs_kv' {
   export function sysRemove(key: string): boolean
   export function sysClear(): NRV
   export function info(): {entries: number; used: number; total: number; free: number}
-}
-
-declare module 'native:mikro/pwm' {
-  import type {PwmError} from '@mikrojs/native/runtime/pwm/types'
-  import type {Result} from 'mikro/result'
-
-  export declare const Pwm: {
-    prototype: Pwm
-    new (gpio: number, freq: number, duty: number): Pwm
-  }
-
-  export interface Pwm {
-    duty(value?: number): Result<number, PwmError>
-    freq(value?: number): Result<number, PwmError>
-    fade(target: number, durationMs: number): Result<Promise<void>, PwmError>
-    end(): Result<void, PwmError>
-  }
-}
-
-declare module 'native:mikro/neopixel' {
-  import type {NeoPixelError} from '@mikrojs/native/runtime/neopixel/types'
-  import type {Result} from 'mikro/result'
-
-  export declare const NeoPixel: {
-    prototype: NeoPixel
-    new (gpio: number, numLeds: number, bytesPerLed: number): NeoPixel
-  }
-
-  export interface NeoPixel {
-    setPixel(index: number, r: number, g: number, b: number, w: number): Result<void, NeoPixelError>
-    fill(r: number, g: number, b: number, w: number): Result<void, NeoPixelError>
-    show(): Result<void, NeoPixelError>
-    clear(): Result<void, NeoPixelError>
-    end(): Result<void, NeoPixelError>
-  }
-}
-
-declare module 'native:mikro/uart' {
-  import type {UartError} from '@mikrojs/native/runtime/uart/types'
-  import type {Result} from 'mikro/result'
-
-  export interface UartOptions {
-    tx?: number
-    rx?: number
-    baudRate: number
-  }
-
-  export declare const Uart: {
-    prototype: Uart
-    new (port: number, options: UartOptions): Uart
-  }
-
-  export interface Uart {
-    begin(): Result<void, UartError>
-
-    end(): Result<void, UartError>
-
-    write(data: Uint8Array): Result<void, UartError>
-
-    read(): Result<
-      {
-        next(): Promise<IteratorResult<Result<Uint8Array, UartError>>>
-        return(): Promise<IteratorResult<Result<Uint8Array, UartError>>>
-      },
-      UartError
-    >
-  }
 }
 
 declare module 'native:mikro/ble' {
@@ -580,38 +453,4 @@ declare module 'native:mikro/ota_client' {
   export const revert: Ota['revert']
   export const bearer: Ota['bearer']
   export const registry: Ota['registry']
-}
-
-declare module 'native:mikro/i2s' {
-  import type {I2sError, I2sSamples} from '@mikrojs/native/runtime/i2s/types'
-  import type {Result} from 'mikro/result'
-
-  export interface I2sNativeOptions {
-    mode?: 'std' | 'pdm'
-    sampleRate: number
-    bitsPerSample?: 16 | 32
-    channels?: 'mono' | 'stereo'
-    bclk?: number
-    ws?: number
-    clk?: number
-    dout?: number
-    din?: number
-    dmaFrames?: number
-    dmaBuffers?: number
-  }
-
-  export declare const I2s: {
-    prototype: I2s
-    new (port: number, options: I2sNativeOptions): I2s
-  }
-
-  export interface I2s {
-    begin(): Result<void, I2sError>
-
-    end(): Result<void, I2sError>
-
-    write(data: I2sSamples | Uint8Array): Promise<Result<void, I2sError>>
-
-    capture(frames: number, options?: {gainBits?: number}): Result<Int16Array, I2sError>
-  }
 }

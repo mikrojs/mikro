@@ -11,7 +11,7 @@ const NUM_LEDS = 24;
 const BRIGHTNESS = 1;
 const PATTERN_DURATION = 8000;
 
-const pixels = new NeoPixel(PIN, { count: NUM_LEDS });
+const pixels = NeoPixel(PIN, { count: NUM_LEDS }).orPanic("Failed to set up the LED strip");
 
 const patterns = [rainbow, comet, breathe, sparkle, colorWipe];
 

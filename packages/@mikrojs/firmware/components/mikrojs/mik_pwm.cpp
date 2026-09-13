@@ -2,12 +2,14 @@
 #include <cstring>
 
 #include "driver/ledc.h"
+#include "soc/soc_caps.h"
 #include "esp_log.h"
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
+#include "mikrojs_esp32.h"
 
-#define MIK_PWM_TAG "native:mikro/pwm"
+#define MIK_PWM_TAG "mikro/pwm"
 #define MIK_PWM_MAX_CHANNELS LEDC_CHANNEL_MAX
 #define MIK_PWM_MAX_TIMERS LEDC_TIMER_MAX
 #define MIK_PWM_MAX_PENDING_FADES 8
@@ -82,6 +84,7 @@ static ledc_timer_bit_t mik__pwm_best_resolution(uint32_t freq) {
     return static_cast<ledc_timer_bit_t>(max_bits);
 }
 
+
 /* ── Per-instance state ────────────────────────────────────────────── */
 
 typedef struct {
@@ -92,6 +95,7 @@ typedef struct {
     ledc_timer_bit_t resolution;
     double duty;  // 0.0–1.0
     bool active;
+    bool warned_after_end;
 } MIKPwmState;
 
 /* ── Fade tracking ─────────────────────────────────────────────────── */
@@ -99,7 +103,7 @@ typedef struct {
 struct MIKPwmFadePending {
     int channel;                  // LEDC channel that is fading
     MIKPromise promise;
-    std::atomic<bool> complete;   // set from ISR
+    std::atomic<bool> complete;   // set from ISR, or by the finalizer to settle with ok()
 };
 
 /* Dynamic module data slot, allocated on first import */
@@ -120,6 +124,29 @@ static IRAM_ATTR bool mik__pwm_fade_cb(const ledc_cb_param_t* param, void* user_
     return false;  // no high-priority task woken
 }
 
+/* The channel's fade that is still running, or nullptr. */
+static MIKPwmFadePending* mik__pwm_running_fade(MIKRuntime* mik_rt, int channel) {
+    MIKPwmFadePending* fades = mik_rt ? mik__pwm_fades(mik_rt) : nullptr;
+    if (!fades) return nullptr;
+    for (int i = 0; i < MIK_PWM_MAX_PENDING_FADES; i++) {
+        if (!JS_IsUndefined(fades[i].promise.p) && fades[i].channel == channel &&
+            !fades[i].complete.load(std::memory_order_acquire))
+            return &fades[i];
+    }
+    return nullptr;
+}
+
+/* Stops a running fade and detaches the channel's callback, so no later
+ * fade-end event reaches the slot. The ESP32 cannot stop a fade early. */
+static void mik__pwm_stop_fade(int channel) {
+    auto ch = static_cast<ledc_channel_t>(channel);
+#if SOC_LEDC_SUPPORT_FADE_STOP
+    ledc_fade_stop(LEDC_LOW_SPEED_MODE, ch);
+#endif
+    ledc_cbs_t cbs = {};
+    ledc_cb_register(LEDC_LOW_SPEED_MODE, ch, &cbs, nullptr);
+}
+
 /* ── Helpers ───────────────────────────────────────────────────────── */
 
 static MIKPwmState* mik__pwm_get(JSContext* ctx, JSValue this_val) {
@@ -133,16 +160,48 @@ static uint32_t mik__pwm_duty_to_raw(double duty, ledc_timer_bit_t resolution) {
     return static_cast<uint32_t>(duty * max_duty + 0.5);
 }
 
+/* Stops the output and returns the channel, timer and GPIO pin. */
+static void mik__pwm_release(MIKPwmState* s) {
+    ledc_stop(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(s->channel), 0);
+    mik__pwm_free_channel(s->channel);
+    mik__pwm_free_timer(s->timer);
+    MIK_ReleaseGpio(s->gpio, "Pwm");
+    s->active = false;
+}
+
+/* True when the handle was ended; the first such call prints a warning. */
+static bool mik__pwm_ended(MIKPwmState* s, const char* call) {
+    if (s->active) return false;
+    mik__warn_after_end(&s->warned_after_end, "Pwm", s->gpio, call, "pin");
+    return true;
+}
+
+/* LEDC takes a whole number of Hz; 40 MHz is the APB clock over a 1-bit duty. */
+static JSValue mik__pwm_check_freq(JSContext* ctx, double freq) {
+    if (freq >= 1 && freq <= 40000000) return JS_UNDEFINED;
+    return mik__result_err_named(ctx, "InvalidParam", "freq must be 1 to 40000000 Hz, got %g",
+                                 freq);
+}
+
+static JSValue mik__pwm_check_duty(JSContext* ctx, const char* name, double duty) {
+    if (duty >= 0.0 && duty <= 1.0) return JS_UNDEFINED;
+    return mik__result_err_named(ctx, "InvalidParam", "%s must be 0 to 1, got %g", name, duty);
+}
+
 /* ── Finalizer ─────────────────────────────────────────────────────── */
 
 static void mik__pwm_finalizer(JSRuntime* rt, JSValue val) {
     auto* s = static_cast<MIKPwmState*>(JS_GetOpaque(val, mik_pwm_class_id));
     if (!s) return;
     if (s->active) {
-        ledc_stop(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(s->channel), 0);
-        mik__pwm_free_channel(s->channel);
-        mik__pwm_free_timer(s->timer);
-        MIK_ReleaseGpio(s->gpio, "Pwm");
+        auto* mik_rt = static_cast<MIKRuntime*>(JS_GetRuntimeOpaque(rt));
+        MIKPwmFadePending* fade = mik__pwm_running_fade(mik_rt, s->channel);
+        if (fade) {
+            /* No ctx here: flag the slot and the loop consumer settles it. */
+            mik__pwm_stop_fade(s->channel);
+            fade->complete.store(true, std::memory_order_release);
+        }
+        mik__pwm_release(s);
     }
     free(s);
 }
@@ -152,44 +211,47 @@ static JSClassDef mik_pwm_class = {
     .finalizer = mik__pwm_finalizer,
 };
 
-/* ── Constructor ───────────────────────────────────────────────────── */
+/* ── Factory ───────────────────────────────────────────────────────── */
 
-static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, JSValue* argv) {
-    if (argc < 2)
-        return JS_ThrowTypeError(ctx, "Pwm requires (pin, freq) or (pin, freq, duty)");
-
+/* Pwm(gpio, {freq, duty?}) → Result<Pwm, PwmError> */
+static JSValue js_pwm(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     int32_t gpio;
-    if (JS_ToInt32(ctx, &gpio, argv[0])) return JS_EXCEPTION;
-
+    JSValueConst options;
     double freq;
-    if (JS_ToFloat64(ctx, &freq, argv[1])) return JS_EXCEPTION;
-    if (freq <= 0) return JS_ThrowRangeError(ctx, "frequency must be > 0");
-
     double duty = 0.0;
-    if (argc >= 3) {
-        if (JS_ToFloat64(ctx, &duty, argv[2])) return JS_EXCEPTION;
-        if (duty < 0.0 || duty > 1.0)
-            return JS_ThrowRangeError(ctx, "duty must be between 0.0 and 1.0");
-    }
+    if (mik__to_int_arg(ctx, argc >= 1 ? argv[0] : JS_UNDEFINED, "gpio", &gpio) ||
+        mik__options_arg(ctx, argc, argv, 1, true, &options) ||
+        mik__number_option(ctx, options, "freq", true, &freq) ||
+        mik__number_option(ctx, options, "duty", false, &duty))
+        return JS_EXCEPTION;
 
-    if (!MIK_ClaimGpio(gpio, "Pwm")) return mik__throw_gpio_in_use(ctx, gpio);
+    JSValue invalid = mik__pwm_check_freq(ctx, freq);
+    if (JS_IsUndefined(invalid)) invalid = mik__pwm_check_duty(ctx, "duty", duty);
+    if (!JS_IsUndefined(invalid)) return invalid;
+    const MIKGpioCheck check = {gpio, true};
+    invalid = mik__gpio_check(ctx, &check, 1);
+    if (!JS_IsUndefined(invalid)) return invalid;
+    const int gpios[] = {gpio};
+    JSValue claim_failed = mik__claim_gpios(ctx, gpios, 1, "Pwm");
+    if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
     int ch = mik__pwm_alloc_channel();
     if (ch < 0) {
         MIK_ReleaseGpio(gpio, "Pwm");
-        return JS_ThrowInternalError(ctx, "no free PWM channels (max %d)", MIK_PWM_MAX_CHANNELS);
+        return mik__result_err_named(ctx, "NoChannel", "no free PWM channels (max %d)",
+                                     MIK_PWM_MAX_CHANNELS);
     }
 
     int timer = mik__pwm_alloc_timer(static_cast<uint32_t>(freq));
     if (timer < 0) {
         MIK_ReleaseGpio(gpio, "Pwm");
         mik__pwm_free_channel(ch);
-        return JS_ThrowInternalError(ctx, "no free PWM timers (max %d)", MIK_PWM_MAX_TIMERS);
+        return mik__result_err_named(ctx, "NoTimer", "no free PWM timers (max %d)",
+                                     MIK_PWM_MAX_TIMERS);
     }
 
     ledc_timer_bit_t resolution = mik__pwm_best_resolution(static_cast<uint32_t>(freq));
 
-    /* Configure timer */
     ledc_timer_config_t timer_cfg = {};
     timer_cfg.speed_mode = LEDC_LOW_SPEED_MODE;
     timer_cfg.duty_resolution = resolution;
@@ -197,15 +259,6 @@ static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, 
     timer_cfg.freq_hz = static_cast<uint32_t>(freq);
     timer_cfg.clk_cfg = LEDC_AUTO_CLK;
 
-    esp_err_t err = ledc_timer_config(&timer_cfg);
-    if (err != ESP_OK) {
-        MIK_ReleaseGpio(gpio, "Pwm");
-        mik__pwm_free_channel(ch);
-        mik__pwm_free_timer(timer);
-        return JS_ThrowInternalError(ctx, "LEDC timer config failed: %s", esp_err_to_name(err));
-    }
-
-    /* Configure channel */
     ledc_channel_config_t ch_cfg = {};
     ch_cfg.gpio_num = gpio;
     ch_cfg.speed_mode = LEDC_LOW_SPEED_MODE;
@@ -214,12 +267,18 @@ static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, 
     ch_cfg.duty = mik__pwm_duty_to_raw(duty, resolution);
     ch_cfg.hpoint = 0;
 
-    err = ledc_channel_config(&ch_cfg);
+    const char* step = "ledc_timer_config";
+    esp_err_t err = ledc_timer_config(&timer_cfg);
+    if (err == ESP_OK) {
+        step = "ledc_channel_config";
+        err = ledc_channel_config(&ch_cfg);
+    }
     if (err != ESP_OK) {
         MIK_ReleaseGpio(gpio, "Pwm");
         mik__pwm_free_channel(ch);
         mik__pwm_free_timer(timer);
-        return JS_ThrowInternalError(ctx, "LEDC channel config failed: %s", esp_err_to_name(err));
+        return mik__result_err_named(ctx, "ConfigFailed", "%s failed on GPIO %d: %s", step, gpio,
+                                     esp_err_to_name(err));
     }
 
     /* Install fade service (once) */
@@ -232,6 +291,7 @@ static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, 
 
     auto* s = static_cast<MIKPwmState*>(calloc(1, sizeof(MIKPwmState)));
     if (!s) {
+        ledc_stop(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(ch), 0);
         MIK_ReleaseGpio(gpio, "Pwm");
         mik__pwm_free_channel(ch);
         mik__pwm_free_timer(timer);
@@ -247,15 +307,12 @@ static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, 
 
     JSValue obj = JS_NewObjectClass(ctx, mik_pwm_class_id);
     if (JS_IsException(obj)) {
-        ledc_stop(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(ch), 0);
-        MIK_ReleaseGpio(gpio, "Pwm");
-        mik__pwm_free_channel(ch);
-        mik__pwm_free_timer(timer);
+        mik__pwm_release(s);
         free(s);
         return obj;
     }
     JS_SetOpaque(obj, s);
-    return obj;
+    return mik__result_ok(ctx, obj);
 }
 
 /* ── Methods ───────────────────────────────────────────────────────── */
@@ -263,18 +320,15 @@ static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, 
 static JSValue js_pwm_duty(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__pwm_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->active) return mik__result_err_tag(ctx, "NotActive");
-
-    /* Getter */
-    if (argc == 0 || JS_IsUndefined(argv[0])) {
-        return mik__result_ok(ctx, JS_NewFloat64(ctx, s->duty));
+    bool set = argc > 0 && !JS_IsUndefined(argv[0]);
+    double duty = 0.0;
+    if (set && mik__to_number_arg(ctx, argv[0], "duty", &duty)) return JS_EXCEPTION;
+    if (mik__pwm_ended(s, "duty()") || !set) {
+        return set ? mik__result_ok_void(ctx) : mik__result_ok(ctx, JS_NewFloat64(ctx, s->duty));
     }
 
-    /* Setter */
-    double duty;
-    if (JS_ToFloat64(ctx, &duty, argv[0])) return JS_EXCEPTION;
-    if (duty < 0.0 || duty > 1.0)
-        return mik__result_err_named(ctx, "DutyFailed", "duty must be 0.0-1.0");
+    JSValue invalid = mik__pwm_check_duty(ctx, "duty", duty);
+    if (!JS_IsUndefined(invalid)) return invalid;
 
     uint32_t raw = mik__pwm_duty_to_raw(duty, s->resolution);
     esp_err_t err = ledc_set_duty(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(s->channel), raw);
@@ -294,17 +348,16 @@ static JSValue js_pwm_duty(JSContext* ctx, JSValue this_val, int argc, JSValue* 
 static JSValue js_pwm_freq(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__pwm_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->active) return mik__result_err_tag(ctx, "NotActive");
-
-    /* Getter */
-    if (argc == 0 || JS_IsUndefined(argv[0])) {
-        return mik__result_ok(ctx, JS_NewFloat64(ctx, static_cast<double>(s->freq)));
+    bool set = argc > 0 && !JS_IsUndefined(argv[0]);
+    double freq = 0.0;
+    if (set && mik__to_number_arg(ctx, argv[0], "freq", &freq)) return JS_EXCEPTION;
+    if (mik__pwm_ended(s, "freq()") || !set) {
+        return set ? mik__result_ok_void(ctx)
+                   : mik__result_ok(ctx, JS_NewFloat64(ctx, static_cast<double>(s->freq)));
     }
 
-    /* Setter */
-    double freq;
-    if (JS_ToFloat64(ctx, &freq, argv[0])) return JS_EXCEPTION;
-    if (freq <= 0) return mik__result_err_named(ctx, "FreqFailed", "frequency must be positive");
+    JSValue invalid = mik__pwm_check_freq(ctx, freq);
+    if (!JS_IsUndefined(invalid)) return invalid;
 
     uint32_t new_freq = static_cast<uint32_t>(freq);
     ledc_timer_bit_t new_resolution = mik__pwm_best_resolution(new_freq);
@@ -353,33 +406,39 @@ static JSValue js_pwm_freq(JSContext* ctx, JSValue this_val, int argc, JSValue* 
     ledc_set_duty(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(s->channel), raw);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(s->channel));
 
-    return mik__result_ok(ctx, JS_NewFloat64(ctx, static_cast<double>(s->freq)));
+    return mik__result_ok_void(ctx);
 }
 
+/* A promise already resolved with `result`, which it takes. */
+static JSValue mik__pwm_resolved(JSContext* ctx, JSValue result) {
+    if (JS_IsException(result)) return JS_EXCEPTION;
+    return MIK_NewResolvedPromise(ctx, 1, &result);
+}
+
+/* fade(targetDuty, durationMs) → Promise<Result<void, PwmError>> */
 static JSValue js_pwm_fade(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__pwm_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->active) return mik__result_err_tag(ctx, "NotActive");
-    if (!s_fade_installed)
-        return mik__result_err_named(ctx, "FadeFailed", "fade service not installed");
+    double target;
+    double duration_ms;
+    if (mik__to_number_arg(ctx, argv[0], "targetDuty", &target) ||
+        mik__to_number_arg(ctx, argv[1], "durationMs", &duration_ms))
+        return JS_EXCEPTION;
+    if (mik__pwm_ended(s, "fade()")) return mik__pwm_resolved(ctx, mik__result_ok_void(ctx));
+
+    JSValue invalid = mik__pwm_check_duty(ctx, "targetDuty", target);
+    if (JS_IsUndefined(invalid) && !(duration_ms >= 0 && duration_ms <= INT32_MAX))
+        invalid = mik__result_err_named(ctx, "InvalidParam", "durationMs must be 0 or more, got %g",
+                                        duration_ms);
+    if (JS_IsUndefined(invalid) && !s_fade_installed)
+        invalid = mik__result_err_named(ctx, "FadeFailed", "fade service not installed");
+    if (JS_IsUndefined(invalid) && s_fade_count >= MIK_PWM_MAX_PENDING_FADES)
+        invalid = mik__result_err_named(ctx, "FadeFailed", "too many pending fades (max %d)",
+                                        MIK_PWM_MAX_PENDING_FADES);
+    if (!JS_IsUndefined(invalid)) return mik__pwm_resolved(ctx, invalid);
 
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     CHECK_NOT_NULL(mik_rt);
-
-    if (s_fade_count >= MIK_PWM_MAX_PENDING_FADES)
-        return mik__result_err_named(ctx, "FadeFailed",
-                                     "too many pending fades (max %d)",
-                                     MIK_PWM_MAX_PENDING_FADES);
-
-    double target;
-    if (JS_ToFloat64(ctx, &target, argv[0])) return JS_EXCEPTION;
-    if (target < 0.0 || target > 1.0)
-        return mik__result_err_named(ctx, "DutyFailed", "duty must be 0.0-1.0");
-
-    int32_t duration_ms;
-    if (JS_ToInt32(ctx, &duration_ms, argv[1])) return JS_EXCEPTION;
-    if (duration_ms < 0)
-        return mik__result_err_named(ctx, "FadeFailed", "fade duration must be non-negative");
 
     /* Allocate fade tracking entry */
     auto* fades = mik__pwm_fades(mik_rt);
@@ -402,58 +461,65 @@ static JSValue js_pwm_fade(JSContext* ctx, JSValue this_val, int argc, JSValue* 
         }
     }
     if (slot < 0)
-        return mik__result_err_named(ctx, "FadeFailed", "no free fade slots available");
+        return mik__pwm_resolved(
+            ctx, mik__result_err_named(ctx, "FadeFailed", "no free fade slots available"));
 
-    /* Create promise */
+    /* Waits for a fade already running on this channel to finish, so that
+     * fade's callback still reaches its own slot. */
+    auto ch = static_cast<ledc_channel_t>(s->channel);
+    uint32_t target_raw = mik__pwm_duty_to_raw(target, s->resolution);
+    esp_err_t err = ledc_set_fade_with_time(LEDC_LOW_SPEED_MODE, ch, target_raw,
+                                            static_cast<int>(duration_ms));
+    if (err != ESP_OK)
+        return mik__pwm_resolved(ctx, mik__result_err_named(ctx, "FadeFailed",
+                                                            "failed to configure fade: %s",
+                                                            esp_err_to_name(err)));
+
     fades[slot].channel = s->channel;
     fades[slot].complete.store(false, std::memory_order_relaxed);
     JSValue promise = MIK_InitPromise(ctx, &fades[slot].promise);
-    s_fade_count++;
+    if (JS_IsException(promise)) {
+        MIK_ClearPromise(ctx, &fades[slot].promise);
+        return JS_EXCEPTION;
+    }
 
-    /* Register fade callback */
     ledc_cbs_t cbs = {};
     cbs.fade_cb = mik__pwm_fade_cb;
-    ledc_cb_register(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(s->channel), &cbs,
-                     &fades[slot]);
+    ledc_cb_register(LEDC_LOW_SPEED_MODE, ch, &cbs, &fades[slot]);
 
-    /* Start fade */
-    uint32_t target_raw = mik__pwm_duty_to_raw(target, s->resolution);
-    esp_err_t err = ledc_set_fade_with_time(LEDC_LOW_SPEED_MODE,
-                                             static_cast<ledc_channel_t>(s->channel), target_raw,
-                                             duration_ms);
+    err = ledc_fade_start(LEDC_LOW_SPEED_MODE, ch, LEDC_FADE_NO_WAIT);
     if (err != ESP_OK) {
-        s_fade_count--;
         MIK_FreePromise(ctx, &fades[slot].promise);
-        return mik__result_err_named(ctx, "FadeFailed",
-                                     "failed to configure fade: %s", esp_err_to_name(err));
+        MIK_ClearPromise(ctx, &fades[slot].promise);
+        JS_FreeValue(ctx, promise);
+        return mik__pwm_resolved(ctx, mik__result_err_named(ctx, "FadeFailed",
+                                                            "failed to start fade: %s",
+                                                            esp_err_to_name(err)));
     }
-
-    err = ledc_fade_start(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(s->channel),
-                          LEDC_FADE_NO_WAIT);
-    if (err != ESP_OK) {
-        s_fade_count--;
-        MIK_FreePromise(ctx, &fades[slot].promise);
-        return mik__result_err_named(ctx, "FadeFailed",
-                                     "failed to start fade: %s", esp_err_to_name(err));
-    }
+    s_fade_count++;
 
     /* Update duty to target (will be accurate once fade completes) */
     s->duty = target;
-
-    return mik__result_ok(ctx, promise);
+    return promise;
 }
 
+/* end() — stops the output; a fade in progress resolves with ok() */
 static JSValue js_pwm_end(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__pwm_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->active) return mik__result_ok_void(ctx);  // idempotent
+    if (!s->active) return JS_UNDEFINED;
 
-    ledc_stop(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(s->channel), 0);
-    mik__pwm_free_channel(s->channel);
-    mik__pwm_free_timer(s->timer);
-    MIK_ReleaseGpio(s->gpio, "Pwm");
-    s->active = false;
-    return mik__result_ok_void(ctx);
+    MIKPwmFadePending* fade = mik__pwm_running_fade(MIK_GetRuntime(ctx), s->channel);
+    if (fade) {
+        mik__pwm_stop_fade(s->channel);
+        mik__print_error_line("Pwm %d: end() cancelled a fade in progress", s->gpio);
+        JSValue ok = mik__result_ok_void(ctx);
+        MIK_ResolvePromise(ctx, &fade->promise, 1, &ok);
+        MIK_ClearPromise(ctx, &fade->promise);
+        s_fade_count--;
+    }
+    mik__pwm_release(s);
+    return JS_UNDEFINED;
 }
 
 /* ── Prototype ─────────────────────────────────────────────────────── */
@@ -468,9 +534,7 @@ static const JSCFunctionListEntry mik_pwm_proto_funcs[] = {
 /* ── Module init ───────────────────────────────────────────────────── */
 
 static int mik__pwm_module_init(JSContext* ctx, JSModuleDef* m) {
-    JSValue ctor =
-        JS_NewCFunction2(ctx, js_pwm_constructor, "Pwm", 3, JS_CFUNC_constructor, 0);
-    JS_SetModuleExport(ctx, m, "Pwm", ctor);
+    JS_SetModuleExport(ctx, m, "Pwm", JS_NewCFunction(ctx, js_pwm, "Pwm", 2));
     return 0;
 }
 
@@ -486,10 +550,10 @@ static JSModuleDef* mik__pwm_init(JSContext* ctx) {
     /* Create prototype with methods */
     JSValue proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, proto, mik_pwm_proto_funcs, countof(mik_pwm_proto_funcs));
-    JS_SetClassProto(ctx, mik_pwm_class_id, proto);  /* consumed */
+    JS_SetClassProto(ctx, mik_pwm_class_id, proto); /* consumed */
 
     /* Register module */
-    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/pwm", mik__pwm_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "mikro/pwm", mik__pwm_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "Pwm");
     return m;
@@ -508,8 +572,8 @@ void mik__pwm_consume(JSContext* ctx) {
         if (!fades[i].complete.load(std::memory_order_acquire)) continue;
 
         /* Fade completed — resolve promise and mark slot as free */
-        JSValue undef = JS_UNDEFINED;
-        MIK_ResolvePromise(ctx, &fades[i].promise, 1, &undef);
+        JSValue ok = mik__result_ok_void(ctx);
+        MIK_ResolvePromise(ctx, &fades[i].promise, 1, &ok);
         MIK_ClearPromise(ctx, &fades[i].promise);
         s_fade_count--;
     }
@@ -523,6 +587,9 @@ void mik__pwm_destroy(JSContext* ctx) {
 
     for (int i = 0; i < MIK_PWM_MAX_PENDING_FADES; i++) {
         if (MIK_IsPromisePending(ctx, &fades[i].promise)) {
+            /* Destroy runs before finalizers, which then find no slot to stop:
+             * detach the callback now so the fade-end ISR never writes freed memory. */
+            mik__pwm_stop_fade(fades[i].channel);
             MIK_FreePromise(ctx, &fades[i].promise);
             s_fade_count--;
         }
@@ -532,4 +599,4 @@ void mik__pwm_destroy(JSContext* ctx) {
     mik__pwm_fades(mik_rt) = nullptr;
 }
 
-MIK_REGISTER_MODULE(pwm, "native:mikro/pwm", mik__pwm_init, mik__pwm_consume, mik__pwm_destroy)
+MIK__REGISTER_PUBLIC_MODULE(pwm, "mikro/pwm", mik__pwm_init, mik__pwm_consume, mik__pwm_destroy)

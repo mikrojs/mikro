@@ -164,3 +164,69 @@ TEST_CASE("PWM fade completes", "[pwm]") {
     mik__pwm_free_channel(ch);
     mik__pwm_free_timer(timer);
 }
+
+/* ── mikro/pwm from JS ─────────────────────────────────────────────── */
+
+#include "js_harness.h"
+
+TEST_CASE("Pwm factory sets duty and freq and rejects bad values", "[pwm]") {
+    js_harness::setup();
+    js_harness::run(R"(
+        import {Pwm} from 'mikro/pwm'
+        const pwm = Pwm(TEST_GPIO, {freq: 5000, duty: 0.25}).orPanic('pwm')
+        const got = [pwm.duty().value, pwm.duty(0.5).value, pwm.duty().value,
+                     pwm.freq(1000).ok, pwm.freq().value, pwm.duty(2).error.name]
+        const thrown = [() => Pwm(1.5, {freq: 50}), () => Pwm(TEST_GPIO),
+                        () => Pwm(TEST_GPIO, {freq: '50'}), () => pwm.duty('1')].map((f) => {
+            try { f() } catch (e) { return e.name }
+        })
+        pwm.end()
+        const errors = [Pwm(TEST_GPIO, {freq: 0}), Pwm(TEST_GPIO, {freq: 50, duty: 2}),
+                        Pwm(100, {freq: 50})].map((r) => r.error.name)
+        globalThis.out = JSON.stringify([got, thrown, errors])
+    )");
+    TEST_ASSERT_EQUAL_STRING(
+        "[[0.25,null,0.5,true,1000,\"InvalidParam\"],"
+        "[\"TypeError\",\"TypeError\",\"TypeError\",\"TypeError\"],"
+        "[\"InvalidParam\",\"InvalidParam\",\"InvalidGpio\"]]",
+        js_harness::out().c_str());
+    js_harness::teardown();
+}
+
+TEST_CASE("Pwm fade resolves with a Result when it completes", "[pwm]") {
+    js_harness::setup();
+    js_harness::run(R"(
+        import {Pwm} from 'mikro/pwm'
+        globalThis.pwm = Pwm(TEST_GPIO, {freq: 5000}).orPanic('pwm')
+        globalThis.results = []
+        pwm.fade(2, 10).then((r) => results.push(r.error.name))
+        pwm.fade(1, 50).then((r) => results.push(r.ok))
+    )");
+    js_harness::loop_passes(30);
+    js_harness::run(R"(
+        globalThis.out = JSON.stringify([results, pwm.duty().value])
+        pwm.end()
+    )");
+    TEST_ASSERT_EQUAL_STRING("[[\"InvalidParam\",true],1]", js_harness::out().c_str());
+    js_harness::teardown();
+}
+
+TEST_CASE("Pwm end() settles a fade in progress and later calls do nothing", "[pwm]") {
+    js_harness::setup();
+    js_harness::run(R"(
+        import {Pwm} from 'mikro/pwm'
+        const pwm = Pwm(TEST_GPIO, {freq: 5000, duty: 0.25}).orPanic('pwm')
+        globalThis.results = []
+        pwm.fade(1, 5000).then((r) => results.push(r.ok))
+        const ended = [pwm.end(), pwm.end()]
+        const after = [pwm.duty().value, pwm.duty(0.5).ok, pwm.freq(10).ok, pwm.freq().value]
+        pwm.fade(0, 10).then((r) => results.push(r.ok))
+        globalThis.out = JSON.stringify([ended, after])
+    )");
+    js_harness::loop_passes(2);
+    TEST_ASSERT_EQUAL_STRING("[[null,null],[1,true,true,5000]]", js_harness::out().c_str());
+    js_harness::run(R"(globalThis.out = JSON.stringify(results))");
+    TEST_ASSERT_EQUAL_STRING("[true,true]", js_harness::out().c_str());
+    TEST_ASSERT_NULL(MIK_GpioOwner(TEST_GPIO));
+    js_harness::teardown();
+}

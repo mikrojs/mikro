@@ -1,6 +1,7 @@
 #include "mikrojs/utils.h"
 
 #include <errno.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,6 +57,111 @@ void mik__print_error_line(const char* fmt, ...) {
     buf[len++] = '\r';
     buf[len++] = '\n';
     MIK_GetPlatform()->stderr_write(buf, len);
+}
+
+JSAtom mik__async_iterator_atom(JSContext* ctx) {
+    JSValue g = JS_GetGlobalObject(ctx);
+    JSValue sym_ctor = JS_GetPropertyStr(ctx, g, "Symbol");
+    JSValue sym = JS_GetPropertyStr(ctx, sym_ctor, "asyncIterator");
+    JSAtom atom = JS_ValueToAtom(ctx, sym);
+    JS_FreeValue(ctx, sym);
+    JS_FreeValue(ctx, sym_ctor);
+    JS_FreeValue(ctx, g);
+    return atom;
+}
+
+void mik__warn_after_end(bool* warned, const char* owner, int id, const char* call,
+                         const char* resource) {
+    if (*warned) return;
+    *warned = true;
+    mik__print_error_line("%s %d: %s after end(); the handle no longer owns the %s", owner, id,
+                          call, resource);
+}
+
+int mik__to_int_arg(JSContext* ctx, JSValueConst v, const char* name, int32_t* out) {
+    double d = 0;
+    if (!JS_IsNumber(v) || JS_ToFloat64(ctx, &d, v) || trunc(d) != d || fabs(d) > INT32_MAX) {
+        /* Reject NaN and fractions instead of truncating them. */
+        JS_ThrowTypeError(ctx, "%s must be an integer", name);
+        return -1;
+    }
+    *out = (int32_t)d;
+    return 0;
+}
+
+int mik__to_number_arg(JSContext* ctx, JSValueConst v, const char* name, double* out) {
+    if (!JS_IsNumber(v) || JS_ToFloat64(ctx, out, v)) {
+        JS_ThrowTypeError(ctx, "%s must be a number", name);
+        return -1;
+    }
+    return 0;
+}
+
+uint8_t* mik__bytes_arg(JSContext* ctx, JSValueConst v, const char* name, size_t* len) {
+    size_t offset, elem_size, buf_len;
+    JSValue ab = JS_GetTypedArrayBuffer(ctx, v, &offset, len, &elem_size);
+    uint8_t* data;
+    if (!JS_IsException(ab)) {
+        /* len keeps the view length; the full backing buffer goes to a
+         * throwaway so a subarray view isn't over-read. */
+        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
+        JS_FreeValue(ctx, ab);
+        if (data) data += offset;
+    } else {
+        JSValue exc = JS_GetException(ctx);
+        JS_FreeValue(ctx, exc);
+        data = JS_GetArrayBuffer(ctx, len, v);
+    }
+    if (!data) JS_ThrowTypeError(ctx, "%s must be a Uint8Array", name);
+    return data;
+}
+
+int mik__options_arg(JSContext* ctx, int argc, JSValueConst* argv, int index, bool required,
+                     JSValueConst* out) {
+    JSValueConst v = index < argc ? argv[index] : JS_UNDEFINED;
+    if (JS_IsObject(v) || (!required && JS_IsUndefined(v))) {
+        *out = v;
+        return 0;
+    }
+    JS_ThrowTypeError(ctx, "options must be an object");
+    return -1;
+}
+
+int mik__int_option(JSContext* ctx, JSValueConst options, const char* name, bool required,
+                    int32_t* out) {
+    if (JS_IsUndefined(options)) return required ? mik__to_int_arg(ctx, options, name, out) : 0;
+    JSValue v = JS_GetPropertyStr(ctx, options, name);
+    if (JS_IsException(v)) return -1;
+    int rc = 0;
+    if (required || !JS_IsUndefined(v)) rc = mik__to_int_arg(ctx, v, name, out);
+    JS_FreeValue(ctx, v);
+    return rc;
+}
+
+int mik__number_option(JSContext* ctx, JSValueConst options, const char* name, bool required,
+                       double* out) {
+    if (JS_IsUndefined(options)) return required ? mik__to_number_arg(ctx, options, name, out) : 0;
+    JSValue v = JS_GetPropertyStr(ctx, options, name);
+    if (JS_IsException(v)) return -1;
+    int rc = 0;
+    if (required || !JS_IsUndefined(v)) rc = mik__to_number_arg(ctx, v, name, out);
+    JS_FreeValue(ctx, v);
+    return rc;
+}
+
+int mik__bool_option(JSContext* ctx, JSValueConst options, const char* name, bool* out) {
+    if (JS_IsUndefined(options)) return 0;
+    JSValue v = JS_GetPropertyStr(ctx, options, name);
+    if (JS_IsException(v)) return -1;
+    int rc = 0;
+    if (JS_IsBool(v)) {
+        *out = JS_ToBool(ctx, v);
+    } else if (!JS_IsUndefined(v)) {
+        JS_ThrowTypeError(ctx, "%s must be a boolean", name);
+        rc = -1;
+    }
+    JS_FreeValue(ctx, v);
+    return rc;
 }
 
 void mik_dump_error(JSContext* ctx) {

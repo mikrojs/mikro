@@ -50,20 +50,9 @@ JSValue hc_iter_result(JSContext* ctx, bool done, JSValue value) {
     return o;
 }
 
-JSAtom hc_async_iterator_atom(JSContext* ctx) {
-    JSValue g = JS_GetGlobalObject(ctx);
-    JSValue sym_ctor = JS_GetPropertyStr(ctx, g, "Symbol");
-    JSValue sym = JS_GetPropertyStr(ctx, sym_ctor, "asyncIterator");
-    JSAtom atom = JS_ValueToAtom(ctx, sym);
-    JS_FreeValue(ctx, sym);
-    JS_FreeValue(ctx, sym_ctor);
-    JS_FreeValue(ctx, g);
-    return atom;
-}
-
 /* source[Symbol.asyncIterator]() — returns the iterator (owned) or exception. */
 JSValue hc_get_async_iterator(JSContext* ctx, JSValue source) {
-    JSAtom atom = hc_async_iterator_atom(ctx);
+    JSAtom atom = mik__async_iterator_atom(ctx);
     JSValue fn = JS_GetProperty(ctx, source, atom);
     JS_FreeAtom(ctx, atom);
     if (JS_IsException(fn)) return fn;
@@ -757,7 +746,7 @@ JSValue hc_make_response(JSContext* ctx, JSValue raw) {
                               JS_PROP_C_W_E);
 
     JSValue body = JS_NewObject(ctx);
-    JSAtom iter_atom = hc_async_iterator_atom(ctx);
+    JSAtom iter_atom = mik__async_iterator_atom(ctx);
     JS_DefinePropertyValue(ctx, body, iter_atom,
                            JS_NewCFunctionData(ctx, hc_resp_body_iterator_cf, 0, 0, 2, data),
                            JS_PROP_C_W_E);
@@ -1093,7 +1082,7 @@ JSValue hc_on_headers(JSContext* ctx, JSValue this_val, int argc, JSValue* argv,
     }
 
     JSValue raw_body = JS_NewObject(ctx);
-    JSAtom iter_atom = hc_async_iterator_atom(ctx);
+    JSAtom iter_atom = mik__async_iterator_atom(ctx);
     JS_DefinePropertyValue(ctx, raw_body, iter_atom,
                            JS_NewCFunctionData(ctx, hc_transport_iterator_cf, 0, 0, 1, &st),
                            JS_PROP_C_W_E);

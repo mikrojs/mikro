@@ -1,6 +1,9 @@
+#include <cmath>
 #include <cstring>
 
 #include "driver/i2s_std.h"
+/* soc_caps.h has no I2S controller count in IDF 6.1; the HAL header does. */
+#include "hal/i2s_ll.h"
 #include "soc/soc_caps.h"
 #if SOC_I2S_SUPPORTS_PDM_RX
 #include "driver/i2s_pdm.h"
@@ -8,8 +11,8 @@
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
+#include "mikrojs_esp32.h"
 
-#define MIK_I2S_TAG "native:mikro/i2s"
 #define MIK_I2S_MAX_INSTANCES 2
 #define MIK_I2S_TX_QUEUE_DEPTH 4
 #define MIK_I2S_DEFAULT_DMA_FRAMES 240  /* ~5 ms @ 48 kHz; audio-tuned, not the UART default */
@@ -39,14 +42,13 @@ struct MIKI2sState {
     uint32_t sample_rate;
     int bits;       // 16 or 32
     bool stereo;    // stereo vs mono slot mode
-    int32_t bclk;   // std only
-    int32_t ws;     // std only
-    int32_t clk;    // pdm only
-    int32_t dout;   // -1 if no TX
-    int32_t din;    // -1 if no RX
-    int dma_frames;
-    int dma_buffers;
-    bool begun;
+    int bclk;       // std only
+    int ws;         // std only
+    int clk;        // pdm only
+    int dout;       // -1 if no TX
+    int din;        // -1 if no RX
+    bool active;
+    bool warned_after_end;
 
     /* TX bounded queue (ring buffer) */
     MIKI2sTxChunk tx_queue[MIK_I2S_TX_QUEUE_DEPTH];
@@ -63,7 +65,7 @@ static inline MIKI2sSlot*& mik__i2s_slot_data(MIKRuntime* rt) {
     return reinterpret_cast<MIKI2sSlot*&>(rt->module_data[mik__i2s_slot]);
 }
 
-/* Returns false if the loop consumer can't take another instance; begin() turns
+/* Returns false if the loop consumer can't take another instance; the factory turns
  * that into an error so a tracked-but-undriven instance can't exist. */
 static bool mik__i2s_track(JSContext* ctx, MIKI2sState* s) {
     auto* slot = mik__i2s_slot_data(MIK_GetRuntime(ctx));
@@ -91,6 +93,42 @@ static void mik__i2s_untrack(JSContext* ctx, MIKI2sState* s) {
 
 static MIKI2sState* mik__i2s_get(JSContext* ctx, JSValue this_val) {
     return static_cast<MIKI2sState*>(JS_GetOpaque2(ctx, this_val, mik_i2s_class_id));
+}
+
+/* True when the handle was ended; the first such call prints a warning. */
+static bool mik__i2s_ended(MIKI2sState* s, const char* call) {
+    if (s->active) return false;
+    mik__warn_after_end(&s->warned_after_end, "I2s", s->port, call, "port");
+    return true;
+}
+
+/* Reads options.<name> as one of two strings: *out is true for `second`. A
+ * missing value leaves *out. Returns -1 with a TypeError pending. */
+static int mik__i2s_choice_option(JSContext* ctx, JSValueConst options, const char* name,
+                                  const char* first, const char* second, bool* out) {
+    JSValue v = JS_GetPropertyStr(ctx, options, name);
+    if (JS_IsException(v)) return -1;
+    if (JS_IsUndefined(v)) return 0;
+    const char* str = JS_IsString(v) ? JS_ToCString(ctx, v) : nullptr;
+    JS_FreeValue(ctx, v);
+    int rc = 0;
+    if (str && strcmp(str, first) == 0) {
+        *out = false;
+    } else if (str && strcmp(str, second) == 0) {
+        *out = true;
+    } else {
+        JS_ThrowTypeError(ctx, "%s must be '%s' or '%s'", name, first, second);
+        rc = -1;
+    }
+    JS_FreeCString(ctx, str);
+    return rc;
+}
+
+/* JS_UNDEFINED for a whole number from 1 to `max`, else the InvalidParam Result. */
+static JSValue mik__i2s_check_count(JSContext* ctx, const char* name, double value, double max) {
+    if (value >= 1 && value <= max && std::trunc(value) == value) return JS_UNDEFINED;
+    return mik__result_err_named(ctx, "InvalidParam", "%s must be a whole number from 1 to %.0f, got %g",
+                                 name, max, value);
 }
 
 /* Backing-store hook for the sample buffer: size 0 means free. A non-zero
@@ -145,7 +183,7 @@ static inline i2s_slot_mode_t mik__i2s_slot_mode(bool stereo) {
 static void mik__i2s_finalizer(JSRuntime* rt, JSValue val) {
     auto* s = static_cast<MIKI2sState*>(JS_GetOpaque(val, mik_i2s_class_id));
     if (!s) return;
-    if (s->begun) {
+    if (s->active) {
         if (s->tx_chan) {
             i2s_channel_disable(s->tx_chan);
             i2s_del_channel(s->tx_chan);
@@ -174,191 +212,47 @@ static JSClassDef mik_i2s_class = {
     .finalizer = mik__i2s_finalizer,
 };
 
-/* ── Constructor ──────────────────────────────────────────────────── */
+/* ── Factory ──────────────────────────────────────────────────────── */
 
-static JSValue js_i2s_constructor(JSContext* ctx, JSValue new_target, int argc, JSValue* argv) {
-    if (argc < 2) return JS_ThrowTypeError(ctx, "I2s requires port and options arguments");
-
-    int32_t port;
-    if (JS_ToInt32(ctx, &port, argv[0])) return JS_EXCEPTION;
-    /* No SOC port-count macro in the new driver; reject negatives here and let
-     * i2s_new_channel() reject an out-of-range port at begin() time. */
-    if (port < 0) return JS_ThrowRangeError(ctx, "port must be >= 0");
-
-    if (!JS_IsObject(argv[1])) return JS_ThrowTypeError(ctx, "I2s options must be an object");
-
-    auto* s = static_cast<MIKI2sState*>(calloc(1, sizeof(MIKI2sState)));
-    if (!s) return JS_ThrowOutOfMemory(ctx);
-
-    s->rt = MIK_GetRuntime(ctx);
-    s->bits = 16;
-    s->dout = -1;
-    s->din = -1;
-    s->bclk = -1;
-    s->ws = -1;
-    s->clk = -1;
-    s->dma_frames = MIK_I2S_DEFAULT_DMA_FRAMES;
-    s->dma_buffers = MIK_I2S_DEFAULT_DMA_BUFFERS;
-    s->port = port;
-    s->tx_chan = nullptr;
-    s->rx_chan = nullptr;
-
-    JSValue opts = argv[1];
-    JSValue v;
-
-#define MIK_I2S_FAIL(ret)   \
-    do {                    \
-        JS_FreeValue(ctx, v); \
-        free(s);            \
-        return (ret);       \
-    } while (0)
-
-    /* mode: 'std' (default) | 'pdm' */
-    v = JS_GetPropertyStr(ctx, opts, "mode");
-    if (!JS_IsUndefined(v)) {
-        const char* mode = JS_ToCString(ctx, v);
-        if (!mode) MIK_I2S_FAIL(JS_EXCEPTION);
-        s->pdm = strcmp(mode, "pdm") == 0;
-        bool unknown = !s->pdm && strcmp(mode, "std") != 0;
-        JS_FreeCString(ctx, mode);
-        if (unknown) MIK_I2S_FAIL(JS_ThrowTypeError(ctx, "mode must be 'std' or 'pdm'"));
+/* Deletes both channels (an enabled one is disabled first; the disable error
+ * on a channel that was never enabled is ignored). */
+static void mik__i2s_del_channels(MIKI2sState* s) {
+    if (s->tx_chan) {
+        i2s_channel_disable(s->tx_chan);
+        i2s_del_channel(s->tx_chan);
+        s->tx_chan = nullptr;
     }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, opts, "sampleRate");
-    if (JS_IsUndefined(v)) MIK_I2S_FAIL(JS_ThrowTypeError(ctx, "sampleRate is required"));
-    uint32_t rate;
-    if (JS_ToUint32(ctx, &rate, v)) MIK_I2S_FAIL(JS_EXCEPTION);
-    s->sample_rate = rate;
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, opts, "bitsPerSample");
-    if (!JS_IsUndefined(v)) {
-        int32_t bits;
-        if (JS_ToInt32(ctx, &bits, v)) MIK_I2S_FAIL(JS_EXCEPTION);
-        if (bits != 16 && bits != 32)
-            MIK_I2S_FAIL(JS_ThrowRangeError(ctx, "bitsPerSample must be 16 or 32"));
-        s->bits = bits;
+    if (s->rx_chan) {
+        i2s_channel_disable(s->rx_chan);
+        i2s_del_channel(s->rx_chan);
+        s->rx_chan = nullptr;
     }
-    JS_FreeValue(ctx, v);
-
-    /* channels: 'mono' | 'stereo'. Default stereo for std, mono for pdm. */
-    s->stereo = !s->pdm;
-    v = JS_GetPropertyStr(ctx, opts, "channels");
-    if (!JS_IsUndefined(v)) {
-        const char* ch = JS_ToCString(ctx, v);
-        if (!ch) MIK_I2S_FAIL(JS_EXCEPTION);
-        s->stereo = strcmp(ch, "stereo") == 0;
-        bool unknown = !s->stereo && strcmp(ch, "mono") != 0;
-        JS_FreeCString(ctx, ch);
-        if (unknown) MIK_I2S_FAIL(JS_ThrowTypeError(ctx, "channels must be 'mono' or 'stereo'"));
-    }
-    JS_FreeValue(ctx, v);
-
-#define MIK_I2S_PIN(field, key)                            \
-    v = JS_GetPropertyStr(ctx, opts, key);                 \
-    if (!JS_IsUndefined(v)) {                              \
-        if (JS_ToInt32(ctx, &s->field, v)) MIK_I2S_FAIL(JS_EXCEPTION); \
-    }                                                      \
-    JS_FreeValue(ctx, v)
-
-    MIK_I2S_PIN(dout, "dout");
-    MIK_I2S_PIN(din, "din");
-    if (s->pdm) {
-        MIK_I2S_PIN(clk, "clk");
-    } else {
-        MIK_I2S_PIN(bclk, "bclk");
-        MIK_I2S_PIN(ws, "ws");
-    }
-
-    v = JS_GetPropertyStr(ctx, opts, "dmaFrames");
-    if (!JS_IsUndefined(v)) {
-        int32_t n;
-        if (JS_ToInt32(ctx, &n, v)) MIK_I2S_FAIL(JS_EXCEPTION);
-        if (n > 0) s->dma_frames = n;
-    }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, opts, "dmaBuffers");
-    if (!JS_IsUndefined(v)) {
-        int32_t n;
-        if (JS_ToInt32(ctx, &n, v)) MIK_I2S_FAIL(JS_EXCEPTION);
-        if (n > 0) s->dma_buffers = n;
-    }
-    JS_FreeValue(ctx, v);
-
-#undef MIK_I2S_PIN
-
-    /* Direction sanity. PDM here is RX-only. */
-    if (s->pdm) {
-        if (s->din < 0 || s->clk < 0) {
-            free(s);
-            return JS_ThrowTypeError(ctx, "pdm mode requires clk and din pins");
-        }
-        if (s->dout >= 0) {
-            free(s);
-            return JS_ThrowTypeError(ctx, "pdm mode is receive-only (no dout)");
-        }
-    } else {
-        if (s->bclk < 0 || s->ws < 0) {
-            free(s);
-            return JS_ThrowTypeError(ctx, "std mode requires bclk and ws pins");
-        }
-        if (s->dout < 0 && s->din < 0) {
-            free(s);
-            return JS_ThrowTypeError(ctx, "I2s requires at least one of dout or din pins");
-        }
-    }
-
-#undef MIK_I2S_FAIL
-
-    JSValue obj = JS_NewObjectClass(ctx, mik_i2s_class_id);
-    if (JS_IsException(obj)) {
-        free(s);
-        return obj;
-    }
-    JS_SetOpaque(obj, s);
-    return obj;
 }
 
-/* ── begin / end ──────────────────────────────────────────────────── */
-
-/* The port is captured here from the channel config. We re-derive it on each
- * begin() from the controller default; only one I2s per port is meaningful. */
-static JSValue js_i2s_begin(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    auto* s = mik__i2s_get(ctx, this_val);
-    if (!s) return JS_EXCEPTION;
-    if (s->begun) return mik__result_ok_void(ctx);  // idempotent
-
-    const int gpios[] = MIK__I2S_GPIOS(s);
-    JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "I2s");
-    if (!JS_IsUndefined(claim_failed)) return claim_failed;
-
+/* Creates, configures and enables the channels. */
+static esp_err_t mik__i2s_start(MIKI2sState* s, uint32_t sample_rate, int dma_frames,
+                                int dma_buffers) {
     bool want_tx = s->dout >= 0;
     bool want_rx = s->din >= 0;
 
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(s->port, I2S_ROLE_MASTER);
-    chan_cfg.dma_desc_num = s->dma_buffers;
-    chan_cfg.dma_frame_num = s->dma_frames;
+    chan_cfg.dma_desc_num = dma_buffers;
+    chan_cfg.dma_frame_num = dma_frames;
 
     esp_err_t err = i2s_new_channel(&chan_cfg, want_tx ? &s->tx_chan : nullptr,
                                     want_rx ? &s->rx_chan : nullptr);
-    if (err != ESP_OK) {
-        mik__release_gpios(gpios, countof(gpios), "I2s");
-        return mik__result_err_named(ctx, "ChannelInitFailed", "i2s_new_channel failed: %s",
-                                     esp_err_to_name(err));
-    }
+    if (err != ESP_OK) return err;
 
     i2s_data_bit_width_t width = mik__i2s_bit_width(s->bits);
     i2s_slot_mode_t slot_mode = mik__i2s_slot_mode(s->stereo);
 
     if (s->pdm) {
         /* PDM RX is chip-dependent. On targets without it the driver API isn't
-         * even declared, so the whole block is compiled out and begin() fails
+         * even declared, so the whole block is compiled out and the factory fails
          * with a clear error rather than failing opaquely (or not compiling). */
 #if SOC_I2S_SUPPORTS_PDM_RX
         i2s_pdm_rx_config_t cfg = {
-            .clk_cfg = I2S_PDM_RX_CLK_DEFAULT_CONFIG(s->sample_rate),
+            .clk_cfg = I2S_PDM_RX_CLK_DEFAULT_CONFIG(sample_rate),
             .slot_cfg = I2S_PDM_RX_SLOT_DEFAULT_CONFIG(width, slot_mode),
             .gpio_cfg =
                 {
@@ -368,15 +262,13 @@ static JSValue js_i2s_begin(JSContext* ctx, JSValue this_val, int argc, JSValue*
                 },
         };
         err = i2s_channel_init_pdm_rx_mode(s->rx_chan, &cfg);
-        if (err != ESP_OK)
-            goto init_failed;
+        if (err != ESP_OK) return err;
 #else
-        err = ESP_ERR_NOT_SUPPORTED;
-        goto init_failed;
+        return ESP_ERR_NOT_SUPPORTED;
 #endif
     } else {
         i2s_std_config_t cfg = {
-            .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(s->sample_rate),
+            .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate),
             .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(width, slot_mode),
             .gpio_cfg =
                 {
@@ -393,56 +285,122 @@ static JSValue js_i2s_begin(JSContext* ctx, JSValue this_val, int argc, JSValue*
          * single-channel mic. Force the left slot for mono: the one a mic with
          * SEL/LR tied to GND drives. */
         if (!s->stereo) cfg.slot_cfg.slot_mask = I2S_STD_SLOT_LEFT;
-        if (s->tx_chan) {
-            err = i2s_channel_init_std_mode(s->tx_chan, &cfg);
-            if (err != ESP_OK)
-                goto init_failed;
-        }
-        if (s->rx_chan) {
-            err = i2s_channel_init_std_mode(s->rx_chan, &cfg);
-            if (err != ESP_OK)
-                goto init_failed;
-        }
+        if (s->tx_chan && (err = i2s_channel_init_std_mode(s->tx_chan, &cfg)) != ESP_OK)
+            return err;
+        if (s->rx_chan && (err = i2s_channel_init_std_mode(s->rx_chan, &cfg)) != ESP_OK)
+            return err;
     }
 
-    if (s->tx_chan && (err = i2s_channel_enable(s->tx_chan)) != ESP_OK)
-        goto init_failed;
-    if (s->rx_chan && (err = i2s_channel_enable(s->rx_chan)) != ESP_OK)
-        goto init_failed;
-
-    if (!mik__i2s_track(ctx, s)) {
-        err = ESP_ERR_NO_MEM;  // more live instances than the loop consumer can drive
-        goto init_failed;
-    }
-    s->begun = true;
-    return mik__result_ok_void(ctx);
-
-init_failed:
-    /* A channel may already be enabled (e.g. tx enabled, rx enable failed);
-     * disable before delete. disable() on a not-yet-enabled channel returns an
-     * error we intentionally ignore on this cleanup path. */
-    if (s->tx_chan) {
-        i2s_channel_disable(s->tx_chan);
-        i2s_del_channel(s->tx_chan);
-        s->tx_chan = nullptr;
-    }
-    if (s->rx_chan) {
-        i2s_channel_disable(s->rx_chan);
-        i2s_del_channel(s->rx_chan);
-        s->rx_chan = nullptr;
-    }
-    mik__release_gpios(gpios, countof(gpios), "I2s");
-    return mik__result_err_named(ctx, "ChannelInitFailed", "I2S init failed: %s",
-                                 esp_err_to_name(err));
+    if (s->tx_chan && (err = i2s_channel_enable(s->tx_chan)) != ESP_OK) return err;
+    if (s->rx_chan && (err = i2s_channel_enable(s->rx_chan)) != ESP_OK) return err;
+    return ESP_OK;
 }
 
-/* Settle every queued TX write with a terminal err and free retained tails. */
+/* I2s(port, options) → Result<I2s, I2sError> */
+static JSValue js_i2s(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    int32_t port;
+    JSValueConst options;
+    bool pdm = false;
+    double sample_rate;
+    int32_t bits = 16;
+    int32_t bclk = -1, ws = -1, clk = -1, dout = -1, din = -1;
+    double dma_frames = MIK_I2S_DEFAULT_DMA_FRAMES;
+    double dma_buffers = MIK_I2S_DEFAULT_DMA_BUFFERS;
+    if (mik__to_int_arg(ctx, argc >= 1 ? argv[0] : JS_UNDEFINED, "port", &port) ||
+        mik__options_arg(ctx, argc, argv, 1, true, &options) ||
+        mik__i2s_choice_option(ctx, options, "mode", "std", "pdm", &pdm) ||
+        mik__number_option(ctx, options, "sampleRate", true, &sample_rate) ||
+        mik__int_option(ctx, options, "bitsPerSample", false, &bits))
+        return JS_EXCEPTION;
+    if (bits != 16 && bits != 32) return JS_ThrowTypeError(ctx, "bitsPerSample must be 16 or 32");
+    /* Default stereo for std, mono for pdm. */
+    bool stereo = !pdm;
+    if (mik__i2s_choice_option(ctx, options, "channels", "mono", "stereo", &stereo) ||
+        mik__int_option(ctx, options, "dout", false, &dout) ||
+        mik__int_option(ctx, options, "din", false, &din) ||
+        (pdm ? mik__int_option(ctx, options, "clk", true, &clk)
+             : mik__int_option(ctx, options, "bclk", true, &bclk) ||
+                   mik__int_option(ctx, options, "ws", true, &ws)) ||
+        mik__number_option(ctx, options, "dmaFrames", false, &dma_frames) ||
+        mik__number_option(ctx, options, "dmaBuffers", false, &dma_buffers))
+        return JS_EXCEPTION;
+    /* Direction sanity. PDM here is RX-only. */
+    if (pdm && din < 0) return JS_ThrowTypeError(ctx, "pdm mode requires a din pin");
+    if (pdm && dout >= 0) return JS_ThrowTypeError(ctx, "pdm mode is receive-only (no dout)");
+    if (dout < 0 && din < 0)
+        return JS_ThrowTypeError(ctx, "I2s requires at least one of dout or din pins");
+
+    const int max_port = I2S_LL_GET(INST_NUM) - 1;
+    if (port < 0 || port > max_port) {
+        if (max_port == 0)
+            return mik__result_err_named(ctx, "InvalidParam", "port must be 0 on %s, got %d",
+                                         CONFIG_IDF_TARGET, (int)port);
+        return mik__result_err_named(ctx, "InvalidParam", "port must be 0 to %d on %s, got %d",
+                                     max_port, CONFIG_IDF_TARGET, (int)port);
+    }
+    JSValue invalid = mik__i2s_check_count(ctx, "sampleRate", sample_rate, UINT32_MAX);
+    if (JS_IsUndefined(invalid)) invalid = mik__i2s_check_count(ctx, "dmaFrames", dma_frames, 65535);
+    if (JS_IsUndefined(invalid))
+        invalid = mik__i2s_check_count(ctx, "dmaBuffers", dma_buffers, 64);
+    if (!JS_IsUndefined(invalid)) return invalid;
+    const MIKGpioCheck checks[] = {
+        {(int)bclk, true}, {(int)ws, true}, {(int)clk, true}, {(int)dout, true}, {(int)din, false}};
+    invalid = mik__gpio_check(ctx, checks, countof(checks));
+    if (!JS_IsUndefined(invalid)) return invalid;
+
+    auto* s = static_cast<MIKI2sState*>(calloc(1, sizeof(MIKI2sState)));
+    if (!s) return JS_ThrowOutOfMemory(ctx);
+    s->rt = MIK_GetRuntime(ctx);
+    s->port = port;
+    s->pdm = pdm;
+    s->bits = bits;
+    s->stereo = stereo;
+    s->bclk = bclk;
+    s->ws = ws;
+    s->clk = clk;
+    s->dout = dout;
+    s->din = din;
+
+    const int gpios[] = MIK__I2S_GPIOS(s);
+    JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "I2s");
+    if (!JS_IsUndefined(claim_failed)) {
+        free(s);
+        return claim_failed;
+    }
+
+    esp_err_t err = mik__i2s_start(s, static_cast<uint32_t>(sample_rate),
+                                   static_cast<int>(dma_frames), static_cast<int>(dma_buffers));
+    /* More live instances than the loop consumer can drive. */
+    if (err == ESP_OK && !mik__i2s_track(ctx, s)) err = ESP_ERR_NO_MEM;
+    if (err != ESP_OK) {
+        mik__i2s_del_channels(s);
+        mik__release_gpios(gpios, countof(gpios), "I2s");
+        free(s);
+        return mik__result_err_named(ctx, "ChannelInitFailed", "I2S init failed: %s",
+                                     esp_err_to_name(err));
+    }
+    s->active = true;
+
+    JSValue obj = JS_NewObjectClass(ctx, mik_i2s_class_id);
+    if (JS_IsException(obj)) {
+        mik__i2s_untrack(ctx, s);
+        mik__i2s_del_channels(s);
+        mik__release_gpios(gpios, countof(gpios), "I2s");
+        free(s);
+        return obj;
+    }
+    JS_SetOpaque(obj, s);
+    return mik__result_ok(ctx, obj);
+}
+
+/* Settle every queued TX write with ok(), as end() drops what was not yet
+ * handed to DMA, and free retained tails. */
 static void mik__i2s_drain_tx_on_stop(JSContext* ctx, MIKI2sState* s) {
     while (s->tx_count > 0) {
         MIKI2sTxChunk* c = &s->tx_queue[s->tx_head];
         if (MIK_IsPromisePending(ctx, &c->promise)) {
-            JSValue e = mik__result_err_tag(ctx, "NotStarted");
-            MIK_ResolvePromise(ctx, &c->promise, 1, &e);
+            JSValue ok = mik__result_ok_void(ctx);
+            MIK_ResolvePromise(ctx, &c->promise, 1, &ok);
             MIK_ClearPromise(ctx, &c->promise);
         }
         js_free(ctx, c->data);
@@ -452,28 +410,19 @@ static void mik__i2s_drain_tx_on_stop(JSContext* ctx, MIKI2sState* s) {
     }
 }
 
+/* end() — stops the DMA and deletes the channels; calling it again does nothing */
 static JSValue js_i2s_end(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__i2s_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_ok_void(ctx);  // idempotent
+    if (!s->active) return JS_UNDEFINED;
 
     mik__i2s_drain_tx_on_stop(ctx, s);
-
     mik__i2s_untrack(ctx, s);
-    if (s->tx_chan) {
-        i2s_channel_disable(s->tx_chan);
-        i2s_del_channel(s->tx_chan);
-        s->tx_chan = nullptr;
-    }
-    if (s->rx_chan) {
-        i2s_channel_disable(s->rx_chan);
-        i2s_del_channel(s->rx_chan);
-        s->rx_chan = nullptr;
-    }
+    mik__i2s_del_channels(s);
     const int gpios[] = MIK__I2S_GPIOS(s);
     mik__release_gpios(gpios, countof(gpios), "I2s");
-    s->begun = false;
-    return mik__result_ok_void(ctx);
+    s->active = false;
+    return JS_UNDEFINED;
 }
 
 /* ── TX write (async, bounded queue) ──────────────────────────────── */
@@ -494,8 +443,6 @@ static bool mik__i2s_push(MIKI2sState* s, MIKI2sTxChunk* c) {
 static JSValue js_i2s_write(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__i2s_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__i2s_resolved(ctx, mik__result_err_tag(ctx, "NotStarted"));
-    if (!s->tx_chan) return mik__i2s_resolved(ctx, mik__result_err_tag(ctx, "NoTxPin"));
 
     /* Extract bytes + element width from the typed array. `data_len` is the view
      * length from JS_GetTypedArrayBuffer; JS_GetArrayBuffer reports the whole
@@ -506,12 +453,14 @@ static JSValue js_i2s_write(JSContext* ctx, JSValue this_val, int argc, JSValue*
     if (!JS_IsException(ab)) {
         data = JS_GetArrayBuffer(ctx, &buf_len, ab);
         JS_FreeValue(ctx, ab);
-        if (!data) return JS_ThrowTypeError(ctx, "expected a typed array as argument 1");
+        if (!data) return JS_ThrowTypeError(ctx, "data must be a typed array");
         data += offset;
     } else {
         JS_FreeValue(ctx, JS_GetException(ctx));
-        return JS_ThrowTypeError(ctx, "expected a typed array as argument 1");
+        return JS_ThrowTypeError(ctx, "data must be a typed array");
     }
+    if (mik__i2s_ended(s, "write()")) return mik__i2s_resolved(ctx, mik__result_ok_void(ctx));
+    if (!s->tx_chan) return mik__i2s_resolved(ctx, mik__result_err_tag(ctx, "NoTxPin"));
 
     /* Width validation: Int16Array↔16, Int32Array↔32. Uint8Array
      * (elem_size 1) is treated as raw bytes, the caller's responsibility. */
@@ -578,11 +527,22 @@ static JSValue js_i2s_write(JSContext* ctx, JSValue this_val, int argc, JSValue*
  * and returns one packed buffer, with no per-chunk JS allocation or async
  * machinery, so it can sustain high sample rates. BLOCKING: stalls the JS loop
  * for ~frames/sampleRate while it drains the DMA, so it's for dedicated
- * capture/stream loops, not general use. Reuses the running channel (begin()). */
+ * capture/stream loops, not general use. Reuses the running channel. */
 static JSValue js_i2s_capture(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__i2s_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_err_tag(ctx, "NotStarted");
+    double frames_num;
+    if (mik__to_number_arg(ctx, argv[0], "frames", &frames_num)) return JS_EXCEPTION;
+    double gain = 0;
+    if (argc >= 2 && !JS_IsUndefined(argv[1])) {
+        if (!JS_IsObject(argv[1])) return JS_ThrowTypeError(ctx, "options must be an object");
+        if (mik__number_option(ctx, argv[1], "gainBits", false, &gain)) return JS_EXCEPTION;
+    }
+    if (mik__i2s_ended(s, "capture()")) {
+        /* new Int16Array(0); the constructor reads all three args (see mik__i2s_new_samples). */
+        JSValueConst args[3] = {JS_NewInt32(ctx, 0), JS_UNDEFINED, JS_UNDEFINED};
+        return mik__result_ok(ctx, JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_INT16));
+    }
     if (!s->rx_chan) return mik__result_err_tag(ctx, "NoRxPin");
     /* capture() reads int32 DMA samples and packs them to mono int16; the
      * conversion only makes sense for a 32-bit mono channel. Reject anything
@@ -593,25 +553,14 @@ static JSValue js_i2s_capture(JSContext* ctx, JSValue this_val, int argc, JSValu
     if (s->stereo)
         return mik__result_err_named(ctx, "InvalidParam", "capture requires mono channels");
 
-    int64_t frames64;
-    if (JS_ToInt64(ctx, &frames64, argv[0])) return JS_EXCEPTION;
-    if (frames64 <= 0) return JS_ThrowRangeError(ctx, "frames must be > 0");
     /* Bound it well below the size_t overflow of frames * sizeof(int16_t); any
      * value this large would exhaust the heap long before allocating anyway. */
-    if (frames64 > (1 << 24)) return JS_ThrowRangeError(ctx, "frames too large");
-    size_t frames = static_cast<size_t>(frames64);
+    JSValue invalid = mik__i2s_check_count(ctx, "frames", frames_num, 1 << 24);
+    if (!JS_IsUndefined(invalid)) return invalid;
+    size_t frames = static_cast<size_t>(frames_num);
 
-    int32_t gain_bits = 0;
-    if (argc >= 2 && JS_IsObject(argv[1])) {
-        JSValue gv = JS_GetPropertyStr(ctx, argv[1], "gainBits");
-        if (!JS_IsUndefined(gv) && JS_ToInt32(ctx, &gain_bits, gv)) {
-            JS_FreeValue(ctx, gv);
-            return JS_EXCEPTION;
-        }
-        JS_FreeValue(ctx, gv);
-    }
-    if (gain_bits < 0) gain_bits = 0;
-    if (gain_bits > 16) gain_bits = 16;
+    /* Clamped to 0..16 before the cast, so NaN and Infinity cannot overflow it. */
+    int gain_bits = gain >= 16 ? 16 : gain > 0 ? static_cast<int>(gain) : 0;
     int shift = 16 - gain_bits;
 
     auto* out = static_cast<int16_t*>(js_malloc(ctx, frames * sizeof(int16_t)));
@@ -661,7 +610,6 @@ static JSValue js_i2s_capture(JSContext* ctx, JSValue this_val, int argc, JSValu
 /* ── Prototype ────────────────────────────────────────────────────── */
 
 static const JSCFunctionListEntry mik_i2s_proto_funcs[] = {
-    MIK_CFUNC_DEF("begin", 0, js_i2s_begin),
     MIK_CFUNC_DEF("end", 0, js_i2s_end),
     MIK_CFUNC_DEF("write", 1, js_i2s_write),
     MIK_CFUNC_DEF("capture", 1, js_i2s_capture),
@@ -670,8 +618,7 @@ static const JSCFunctionListEntry mik_i2s_proto_funcs[] = {
 /* ── Module init ──────────────────────────────────────────────────── */
 
 static int mik__i2s_module_init(JSContext* ctx, JSModuleDef* m) {
-    JSValue ctor = JS_NewCFunction2(ctx, js_i2s_constructor, "I2s", 2, JS_CFUNC_constructor, 0);
-    JS_SetModuleExport(ctx, m, "I2s", ctor);
+    JS_SetModuleExport(ctx, m, "I2s", JS_NewCFunction(ctx, js_i2s, "I2s", 2));
     return 0;
 }
 
@@ -691,7 +638,7 @@ static JSModuleDef* mik__i2s_init(JSContext* ctx) {
     JS_SetPropertyFunctionList(ctx, proto, mik_i2s_proto_funcs, countof(mik_i2s_proto_funcs));
     JS_SetClassProto(ctx, mik_i2s_class_id, proto);
 
-    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/i2s", mik__i2s_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "mikro/i2s", mik__i2s_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "I2s");
     return m;
@@ -707,7 +654,7 @@ void mik__i2s_consume(JSContext* ctx) {
 
     for (int i = 0; i < slot->count; i++) {
         MIKI2sState* s = slot->instances[i];
-        if (!s || !s->begun) continue;
+        if (!s || !s->active) continue;
 
         /* Drain TX queue head(s) into DMA as space frees up. */
         while (s->tx_count > 0) {
@@ -760,4 +707,4 @@ void mik__i2s_destroy(JSContext* ctx) {
     mik__i2s_slot_data(mik_rt) = nullptr;
 }
 
-MIK_REGISTER_MODULE(i2s, "native:mikro/i2s", mik__i2s_init, mik__i2s_consume, mik__i2s_destroy)
+MIK__REGISTER_PUBLIC_MODULE(i2s, "mikro/i2s", mik__i2s_init, mik__i2s_consume, mik__i2s_destroy)

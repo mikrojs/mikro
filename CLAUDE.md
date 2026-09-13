@@ -346,7 +346,7 @@ import {sntp} from 'mikro/sntp'
 
 ### Handle Factories
 
-The public API exposes no constructors and no `new`. Handles come from PascalCase factory functions that share the handle type's name and return a `Result` (`DigitalOut(15)` returns `Result<DigitalOut, GpioError>`, the way `fs.open` returns `Result<FileHandle, FSError>`). Declare the pair with declaration merging: `interface DigitalOut` plus `declare function DigitalOut(...)`. Implementations still use classes (native QuickJS classes or TS classes), because prototype methods are shared across instances. Older peripherals (`Pwm`, `NeoPixel`, `Spi`, `I2c`, `Uart`, `I2s`) still use `new` and move to factories in a later change.
+The public API exposes no constructors and no `new`. Handles come from PascalCase factory functions that share the handle type's name and return a `Result` (`DigitalOut(15)` returns `Result<DigitalOut, GpioError>`, the way `fs.open` returns `Result<FileHandle, FSError>`). Declare the pair with declaration merging: `interface DigitalOut` plus `declare function DigitalOut(...)`. Implementations still use classes (native QuickJS classes or TS classes), because prototype methods are shared across instances.
 
 ### GPIO Claims
 

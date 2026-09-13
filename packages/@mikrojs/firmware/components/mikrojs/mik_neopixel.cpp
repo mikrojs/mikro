@@ -8,8 +8,9 @@
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
+#include "mikrojs_esp32.h"
 
-#define MIK_NEOPIXEL_TAG "native:mikro/neopixel"
+#define MIK_NEOPIXEL_TAG "mikro/neopixel"
 #define MIK_NEOPIXEL_RMT_RESOLUTION_HZ 10000000  // 10 MHz → 0.1 µs per tick
 #define MIK_NEOPIXEL_MAX_LEDS 1024
 
@@ -137,6 +138,7 @@ static esp_err_t mik__neopixel_new_encoder(uint32_t resolution,
     return ESP_OK;
 }
 
+
 /* ── Per-instance state ────────────────────────────────────────────── */
 
 typedef struct {
@@ -147,6 +149,7 @@ typedef struct {
     rmt_encoder_handle_t encoder;
     uint8_t* pixel_buf;  // GRB(W) encoded, num_leds * bytes_per_led
     bool active;
+    bool warned_after_end;
 } MIKNeoPixelState;
 
 /* ── Helpers ───────────────────────────────────────────────────────── */
@@ -155,18 +158,32 @@ static MIKNeoPixelState* mik__neopixel_get(JSContext* ctx, JSValue this_val) {
     return static_cast<MIKNeoPixelState*>(JS_GetOpaque2(ctx, this_val, mik_neopixel_class_id));
 }
 
+/* Releases the RMT channel, encoder, pixel buffer and GPIO claim. */
+static void mik__neopixel_release(MIKNeoPixelState* s) {
+    rmt_disable(s->channel);
+    rmt_del_encoder(s->encoder);
+    rmt_del_channel(s->channel);
+    s->encoder = nullptr;
+    s->channel = nullptr;
+    free(s->pixel_buf);
+    s->pixel_buf = nullptr;
+    MIK_ReleaseGpio(s->gpio, "NeoPixel");
+    s->active = false;
+}
+
+/* True when the handle was ended; the first such call prints a warning. */
+static bool mik__neopixel_ended(MIKNeoPixelState* s, const char* call) {
+    if (s->active) return false;
+    mik__warn_after_end(&s->warned_after_end, "NeoPixel", s->gpio, call, "pin");
+    return true;
+}
+
 /* ── Finalizer ─────────────────────────────────────────────────────── */
 
 static void mik__neopixel_finalizer(JSRuntime* rt, JSValue val) {
     auto* s = static_cast<MIKNeoPixelState*>(JS_GetOpaque(val, mik_neopixel_class_id));
     if (!s) return;
-    if (s->active) {
-        rmt_disable(s->channel);
-        rmt_del_encoder(s->encoder);
-        rmt_del_channel(s->channel);
-        MIK_ReleaseGpio(s->gpio, "NeoPixel");
-    }
-    free(s->pixel_buf);
+    if (s->active) mik__neopixel_release(s);
     free(s);
 }
 
@@ -175,41 +192,43 @@ static JSClassDef mik_neopixel_class = {
     .finalizer = mik__neopixel_finalizer,
 };
 
-/* ── Constructor ───────────────────────────────────────────────────── */
+/* ── Factory ───────────────────────────────────────────────────────── */
 
-static JSValue js_neopixel_constructor(JSContext* ctx, JSValue new_target, int argc,
-                                       JSValue* argv) {
-    if (argc < 2)
-        return JS_ThrowTypeError(ctx,
-                                 "NeoPixel requires (pin, numLeds) or (pin, numLeds, bytesPerLed)");
-
+/* NeoPixel(gpio, {count, rgbw?}) → Result<NeoPixel, NeoPixelError> */
+static JSValue js_neopixel(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     int32_t gpio;
-    if (JS_ToInt32(ctx, &gpio, argv[0])) return JS_EXCEPTION;
-
+    JSValueConst options;
     int32_t num_leds;
-    if (JS_ToInt32(ctx, &num_leds, argv[1])) return JS_EXCEPTION;
+    bool rgbw = false;
+    if (mik__to_int_arg(ctx, argc >= 1 ? argv[0] : JS_UNDEFINED, "gpio", &gpio) ||
+        mik__options_arg(ctx, argc, argv, 1, true, &options) ||
+        mik__int_option(ctx, options, "count", true, &num_leds) ||
+        mik__bool_option(ctx, options, "rgbw", &rgbw))
+        return JS_EXCEPTION;
+
     if (num_leds <= 0 || num_leds > MIK_NEOPIXEL_MAX_LEDS)
-        return JS_ThrowRangeError(ctx, "numLeds must be between 1 and %d", MIK_NEOPIXEL_MAX_LEDS);
+        return mik__result_err_named(ctx, "InvalidParam", "count must be 1 to %d, got %d",
+                                     MIK_NEOPIXEL_MAX_LEDS, num_leds);
+    const MIKGpioCheck check = {gpio, true};
+    JSValue invalid = mik__gpio_check(ctx, &check, 1);
+    if (!JS_IsUndefined(invalid)) return invalid;
+    const int gpios[] = {gpio};
+    JSValue claim_failed = mik__claim_gpios(ctx, gpios, 1, "NeoPixel");
+    if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
-    int32_t bytes_per_led = 3;  // default: RGB (GRB on wire)
-    if (argc >= 3) {
-        if (JS_ToInt32(ctx, &bytes_per_led, argv[2])) return JS_EXCEPTION;
-        if (bytes_per_led != 3 && bytes_per_led != 4)
-            return JS_ThrowRangeError(ctx, "bytesPerLed must be 3 (RGB) or 4 (RGBW)");
-    }
-
-    if (!MIK_ClaimGpio(gpio, "NeoPixel")) return mik__throw_gpio_in_use(ctx, gpio);
-
-    /* Allocate pixel buffer */
+    int bytes_per_led = rgbw ? 4 : 3;
     size_t buf_size = static_cast<size_t>(num_leds) * bytes_per_led;
     auto* pixel_buf = static_cast<uint8_t*>(calloc(1, buf_size));
-    if (!pixel_buf) {
+    auto* s = static_cast<MIKNeoPixelState*>(calloc(1, sizeof(MIKNeoPixelState)));
+    if (!pixel_buf || !s) {
+        free(pixel_buf);
+        free(s);
         MIK_ReleaseGpio(gpio, "NeoPixel");
         return JS_ThrowOutOfMemory(ctx);
     }
 
-    /* Create RMT TX channel */
     rmt_channel_handle_t channel = nullptr;
+    rmt_encoder_handle_t encoder = nullptr;
     rmt_tx_channel_config_t tx_cfg = {};
     tx_cfg.clk_src = RMT_CLK_SRC_DEFAULT;
     tx_cfg.gpio_num = static_cast<gpio_num_t>(gpio);
@@ -217,43 +236,26 @@ static JSValue js_neopixel_constructor(JSContext* ctx, JSValue new_target, int a
     tx_cfg.resolution_hz = MIK_NEOPIXEL_RMT_RESOLUTION_HZ;
     tx_cfg.trans_queue_depth = 4;
 
+    const char* step = "rmt_new_tx_channel";
     esp_err_t err = rmt_new_tx_channel(&tx_cfg, &channel);
+    if (err == ESP_OK) {
+        step = "LED encoder create";
+        err = mik__neopixel_new_encoder(MIK_NEOPIXEL_RMT_RESOLUTION_HZ, &encoder);
+    }
+    if (err == ESP_OK) {
+        step = "rmt_enable";
+        err = rmt_enable(channel);
+    }
     if (err != ESP_OK) {
+        if (encoder) rmt_del_encoder(encoder);
+        if (channel) rmt_del_channel(channel);
         free(pixel_buf);
+        free(s);
         MIK_ReleaseGpio(gpio, "NeoPixel");
-        return JS_ThrowInternalError(ctx, "RMT channel create failed: %s", esp_err_to_name(err));
+        return mik__result_err_named(ctx, "ConfigFailed", "%s failed on GPIO %d: %s", step, gpio,
+                                     esp_err_to_name(err));
     }
 
-    /* Create LED strip encoder */
-    rmt_encoder_handle_t encoder = nullptr;
-    err = mik__neopixel_new_encoder(MIK_NEOPIXEL_RMT_RESOLUTION_HZ, &encoder);
-    if (err != ESP_OK) {
-        rmt_del_channel(channel);
-        free(pixel_buf);
-        MIK_ReleaseGpio(gpio, "NeoPixel");
-        return JS_ThrowInternalError(ctx, "LED encoder create failed: %s", esp_err_to_name(err));
-    }
-
-    /* Enable channel */
-    err = rmt_enable(channel);
-    if (err != ESP_OK) {
-        rmt_del_encoder(encoder);
-        rmt_del_channel(channel);
-        free(pixel_buf);
-        MIK_ReleaseGpio(gpio, "NeoPixel");
-        return JS_ThrowInternalError(ctx, "RMT enable failed: %s", esp_err_to_name(err));
-    }
-
-    /* Allocate state */
-    auto* s = static_cast<MIKNeoPixelState*>(calloc(1, sizeof(MIKNeoPixelState)));
-    if (!s) {
-        rmt_disable(channel);
-        rmt_del_encoder(encoder);
-        rmt_del_channel(channel);
-        free(pixel_buf);
-        MIK_ReleaseGpio(gpio, "NeoPixel");
-        return JS_ThrowOutOfMemory(ctx);
-    }
     s->gpio = gpio;
     s->num_leds = num_leds;
     s->bytes_per_led = bytes_per_led;
@@ -264,16 +266,12 @@ static JSValue js_neopixel_constructor(JSContext* ctx, JSValue new_target, int a
 
     JSValue obj = JS_NewObjectClass(ctx, mik_neopixel_class_id);
     if (JS_IsException(obj)) {
-        rmt_disable(channel);
-        rmt_del_encoder(encoder);
-        rmt_del_channel(channel);
-        free(pixel_buf);
-        MIK_ReleaseGpio(gpio, "NeoPixel");
+        mik__neopixel_release(s);
         free(s);
         return obj;
     }
     JS_SetOpaque(obj, s);
-    return obj;
+    return mik__result_ok(ctx, obj);
 }
 
 /* ── Methods ───────────────────────────────────────────────────────── */
@@ -282,8 +280,7 @@ static JSValue js_neopixel_constructor(JSContext* ctx, JSValue new_target, int a
 static JSValue js_neopixel_set_pixel(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__neopixel_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->active)
-        return mik__result_err_tag(ctx, "NotActive");
+    if (mik__neopixel_ended(s, "setPixel()")) return mik__result_ok_void(ctx);
 
     int32_t index;
     if (JS_ToInt32(ctx, &index, argv[0])) return JS_EXCEPTION;
@@ -315,8 +312,7 @@ static JSValue js_neopixel_set_pixel(JSContext* ctx, JSValue this_val, int argc,
 static JSValue js_neopixel_fill(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__neopixel_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->active)
-        return mik__result_err_tag(ctx, "NotActive");
+    if (mik__neopixel_ended(s, "fill()")) return mik__result_ok_void(ctx);
 
     int32_t r, g, b;
     if (JS_ToInt32(ctx, &r, argv[0])) return JS_EXCEPTION;
@@ -341,13 +337,8 @@ static JSValue js_neopixel_fill(JSContext* ctx, JSValue this_val, int argc, JSVa
     return mik__result_ok_void(ctx);
 }
 
-/* show() — transmit pixel buffer via RMT */
-static JSValue js_neopixel_show(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    auto* s = mik__neopixel_get(ctx, this_val);
-    if (!s) return JS_EXCEPTION;
-    if (!s->active)
-        return mik__result_err_tag(ctx, "NotActive");
-
+/* Transmits the pixel buffer and waits for it to go out. */
+static JSValue mik__neopixel_transmit(JSContext* ctx, MIKNeoPixelState* s) {
     rmt_transmit_config_t tx_cfg = {};
     tx_cfg.loop_count = 0;
 
@@ -355,56 +346,39 @@ static JSValue js_neopixel_show(JSContext* ctx, JSValue this_val, int argc, JSVa
     esp_err_t err = rmt_transmit(s->channel, s->encoder, s->pixel_buf, buf_size, &tx_cfg);
     if (err != ESP_OK)
         return mik__result_err_named(ctx, "ShowFailed", "RMT transmit failed: %s",
-                               esp_err_to_name(err));
+                                     esp_err_to_name(err));
 
     err = rmt_tx_wait_all_done(s->channel, pdMS_TO_TICKS(1000));
     if (err != ESP_OK)
-        return mik__result_err_named(ctx, "ShowFailed",
-                                     "RMT wait for transmit failed: %s", esp_err_to_name(err));
+        return mik__result_err_named(ctx, "ShowFailed", "RMT wait for transmit failed: %s",
+                                     esp_err_to_name(err));
 
     return mik__result_ok_void(ctx);
+}
+
+/* show() — transmit pixel buffer via RMT */
+static JSValue js_neopixel_show(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    auto* s = mik__neopixel_get(ctx, this_val);
+    if (!s) return JS_EXCEPTION;
+    if (mik__neopixel_ended(s, "show()")) return mik__result_ok_void(ctx);
+    return mik__neopixel_transmit(ctx, s);
 }
 
 /* clear() — zero all pixels and transmit */
 static JSValue js_neopixel_clear(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__neopixel_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->active)
-        return mik__result_err_tag(ctx, "NotActive");
-
+    if (mik__neopixel_ended(s, "clear()")) return mik__result_ok_void(ctx);
     memset(s->pixel_buf, 0, static_cast<size_t>(s->num_leds) * s->bytes_per_led);
-
-    rmt_transmit_config_t tx_cfg = {};
-    tx_cfg.loop_count = 0;
-
-    size_t buf_size = static_cast<size_t>(s->num_leds) * s->bytes_per_led;
-    esp_err_t err = rmt_transmit(s->channel, s->encoder, s->pixel_buf, buf_size, &tx_cfg);
-    if (err != ESP_OK)
-        return mik__result_err_named(ctx, "ShowFailed", "RMT transmit failed: %s",
-                               esp_err_to_name(err));
-
-    err = rmt_tx_wait_all_done(s->channel, pdMS_TO_TICKS(1000));
-    if (err != ESP_OK)
-        return mik__result_err_named(ctx, "ShowFailed",
-                                     "RMT wait for transmit failed: %s", esp_err_to_name(err));
-
-    return mik__result_ok_void(ctx);
+    return mik__neopixel_transmit(ctx, s);
 }
 
-/* end() — release RMT resources */
+/* end() — release RMT resources; calling it again does nothing */
 static JSValue js_neopixel_end(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__neopixel_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->active) return mik__result_ok_void(ctx);  // idempotent
-
-    rmt_disable(s->channel);
-    rmt_del_encoder(s->encoder);
-    rmt_del_channel(s->channel);
-    s->encoder = nullptr;
-    s->channel = nullptr;
-    MIK_ReleaseGpio(s->gpio, "NeoPixel");
-    s->active = false;
-    return mik__result_ok_void(ctx);
+    if (s->active) mik__neopixel_release(s);
+    return JS_UNDEFINED;
 }
 
 /* ── Prototype ─────────────────────────────────────────────────────── */
@@ -420,9 +394,7 @@ static const JSCFunctionListEntry mik_neopixel_proto_funcs[] = {
 /* ── Module init ───────────────────────────────────────────────────── */
 
 static int mik__neopixel_module_init(JSContext* ctx, JSModuleDef* m) {
-    JSValue ctor = JS_NewCFunction2(ctx, js_neopixel_constructor, "NeoPixel", 3,
-                                    JS_CFUNC_constructor, 0);
-    JS_SetModuleExport(ctx, m, "NeoPixel", ctor);
+    JS_SetModuleExport(ctx, m, "NeoPixel", JS_NewCFunction(ctx, js_neopixel, "NeoPixel", 2));
     return 0;
 }
 
@@ -437,13 +409,13 @@ static JSModuleDef* mik__neopixel_init(JSContext* ctx) {
     JSValue proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, proto, mik_neopixel_proto_funcs,
                                countof(mik_neopixel_proto_funcs));
-    JS_SetClassProto(ctx, mik_neopixel_class_id, proto);  /* consumed */
+    JS_SetClassProto(ctx, mik_neopixel_class_id, proto); /* consumed */
 
     /* Register module */
-    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/neopixel", mik__neopixel_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "mikro/neopixel", mik__neopixel_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "NeoPixel");
     return m;
 }
 
-MIK_REGISTER_MODULE(neopixel, "native:mikro/neopixel", mik__neopixel_init, nullptr, nullptr)
+MIK__REGISTER_PUBLIC_MODULE(neopixel, "mikro/neopixel", mik__neopixel_init, nullptr, nullptr)

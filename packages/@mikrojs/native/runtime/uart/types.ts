@@ -1,3 +1,5 @@
+/* mikro/uart, declared here and implemented in C (mik_uart.cpp). */
+
 import type {GpioInUse} from '../gpio/types.js'
 import type {Result} from '../result/types.js'
 
@@ -34,12 +36,12 @@ export interface UartRxOnlyOptions extends UartBaseOptions {
 
 export type UartError =
   | GpioInUse
+  | {name: 'InvalidGpio'; message: string}
+  | {name: 'InvalidParam'; message: string}
   | {name: 'DriverInstallFailed'; message: string}
   | {name: 'SetPinFailed'; message: string}
-  | {name: 'InvalidParam'; message: string}
   | {name: 'WriteFailed'; message: string}
   | {name: 'ReadFailed'; message: string}
-  | {name: 'NotStarted'}
   | {name: 'AlreadyReading'}
   | {name: 'NoRxPin'}
   | {name: 'NoTxPin'}
@@ -56,10 +58,8 @@ export interface UartTx {
  */
 export interface UartRx {
   /**
-   * Open a Result-yielding async iterable of received chunks. Mid-stream
-   * failures (driver fault, port closed mid-iteration) arrive as a single
-   * terminal `err(UartError)` item rather than throwing — composes with
-   * stream/* combinators and other Result-based APIs.
+   * Open a Result-yielding async iterable of received chunks. The iterable
+   * completes when `end()` is called.
    */
   read(): Result<AsyncIterable<Result<Uint8Array, UartError>>, UartError>
 }
@@ -67,17 +67,27 @@ export interface UartRx {
 /**
  * @public
  */
-export interface UartBase {
-  begin(): Result<void, UartError>
-  end(): Result<void, UartError>
+export interface Uart {
+  /** Uninstalls the driver and releases the GPIO pins. Calling it again does nothing. An active
+   *  `read()` iterable completes. Afterwards `write()` does nothing and `read()` returns an
+   *  iterable that completes at once; the first such call prints a warning. */
+  end(): void
 }
 
 /**
+ * Claims the pins and installs the UART driver on a port. The methods available depend on which
+ * of `tx` and `rx` are given.
  * @public
  */
-export declare const Uart: {
-  prototype: UartBase
-  new (port: number, options: UartTxRxOptions): UartBase & UartTx & UartRx
-  new (port: number, options: UartTxOnlyOptions): UartBase & UartTx
-  new (port: number, options: UartRxOnlyOptions): UartBase & UartRx
-}
+export declare function Uart(
+  port: number,
+  options: UartTxRxOptions,
+): Result<Uart & UartTx & UartRx, UartError>
+export declare function Uart(
+  port: number,
+  options: UartTxOnlyOptions,
+): Result<Uart & UartTx, UartError>
+export declare function Uart(
+  port: number,
+  options: UartRxOnlyOptions,
+): Result<Uart & UartRx, UartError>

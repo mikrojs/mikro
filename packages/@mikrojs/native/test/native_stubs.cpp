@@ -1,6 +1,6 @@
 /* No-op stub registrations for ESP-only `native:*` modules.
  *
- * Linked into the host memory_bench binary so `mikrojs/wifi`, `mikrojs/gpio`,
+ * Linked into the host memory_bench binary so `mikrojs/wifi`, `mikrojs/sleep`,
  * `mikrojs/fetch`, `mikrojs/kv` and friends can be import-loaded on the host
  * without their real ESP-IDF backing modules. The stubs export the right
  * symbol shape (function or constructor) but do nothing — bench cares only
@@ -61,7 +61,6 @@ JSValue stub_ctor(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     }                                                                                              \
     MIK_REGISTER_MODULE(stub_##id, mod_name, id##_init, nullptr, nullptr)
 
-STUB_FUNCS(gpio, "mikro/gpio", "DigitalOut", "DigitalIn", "AnalogIn")
 STUB_FUNCS(sntp, "native:mikro/sntp", "sync", "stop", "setTimezone")
 STUB_FUNCS(sleep, "native:mikro/sleep", "deepSleep", "lightSleep", "getWakeupCause",
            "canWakeFromExt0", "canWakeFromExt1")
@@ -78,8 +77,3 @@ STUB_FUNCS(ota_client, "native:mikro/ota_client", "check", "watch", "config",
            "report", "settle")
 
 STUB_CLASS(wifi, "native:mikro/wifi", "Wifi")
-STUB_CLASS(pwm, "native:mikro/pwm", "Pwm")
-STUB_CLASS(spi, "native:mikro/spi", "Spi")
-STUB_CLASS(i2c, "native:mikro/i2c", "I2c")
-STUB_CLASS(uart, "native:mikro/uart", "Uart")
-STUB_CLASS(neopixel, "native:mikro/neopixel", "NeoPixel")

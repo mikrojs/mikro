@@ -7,7 +7,13 @@
  */
 
 import type {AnalogIn, DigitalIn, DigitalOut} from '@mikrojs/native/runtime/gpio/types'
+import type {I2c} from '@mikrojs/native/runtime/i2c/types'
+import type {I2s} from '@mikrojs/native/runtime/i2s/types'
+import type {NeoPixel} from '@mikrojs/native/runtime/neopixel/types'
+import type {Pwm} from '@mikrojs/native/runtime/pwm/types'
 import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'
+import type {Spi} from '@mikrojs/native/runtime/spi/types'
+import type {Uart} from '@mikrojs/native/runtime/uart/types'
 
 type NR<T> = {ok: true; value: T} | {ok: false; error: {name: string; message: string}}
 type NRV = {ok: true} | {ok: false; error: {name: string; message: string}}
@@ -85,18 +91,23 @@ export interface SimStubMethods {
     DigitalIn: typeof DigitalIn
     AnalogIn: typeof AnalogIn
   }
+  neopixel: {
+    NeoPixel: typeof NeoPixel
+  }
+  pwm: {
+    Pwm: typeof Pwm
+  }
   i2c: {
-    begin(): NRV
-    end(): NRV
-    scan(): NR<Uint8Array>
-    write(address: number, data: Uint8Array, stop?: boolean): NRV
-    read(address: number, bytes: number): NR<Uint8Array>
+    I2c: typeof I2c
+  }
+  i2s: {
+    I2s: typeof I2s
   }
   spi: {
-    begin(): NRV
-    end(): NRV
-    transfer(data: Uint8Array): NR<Uint8Array>
-    write(data: Uint8Array): NRV
+    Spi: typeof Spi
+  }
+  uart: {
+    Uart: typeof Uart
   }
   sleep: {
     deepSleep(sources: DeepWakeupSources): void
@@ -139,8 +150,12 @@ export type SimStubName = keyof SimStubMethods
 export type SimWifi = SimStubMethods['wifi']
 export type SimHttp = SimStubMethods['http']
 export type SimGpio = SimStubMethods['gpio']
+export type SimNeoPixel = SimStubMethods['neopixel']
+export type SimPwm = SimStubMethods['pwm']
 export type SimI2c = SimStubMethods['i2c']
+export type SimI2s = SimStubMethods['i2s']
 export type SimSpi = SimStubMethods['spi']
+export type SimUart = SimStubMethods['uart']
 export type SimSleep = SimStubMethods['sleep']
 export type SimKv = SimStubMethods['kv']
 export type SimNvsKv = SimStubMethods['nvs_kv']

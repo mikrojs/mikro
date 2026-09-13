@@ -266,6 +266,22 @@ static JSClassDef mik_analog_in_class = {
     .finalizer = mik__analog_in_finalizer,
 };
 
+/* ── GPIO validation ─────────────────────────────────────────────── */
+
+JSValue mik__gpio_check(JSContext* ctx, const MIKGpioCheck* checks, int count) {
+    for (int i = 0; i < count; i++) {
+        int gpio = checks[i].gpio;
+        if (gpio == -1) continue;
+        if (!GPIO_IS_VALID_GPIO(gpio))
+            return mik__result_err_named(ctx, "InvalidGpio", "GPIO %d does not exist on %s", gpio,
+                                         CONFIG_IDF_TARGET);
+        if (checks[i].output && !GPIO_IS_VALID_OUTPUT_GPIO(gpio))
+            return mik__result_err_named(ctx, "InvalidGpio", "GPIO %d cannot be an output on %s",
+                                         gpio, CONFIG_IDF_TARGET);
+    }
+    return JS_UNDEFINED;
+}
+
 /* ── Factories ───────────────────────────────────────────────────── */
 
 static JSValue js_digital_out(JSContext* ctx, JSValueConst this_val, int argc,
@@ -276,9 +292,9 @@ static JSValue js_digital_out(JSContext* ctx, JSValueConst this_val, int argc,
     int initial = 0;
     if (mik__gpio_level_option(ctx, options, "initial", &initial)) return JS_EXCEPTION;
 
-    if (!GPIO_IS_VALID_OUTPUT_GPIO(gpio))
-        return mik__result_err_named(ctx, "InvalidGpio", "GPIO %d cannot be an output on %s",
-                                     gpio, CONFIG_IDF_TARGET);
+    const MIKGpioCheck check = {gpio, true};
+    JSValue invalid = mik__gpio_check(ctx, &check, 1);
+    if (!JS_IsUndefined(invalid)) return invalid;
     JSValue claim_failed = mik__gpio_claim(ctx, gpio, MIK_GPIO_OUT);
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
@@ -319,9 +335,9 @@ static JSValue js_digital_in(JSContext* ctx, JSValueConst this_val, int argc,
     if (mik__gpio_enum_option(ctx, options, "pull", pulls, 3, "'up', 'down' or 'none'", &pull))
         return JS_EXCEPTION;
 
-    if (!GPIO_IS_VALID_GPIO(gpio))
-        return mik__result_err_named(ctx, "InvalidGpio", "GPIO %d does not exist on %s", gpio,
-                                     CONFIG_IDF_TARGET);
+    const MIKGpioCheck check = {gpio, false};
+    JSValue invalid = mik__gpio_check(ctx, &check, 1);
+    if (!JS_IsUndefined(invalid)) return invalid;
     /* Input-only pads have no pull resistors. Checked here because
      * gpio_set_pull_mode logs, returns ESP_OK and leaves the pad floating. */
     if (pull != 0 && !GPIO_IS_VALID_OUTPUT_GPIO(gpio))

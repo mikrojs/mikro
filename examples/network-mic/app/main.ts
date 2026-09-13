@@ -28,7 +28,7 @@ if (!connected.ok) {
   const ip = connected.value.ip
   console.log('Connected.')
 
-  const mic = new I2s(0, {
+  const mic = I2s(0, {
     bclk: MIC.bckPin,
     ws: MIC.wsPin,
     din: MIC.dinPin,
@@ -39,8 +39,7 @@ if (!connected.ok) {
     // chunk flushes between captures, so no samples drop.
     dmaFrames: 960,
     dmaBuffers: 8,
-  })
-  mic.begin().orPanic('Failed to start I2S')
+  }).orPanic('Failed to start I2S')
 
   // 44-byte PCM WAV header. Sizes are 0xFFFFFFFF (unknown) since the stream has no
   // known length: players read the format, then stream the data chunk until close.

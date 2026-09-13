@@ -16,8 +16,7 @@ Communicate with I2C devices such as temperature sensors, displays, and EEPROMs.
 ```ts twoslash
 import {I2c} from 'mikro/i2c'
 
-const bus = new I2c(0, {sda: 6, scl: 7, freq: 400000})
-bus.begin().orPanic('I2C init failed')
+const bus = I2c(0, {sda: 6, scl: 7, freq: 400000}).orPanic('I2C init failed')
 
 // Scan for devices
 const devices = bus.scan().orPanic('scan failed')
@@ -29,36 +28,30 @@ const data = bus.read(0x44, 2).orPanic('read failed')
 bus.end()
 ```
 
-## Constructor
+## Functions
 
-### new I2c(busNo, options?)
+### I2c(bus, options)
 
 ```ts
-new I2c(busNo: 0 | 1, options?: I2cOptions)
+function I2c(bus: number, options: I2cOptions): Result<I2c, I2cError>
 ```
+
+Claims the `sda` and `scl` pins, starts the bus and returns a [`Result`](/api/result) with the handle. Both pins must be able to drive a signal, or you get `InvalidGpio`. If another handle, a peripheral or the console holds one of them, you get `GpioInUse`.
 
 **Parameters:**
 
-- `busNo`: I2C bus number (0 or 1)
+- `bus`: I2C controller. The ESP32 and ESP32-S3 have buses 0 and 1; the ESP32-C3 and ESP32-C6 have bus 0 only. Any other number returns `InvalidParam`.
 - `options`: see [I2cOptions](#i2coptions)
 
 ## Methods
 
-### bus.begin()
-
-```ts
-begin(): Result<void, I2cError>
-```
-
-Initialize the I2C bus. Must be called before any read/write/scan operations.
-
 ### bus.end()
 
 ```ts
-end(): Result<void, I2cError>
+end(): void
 ```
 
-Deinitialize the bus and release resources.
+Deletes the bus and releases its GPIO pins. Calling it again does nothing. After `end()`, `write()` does nothing, `read()` and `scan()` return an empty array, and the first such call prints a warning.
 
 ### bus.read(address, bytes)
 
@@ -66,7 +59,7 @@ Deinitialize the bus and release resources.
 read(address: number, bytes: number): Result<Uint8Array, I2cError>
 ```
 
-Read `bytes` bytes from the device at `address`.
+Read `bytes` bytes from the device at `address`. An address outside 0 to 0x7f, or a byte count that is not a whole number from 1 to 65535, returns `InvalidParam`.
 
 ### bus.write(address, data, stop?)
 
@@ -89,33 +82,25 @@ Scan the bus and return an array of addresses that responded.
 ### I2cOptions
 
 ```ts
-interface I2cBaseOptions {
-  freq?: number // clock frequency in Hz (default: 100000)
-  timeout?: number // timeout in ms
-}
-
-interface I2cOptionsWithPins extends I2cBaseOptions {
+interface I2cOptions {
   sda: number // SDA pin
   scl: number // SCL pin
+  freq?: number // clock frequency in Hz (default: 100000)
+  timeout?: number // timeout per operation in ms (default: 100)
 }
-
-type I2cOptions = I2cBaseOptions | I2cOptionsWithPins
 ```
-
-If `sda` and `scl` are omitted, the bus uses the board's default I2C pins.
 
 ## Errors
 
 ### I2cError
 
-| Variant           | Fields             | Description                                                |
-| ----------------- | ------------------ | ---------------------------------------------------------- |
-| `GpioInUse`       | `owner`, `message` | A pin is held by another handle, peripheral or the console |
-| `BusInitFailed`   | `message`          | Failed to initialize the bus                               |
-| `BusDeinitFailed` | `message`          | Failed to deinitialize                                     |
-| `NotStarted`      | —                  | `begin()` was not called                                   |
-| `MissingPins`     | —                  | Pins required but not provided                             |
-| `AddDeviceFailed` | `message`          | Failed to add device to bus                                |
-| `WriteFailed`     | `message`          | Write operation failed                                     |
-| `WriteTooLarge`   | —                  | Write data exceeds buffer size                             |
-| `ReadFailed`      | `message`          | Read operation failed                                      |
+| Variant           | Fields             | Description                                                     |
+| ----------------- | ------------------ | --------------------------------------------------------------- |
+| `GpioInUse`       | `owner`, `message` | A pin is held by another handle, peripheral or the console      |
+| `InvalidGpio`     | `message`          | The chip has no such GPIO, or the GPIO cannot drive a signal    |
+| `InvalidParam`    | `message`          | The bus, an option, an address or a read length is out of range |
+| `BusInitFailed`   | `message`          | Failed to initialize the bus                                    |
+| `AddDeviceFailed` | `message`          | Failed to add device to bus                                     |
+| `WriteFailed`     | `message`          | Write operation failed                                          |
+| `WriteTooLarge`   | —                  | Write data exceeds buffer size                                  |
+| `ReadFailed`      | `message`          | Read operation failed                                           |

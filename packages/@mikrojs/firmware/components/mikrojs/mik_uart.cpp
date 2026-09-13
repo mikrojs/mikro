@@ -1,11 +1,12 @@
+#include <cmath>
 #include <cstring>
 
 #include "driver/uart.h"
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
+#include "mikrojs_esp32.h"
 
-#define MIK_UART_TAG "native:mikro/uart"
 #define MIK_UART_RX_BUF_SIZE 2048
 #define MIK_UART_MAX_INSTANCES 3
 
@@ -21,11 +22,11 @@ struct MIKUartIterState;
 
 struct MIKUartState {
     uart_port_t port;
-    int32_t tx_pin;   // -1 if RX-only
-    int32_t rx_pin;   // -1 if TX-only
-    int32_t baud_rate;
-    bool begun;
-    bool reading;     // active read() iterator exists
+    int tx_pin;  // -1 if RX-only
+    int rx_pin;  // -1 if TX-only
+    bool active;
+    bool warned_after_end;
+    bool reading;             // active read() iterator exists
     MIKPromise read_promise;  // pending next() promise (when waiting for data)
     /* Non-owning ref to the active iterator (when reading == true). The iter
      * holds a strong ref to this Uart via uart_jsval, so this back-edge is
@@ -44,17 +45,15 @@ static inline MIKUartSlot*& mik__uart_slot_data(MIKRuntime* rt) {
     return reinterpret_cast<MIKUartSlot*&>(rt->module_data[mik__uart_slot]);
 }
 
-static void mik__uart_track(JSContext* ctx, MIKUartState* s) {
-    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+static void mik__uart_track(MIKRuntime* mik_rt, MIKUartState* s) {
     auto* slot = mik__uart_slot_data(mik_rt);
     if (!slot) return;
     if (slot->count >= MIK_UART_MAX_INSTANCES) return;
     slot->instances[slot->count++] = s;
 }
 
-static void mik__uart_untrack(JSContext* ctx, MIKUartState* s) {
-    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
-    auto* slot = mik__uart_slot_data(mik_rt);
+static void mik__uart_untrack(MIKRuntime* mik_rt, MIKUartState* s) {
+    auto* slot = mik_rt ? mik__uart_slot_data(mik_rt) : nullptr;
     if (!slot) return;
     for (int i = 0; i < slot->count; i++) {
         if (slot->instances[i] == s) {
@@ -70,17 +69,31 @@ static MIKUartState* mik__uart_get(JSContext* ctx, JSValue this_val) {
     return static_cast<MIKUartState*>(JS_GetOpaque2(ctx, this_val, mik_uart_class_id));
 }
 
+/* Stops tracking, deletes the driver and releases the GPIO pins. */
+static void mik__uart_release(MIKRuntime* mik_rt, MIKUartState* s) {
+    mik__uart_untrack(mik_rt, s);
+    uart_driver_delete(s->port);
+    const int gpios[] = {s->tx_pin, s->rx_pin};
+    mik__release_gpios(gpios, countof(gpios), "Uart");
+    s->active = false;
+}
+
+/* True when the handle was ended; the first such call prints a warning. */
+static bool mik__uart_ended(MIKUartState* s, const char* call) {
+    if (s->active) return false;
+    mik__warn_after_end(&s->warned_after_end, "Uart", s->port, call, "port");
+    return true;
+}
+
 /* ── Finalizer ────────────────────────────────────────────────────── */
 
 static void mik__uart_finalizer(JSRuntime* rt, JSValue val) {
     auto* s = static_cast<MIKUartState*>(JS_GetOpaque(val, mik_uart_class_id));
     if (!s) return;
-    if (s->begun) {
-        uart_driver_delete(s->port);
-        const int gpios[] = {s->tx_pin, s->rx_pin};
-        mik__release_gpios(gpios, countof(gpios), "Uart");
-    }
-    /* Note: can't untrack here (no JSContext), but destroy handles cleanup */
+    /* Untracks too, so the loop consumer never reads a freed handle. */
+    if (s->active) mik__uart_release(static_cast<MIKRuntime*>(JS_GetRuntimeOpaque(rt)), s);
+    /* Only at runtime teardown can a handle with a pending read be collected. */
+    if (!JS_IsUndefined(s->read_promise.p)) MIK_FreePromiseRT(rt, &s->read_promise);
     free(s);
 }
 
@@ -89,195 +102,138 @@ static JSClassDef mik_uart_class = {
     .finalizer = mik__uart_finalizer,
 };
 
-/* ── Constructor ──────────────────────────────────────────────────── */
+/* ── Factory ──────────────────────────────────────────────────────── */
 
-static JSValue js_uart_constructor(JSContext* ctx, JSValue new_target, int argc, JSValue* argv) {
-    if (argc < 2) return JS_ThrowTypeError(ctx, "Uart requires port and options arguments");
-
+/* Uart(port, {tx?, rx?, baudRate}) → Result<Uart, UartError> */
+static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     int32_t port;
-    if (JS_ToInt32(ctx, &port, argv[0])) return JS_EXCEPTION;
+    JSValueConst options;
+    int32_t tx32 = -1, rx32 = -1;
+    double baud_rate;
+    if (mik__to_int_arg(ctx, argc >= 1 ? argv[0] : JS_UNDEFINED, "port", &port) ||
+        mik__options_arg(ctx, argc, argv, 1, true, &options) ||
+        mik__int_option(ctx, options, "tx", false, &tx32) ||
+        mik__int_option(ctx, options, "rx", false, &rx32) ||
+        mik__number_option(ctx, options, "baudRate", true, &baud_rate))
+        return JS_EXCEPTION;
+    int tx = tx32, rx = rx32;
+    if (tx < 0 && rx < 0) return JS_ThrowTypeError(ctx, "Uart requires at least one of tx or rx");
+
     if (port < 0 || port >= UART_NUM_MAX)
-        return JS_ThrowRangeError(ctx, "port must be 0..%d", UART_NUM_MAX - 1);
-
-    if (!JS_IsObject(argv[1])) return JS_ThrowTypeError(ctx, "Uart options must be an object");
-
-    auto* s = static_cast<MIKUartState*>(calloc(1, sizeof(MIKUartState)));
-    if (!s) return JS_ThrowOutOfMemory(ctx);
-
-    s->port = static_cast<uart_port_t>(port);
-    s->tx_pin = -1;
-    s->rx_pin = -1;
-    s->baud_rate = 115200;
-    s->begun = false;
-    s->reading = false;
-    s->iter = nullptr;
-    s->read_promise.p = JS_UNDEFINED;
-    s->read_promise.rfuncs[0] = JS_UNDEFINED;
-    s->read_promise.rfuncs[1] = JS_UNDEFINED;
-
-    JSValue opts = argv[1];
-    JSValue v;
-
-    v = JS_GetPropertyStr(ctx, opts, "tx");
-    if (!JS_IsUndefined(v)) {
-        if (JS_ToInt32(ctx, &s->tx_pin, v)) {
-            JS_FreeValue(ctx, v);
-            free(s);
-            return JS_EXCEPTION;
-        }
-    }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, opts, "rx");
-    if (!JS_IsUndefined(v)) {
-        if (JS_ToInt32(ctx, &s->rx_pin, v)) {
-            JS_FreeValue(ctx, v);
-            free(s);
-            return JS_EXCEPTION;
-        }
-    }
-    JS_FreeValue(ctx, v);
-
-    /* At least one pin must be provided */
-    if (s->tx_pin < 0 && s->rx_pin < 0) {
-        free(s);
-        return JS_ThrowTypeError(ctx, "Uart requires at least one of tx or rx pins");
-    }
-
-    v = JS_GetPropertyStr(ctx, opts, "baudRate");
-    if (!JS_IsUndefined(v)) {
-        if (JS_ToInt32(ctx, &s->baud_rate, v)) {
-            JS_FreeValue(ctx, v);
-            free(s);
-            return JS_EXCEPTION;
-        }
-    }
-    JS_FreeValue(ctx, v);
-
-    JSValue obj = JS_NewObjectClass(ctx, mik_uart_class_id);
-    if (JS_IsException(obj)) {
-        free(s);
-        return obj;
-    }
-    JS_SetOpaque(obj, s);
-    return obj;
-}
-
-/* ── Methods ──────────────────────────────────────────────────────── */
-
-static JSValue js_uart_begin(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    auto* s = mik__uart_get(ctx, this_val);
-    if (!s) return JS_EXCEPTION;
-    if (s->begun) return mik__result_ok_void(ctx);  // idempotent
-
-    const int gpios[] = {s->tx_pin, s->rx_pin};
+        return mik__result_err_named(ctx, "InvalidParam", "port must be 0 to %d on %s, got %d",
+                                     UART_NUM_MAX - 1, CONFIG_IDF_TARGET, (int)port);
+    if (!(baud_rate >= 1 && baud_rate <= INT32_MAX && std::trunc(baud_rate) == baud_rate))
+        return mik__result_err_named(ctx, "InvalidParam",
+                                     "baudRate must be a whole number of at least 1, got %g",
+                                     baud_rate);
+    const MIKGpioCheck checks[] = {{tx, true}, {rx, false}};
+    JSValue invalid = mik__gpio_check(ctx, checks, countof(checks));
+    if (!JS_IsUndefined(invalid)) return invalid;
+    const int gpios[] = {tx, rx};
     JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "Uart");
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
+    auto uart_port = static_cast<uart_port_t>(port);
     uart_config_t uart_config = {};
-    uart_config.baud_rate = s->baud_rate;
+    uart_config.baud_rate = static_cast<int>(baud_rate);
     uart_config.data_bits = UART_DATA_8_BITS;
     uart_config.parity = UART_PARITY_DISABLE;
     uart_config.stop_bits = UART_STOP_BITS_1;
     uart_config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
     uart_config.source_clk = UART_SCLK_DEFAULT;
 
-    esp_err_t err = uart_param_config(s->port, &uart_config);
+    esp_err_t err = uart_param_config(uart_port, &uart_config);
     if (err != ESP_OK) {
         mik__release_gpios(gpios, countof(gpios), "Uart");
         return mik__result_err_named(ctx, "InvalidParam",
-                                     "uart_param_config failed on port %d: %s", s->port,
+                                     "uart_param_config failed on port %d: %s", (int)port,
                                      esp_err_to_name(err));
     }
 
-    err = uart_set_pin(s->port,
-                       s->tx_pin >= 0 ? s->tx_pin : UART_PIN_NO_CHANGE,
-                       s->rx_pin >= 0 ? s->rx_pin : UART_PIN_NO_CHANGE,
-                       UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    err = uart_set_pin(uart_port, tx >= 0 ? tx : UART_PIN_NO_CHANGE,
+                       rx >= 0 ? rx : UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     if (err != ESP_OK) {
         mik__release_gpios(gpios, countof(gpios), "Uart");
         return mik__result_err_named(ctx, "SetPinFailed",
-                                     "uart_set_pin failed on port %d (tx=%d, rx=%d): %s", s->port,
-                                     s->tx_pin, s->rx_pin, esp_err_to_name(err));
+                                     "uart_set_pin failed on port %d (tx=%d, rx=%d): %s", (int)port,
+                                     tx, rx, esp_err_to_name(err));
     }
 
     /* RX buffer only if we have an RX pin; no TX buffer (writes block until done) */
-    int rx_buf = s->rx_pin >= 0 ? MIK_UART_RX_BUF_SIZE : 0;
-    err = uart_driver_install(s->port, rx_buf, 0, 0, nullptr, ESP_INTR_FLAG_IRAM);
+    int rx_buf = rx >= 0 ? MIK_UART_RX_BUF_SIZE : 0;
+    err = uart_driver_install(uart_port, rx_buf, 0, 0, nullptr, ESP_INTR_FLAG_IRAM);
     if (err != ESP_OK) {
         mik__release_gpios(gpios, countof(gpios), "Uart");
         return mik__result_err_named(ctx, "DriverInstallFailed",
-                                     "uart_driver_install failed on port %d: %s", s->port,
+                                     "uart_driver_install failed on port %d: %s", (int)port,
                                      esp_err_to_name(err));
     }
 
-    s->begun = true;
-    mik__uart_track(ctx, s);
-    return mik__result_ok_void(ctx);
+    auto* s = static_cast<MIKUartState*>(calloc(1, sizeof(MIKUartState)));
+    if (!s) {
+        uart_driver_delete(uart_port);
+        mik__release_gpios(gpios, countof(gpios), "Uart");
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    s->port = uart_port;
+    s->tx_pin = tx;
+    s->rx_pin = rx;
+    s->active = true;
+    MIK_ClearPromise(ctx, &s->read_promise);
+
+    JSValue obj = JS_NewObjectClass(ctx, mik_uart_class_id);
+    if (JS_IsException(obj)) {
+        uart_driver_delete(uart_port);
+        mik__release_gpios(gpios, countof(gpios), "Uart");
+        free(s);
+        return obj;
+    }
+    JS_SetOpaque(obj, s);
+    mik__uart_track(MIK_GetRuntime(ctx), s);
+    return mik__result_ok(ctx, obj);
 }
 
+/* ── Methods ──────────────────────────────────────────────────────── */
+
 /* Forward decls — bodies live with the iterator class. */
-static JSValue mik__uart_iter_yield(JSContext* ctx, JSValue inner_result);
+static JSValue mik__uart_iter_done(JSContext* ctx);
 static void mik__uart_iter_mark_ended(MIKUartIterState* it);
 
+/* end() — deletes the driver; a pending read completes. Calling it again does nothing. */
 static JSValue js_uart_end(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__uart_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_ok_void(ctx);  // idempotent
+    if (!s->active) return JS_UNDEFINED;
 
-    /* If a read() iterator is active, deliver a terminal err item so any
-     * awaiting next() unblocks with err(NotStarted) rather than hanging.
-     * Also flip the iterator's `ended` flag so its next call resolves with
-     * {done:true} — without this, the awaiter consumes the err yield, then
-     * the next call hits the `!s->begun` branch in iter_next and emits a
-     * second err yield. The active iterator backpointer makes that flip
-     * possible without reaching through JS. */
+    /* An active read() iterator completes: an awaiting next() resolves with
+     * {done:true}, and later next() calls see the sticky `ended` flag. */
     if (s->reading) {
         if (MIK_IsPromisePending(ctx, &s->read_promise)) {
-            JSValue err_yield = mik__uart_iter_yield(ctx, mik__result_err_tag(ctx, "NotStarted"));
-            MIK_ResolvePromise(ctx, &s->read_promise, 1, &err_yield);
+            JSValue done = mik__uart_iter_done(ctx);
+            MIK_ResolvePromise(ctx, &s->read_promise, 1, &done);
             MIK_ClearPromise(ctx, &s->read_promise);
         }
         if (s->iter) mik__uart_iter_mark_ended(s->iter);
         s->reading = false;
     }
 
-    mik__uart_untrack(ctx, s);
-    uart_driver_delete(s->port);
-    const int gpios[] = {s->tx_pin, s->rx_pin};
-    mik__release_gpios(gpios, countof(gpios), "Uart");
-    s->begun = false;
-    return mik__result_ok_void(ctx);
+    mik__uart_release(MIK_GetRuntime(ctx), s);
+    return JS_UNDEFINED;
 }
 
 static JSValue js_uart_write(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__uart_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_err_tag(ctx, "NotStarted");
-    if (s->tx_pin < 0) return mik__result_err_tag(ctx, "NoTxPin");
-
     size_t data_len;
-    uint8_t* data;
-    size_t offset, elem_size, buf_len;
-    JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[0], &offset, &data_len, &elem_size);
-    if (!JS_IsException(ab)) {
-        /* data_len keeps the view length; the full backing buffer goes to a
-         * throwaway so a subarray view isn't over-read. */
-        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
-        JS_FreeValue(ctx, ab);
-        if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 1");
-        data += offset;
-    } else {
-        JSValue exc = JS_GetException(ctx);
-        JS_FreeValue(ctx, exc);
-        data = JS_GetArrayBuffer(ctx, &data_len, argv[0]);
-        if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 1");
-    }
+    uint8_t* data = mik__bytes_arg(ctx, argv[0], "data", &data_len);
+    if (!data) return JS_EXCEPTION;
+    if (mik__uart_ended(s, "write()")) return mik__result_ok_void(ctx);
+    if (s->tx_pin < 0) return mik__result_err_tag(ctx, "NoTxPin");
 
     int written = uart_write_bytes(s->port, data, data_len);
     if (written < 0)
-        return mik__result_err_named(ctx, "WriteFailed",
-                                     "uart_write_bytes failed on port %d", s->port);
+        return mik__result_err_named(ctx, "WriteFailed", "uart_write_bytes failed on port %d",
+                                     s->port);
 
     return mik__result_ok_void(ctx);
 }
@@ -305,9 +261,9 @@ static void mik__uart_iter_finalizer(JSRuntime* rt, JSValue val) {
     if (!it) return;
     /* uart_jsval keeps the Uart alive, so accessing it->uart->reading is
      * safe here — except after iterator.return() nulled it out. */
-    if (it->uart) {
+    if (it->uart && it->uart->iter == it) {
         it->uart->reading = false;
-        if (it->uart->iter == it) it->uart->iter = nullptr;
+        it->uart->iter = nullptr;
     }
     JS_FreeValueRT(rt, it->uart_jsval);
     free(it);
@@ -367,22 +323,15 @@ static JSValue mik__uart_try_read(JSContext* ctx, MIKUartState* s) {
 
 static JSValue js_uart_iter_next(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* it = static_cast<MIKUartIterState*>(JS_GetOpaque2(ctx, this_val, mik_uart_iter_class_id));
-    if (!it || !it->uart) return JS_ThrowInternalError(ctx, "invalid uart iterator");
+    if (!it) return JS_EXCEPTION;
 
-    if (it->ended) {
+    if (it->ended || !it->uart || !it->uart->active) {
+        it->ended = true;
         JSValue done_result = mik__uart_iter_done(ctx);
         return MIK_NewResolvedPromise(ctx, 1, &done_result);
     }
 
     MIKUartState* s = it->uart;
-
-    /* If end() has invalidated the underlying port, surface NotStarted as
-     * a single err item and mark the iterator done. */
-    if (!s->begun) {
-        it->ended = true;
-        JSValue err_yield = mik__uart_iter_yield(ctx, mik__result_err_tag(ctx, "NotStarted"));
-        return MIK_NewResolvedPromise(ctx, 1, &err_yield);
-    }
 
     /* Try synchronous read first */
     JSValue sync_result = mik__uart_try_read(ctx, s);
@@ -399,27 +348,28 @@ static JSValue js_uart_iter_next(JSContext* ctx, JSValue this_val, int argc, JSV
 
 static JSValue js_uart_iter_return(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* it = static_cast<MIKUartIterState*>(JS_GetOpaque2(ctx, this_val, mik_uart_iter_class_id));
-    if (!it || !it->uart) goto done;
+    if (!it) return JS_EXCEPTION;
+    it->ended = true;
 
-    /* Cancel pending read promise */
-    if (MIK_IsPromisePending(ctx, &it->uart->read_promise)) {
-        /* Resolve with {done: true} to cleanly end the iteration */
-        JSValue done_result = JS_NewObject(ctx);
-        JS_DefinePropertyValueStr(ctx, done_result, "done", JS_TRUE, JS_PROP_C_W_E);
-        JS_DefinePropertyValueStr(ctx, done_result, "value", JS_UNDEFINED, JS_PROP_C_W_E);
-        MIK_ResolvePromise(ctx, &it->uart->read_promise, 1, &done_result);
-        MIK_ClearPromise(ctx, &it->uart->read_promise);
+    if (it->uart && it->uart->iter == it) {
+        /* Cancel pending read promise: resolve with {done: true} to cleanly end the iteration */
+        if (MIK_IsPromisePending(ctx, &it->uart->read_promise)) {
+            JSValue done_result = mik__uart_iter_done(ctx);
+            MIK_ResolvePromise(ctx, &it->uart->read_promise, 1, &done_result);
+            MIK_ClearPromise(ctx, &it->uart->read_promise);
+        }
+        it->uart->reading = false;
+        it->uart->iter = nullptr;
     }
-
-    it->uart->reading = false;
-    if (it->uart->iter == it) it->uart->iter = nullptr;
     it->uart = nullptr;
 
-done:
-    JSValue result = JS_NewObject(ctx);
-    JS_DefinePropertyValueStr(ctx, result, "done", JS_TRUE, JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, result, "value", JS_UNDEFINED, JS_PROP_C_W_E);
+    JSValue result = mik__uart_iter_done(ctx);
     return MIK_NewResolvedPromise(ctx, 1, &result);
+}
+
+/* [Symbol.asyncIterator]() on the iterator prototype: the iterator is its own iterable. */
+static JSValue js_uart_iter_self(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    return JS_DupValue(ctx, this_val);
 }
 
 static const JSCFunctionListEntry mik_uart_iter_proto_funcs[] = {
@@ -431,30 +381,30 @@ static const JSCFunctionListEntry mik_uart_iter_proto_funcs[] = {
 static JSValue js_uart_read(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__uart_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_err_tag(ctx, "NotStarted");
-    if (s->rx_pin < 0) return mik__result_err_tag(ctx, "NoRxPin");
-    if (s->reading) return mik__result_err_tag(ctx, "AlreadyReading");
-
-    s->reading = true;
-
-    /* Create iterator object */
-    auto* it = static_cast<MIKUartIterState*>(calloc(1, sizeof(MIKUartIterState)));
-    if (!it) {
-        s->reading = false;
-        return JS_ThrowOutOfMemory(ctx);
+    bool ended = mik__uart_ended(s, "read()");
+    if (!ended) {
+        if (s->rx_pin < 0) return mik__result_err_tag(ctx, "NoRxPin");
+        if (s->reading) return mik__result_err_tag(ctx, "AlreadyReading");
     }
-    it->uart = s;
-    it->uart_jsval = JS_DupValue(ctx, this_val);
+
+    auto* it = static_cast<MIKUartIterState*>(calloc(1, sizeof(MIKUartIterState)));
+    if (!it) return JS_ThrowOutOfMemory(ctx);
+    /* After end() the iterable completes on its first next(). */
+    it->ended = ended;
+    it->uart = ended ? nullptr : s;
+    it->uart_jsval = ended ? JS_UNDEFINED : JS_DupValue(ctx, this_val);
 
     JSValue iter_obj = JS_NewObjectClass(ctx, mik_uart_iter_class_id);
     if (JS_IsException(iter_obj)) {
-        s->reading = false;
         JS_FreeValue(ctx, it->uart_jsval);
         free(it);
         return JS_EXCEPTION;
     }
     JS_SetOpaque(iter_obj, it);
-    s->iter = it;
+    if (!ended) {
+        s->reading = true;
+        s->iter = it;
+    }
 
     return mik__result_ok(ctx, iter_obj);
 }
@@ -462,7 +412,6 @@ static JSValue js_uart_read(JSContext* ctx, JSValue this_val, int argc, JSValue*
 /* ── Prototype ────────────────────────────────────────────────────── */
 
 static const JSCFunctionListEntry mik_uart_proto_funcs[] = {
-    MIK_CFUNC_DEF("begin", 0, js_uart_begin),
     MIK_CFUNC_DEF("end", 0, js_uart_end),
     MIK_CFUNC_DEF("write", 1, js_uart_write),
     MIK_CFUNC_DEF("read", 0, js_uart_read),
@@ -471,9 +420,7 @@ static const JSCFunctionListEntry mik_uart_proto_funcs[] = {
 /* ── Module init ──────────────────────────────────────────────────── */
 
 static int mik__uart_module_init(JSContext* ctx, JSModuleDef* m) {
-    JSValue ctor =
-        JS_NewCFunction2(ctx, js_uart_constructor, "Uart", 2, JS_CFUNC_constructor, 0);
-    JS_SetModuleExport(ctx, m, "Uart", ctor);
+    JS_SetModuleExport(ctx, m, "Uart", JS_NewCFunction(ctx, js_uart, "Uart", 2));
     return 0;
 }
 
@@ -503,10 +450,16 @@ static JSModuleDef* mik__uart_init(JSContext* ctx) {
     JSValue iter_proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, iter_proto, mik_uart_iter_proto_funcs,
                                countof(mik_uart_iter_proto_funcs));
+    /* Once on the prototype, so for await works on the iterator itself. */
+    JSAtom iter_atom = mik__async_iterator_atom(ctx);
+    JS_DefinePropertyValue(ctx, iter_proto, iter_atom,
+                           JS_NewCFunction(ctx, js_uart_iter_self, "[Symbol.asyncIterator]", 0),
+                           JS_PROP_CONFIGURABLE | JS_PROP_WRITABLE);
+    JS_FreeAtom(ctx, iter_atom);
     JS_SetClassProto(ctx, mik_uart_iter_class_id, iter_proto);
 
     /* Register module */
-    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/uart", mik__uart_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "mikro/uart", mik__uart_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "Uart");
     return m;
@@ -522,7 +475,7 @@ void mik__uart_consume(JSContext* ctx) {
 
     for (int i = 0; i < slot->count; i++) {
         MIKUartState* s = slot->instances[i];
-        if (!s || !s->reading || !s->begun) continue;
+        if (!s || !s->reading || !s->active) continue;
         if (!MIK_IsPromisePending(ctx, &s->read_promise)) continue;
 
         size_t buffered = 0;
@@ -556,6 +509,7 @@ void mik__uart_destroy(JSContext* ctx) {
         if (!s) continue;
         if (s->reading && MIK_IsPromisePending(ctx, &s->read_promise)) {
             MIK_FreePromise(ctx, &s->read_promise);
+            MIK_ClearPromise(ctx, &s->read_promise);
         }
     }
 
@@ -563,4 +517,5 @@ void mik__uart_destroy(JSContext* ctx) {
     mik__uart_slot_data(mik_rt) = nullptr;
 }
 
-MIK_REGISTER_MODULE(uart, "native:mikro/uart", mik__uart_init, mik__uart_consume, mik__uart_destroy)
+MIK__REGISTER_PUBLIC_MODULE(uart, "mikro/uart", mik__uart_init, mik__uart_consume,
+                            mik__uart_destroy)

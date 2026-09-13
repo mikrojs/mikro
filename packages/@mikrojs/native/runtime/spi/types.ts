@@ -1,3 +1,5 @@
+/* mikro/spi, declared here and implemented in C (mik_spi.cpp). */
+
 import type {GpioInUse} from '../gpio/types.js'
 import type {Result} from '../result/types.js'
 
@@ -15,30 +17,28 @@ export interface SpiOptions {
 
 export type SpiError =
   | GpioInUse
+  | {name: 'InvalidGpio'; message: string}
+  | {name: 'InvalidParam'; message: string}
   | {name: 'BusInitFailed'; message: string}
   | {name: 'AddDeviceFailed'; message: string}
-  | {name: 'NotStarted'}
-  | {name: 'MissingPins'}
   | {name: 'TransferFailed'; message: string}
   | {name: 'WriteFailed'; message: string}
 
 /**
  * @public
  */
-export declare const Spi: {
-  prototype: Spi
-  new (hostNo: 1 | 2, options: SpiOptions): Spi
+export interface Spi {
+  /** Full-duplex transfer: sends `data` and returns the bytes received at the same time. */
+  transfer(data: Uint8Array): Result<Uint8Array, SpiError>
+  /** Write-only transfer. */
+  write(data: Uint8Array): Result<void, SpiError>
+  /** Frees the bus and releases its GPIO pins. Calling it again does nothing. Afterwards `write()`
+   *  does nothing and `transfer()` returns an empty array; the first such call prints a warning. */
+  end(): void
 }
 
 /**
+ * Claims the pins and starts an SPI bus on a host controller.
  * @public
  */
-export interface Spi {
-  begin(): Result<void, SpiError>
-
-  end(): Result<void, SpiError>
-
-  transfer(data: Uint8Array): Result<Uint8Array, SpiError>
-
-  write(data: Uint8Array): Result<void, SpiError>
-}
+export declare function Spi(host: number, options: SpiOptions): Result<Spi, SpiError>

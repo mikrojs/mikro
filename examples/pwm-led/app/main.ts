@@ -3,7 +3,7 @@ import {Pwm} from 'mikro/pwm'
 // GPIO 15 is the built-in LED on XIAO ESP32C6. Replace with your board's LED pin.
 const LED_PIN = 15
 
-const led = new Pwm(LED_PIN, {freq: 50, duty: 0})
+const led = Pwm(LED_PIN, {freq: 50, duty: 0}).orPanic('Failed to set up the LED')
 
 // Breathe: smoothly fade in and out forever
 while (true) {

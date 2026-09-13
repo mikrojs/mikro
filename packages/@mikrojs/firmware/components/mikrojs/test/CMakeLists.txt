@@ -12,6 +12,7 @@ set(_MIK_TEST_SRCS
     i2s_test.cpp
     modules_extended_test.cpp
     modules_test.cpp
+    neopixel_test.cpp
     nvs_kv_test.cpp
     pins_test.cpp
     pwm_test.cpp
@@ -19,12 +20,14 @@ set(_MIK_TEST_SRCS
     rtc_test.cpp
     runtime_test.cpp
     sleep_test.cpp
+    spi_test.cpp
     sntp_test.cpp
     stdio_test.cpp
     sys_test.cpp
     text_encoding_test.cpp
     timers_js_test.cpp
     timers_test.cpp
+    uart_test.cpp
     udp_test.cpp
     watchdog_test.cpp
 )

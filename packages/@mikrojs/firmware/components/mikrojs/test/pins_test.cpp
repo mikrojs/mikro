@@ -130,19 +130,35 @@ TEST_CASE("Pwm and DigitalOut report each other as owners", "[gpio]") {
     setup();
     run(R"(
         import {DigitalOut} from 'mikro/gpio'
-        import {Pwm} from 'native:mikro/pwm'
-        const pwm = new Pwm(TEST_GPIO, 5000, 0.5)
+        import {Pwm} from 'mikro/pwm'
+        const pwm = Pwm(TEST_GPIO, {freq: 5000, duty: 0.5}).orPanic('pwm')
         const blocked = DigitalOut(TEST_GPIO)
         pwm.end()
         const led = DigitalOut(TEST_GPIO).orPanic('led')
-        let thrown = ''
-        try { new Pwm(TEST_GPIO, 5000) } catch (e) { thrown = e.message }
-        globalThis.out = JSON.stringify([blocked.error.owner, thrown])
+        const blockedPwm = Pwm(TEST_GPIO, {freq: 5000})
+        globalThis.out = JSON.stringify([blocked.error.owner, blockedPwm.error.name,
+                                         blockedPwm.error.owner])
         led.end()
     )");
-    std::string expected =
-        "[\"Pwm\",\"GPIO " + std::to_string(TEST_GPIO) + " is already in use by DigitalOut\"]";
-    TEST_ASSERT_EQUAL_STRING(expected.c_str(), out().c_str());
+    TEST_ASSERT_EQUAL_STRING("[\"Pwm\",\"GpioInUse\",\"DigitalOut\"]", out().c_str());
+    teardown();
+}
+
+TEST_CASE("NeoPixel and DigitalOut report each other as owners", "[gpio]") {
+    setup();
+    run(R"(
+        import {DigitalOut} from 'mikro/gpio'
+        import {NeoPixel} from 'mikro/neopixel'
+        const pixels = NeoPixel(TEST_GPIO, {count: 1}).orPanic('pixels')
+        const blocked = DigitalOut(TEST_GPIO)
+        pixels.end()
+        const led = DigitalOut(TEST_GPIO).orPanic('led')
+        const blockedPixels = NeoPixel(TEST_GPIO, {count: 1})
+        globalThis.out = JSON.stringify([blocked.error.owner, blockedPixels.error.name,
+                                         blockedPixels.error.owner])
+        led.end()
+    )");
+    TEST_ASSERT_EQUAL_STRING("[\"NeoPixel\",\"GpioInUse\",\"DigitalOut\"]", out().c_str());
     teardown();
 }
 

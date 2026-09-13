@@ -23,9 +23,7 @@ import {Uart} from 'mikro/uart'
 const TX_PIN = 16
 const RX_PIN = 17
 await sleep(2000)
-const uart = new Uart(1, {tx: TX_PIN, rx: RX_PIN, baudRate: 115200})
-
-uart.begin().orPanic('Failed to start UART')
+const uart = Uart(1, {tx: TX_PIN, rx: RX_PIN, baudRate: 115200}).orPanic('Failed to start UART')
 
 const message = new TextEncoder().encode('Hello from UART!\n')
 uart.write(message).orPanic('Failed to write')
@@ -46,19 +44,19 @@ if (!reader.ok) {
   }
 }
 
-uart.end().orPanic('Failed to stop UART')
+uart.end()
 console.log('Done!')
 ```
 
 ## Walkthrough
 
-1. **UART instance.** `new Uart(portNumber, options)` creates a UART port. Port `1` is used here (port `0` is typically reserved for the USB console). The `baudRate` must match between sender and receiver.
+1. **UART instance.** `Uart(port, options)` claims the pins, installs the driver and returns a [`Result`](/api/result) with the handle. Port `1` is used here (port `0` is typically reserved for the USB console). The `baudRate` must match between sender and receiver.
 
-2. **Lifecycle.** `uart.begin()` initializes the hardware. `uart.end()` releases it. Both return [`Result`](/api/result) and `.orPanic()` provides a clear crash message on failure.
+2. **Lifecycle.** `.orPanic()` on the factory's Result gives a clear crash message if the port cannot start. `uart.end()` releases the port.
 
 3. **Writing.** `uart.write()` sends a `Uint8Array`. Use `TextEncoder` to convert strings to bytes.
 
-4. **Reading.** `uart.read()` returns an async iterator that yields [`Result<Uint8Array, UartError>`](/api/result) items. Check `.ok` before reading `.value`; a non-ok chunk (for example when the port closed mid-read) is the iterator's terminal signal. Use `TextDecoder` to convert bytes back to strings.
+4. **Reading.** `uart.read()` returns an async iterator that yields [`Result<Uint8Array, UartError>`](/api/result) items. Check `.ok` before reading `.value`; a non-ok chunk reports a read failure. The iterator completes when `uart.end()` is called. Use `TextDecoder` to convert bytes back to strings.
 
 5. **Loopback test.** With TX wired to RX, the message you send is immediately received. This is a simple way to verify UART works before connecting to an actual peripheral.
 
