@@ -46,6 +46,7 @@ set(MIKROJS_CORE_SOURCES
     src/mik_wifi_client.cpp
     src/mik_cbor.cpp
     src/mik_schema.cpp
+    src/mik_test.cpp
     src/mik_result.cpp
     src/mik_console.cpp
     src/mik_sys.cpp
@@ -244,6 +245,7 @@ if(BUILD_TESTING)
         test/sys_codec_test.cpp
         test/watchdog_test.cpp
         test/gpio_claim_test.cpp
+        test/test_runner_test.cpp
     )
 
     # ── Check-in wire fixtures ───────────────────────────────────────

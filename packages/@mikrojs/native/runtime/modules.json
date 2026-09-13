@@ -23,7 +23,6 @@
     {"name": "stdio"},
     {"name": "stream"},
     {"name": "sys"},
-    {"name": "test"},
     {"name": "udp"},
     {"name": "watchdog"},
     {"name": "ble", "native": "ble", "feature": "ble", "when": "ble"},
@@ -38,6 +37,7 @@
     {"name": "http/helpers", "bytecode": false},
     {"name": "observable/operators", "bytecode": false},
     {"name": "inspect", "bytecode": false},
+    {"name": "test", "bytecode": false},
     {"name": "wifi", "bytecode": false, "native": "wifi", "feature": "wifi", "when": "wifi"}
   ]
 }
