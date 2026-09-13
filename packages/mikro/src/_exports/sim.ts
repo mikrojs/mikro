@@ -8,6 +8,7 @@
 
 import type {AnalogIn, DigitalIn, DigitalOut} from '@mikrojs/native/runtime/gpio/types'
 import type {I2c} from '@mikrojs/native/runtime/i2c/types'
+import type {I2s} from '@mikrojs/native/runtime/i2s/types'
 import type {NeoPixel} from '@mikrojs/native/runtime/neopixel/types'
 import type {Pwm} from '@mikrojs/native/runtime/pwm/types'
 import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'
@@ -99,6 +100,9 @@ export interface SimStubMethods {
   i2c: {
     I2c: typeof I2c
   }
+  i2s: {
+    I2s: typeof I2s
+  }
   spi: {
     Spi: typeof Spi
   }
@@ -149,6 +153,7 @@ export type SimGpio = SimStubMethods['gpio']
 export type SimNeoPixel = SimStubMethods['neopixel']
 export type SimPwm = SimStubMethods['pwm']
 export type SimI2c = SimStubMethods['i2c']
+export type SimI2s = SimStubMethods['i2s']
 export type SimSpi = SimStubMethods['spi']
 export type SimUart = SimStubMethods['uart']
 export type SimSleep = SimStubMethods['sleep']

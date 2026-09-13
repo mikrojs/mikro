@@ -454,37 +454,3 @@ declare module 'native:mikro/ota_client' {
   export const bearer: Ota['bearer']
   export const registry: Ota['registry']
 }
-
-declare module 'native:mikro/i2s' {
-  import type {I2sError, I2sSamples} from '@mikrojs/native/runtime/i2s/types'
-  import type {Result} from 'mikro/result'
-
-  export interface I2sNativeOptions {
-    mode?: 'std' | 'pdm'
-    sampleRate: number
-    bitsPerSample?: 16 | 32
-    channels?: 'mono' | 'stereo'
-    bclk?: number
-    ws?: number
-    clk?: number
-    dout?: number
-    din?: number
-    dmaFrames?: number
-    dmaBuffers?: number
-  }
-
-  export declare const I2s: {
-    prototype: I2s
-    new (port: number, options: I2sNativeOptions): I2s
-  }
-
-  export interface I2s {
-    begin(): Result<void, I2sError>
-
-    end(): Result<void, I2sError>
-
-    write(data: I2sSamples | Uint8Array): Promise<Result<void, I2sError>>
-
-    capture(frames: number, options?: {gainBits?: number}): Result<Int16Array, I2sError>
-  }
-}

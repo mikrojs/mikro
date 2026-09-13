@@ -3,6 +3,7 @@ import {consoleBuiltin} from './console.js'
 import {gpioBuiltin} from './gpio.js'
 import {httpBuiltin} from './http.js'
 import {i2cBuiltin} from './i2c.js'
+import {i2sBuiltin} from './i2s.js'
 import {kvBuiltin} from './kv.js'
 import {neopixelBuiltin} from './neopixel.js'
 import {nvsKvBuiltin} from './nvs-kv.js'
@@ -25,6 +26,7 @@ export const builtinModuleNames: Record<BuiltinName, string> = {
   neopixel: 'mikro/neopixel',
   wifi: 'native:mikro/wifi',
   i2c: 'mikro/i2c',
+  i2s: 'mikro/i2s',
   spi: 'mikro/spi',
   uart: 'mikro/uart',
   kv: 'native:mikro/rtc',
@@ -48,6 +50,7 @@ export const defaultBuiltins: Record<BuiltinName, BuiltinDefinition> = {
   sleep: sleepBuiltin,
   wifi: wifiBuiltin,
   i2c: i2cBuiltin,
+  i2s: i2sBuiltin,
   spi: spiBuiltin,
   uart: uartBuiltin,
   http: httpBuiltin,

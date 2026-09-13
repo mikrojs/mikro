@@ -317,16 +317,16 @@ A GPIO pin has one owner at a time. `mikro/gpio`, `Pwm`, the bus modules and the
 2. If a claim fails, release the GPIOs that the same call already claimed. Then report the owner that `MIK_GpioOwner(gpio)` returns.
 3. Release each GPIO in `end()` and in the finalizer with `MIK_ReleaseGpio(gpio, "Epaper")`. A release only frees a claim held under the same name, so a late release cannot free a pin that another module has claimed since.
 
-This `begin()` for an e-paper display claims the reset and busy pins. On a conflict it returns a `GpioInUse` error object instead of throwing:
+Expose a hardware handle the way the core modules do: a factory function that shares the handle's name and returns a `Result`, with an `end()` that returns nothing and does nothing when called again. The factory claims the pins before it touches the hardware. This native `claimPins()` for an e-paper display claims the reset and busy pins. On a conflict it returns a `GpioInUse` error object instead of throwing:
 
 ```cpp
 #include <string>
 
 #include <mikrojs/mikrojs.h>
 
-// begin(reset, busy): returns undefined, or a GpioInUse error object.
-static JSValue js_epaper_begin(JSContext* ctx, JSValueConst this_val, int argc,
-                               JSValueConst* argv) {
+// claimPins(reset, busy): returns undefined, or a GpioInUse error object.
+static JSValue js_epaper_claim_pins(JSContext* ctx, JSValueConst this_val, int argc,
+                                    JSValueConst* argv) {
     int32_t gpios[2];
     if (JS_ToInt32(ctx, &gpios[0], argv[0]) || JS_ToInt32(ctx, &gpios[1], argv[1]))
         return JS_EXCEPTION;
@@ -346,12 +346,12 @@ static JSValue js_epaper_begin(JSContext* ctx, JSValueConst this_val, int argc,
         return error;
     }
 
-    // Configure both pins here. If that fails, release both before you throw.
+    // Configure both pins here. If that fails, release both and return an error object.
     return JS_UNDEFINED;
 }
 ```
 
-The TypeScript wrapper returns the error object as it is:
+The TypeScript factory returns the error object as it is:
 
 ```ts
 import type {GpioInUse} from 'mikro/gpio'
@@ -359,10 +359,21 @@ import {err, ok, type Result} from 'mikro/result'
 
 import native from 'native:@my-scope/epaper/display'
 
-export function begin(reset: number, busy: number): Result<void, GpioInUse> {
-  const inUse = native.begin(reset, busy)
+export interface Epaper {
+  end(): void
+}
+
+export function Epaper(reset: number, busy: number): Result<Epaper, GpioInUse> {
+  const inUse = native.claimPins(reset, busy)
   if (inUse !== undefined) return err(inUse)
-  return ok()
+  let ended = false
+  return ok({
+    end() {
+      if (ended) return
+      ended = true
+      native.releasePins(reset, busy)
+    },
+  })
 }
 ```
 

@@ -21,6 +21,9 @@
     "test/i2c.test.ts": {
       "heapDelta": 11738
     },
+    "test/i2s.test.ts": {
+      "heapDelta": 9172
+    },
     "test/inspect.test.ts": {
       "heapDelta": 4933
     },

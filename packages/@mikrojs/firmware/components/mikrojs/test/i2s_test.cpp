@@ -176,3 +176,70 @@ TEST_CASE("I2S PDM RX init does not crash", "[i2s]") {
     i2s_del_channel(rx);
 }
 #endif
+
+/* ── mikro/i2s from JS ─────────────────────────────────────────────── */
+
+#include "js_harness.h"
+
+static void set_i2s_globals() {
+    JSValue global = JS_GetGlobalObject(js_harness::ctx);
+    JSValue pins = JS_NewObject(js_harness::ctx);
+    JS_SetPropertyStr(js_harness::ctx, pins, "bclk", JS_NewInt32(js_harness::ctx, I2S_TEST_BCLK));
+    JS_SetPropertyStr(js_harness::ctx, pins, "ws", JS_NewInt32(js_harness::ctx, I2S_TEST_WS));
+    JS_SetPropertyStr(js_harness::ctx, pins, "dout", JS_NewInt32(js_harness::ctx, I2S_TEST_DOUT));
+    JS_SetPropertyStr(js_harness::ctx, pins, "din", JS_NewInt32(js_harness::ctx, I2S_TEST_DIN));
+    JS_SetPropertyStr(js_harness::ctx, global, "PINS", pins);
+    JS_FreeValue(js_harness::ctx, global);
+}
+
+TEST_CASE("I2s factory starts a TX channel and rejects bad values", "[i2s]") {
+    js_harness::setup();
+    set_i2s_globals();
+    js_harness::run(R"(
+        import {I2s} from 'mikro/i2s'
+        const tx = {bclk: PINS.bclk, ws: PINS.ws, dout: PINS.dout, sampleRate: 16000}
+        const out = I2s(0, tx).orPanic('out')
+        const wrote = await out.write(new Int16Array(64))
+        const wrongWidth = await out.write(new Int32Array(8))
+        const results = [wrote.ok, wrongWidth.error.name, out.capture(16).error.name,
+                         I2s(0, tx).error.name]
+        let writeThrew = ''
+        try { out.write([1]) } catch (e) { writeThrew = e.name }
+        out.end()
+        const thrown = [() => I2s(0, {...tx, mode: 'tdm'}), () => I2s(0, {...tx, bitsPerSample: 24}),
+                        () => I2s(0, {bclk: PINS.bclk, ws: PINS.ws, sampleRate: 16000}),
+                        () => I2s(0, {...tx, sampleRate: undefined})].map((f) => {
+            try { f() } catch (e) { return e.name }
+        })
+        const errors = [I2s(9, tx), I2s(0, {...tx, sampleRate: 0}), I2s(0, {...tx, dmaFrames: 0}),
+                        I2s(0, {...tx, dout: 100})].map((r) => r.error.name)
+        globalThis.out = JSON.stringify([...results, writeThrew, ...thrown, ...errors])
+    )");
+    TEST_ASSERT_EQUAL_STRING(
+        "[true,\"InvalidParam\",\"NoRxPin\",\"GpioInUse\",\"TypeError\",\"TypeError\",\"TypeError\","
+        "\"TypeError\",\"TypeError\",\"InvalidParam\",\"InvalidParam\",\"InvalidParam\","
+        "\"InvalidGpio\"]",
+        js_harness::out().c_str());
+    TEST_ASSERT_NULL(MIK_GpioOwner(I2S_TEST_DOUT));
+    js_harness::teardown();
+}
+
+TEST_CASE("I2s end() releases the pins and later calls do nothing", "[i2s]") {
+    js_harness::setup();
+    set_i2s_globals();
+    js_harness::run(R"(
+        import {I2s} from 'mikro/i2s'
+        const rx = {bclk: PINS.bclk, ws: PINS.ws, din: PINS.din, sampleRate: 16000,
+                    bitsPerSample: 32, channels: 'mono'}
+        const mic = I2s(0, rx).orPanic('mic')
+        const badFrames = mic.capture(0).error.name
+        const ended = [mic.end(), mic.end()]
+        const again = I2s(0, rx).orPanic('again')
+        const after = [mic.capture(16).value.length, (await mic.write(new Int32Array(4))).ok]
+        again.end()
+        globalThis.out = JSON.stringify([badFrames, ended, after])
+    )");
+    TEST_ASSERT_EQUAL_STRING("[\"InvalidParam\",[null,null],[0,true]]", js_harness::out().c_str());
+    TEST_ASSERT_NULL(MIK_GpioOwner(I2S_TEST_DIN));
+    js_harness::teardown();
+}

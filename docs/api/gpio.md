@@ -190,4 +190,4 @@ type Attenuation = '0db' | '2.5db' | '6db' | '11db'
 | `ReadFailed`             | `message: string`                  | An analog read failed                                                                  |
 | `CalibrationUnavailable` |                                    | The chip has no ADC calibration data for `readMillivolts()`                            |
 
-`Pwm`, `NeoPixel`, `Spi`, `I2c` and `Uart` also return `GpioInUse`, and `I2s` returns it from `begin()`.
+`Pwm`, `NeoPixel`, `Spi`, `I2c`, `Uart` and `I2s` also return `GpioInUse`.

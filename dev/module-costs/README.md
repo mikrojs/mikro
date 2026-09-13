@@ -23,8 +23,8 @@ Rules the census files follow:
 - `mikro/sys` and `mikro/test` have no file. The harness imports both, so their
   cost sits inside the baseline and cannot be seen from a test.
 - Chip-gated modules (`mikro/ble`) use `describe.runIf` on `board.features`.
-  `mikro/http/server` and `mikro/i2s` are firmware-only and skip on the
-  simulator via `MIKRO_ENV`. A file whose only test is skipped records nothing
+  `mikro/http/server` is firmware-only and skips on the simulator via
+  `MIKRO_ENV`. A file whose only test is skipped records nothing
   for that chip.
 
 `scripts/census.spec.ts` fails `pnpm vitest` when the `mikro` exports map and
