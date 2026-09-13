@@ -163,9 +163,9 @@ const message = result.match({
 })
 ```
 
-### .orPanic(message)
+### .orPanic(message?)
 
-Returns the value if Ok, or crashes the program with the given message if Err. The error is included as the `cause`.
+Returns the value if Ok. If Err, it crashes the program with the error as the `cause`, which the crash report prints in full. The message is optional; give one when it adds context the cause does not.
 
 ```ts twoslash
 import {DigitalOut} from 'mikro/gpio'

@@ -123,7 +123,7 @@ TEST_CASE_FIXTURE(RtFixture, "match, orDefault, orPanic" * doctest::test_suite("
               "  globalThis.__panic = e.name + ':' + e.message + ':' + e.cause.name\n"
               "}\n"
               "try { err({name: 'R2'}).orPanic() } catch (e) {\n"
-              "  globalThis.__panicDefault = e.message\n"
+              "  globalThis.__panicDefault = e.name + ':' + e.message + ':' + e.cause.name\n"
               "}\n")
                  .c_str());
     CHECK(read_global_string(ctx, "__matchOk") == "v1");
@@ -135,7 +135,7 @@ TEST_CASE_FIXTURE(RtFixture, "match, orDefault, orPanic" * doctest::test_suite("
     CHECK(read_global_string(ctx, "__orDefNone") == "undefined");
     CHECK(read_global_string(ctx, "__panicOk") == "fine");
     CHECK(read_global_string(ctx, "__panic") == "PanicError:gave up:Root");
-    CHECK(read_global_string(ctx, "__panicDefault") == "panic");
+    CHECK(read_global_string(ctx, "__panicDefault") == "PanicError::R2");
 }
 
 TEST_CASE_FIXTURE(RtFixture, "results render as Ok<> and Err<> via inspect" *

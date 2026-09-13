@@ -1,5 +1,5 @@
 export declare class PanicError extends Error {
-  constructor(message: string, options?: {cause?: unknown})
+  constructor(message?: string, options?: {cause?: unknown})
 }
 
 export interface OkResult<T> {
@@ -12,8 +12,8 @@ export interface OkResult<T> {
   match<A, B>(handlers: {ok: (value: T) => A; err: (error: never) => B}): A
   /** Get the value, or return the default if this is an Err. */
   orDefault<D>(defaultValue: D): T | D
-  /** Get the value, or panic with the given message if this is an Err. */
-  orPanic(message: string): T
+  /** Get the value, or panic if this is an Err. The error is included as cause. */
+  orPanic(message?: string): T
 }
 
 export interface ErrResult<E> {
@@ -26,8 +26,8 @@ export interface ErrResult<E> {
   match<A, B>(handlers: {ok: (value: never) => A; err: (error: E) => B}): B
   /** Return the default value since this is an Err. */
   orDefault<D>(defaultValue: D): D
-  /** Always panics with the given message since this is an Err. The error is included as cause. */
-  orPanic(message: string): never
+  /** Always panics since this is an Err. The error is included as cause. */
+  orPanic(message?: string): never
 }
 
 export type Result<T, E> = OkResult<T> | ErrResult<E>

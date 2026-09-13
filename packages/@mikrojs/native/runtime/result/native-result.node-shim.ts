@@ -20,7 +20,7 @@ const proto = {
   orDefault(this: {ok: boolean; value?: unknown; error?: unknown}, defaultValue: unknown) {
     return this.ok ? this.value : defaultValue
   },
-  orPanic(this: {ok: boolean; value?: unknown; error?: unknown}, message: string) {
+  orPanic(this: {ok: boolean; value?: unknown; error?: unknown}, message?: string) {
     if (this.ok) return this.value
     const panic = new Error(message)
     panic.name = 'PanicError'
