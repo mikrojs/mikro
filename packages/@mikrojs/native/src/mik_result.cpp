@@ -230,20 +230,21 @@ static JSValue js_result_or_default(JSContext* ctx, JSValue this_val, int argc, 
     return argc > 0 ? JS_DupValue(ctx, argv[0]) : JS_UNDEFINED;
 }
 
-/* .orPanic(msg) — value if ok, else throw an Error(name=PanicError, cause=error) */
+/* .orPanic(msg?) — value if ok, else throw an Error(name=PanicError, cause=error).
+ * With no message the report reads "PanicError" followed by the cause. */
 static JSValue js_result_or_panic(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     if (result_is_ok(ctx, this_val)) {
         return result_get_value(ctx, this_val);
     }
-    JSValue panic = JS_NewError(ctx);
-    const char* msg = NULL;
-    if (argc > 0) {
+    const char* msg = "";
+    bool has_msg = argc > 0 && !JS_IsUndefined(argv[0]);
+    if (has_msg) {
         msg = JS_ToCString(ctx, argv[0]);
+        if (!msg) return JS_EXCEPTION;
     }
-    JS_DefinePropertyValueStr(ctx, panic, "message",
-                              JS_NewString(ctx, msg ? msg : "panic"),
-                              JS_PROP_C_W_E);
-    if (msg) JS_FreeCString(ctx, msg);
+    JSValue panic = JS_NewError(ctx);
+    JS_DefinePropertyValueStr(ctx, panic, "message", JS_NewString(ctx, msg), JS_PROP_C_W_E);
+    if (has_msg) JS_FreeCString(ctx, msg);
     JS_DefinePropertyValueStr(ctx, panic, "name", JS_NewString(ctx, "PanicError"),
                               JS_PROP_C_W_E);
     JSValue cause = result_get_error(ctx, this_val);
