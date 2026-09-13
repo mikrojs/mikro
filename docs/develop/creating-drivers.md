@@ -123,7 +123,7 @@ Key points:
 
 - `MIK_REGISTER_MODULE` uses a constructor attribute to add the module to a linked list at startup. No manual registration step needed.
 - The two trailing `nullptr` arguments are optional event-loop hooks. The first is a _consume_ callback that the runtime calls on every event loop iteration once the module is imported; use it to drain completion queues from interrupt handlers or background tasks into JS callbacks (see `mik_http.cpp` for an example). The second is a _destroy_ callback called on runtime shutdown to release anything the module allocated. Pass `nullptr` for hooks you don't need.
-- The native module name must be package-qualified: `native:<your-package-name>/<module>` (here `native:@my-scope/bme280/sensor`). It is literally `native:` plus the builtin specifier registered in Step 4. The bare `native:mikro/*` namespace is reserved for the core runtime, so a driver reaching a core peripheral imports, for example, `native:mikro/i2c`. This rule is enforced at build time; an unqualified name fails to compile. The public API goes through the TypeScript wrapper.
+- The native module name must be package-qualified: `native:<your-package-name>/<module>` (here `native:@my-scope/bme280/sensor`). It is literally `native:` plus the builtin specifier registered in Step 4. The bare `native:mikro/*` namespace is reserved for the core runtime; a driver that needs a core peripheral imports its public module, for example `mikro/i2c`. This rule is enforced at build time; an unqualified name fails to compile. Your package's public API goes through its TypeScript wrapper (Step 4).
 
 ## Step 4: Bytecode builtin registration
 
