@@ -29,6 +29,11 @@ static MIKSPIState* mik__spi_get(JSContext* ctx, JSValue this_val) {
     return static_cast<MIKSPIState*>(JS_GetOpaque2(ctx, this_val, mik_spi_class_id));
 }
 
+static void mik__spi_release_gpios(const MIKSPIState* s) {
+    const int gpios[] = {s->clk, s->mosi, s->miso, s->cs};
+    mik__release_gpios(gpios, countof(gpios), "Spi");
+}
+
 /* ── Finalizer ─────────────────────────────────────────────────────── */
 
 static void mik__spi_finalizer(JSRuntime* rt, JSValue val) {
@@ -37,6 +42,7 @@ static void mik__spi_finalizer(JSRuntime* rt, JSValue val) {
     if (s->begun) {
         spi_bus_remove_device(s->device);
         spi_bus_free(s->host);
+        mik__spi_release_gpios(s);
     }
     free(s);
 }
@@ -165,6 +171,10 @@ static JSValue js_spi_begin(JSContext* ctx, JSValue this_val, int argc, JSValue*
     if (s->clk < 0 || s->mosi < 0)
         return mik__result_err_tag(ctx, "MissingPins");
 
+    const int gpios[] = {s->clk, s->mosi, s->miso, s->cs};
+    JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "Spi");
+    if (!JS_IsUndefined(claim_failed)) return claim_failed;
+
     /* Initialize the SPI bus */
     spi_bus_config_t bus_cfg = {};
     bus_cfg.mosi_io_num = s->mosi;
@@ -175,9 +185,11 @@ static JSValue js_spi_begin(JSContext* ctx, JSValue this_val, int argc, JSValue*
     bus_cfg.max_transfer_sz = 32768;
 
     esp_err_t err = spi_bus_initialize(s->host, &bus_cfg, SPI_DMA_CH_AUTO);
-    if (err != ESP_OK)
+    if (err != ESP_OK) {
+        mik__release_gpios(gpios, countof(gpios), "Spi");
         return mik__result_err_named(ctx, "BusInitFailed",
                                      "SPI bus init failed: %s", esp_err_to_name(err));
+    }
 
     /* Add device to the bus */
     spi_device_interface_config_t dev_cfg = {};
@@ -193,6 +205,7 @@ static JSValue js_spi_begin(JSContext* ctx, JSValue this_val, int argc, JSValue*
     err = spi_bus_add_device(s->host, &dev_cfg, &s->device);
     if (err != ESP_OK) {
         spi_bus_free(s->host);
+        mik__release_gpios(gpios, countof(gpios), "Spi");
         return mik__result_err_named(ctx, "AddDeviceFailed",
                                      "failed to add SPI device: %s", esp_err_to_name(err));
     }
@@ -209,6 +222,7 @@ static JSValue js_spi_end(JSContext* ctx, JSValue this_val, int argc, JSValue* a
     spi_bus_remove_device(s->device);
     s->device = nullptr;
     spi_bus_free(s->host);
+    mik__spi_release_gpios(s);
     s->begun = false;
     return mik__result_ok_void(ctx);
 }

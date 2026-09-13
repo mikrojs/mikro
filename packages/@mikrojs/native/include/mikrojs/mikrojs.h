@@ -439,6 +439,19 @@ void MIK_ProtocolServeLoop(void);
  * and call MIK_ProtocolServeLoop() again. */
 void MIK_ProtocolExit(void);
 
+/* Exclusive GPIO claims, shared by every module and driver that configures a
+ * GPIO pin. MIK_ClaimGpio returns false when the GPIO is already held. `owner`
+ * must be a non-null static string, such as a class name ("Pwm"); it is
+ * reported to the app in GpioInUse errors, and a NULL owner claims and
+ * releases nothing. Numbers outside 0..63, such as -1 for an unused bus role,
+ * are not tracked: the claim succeeds and release does nothing. Release only
+ * frees a GPIO held under the same owner string, so a stale release cannot
+ * free another module's claim (two instances of one class share an owner). */
+bool MIK_ClaimGpio(int gpio, const char* owner);
+void MIK_ReleaseGpio(int gpio, const char* owner);
+/* The current owner of `gpio`, or NULL when it is free. */
+const char* MIK_GpioOwner(int gpio);
+
 #ifdef __cplusplus
 }
 #endif

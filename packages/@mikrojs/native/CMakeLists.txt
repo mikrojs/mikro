@@ -62,6 +62,7 @@ set(MIKROJS_CORE_SOURCES
     src/mik_ota_client.cpp
     src/mik_sys_codec.cpp
     src/mik_watchdog.cpp
+    src/gpio_claim.cpp
 )
 
 add_library(mikrojs STATIC
@@ -224,6 +225,7 @@ if(BUILD_TESTING)
         test/schema_conformance_test.cpp
         test/sys_codec_test.cpp
         test/watchdog_test.cpp
+        test/gpio_claim_test.cpp
     )
 
     # ── Check-in wire fixtures ───────────────────────────────────────

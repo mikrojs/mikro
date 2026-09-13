@@ -19,6 +19,7 @@
 #include "driver/usb_serial_jtag.h"
 #include "esp_rom_sys.h"
 #include "hal/usb_serial_jtag_ll.h"
+#include "soc/io_mux_reg.h"
 /* mikrojs owns the USB-Serial/JTAG peripheral directly. Leaving
  * CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y would have ESP-IDF register a
  * VFS and write to the TX FIFO from stdio, racing our driver ISR. */
@@ -109,8 +110,14 @@ static bool mik__usj_install_with_default_config(void) {
 #endif
 
 void mik__console_init(void) {
+    /* The console pins are held for the life of the firmware, so an app that
+     * picks one gets GpioInUse instead of a dead dev console. */
 #if SOC_USB_SERIAL_JTAG_SUPPORTED
     s_usj_installed = mik__usj_install_with_default_config();
+    if (s_usj_installed) {
+        MIK_ClaimGpio(USB_INT_PHY0_DM_GPIO_NUM, "console");
+        MIK_ClaimGpio(USB_INT_PHY0_DP_GPIO_NUM, "console");
+    }
 #endif
 
 #if MIK_CONSOLE_HAS_UART
@@ -129,7 +136,10 @@ void mik__console_init(void) {
     uart_set_pin(UART_NUM_0, U0TXD_GPIO_NUM, U0RXD_GPIO_NUM,
                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     /* IRAM ISR keeps UART alive during flash writes (LittleFS deploys). */
-    uart_driver_install(UART_NUM_0, 4096, 0, 0, NULL, ESP_INTR_FLAG_IRAM);
+    if (uart_driver_install(UART_NUM_0, 4096, 0, 0, NULL, ESP_INTR_FLAG_IRAM) == ESP_OK) {
+        MIK_ClaimGpio(U0TXD_GPIO_NUM, "console");
+        MIK_ClaimGpio(U0RXD_GPIO_NUM, "console");
+    }
 #endif
 }
 

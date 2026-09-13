@@ -56,6 +56,8 @@ static void mik__i2c_finalizer(JSRuntime* rt, JSValue val) {
     if (!s) return;
     if (s->begun) {
         i2c_del_master_bus(s->bus);
+        const int gpios[] = {s->sda, s->scl};
+        mik__release_gpios(gpios, countof(gpios), "I2c");
     }
     free(s);
 }
@@ -151,6 +153,10 @@ static JSValue js_i2c_begin(JSContext* ctx, JSValue this_val, int argc, JSValue*
 
     if (s->sda < 0 || s->scl < 0) return mik__result_err_tag(ctx, "MissingPins");
 
+    const int gpios[] = {s->sda, s->scl};
+    JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "I2c");
+    if (!JS_IsUndefined(claim_failed)) return claim_failed;
+
     i2c_master_bus_config_t bus_cfg = {};
     bus_cfg.i2c_port = static_cast<i2c_port_num_t>(s->port);
     bus_cfg.sda_io_num = static_cast<gpio_num_t>(s->sda);
@@ -160,10 +166,12 @@ static JSValue js_i2c_begin(JSContext* ctx, JSValue this_val, int argc, JSValue*
     bus_cfg.flags.enable_internal_pullup = true;
 
     esp_err_t err = i2c_new_master_bus(&bus_cfg, &s->bus);
-    if (err != ESP_OK)
+    if (err != ESP_OK) {
+        mik__release_gpios(gpios, countof(gpios), "I2c");
         return mik__result_err_named(ctx, "BusInitFailed",
                                      "failed to initialize I2C bus %d: %s", s->port,
                                      esp_err_to_name(err));
+    }
 
     s->begun = true;
     mik__i2c_clear_pending(s);
@@ -183,6 +191,8 @@ static JSValue js_i2c_end(JSContext* ctx, JSValue this_val, int argc, JSValue* a
 
     s->bus = nullptr;
     s->begun = false;
+    const int gpios[] = {s->sda, s->scl};
+    mik__release_gpios(gpios, countof(gpios), "I2c");
     return mik__result_ok_void(ctx);
 }
 

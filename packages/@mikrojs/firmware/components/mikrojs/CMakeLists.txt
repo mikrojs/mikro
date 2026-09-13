@@ -71,6 +71,7 @@ idf_component_register(
     "${MIK_SRC_DIR}/mik_http_client.cpp"
     "${MIK_SRC_DIR}/mik_wifi_client.cpp"
     "${MIK_SRC_DIR}/fs.cpp"
+    "${MIK_SRC_DIR}/gpio_claim.cpp"
     "${MIK_SRC_DIR}/mem.cpp"
     "${MIK_SRC_DIR}/mik_app_config.cpp"
     "${MIK_SRC_DIR}/mik_app_store.cpp"

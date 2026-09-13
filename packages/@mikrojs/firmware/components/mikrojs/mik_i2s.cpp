@@ -139,6 +139,9 @@ static inline i2s_slot_mode_t mik__i2s_slot_mode(bool stereo) {
 
 /* ── Finalizer ────────────────────────────────────────────────────── */
 
+/* Unused roles are -1, which the claim table ignores. */
+#define MIK__I2S_GPIOS(s) {(s)->bclk, (s)->ws, (s)->clk, (s)->dout, (s)->din}
+
 static void mik__i2s_finalizer(JSRuntime* rt, JSValue val) {
     auto* s = static_cast<MIKI2sState*>(JS_GetOpaque(val, mik_i2s_class_id));
     if (!s) return;
@@ -151,6 +154,8 @@ static void mik__i2s_finalizer(JSRuntime* rt, JSValue val) {
             i2s_channel_disable(s->rx_chan);
             i2s_del_channel(s->rx_chan);
         }
+        const int gpios[] = MIK__I2S_GPIOS(s);
+        mik__release_gpios(gpios, countof(gpios), "I2s");
     }
     for (int i = 0; i < s->tx_count; i++) {
         MIKI2sTxChunk* c = &s->tx_queue[(s->tx_head + i) % MIK_I2S_TX_QUEUE_DEPTH];
@@ -325,6 +330,10 @@ static JSValue js_i2s_begin(JSContext* ctx, JSValue this_val, int argc, JSValue*
     if (!s) return JS_EXCEPTION;
     if (s->begun) return mik__result_ok_void(ctx);  // idempotent
 
+    const int gpios[] = MIK__I2S_GPIOS(s);
+    JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "I2s");
+    if (!JS_IsUndefined(claim_failed)) return claim_failed;
+
     bool want_tx = s->dout >= 0;
     bool want_rx = s->din >= 0;
 
@@ -334,9 +343,11 @@ static JSValue js_i2s_begin(JSContext* ctx, JSValue this_val, int argc, JSValue*
 
     esp_err_t err = i2s_new_channel(&chan_cfg, want_tx ? &s->tx_chan : nullptr,
                                     want_rx ? &s->rx_chan : nullptr);
-    if (err != ESP_OK)
+    if (err != ESP_OK) {
+        mik__release_gpios(gpios, countof(gpios), "I2s");
         return mik__result_err_named(ctx, "ChannelInitFailed", "i2s_new_channel failed: %s",
                                      esp_err_to_name(err));
+    }
 
     i2s_data_bit_width_t width = mik__i2s_bit_width(s->bits);
     i2s_slot_mode_t slot_mode = mik__i2s_slot_mode(s->stereo);
@@ -420,6 +431,7 @@ init_failed:
         i2s_del_channel(s->rx_chan);
         s->rx_chan = nullptr;
     }
+    mik__release_gpios(gpios, countof(gpios), "I2s");
     return mik__result_err_named(ctx, "ChannelInitFailed", "I2S init failed: %s",
                                  esp_err_to_name(err));
 }
@@ -458,6 +470,8 @@ static JSValue js_i2s_end(JSContext* ctx, JSValue this_val, int argc, JSValue* a
         i2s_del_channel(s->rx_chan);
         s->rx_chan = nullptr;
     }
+    const int gpios[] = MIK__I2S_GPIOS(s);
+    mik__release_gpios(gpios, countof(gpios), "I2s");
     s->begun = false;
     return mik__result_ok_void(ctx);
 }

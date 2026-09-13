@@ -164,6 +164,7 @@ static void mik__neopixel_finalizer(JSRuntime* rt, JSValue val) {
         rmt_disable(s->channel);
         rmt_del_encoder(s->encoder);
         rmt_del_channel(s->channel);
+        MIK_ReleaseGpio(s->gpio, "NeoPixel");
     }
     free(s->pixel_buf);
     free(s);
@@ -197,10 +198,15 @@ static JSValue js_neopixel_constructor(JSContext* ctx, JSValue new_target, int a
             return JS_ThrowRangeError(ctx, "bytesPerLed must be 3 (RGB) or 4 (RGBW)");
     }
 
+    if (!MIK_ClaimGpio(gpio, "NeoPixel")) return mik__throw_gpio_in_use(ctx, gpio);
+
     /* Allocate pixel buffer */
     size_t buf_size = static_cast<size_t>(num_leds) * bytes_per_led;
     auto* pixel_buf = static_cast<uint8_t*>(calloc(1, buf_size));
-    if (!pixel_buf) return JS_ThrowOutOfMemory(ctx);
+    if (!pixel_buf) {
+        MIK_ReleaseGpio(gpio, "NeoPixel");
+        return JS_ThrowOutOfMemory(ctx);
+    }
 
     /* Create RMT TX channel */
     rmt_channel_handle_t channel = nullptr;
@@ -214,6 +220,7 @@ static JSValue js_neopixel_constructor(JSContext* ctx, JSValue new_target, int a
     esp_err_t err = rmt_new_tx_channel(&tx_cfg, &channel);
     if (err != ESP_OK) {
         free(pixel_buf);
+        MIK_ReleaseGpio(gpio, "NeoPixel");
         return JS_ThrowInternalError(ctx, "RMT channel create failed: %s", esp_err_to_name(err));
     }
 
@@ -223,6 +230,7 @@ static JSValue js_neopixel_constructor(JSContext* ctx, JSValue new_target, int a
     if (err != ESP_OK) {
         rmt_del_channel(channel);
         free(pixel_buf);
+        MIK_ReleaseGpio(gpio, "NeoPixel");
         return JS_ThrowInternalError(ctx, "LED encoder create failed: %s", esp_err_to_name(err));
     }
 
@@ -232,6 +240,7 @@ static JSValue js_neopixel_constructor(JSContext* ctx, JSValue new_target, int a
         rmt_del_encoder(encoder);
         rmt_del_channel(channel);
         free(pixel_buf);
+        MIK_ReleaseGpio(gpio, "NeoPixel");
         return JS_ThrowInternalError(ctx, "RMT enable failed: %s", esp_err_to_name(err));
     }
 
@@ -242,6 +251,7 @@ static JSValue js_neopixel_constructor(JSContext* ctx, JSValue new_target, int a
         rmt_del_encoder(encoder);
         rmt_del_channel(channel);
         free(pixel_buf);
+        MIK_ReleaseGpio(gpio, "NeoPixel");
         return JS_ThrowOutOfMemory(ctx);
     }
     s->gpio = gpio;
@@ -258,6 +268,7 @@ static JSValue js_neopixel_constructor(JSContext* ctx, JSValue new_target, int a
         rmt_del_encoder(encoder);
         rmt_del_channel(channel);
         free(pixel_buf);
+        MIK_ReleaseGpio(gpio, "NeoPixel");
         free(s);
         return obj;
     }
@@ -391,6 +402,7 @@ static JSValue js_neopixel_end(JSContext* ctx, JSValue this_val, int argc, JSVal
     rmt_del_channel(s->channel);
     s->encoder = nullptr;
     s->channel = nullptr;
+    MIK_ReleaseGpio(s->gpio, "NeoPixel");
     s->active = false;
     return mik__result_ok_void(ctx);
 }
