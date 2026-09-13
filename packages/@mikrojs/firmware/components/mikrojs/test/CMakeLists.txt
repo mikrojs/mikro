@@ -20,6 +20,7 @@ set(_MIK_TEST_SRCS
     rtc_test.cpp
     runtime_test.cpp
     sleep_test.cpp
+    spi_test.cpp
     sntp_test.cpp
     stdio_test.cpp
     sys_test.cpp

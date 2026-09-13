@@ -16,8 +16,7 @@ Communicate with SPI devices such as displays, SD cards, and radio modules.
 ```ts twoslash
 import {Spi} from 'mikro/spi'
 
-const spi = new Spi(1, {clk: 4, mosi: 5, miso: 6, cs: 7, freq: 1000000})
-spi.begin().orPanic('SPI init failed')
+const spi = Spi(1, {clk: 4, mosi: 5, miso: 6, cs: 7, freq: 1000000}).orPanic('SPI init failed')
 
 // Write data
 spi.write(new Uint8Array([0x01, 0x02])).orPanic('write failed')
@@ -28,36 +27,30 @@ const response = spi.transfer(new Uint8Array([0x00, 0x00])).orPanic('transfer fa
 spi.end()
 ```
 
-## Constructor
+## Functions
 
-### new Spi(hostNo, options)
+### Spi(host, options)
 
 ```ts
-new Spi(hostNo: 1 | 2, options: SpiOptions)
+function Spi(host: number, options: SpiOptions): Result<Spi, SpiError>
 ```
+
+Claims the pins, starts the bus and returns a [`Result`](/api/result) with the handle. `clk`, `mosi` and `cs` must be able to drive a signal, or you get `InvalidGpio`. If another handle, a peripheral or the console holds one of the pins, you get `GpioInUse`.
 
 **Parameters:**
 
-- `hostNo`: SPI host number (1 or 2)
+- `host`: SPI host controller. Host 1 is SPI2 and host 2 is SPI3; SPI0 and SPI1 drive the flash. The ESP32, ESP32-S2 and ESP32-S3 have hosts 1 and 2, and chips with one general-purpose SPI controller, such as the ESP32-C3 and ESP32-C6, have host 1 only. Any other number returns `InvalidParam`.
 - `options`: see [SpiOptions](#spioptions)
 
 ## Methods
 
-### spi.begin()
-
-```ts
-begin(): Result<void, SpiError>
-```
-
-Initialize the SPI bus. Must be called before any transfer/write operations.
-
 ### spi.end()
 
 ```ts
-end(): Result<void, SpiError>
+end(): void
 ```
 
-Deinitialize the bus and release resources.
+Frees the bus and releases its GPIO pins. Calling it again does nothing. After `end()`, `write()` does nothing, `transfer()` returns an empty array, and the first such call prints a warning.
 
 ### spi.transfer(data)
 
@@ -94,12 +87,12 @@ interface SpiOptions {
 
 ### SpiError
 
-| Variant           | Fields             | Description                                                |
-| ----------------- | ------------------ | ---------------------------------------------------------- |
-| `GpioInUse`       | `owner`, `message` | A pin is held by another handle, peripheral or the console |
-| `BusInitFailed`   | `message`          | Failed to initialize the bus                               |
-| `AddDeviceFailed` | `message`          | Failed to add device to bus                                |
-| `NotStarted`      | —                  | `begin()` was not called                                   |
-| `MissingPins`     | —                  | Required pins not provided                                 |
-| `TransferFailed`  | `message`          | Full-duplex transfer failed                                |
-| `WriteFailed`     | `message`          | Write operation failed                                     |
+| Variant           | Fields             | Description                                                  |
+| ----------------- | ------------------ | ------------------------------------------------------------ |
+| `GpioInUse`       | `owner`, `message` | A pin is held by another handle, peripheral or the console   |
+| `InvalidGpio`     | `message`          | The chip has no such GPIO, or the GPIO cannot drive a signal |
+| `InvalidParam`    | `message`          | The host or frequency is out of range                        |
+| `BusInitFailed`   | `message`          | Failed to initialize the bus                                 |
+| `AddDeviceFailed` | `message`          | Failed to add device to bus                                  |
+| `TransferFailed`  | `message`          | Full-duplex transfer failed                                  |
+| `WriteFailed`     | `message`          | Write operation failed                                       |

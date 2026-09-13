@@ -10,6 +10,7 @@ import type {AnalogIn, DigitalIn, DigitalOut} from '@mikrojs/native/runtime/gpio
 import type {NeoPixel} from '@mikrojs/native/runtime/neopixel/types'
 import type {Pwm} from '@mikrojs/native/runtime/pwm/types'
 import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'
+import type {Spi} from '@mikrojs/native/runtime/spi/types'
 
 type NR<T> = {ok: true; value: T} | {ok: false; error: {name: string; message: string}}
 type NRV = {ok: true} | {ok: false; error: {name: string; message: string}}
@@ -101,10 +102,7 @@ export interface SimStubMethods {
     read(address: number, bytes: number): NR<Uint8Array>
   }
   spi: {
-    begin(): NRV
-    end(): NRV
-    transfer(data: Uint8Array): NR<Uint8Array>
-    write(data: Uint8Array): NRV
+    Spi: typeof Spi
   }
   sleep: {
     deepSleep(sources: DeepWakeupSources): void

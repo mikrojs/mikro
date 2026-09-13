@@ -2,25 +2,24 @@
 
 #include "driver/spi_master.h"
 #include "soc/soc_caps.h"
+#include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
+#include "mikrojs_esp32.h"
 
-#define MIK_SPI_TAG "native:mikro/spi"
 #define MIK_SPI_DEFAULT_FREQ 1000000
-#define MIK_SPI_DEFAULT_MODE 0
 
 static JSClassID mik_spi_class_id;
 
 typedef struct {
     spi_device_handle_t device;
     spi_host_device_t host;
-    int32_t clk;
-    int32_t mosi;
-    int32_t miso;
-    int32_t cs;
-    int32_t freq;
-    int32_t mode;
-    bool begun;
+    int clk;
+    int mosi;
+    int miso;
+    int cs;
+    bool active;
+    bool warned_after_end;
 } MIKSPIState;
 
 /* ── Helpers ───────────────────────────────────────────────────────── */
@@ -29,9 +28,42 @@ static MIKSPIState* mik__spi_get(JSContext* ctx, JSValue this_val) {
     return static_cast<MIKSPIState*>(JS_GetOpaque2(ctx, this_val, mik_spi_class_id));
 }
 
-static void mik__spi_release_gpios(const MIKSPIState* s) {
+/* Removes the device, frees the bus and releases the GPIO pins. */
+static void mik__spi_release(MIKSPIState* s) {
+    spi_bus_remove_device(s->device);
+    s->device = nullptr;
+    spi_bus_free(s->host);
     const int gpios[] = {s->clk, s->mosi, s->miso, s->cs};
     mik__release_gpios(gpios, countof(gpios), "Spi");
+    s->active = false;
+}
+
+/* True when the handle was ended; the first such call prints a warning. */
+static bool mik__spi_ended(MIKSPIState* s, const char* call) {
+    if (s->active) return false;
+    mik__warn_after_end(&s->warned_after_end, "Spi", s->host, call, "bus");
+    return true;
+}
+
+/* Reads a Uint8Array (or ArrayBuffer) argument. Returns nullptr with a
+ * TypeError pending. */
+static uint8_t* mik__spi_bytes_arg(JSContext* ctx, JSValueConst v, size_t* len) {
+    size_t offset, elem_size, buf_len;
+    JSValue ab = JS_GetTypedArrayBuffer(ctx, v, &offset, len, &elem_size);
+    uint8_t* data;
+    if (!JS_IsException(ab)) {
+        /* len keeps the view length; the full backing buffer goes to a
+         * throwaway so a subarray view isn't over-read. */
+        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
+        JS_FreeValue(ctx, ab);
+        if (data) data += offset;
+    } else {
+        JSValue exc = JS_GetException(ctx);
+        JS_FreeValue(ctx, exc);
+        data = JS_GetArrayBuffer(ctx, len, v);
+    }
+    if (!data) JS_ThrowTypeError(ctx, "data must be a Uint8Array");
+    return data;
 }
 
 /* ── Finalizer ─────────────────────────────────────────────────────── */
@@ -39,11 +71,7 @@ static void mik__spi_release_gpios(const MIKSPIState* s) {
 static void mik__spi_finalizer(JSRuntime* rt, JSValue val) {
     auto* s = static_cast<MIKSPIState*>(JS_GetOpaque(val, mik_spi_class_id));
     if (!s) return;
-    if (s->begun) {
-        spi_bus_remove_device(s->device);
-        spi_bus_free(s->host);
-        mik__spi_release_gpios(s);
-    }
+    if (s->active) mik__spi_release(s);
     free(s);
 }
 
@@ -52,207 +80,127 @@ static JSClassDef mik_spi_class = {
     .finalizer = mik__spi_finalizer,
 };
 
-/* ── Constructor ───────────────────────────────────────────────────── */
+/* ── Factory ───────────────────────────────────────────────────────── */
 
-static JSValue js_spi_constructor(JSContext* ctx, JSValue new_target, int argc, JSValue* argv) {
-    if (argc < 2) return JS_ThrowTypeError(ctx, "Spi requires hostNo and options arguments");
+/* Spi(host, {clk, mosi, miso?, cs?, freq?, mode?}) → Result<Spi, SpiError> */
+static JSValue js_spi(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    int32_t host;
+    JSValueConst options;
+    int32_t clk32, mosi32, miso32 = -1, cs32 = -1, mode = 0;
+    double freq = MIK_SPI_DEFAULT_FREQ;
+    if (mik__to_int_arg(ctx, argc >= 1 ? argv[0] : JS_UNDEFINED, "host", &host) ||
+        mik__options_arg(ctx, argc, argv, 1, true, &options) ||
+        mik__int_option(ctx, options, "clk", true, &clk32) ||
+        mik__int_option(ctx, options, "mosi", true, &mosi32) ||
+        mik__int_option(ctx, options, "miso", false, &miso32) ||
+        mik__int_option(ctx, options, "cs", false, &cs32) ||
+        mik__number_option(ctx, options, "freq", false, &freq) ||
+        mik__int_option(ctx, options, "mode", false, &mode))
+        return JS_EXCEPTION;
+    if (mode < 0 || mode > 3) return JS_ThrowTypeError(ctx, "mode must be 0, 1, 2 or 3");
+    int clk = clk32, mosi = mosi32, miso = miso32, cs = cs32;
 
-    int32_t host_no;
-    if (JS_ToInt32(ctx, &host_no, argv[0])) return JS_EXCEPTION;
     /* SOC_SPI_PERIPH_NUM includes SPI1 (flash), so user-available hosts are 1..N-1 */
-    if (host_no < 1 || host_no > SOC_SPI_PERIPH_NUM - 1)
-        return JS_ThrowRangeError(ctx, "hostNo must be 1..%d", SOC_SPI_PERIPH_NUM - 1);
-
-    auto* s = static_cast<MIKSPIState*>(calloc(1, sizeof(MIKSPIState)));
-    if (!s) return JS_ThrowOutOfMemory(ctx);
-
-    /* SPI2_HOST is 1, SPI3_HOST is 2, etc. — host_no maps directly */
-    s->host = static_cast<spi_host_device_t>(host_no);
-    s->clk = -1;
-    s->mosi = -1;
-    s->miso = -1;
-    s->cs = -1;
-    s->freq = MIK_SPI_DEFAULT_FREQ;
-    s->mode = MIK_SPI_DEFAULT_MODE;
-    s->begun = false;
-
-    /* Parse options object (required) */
-    if (!JS_IsObject(argv[1])) {
-        free(s);
-        return JS_ThrowTypeError(ctx, "Spi options must be an object");
+    const int max_host = SOC_SPI_PERIPH_NUM - 1;
+    if (host < 1 || host > max_host) {
+        if (max_host == 1)
+            return mik__result_err_named(ctx, "InvalidParam", "host must be 1 on %s, got %d",
+                                         CONFIG_IDF_TARGET, (int)host);
+        return mik__result_err_named(ctx, "InvalidParam", "host must be 1 to %d on %s, got %d",
+                                     max_host, CONFIG_IDF_TARGET, (int)host);
     }
-
-    JSValue opts = argv[1];
-    JSValue v;
-
-    v = JS_GetPropertyStr(ctx, opts, "clk");
-    if (!JS_IsUndefined(v)) {
-        if (JS_ToInt32(ctx, &s->clk, v)) {
-            JS_FreeValue(ctx, v);
-            free(s);
-            return JS_EXCEPTION;
-        }
-    }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, opts, "mosi");
-    if (!JS_IsUndefined(v)) {
-        if (JS_ToInt32(ctx, &s->mosi, v)) {
-            JS_FreeValue(ctx, v);
-            free(s);
-            return JS_EXCEPTION;
-        }
-    }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, opts, "miso");
-    if (!JS_IsUndefined(v)) {
-        if (JS_ToInt32(ctx, &s->miso, v)) {
-            JS_FreeValue(ctx, v);
-            free(s);
-            return JS_EXCEPTION;
-        }
-    }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, opts, "cs");
-    if (!JS_IsUndefined(v)) {
-        if (JS_ToInt32(ctx, &s->cs, v)) {
-            JS_FreeValue(ctx, v);
-            free(s);
-            return JS_EXCEPTION;
-        }
-    }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, opts, "freq");
-    if (!JS_IsUndefined(v)) {
-        int32_t freq;
-        if (JS_ToInt32(ctx, &freq, v)) {
-            JS_FreeValue(ctx, v);
-            free(s);
-            return JS_EXCEPTION;
-        }
-        s->freq = freq;
-    }
-    JS_FreeValue(ctx, v);
-
-    v = JS_GetPropertyStr(ctx, opts, "mode");
-    if (!JS_IsUndefined(v)) {
-        if (JS_ToInt32(ctx, &s->mode, v)) {
-            JS_FreeValue(ctx, v);
-            free(s);
-            return JS_EXCEPTION;
-        }
-        if (s->mode < 0 || s->mode > 3) {
-            JS_FreeValue(ctx, v);
-            free(s);
-            return JS_ThrowRangeError(ctx, "SPI mode must be 0-3");
-        }
-    }
-    JS_FreeValue(ctx, v);
-
-    JSValue obj = JS_NewObjectClass(ctx, mik_spi_class_id);
-    if (JS_IsException(obj)) {
-        free(s);
-        return obj;
-    }
-    JS_SetOpaque(obj, s);
-    return obj;
-}
-
-/* ── Methods ───────────────────────────────────────────────────────── */
-
-static JSValue js_spi_begin(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    auto* s = mik__spi_get(ctx, this_val);
-    if (!s) return JS_EXCEPTION;
-    if (s->begun) return mik__result_ok_void(ctx);  // idempotent
-
-    if (s->clk < 0 || s->mosi < 0)
-        return mik__result_err_tag(ctx, "MissingPins");
-
-    const int gpios[] = {s->clk, s->mosi, s->miso, s->cs};
+    if (!(freq >= 1 && freq <= INT32_MAX))
+        return mik__result_err_named(ctx, "InvalidParam", "freq must be at least 1 Hz, got %g",
+                                     freq);
+    const MIKGpioCheck checks[] = {{clk, true}, {mosi, true}, {miso, false}, {cs, true}};
+    JSValue invalid = mik__gpio_check(ctx, checks, countof(checks));
+    if (!JS_IsUndefined(invalid)) return invalid;
+    const int gpios[] = {clk, mosi, miso, cs};
     JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "Spi");
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
-    /* Initialize the SPI bus */
+    /* SPI2_HOST is 1, SPI3_HOST is 2, etc. — host maps directly */
+    auto host_id = static_cast<spi_host_device_t>(host);
     spi_bus_config_t bus_cfg = {};
-    bus_cfg.mosi_io_num = s->mosi;
-    bus_cfg.miso_io_num = s->miso;  // -1 if not set
-    bus_cfg.sclk_io_num = s->clk;
+    bus_cfg.mosi_io_num = mosi;
+    bus_cfg.miso_io_num = miso;  // -1 if not set
+    bus_cfg.sclk_io_num = clk;
     bus_cfg.quadwp_io_num = -1;
     bus_cfg.quadhd_io_num = -1;
     bus_cfg.max_transfer_sz = 32768;
 
-    esp_err_t err = spi_bus_initialize(s->host, &bus_cfg, SPI_DMA_CH_AUTO);
+    esp_err_t err = spi_bus_initialize(host_id, &bus_cfg, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
         mik__release_gpios(gpios, countof(gpios), "Spi");
-        return mik__result_err_named(ctx, "BusInitFailed",
-                                     "SPI bus init failed: %s", esp_err_to_name(err));
+        return mik__result_err_named(ctx, "BusInitFailed", "SPI bus init failed: %s",
+                                     esp_err_to_name(err));
     }
 
-    /* Add device to the bus */
     spi_device_interface_config_t dev_cfg = {};
-    dev_cfg.clock_speed_hz = s->freq;
-    dev_cfg.mode = s->mode;
-    dev_cfg.spics_io_num = s->cs;  // -1 if not set (manual CS)
+    dev_cfg.clock_speed_hz = static_cast<int>(freq);
+    dev_cfg.mode = mode;
+    dev_cfg.spics_io_num = cs;  // -1 if not set (manual CS)
     dev_cfg.queue_size = 1;
     /* Write-only devices (displays) don't need dummy bits for high clock speeds */
-    if (s->miso < 0) {
+    if (miso < 0) {
         dev_cfg.flags = SPI_DEVICE_NO_DUMMY;
     }
 
-    err = spi_bus_add_device(s->host, &dev_cfg, &s->device);
+    spi_device_handle_t device = nullptr;
+    err = spi_bus_add_device(host_id, &dev_cfg, &device);
     if (err != ESP_OK) {
-        spi_bus_free(s->host);
+        spi_bus_free(host_id);
         mik__release_gpios(gpios, countof(gpios), "Spi");
-        return mik__result_err_named(ctx, "AddDeviceFailed",
-                                     "failed to add SPI device: %s", esp_err_to_name(err));
+        return mik__result_err_named(ctx, "AddDeviceFailed", "failed to add SPI device: %s",
+                                     esp_err_to_name(err));
     }
 
-    s->begun = true;
-    return mik__result_ok_void(ctx);
+    auto* s = static_cast<MIKSPIState*>(calloc(1, sizeof(MIKSPIState)));
+    if (!s) {
+        spi_bus_remove_device(device);
+        spi_bus_free(host_id);
+        mik__release_gpios(gpios, countof(gpios), "Spi");
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    s->device = device;
+    s->host = host_id;
+    s->clk = clk;
+    s->mosi = mosi;
+    s->miso = miso;
+    s->cs = cs;
+    s->active = true;
+
+    JSValue obj = JS_NewObjectClass(ctx, mik_spi_class_id);
+    if (JS_IsException(obj)) {
+        mik__spi_release(s);
+        free(s);
+        return obj;
+    }
+    JS_SetOpaque(obj, s);
+    return mik__result_ok(ctx, obj);
 }
 
+/* ── Methods ───────────────────────────────────────────────────────── */
+
+/* end() — frees the bus; calling it again does nothing */
 static JSValue js_spi_end(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__spi_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_ok_void(ctx);  // idempotent
-
-    spi_bus_remove_device(s->device);
-    s->device = nullptr;
-    spi_bus_free(s->host);
-    mik__spi_release_gpios(s);
-    s->begun = false;
-    return mik__result_ok_void(ctx);
+    if (s->active) mik__spi_release(s);
+    return JS_UNDEFINED;
 }
 
 static JSValue js_spi_transfer(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__spi_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun) return mik__result_err_tag(ctx, "NotStarted");
-
-    /* Extract data from Uint8Array or ArrayBuffer */
     size_t data_len;
-    uint8_t* data;
-    size_t offset, elem_size, buf_len;
-    JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[0], &offset, &data_len, &elem_size);
-    if (!JS_IsException(ab)) {
-        /* data_len keeps the view length; the full backing buffer goes to a
-         * throwaway so a subarray view isn't over-read. */
-        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
-        JS_FreeValue(ctx, ab);
-        if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 1");
-        data += offset;
-    } else {
-        JSValue exc = JS_GetException(ctx);
-        JS_FreeValue(ctx, exc);
-        data = JS_GetArrayBuffer(ctx, &data_len, argv[0]);
-        if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 1");
-    }
+    uint8_t* data = mik__spi_bytes_arg(ctx, argv[0], &data_len);
+    if (!data) return JS_EXCEPTION;
+    if (mik__spi_ended(s, "transfer()"))
+        return mik__result_ok(ctx, JS_NewUint8ArrayCopy(ctx, nullptr, 0));
 
     /* Allocate receive buffer with js_malloc (MIK_NewUint8Array takes ownership) */
-    auto* rx_buf = static_cast<uint8_t*>(js_malloc(ctx, data_len));
+    auto* rx_buf = static_cast<uint8_t*>(js_malloc(ctx, data_len ? data_len : 1));
     if (!rx_buf) return JS_EXCEPTION;
 
     spi_transaction_t txn = {};
@@ -274,27 +222,10 @@ static JSValue js_spi_transfer(JSContext* ctx, JSValue this_val, int argc, JSVal
 static JSValue js_spi_write(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
     auto* s = mik__spi_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
-    if (!s->begun)
-        return mik__result_err_tag(ctx, "NotStarted");
-
-    /* Extract data from Uint8Array or ArrayBuffer */
     size_t data_len;
-    uint8_t* data;
-    size_t offset, elem_size, buf_len;
-    JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[0], &offset, &data_len, &elem_size);
-    if (!JS_IsException(ab)) {
-        /* data_len keeps the view length; the full backing buffer goes to a
-         * throwaway so a subarray view isn't over-read. */
-        data = JS_GetArrayBuffer(ctx, &buf_len, ab);
-        JS_FreeValue(ctx, ab);
-        if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 1");
-        data += offset;
-    } else {
-        JSValue exc = JS_GetException(ctx);
-        JS_FreeValue(ctx, exc);
-        data = JS_GetArrayBuffer(ctx, &data_len, argv[0]);
-        if (!data) return JS_ThrowTypeError(ctx, "expected Uint8Array as argument 1");
-    }
+    uint8_t* data = mik__spi_bytes_arg(ctx, argv[0], &data_len);
+    if (!data) return JS_EXCEPTION;
+    if (mik__spi_ended(s, "write()")) return mik__result_ok_void(ctx);
 
     spi_transaction_t txn = {};
     txn.length = data_len * 8;
@@ -312,7 +243,6 @@ static JSValue js_spi_write(JSContext* ctx, JSValue this_val, int argc, JSValue*
 /* ── Prototype ─────────────────────────────────────────────────────── */
 
 static const JSCFunctionListEntry mik_spi_proto_funcs[] = {
-    MIK_CFUNC_DEF("begin", 0, js_spi_begin),
     MIK_CFUNC_DEF("end", 0, js_spi_end),
     MIK_CFUNC_DEF("transfer", 1, js_spi_transfer),
     MIK_CFUNC_DEF("write", 1, js_spi_write),
@@ -321,8 +251,7 @@ static const JSCFunctionListEntry mik_spi_proto_funcs[] = {
 /* ── Module init ───────────────────────────────────────────────────── */
 
 static int mik__spi_module_init(JSContext* ctx, JSModuleDef* m) {
-    JSValue ctor = JS_NewCFunction2(ctx, js_spi_constructor, "Spi", 2, JS_CFUNC_constructor, 0);
-    JS_SetModuleExport(ctx, m, "Spi", ctor);
+    JS_SetModuleExport(ctx, m, "Spi", JS_NewCFunction(ctx, js_spi, "Spi", 2));
     return 0;
 }
 
@@ -336,13 +265,13 @@ static JSModuleDef* mik__spi_init(JSContext* ctx) {
     /* Create prototype with methods */
     JSValue proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, proto, mik_spi_proto_funcs, countof(mik_spi_proto_funcs));
-    JS_SetClassProto(ctx, mik_spi_class_id, proto);  /* consumed */
+    JS_SetClassProto(ctx, mik_spi_class_id, proto); /* consumed */
 
     /* Register module */
-    JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/spi", mik__spi_module_init);
+    JSModuleDef* m = JS_NewCModule(ctx, "mikro/spi", mik__spi_module_init);
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "Spi");
     return m;
 }
 
-MIK_REGISTER_MODULE(spi, "native:mikro/spi", mik__spi_init, nullptr, nullptr)
+MIK__REGISTER_PUBLIC_MODULE(spi, "mikro/spi", mik__spi_init, nullptr, nullptr)

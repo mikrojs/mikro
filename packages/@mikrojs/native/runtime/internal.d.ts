@@ -257,34 +257,6 @@ declare module 'native:mikro/i2c' {
     scan(): Result<Uint8Array, I2cError>
   }
 }
-declare module 'native:mikro/spi' {
-  import type {SpiError} from '@mikrojs/native/runtime/spi/types'
-  import type {Result} from 'mikro/result'
-
-  export interface SpiOptions {
-    clk: number
-    mosi: number
-    miso?: number
-    cs?: number
-    freq?: number
-    mode?: 0 | 1 | 2 | 3
-  }
-
-  export declare const Spi: {
-    prototype: Spi
-    new (hostNo: 1 | 2, options: SpiOptions): Spi
-  }
-
-  export interface Spi {
-    begin(): Result<void, SpiError>
-
-    end(): Result<void, SpiError>
-
-    transfer(data: Uint8Array): Result<Uint8Array, SpiError>
-
-    write(data: Uint8Array): Result<void, SpiError>
-  }
-}
 
 declare module 'native:mikro/sntp' {
   import type {SntpError} from '@mikrojs/native/runtime/sntp/types'
