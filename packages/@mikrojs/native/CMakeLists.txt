@@ -93,7 +93,7 @@ endif()
 include(cmake/mikrojs_bytecode.cmake)
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
-    MODULES abort cbor env result schema fs i2c kv/nvs kv/rtc kv/shared module observable observable/lazy ota ota/client ota/config pwm reader sleep spi sntp stdio stream sys test uart udp watchdog
+    MODULES abort cbor env result schema fs i2c kv/nvs kv/rtc kv/shared module observable observable/lazy ota ota/client ota/config reader sleep spi sntp stdio stream sys test uart udp watchdog
     MODULE_PREFIX "mikro"
     SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode

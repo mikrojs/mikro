@@ -326,23 +326,6 @@ declare module 'native:mikro/nvs_kv' {
   export function info(): {entries: number; used: number; total: number; free: number}
 }
 
-declare module 'native:mikro/pwm' {
-  import type {PwmError} from '@mikrojs/native/runtime/pwm/types'
-  import type {Result} from 'mikro/result'
-
-  export declare const Pwm: {
-    prototype: Pwm
-    new (gpio: number, freq: number, duty: number): Pwm
-  }
-
-  export interface Pwm {
-    duty(value?: number): Result<number, PwmError>
-    freq(value?: number): Result<number, PwmError>
-    fade(target: number, durationMs: number): Result<Promise<void>, PwmError>
-    end(): Result<void, PwmError>
-  }
-}
-
 declare module 'native:mikro/uart' {
   import type {UartError} from '@mikrojs/native/runtime/uart/types'
   import type {Result} from 'mikro/result'

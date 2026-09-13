@@ -6,6 +6,8 @@
 #include <cstring>
 #include <string>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "mikrojs.h"
 #include "private.h"
 #include "quickjs.h"
@@ -49,6 +51,14 @@ inline std::string out() {
     JS_FreeValue(ctx, v);
     JS_FreeValue(ctx, global);
     return result;
+}
+
+/* Runs event-loop passes so loop consumers (fades, reads) deliver. */
+inline void loop_passes(int n) {
+    for (int i = 0; i < n; i++) {
+        MIK_Loop(rt);
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
 
 }  // namespace js_harness

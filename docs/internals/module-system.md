@@ -80,7 +80,7 @@ MIK_REGISTER_MODULE(wifi, "native:wifi",
 See [Event Loop: Loop consumers](/internals/event-loop#loop-consumers) for how consume/destroy work.
 
 ::: info Why the prefix?
-The `native:` prefix marks internal C/C++ modules. User code imports public APIs from `mikro/*` (for example `mikro/pwm`), which are TypeScript wrappers compiled to bytecode builtins around the internal `native:*` modules. A few `mikro/*` modules, such as `mikro/gpio`, are implemented entirely in C and registered under their public name.
+The `native:` prefix marks internal C/C++ modules. User code imports public APIs from `mikro/*` (for example `mikro/sntp`), which are TypeScript wrappers compiled to bytecode builtins around the internal `native:*` modules. A few `mikro/*` modules, such as `mikro/gpio` and `mikro/pwm`, are implemented entirely in C and registered under their public name.
 :::
 
 ### 3. Bytecode builtins
@@ -90,7 +90,7 @@ Bytecode builtins are TypeScript modules pre-compiled to QuickJS bytecode and em
 Core builtins (the `mikro/*` public API) are compiled during the CMake build and stored in a static table in `builtins.cpp`. External builtins from driver/board packages register via constructors, similar to native modules:
 
 ```c
-MIK_REGISTER_BUILTIN(pwm, "mikro/pwm", qjsc_pwm, qjsc_pwm_size);
+MIK_REGISTER_BUILTIN(sntp, "mikro/sntp", qjsc_sntp, qjsc_sntp_size);
 //                   ^id   ^name          ^data     ^size
 ```
 
@@ -131,18 +131,18 @@ Most hardware APIs follow a two-layer pattern:
 ```
 User code
     │
-    ▼  import {Pwm} from 'mikro/pwm'
+    ▼  import {sntp} from 'mikro/sntp'
 ┌────────────────────┐
-│ mikro/pwm          │  TypeScript wrapper (bytecode builtin)
+│ mikro/sntp         │  TypeScript wrapper (bytecode builtin)
 │ - Type-safe API    │  - Validates arguments
 │ - Result types     │  - Maps enums to native values
-│ - Error mapping    │  - Returns typed Result<T, PwmError>
+│ - Error mapping    │  - Returns typed Result<T, SntpError>
 └────────┬───────────┘
-         │  import {Pwm} from 'native:mikro/pwm'
+         │  import {sync} from 'native:mikro/sntp'
          ▼
 ┌────────────────────┐
-│ native:mikro/pwm   │  C module (native)
-│ - Direct HW access │  - ledc_set_duty()
+│ native:mikro/sntp  │  C module (native)
+│ - Direct HW access │  - esp_sntp_init()
 │ - Raw results      │  - Returns {ok, value/error}
 └────────────────────┘
 ```

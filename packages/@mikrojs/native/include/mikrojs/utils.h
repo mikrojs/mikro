@@ -79,13 +79,17 @@ void mik__warn_after_end(bool* warned, const char* owner, int id, const char* ca
                          const char* resource);
 
 /* Argument readers for handle factories and methods. Each returns -1 with a
- * TypeError pending: an integer rejects NaN and fractions, a missing optional
- * value leaves *out unchanged, and options may be undefined unless required. */
+ * TypeError pending: an integer rejects NaN and fractions (a number accepts
+ * both), a missing optional value leaves *out unchanged, and options may be
+ * undefined unless required. */
 int mik__to_int_arg(JSContext* ctx, JSValueConst v, const char* name, int32_t* out);
+int mik__to_number_arg(JSContext* ctx, JSValueConst v, const char* name, double* out);
 int mik__options_arg(JSContext* ctx, int argc, JSValueConst* argv, int index, bool required,
                      JSValueConst* out);
 int mik__int_option(JSContext* ctx, JSValueConst options, const char* name, bool required,
                     int32_t* out);
+int mik__number_option(JSContext* ctx, JSValueConst options, const char* name, bool required,
+                       double* out);
 int mik__bool_option(JSContext* ctx, JSValueConst options, const char* name, bool* out);
 void mik_dump_error(JSContext* ctx);
 void mik_dump_error1(JSContext* ctx, JSValue exception_val);

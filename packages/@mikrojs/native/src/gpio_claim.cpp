@@ -61,8 +61,3 @@ JSValue mik__claim_gpios(JSContext* ctx, const int* gpios, int count, const char
 void mik__release_gpios(const int* gpios, int count, const char* owner) {
     for (int i = 0; i < count; i++) MIK_ReleaseGpio(gpios[i], owner);
 }
-
-JSValue mik__throw_gpio_in_use(JSContext* ctx, int gpio) {
-    std::string message = mik__gpio_in_use_message(gpio, MIK_GpioOwner(gpio));
-    return JS_ThrowInternalError(ctx, "%s", message.c_str());
-}

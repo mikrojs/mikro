@@ -360,6 +360,14 @@ TEST_CASE("factory argument readers throw TypeError for the wrong types") {
         }
         CHECK(mik__to_int_arg(f.ctx, JS_NewInt32(f.ctx, -1), "gpio", &n) == 0);
         CHECK(n == -1);
+
+        double d = 0;
+        JSValue str = eval_value(f.ctx, "'1'");
+        CHECK(mik__to_number_arg(f.ctx, str, "freq", &d) == -1);
+        CHECK(take_exception_name(f.ctx) == "TypeError");
+        JS_FreeValue(f.ctx, str);
+        CHECK(mik__to_number_arg(f.ctx, JS_NewFloat64(f.ctx, 0.25), "duty", &d) == 0);
+        CHECK(d == 0.25);
     }
 
     SUBCASE("options") {
@@ -370,6 +378,11 @@ TEST_CASE("factory argument readers throw TypeError for the wrong types") {
         CHECK(mik__int_option(f.ctx, opts, "missing", false, &n) == 0);
         CHECK(n == 4);
         CHECK(mik__int_option(f.ctx, opts, "missing", true, &n) == -1);
+        CHECK(take_exception_name(f.ctx) == "TypeError");
+        double d = 1;
+        CHECK(mik__number_option(f.ctx, opts, "count", true, &d) == 0);
+        CHECK(d == 4);
+        CHECK(mik__number_option(f.ctx, opts, "rgbw", false, &d) == -1);
         CHECK(take_exception_name(f.ctx) == "TypeError");
         CHECK(mik__bool_option(f.ctx, opts, "rgbw", &flag) == 0);
         CHECK(flag);

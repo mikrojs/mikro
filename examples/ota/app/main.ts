@@ -46,7 +46,7 @@ async function main(config: OtaConfig) {
     return
   }
 
-  const led = new Pwm(config.pin, {freq: config.pwm.freq})
+  const led = Pwm(config.pin, {freq: config.pwm.freq}).orPanic('Unable to configure pin')
   // Breathe: smoothly fade in and out forever
   while (true) {
     const fadeIn = await led.fade(config.pwm.duty, config.interval / 2)

@@ -78,6 +78,14 @@ int mik__to_int_arg(JSContext* ctx, JSValueConst v, const char* name, int32_t* o
     return 0;
 }
 
+int mik__to_number_arg(JSContext* ctx, JSValueConst v, const char* name, double* out) {
+    if (!JS_IsNumber(v) || JS_ToFloat64(ctx, out, v)) {
+        JS_ThrowTypeError(ctx, "%s must be a number", name);
+        return -1;
+    }
+    return 0;
+}
+
 int mik__options_arg(JSContext* ctx, int argc, JSValueConst* argv, int index, bool required,
                      JSValueConst* out) {
     JSValueConst v = index < argc ? argv[index] : JS_UNDEFINED;
@@ -96,6 +104,17 @@ int mik__int_option(JSContext* ctx, JSValueConst options, const char* name, bool
     if (JS_IsException(v)) return -1;
     int rc = 0;
     if (required || !JS_IsUndefined(v)) rc = mik__to_int_arg(ctx, v, name, out);
+    JS_FreeValue(ctx, v);
+    return rc;
+}
+
+int mik__number_option(JSContext* ctx, JSValueConst options, const char* name, bool required,
+                       double* out) {
+    if (JS_IsUndefined(options)) return required ? mik__to_number_arg(ctx, options, name, out) : 0;
+    JSValue v = JS_GetPropertyStr(ctx, options, name);
+    if (JS_IsException(v)) return -1;
+    int rc = 0;
+    if (required || !JS_IsUndefined(v)) rc = mik__to_number_arg(ctx, v, name, out);
     JS_FreeValue(ctx, v);
     return rc;
 }

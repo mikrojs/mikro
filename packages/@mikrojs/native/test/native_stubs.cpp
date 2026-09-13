@@ -77,7 +77,6 @@ STUB_FUNCS(ota_client, "native:mikro/ota_client", "check", "watch", "config",
            "report", "settle")
 
 STUB_CLASS(wifi, "native:mikro/wifi", "Wifi")
-STUB_CLASS(pwm, "native:mikro/pwm", "Pwm")
 STUB_CLASS(spi, "native:mikro/spi", "Spi")
 STUB_CLASS(i2c, "native:mikro/i2c", "I2c")
 STUB_CLASS(uart, "native:mikro/uart", "Uart")

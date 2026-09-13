@@ -120,16 +120,6 @@ TEST_CASE("GpioInUse messages name the console and keep long owner names whole")
     CHECK(eval_string(ctx, "__long.error.message") ==
           std::string("GPIO 13 is already in use by ") + long_owner);
 
-    JSValue thrown = mik__throw_gpio_in_use(ctx, 12);
-    CHECK(JS_IsException(thrown));
-    JSValue exc = JS_GetException(ctx);
-    JSValue message = JS_GetPropertyStr(ctx, exc, "message");
-    const char* s = JS_ToCString(ctx, message);
-    CHECK(std::string(s) == "GPIO 12 is already in use by the console");
-    JS_FreeCString(ctx, s);
-    JS_FreeValue(ctx, message);
-    JS_FreeValue(ctx, exc);
-
     MIK_ReleaseGpio(12, "console");
     MIK_ReleaseGpio(13, long_owner);
     MIK_FreeRuntime(rt);

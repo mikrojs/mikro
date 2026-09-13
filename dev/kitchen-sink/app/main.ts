@@ -79,10 +79,10 @@ console.log('gpio read:', readPin)
 logMem('after gpio')
 
 // --- pwm ---
-const pwm = new Pwm(2, {freq: 1000})
+const pwm = Pwm(2, {freq: 1000}).orPanic('pwm')
 console.log('pwm duty:', pwm.duty(0.5))
 await sleep(100)
-console.log('pwm end:', pwm.end())
+pwm.end()
 logMem('after pwm')
 
 // --- i2c ---

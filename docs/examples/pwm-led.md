@@ -21,7 +21,7 @@ import {Pwm} from 'mikro/pwm'
 // GPIO 15 is the built-in LED on XIAO ESP32C6. Replace with your board's LED pin.
 const LED_PIN = 15
 
-const led = new Pwm(LED_PIN, {freq: 50, duty: 0})
+const led = Pwm(LED_PIN, {freq: 50, duty: 0}).orPanic('Failed to set up the LED')
 
 // Breathe: smoothly fade in and out forever
 while (true) {
@@ -41,7 +41,7 @@ while (true) {
 
 ## Walkthrough
 
-1. **PWM setup.** `new Pwm(pin, {freq, duty})` creates a PWM channel on the given pin. `freq` sets the PWM frequency in Hz; `duty` sets the initial duty cycle (0.0 to 1.0).
+1. **PWM setup.** `Pwm(gpio, {freq, duty})` claims the GPIO pin, creates a PWM channel on it and returns a [`Result`](/api/result) with the handle. `freq` sets the PWM frequency in Hz; `duty` sets the initial duty cycle (0.0 to 1.0).
 
 2. **Hardware fading.** `led.fade(target, durationMs)` smoothly transitions the duty cycle to `target` over `durationMs` milliseconds. This runs in hardware on the ESP32's LEDC peripheral, so it does not block the event loop.
 

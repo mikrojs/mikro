@@ -21,7 +21,7 @@ export type {BuiltinDefinition, BuiltinName} from './types.js'
 export const builtinModuleNames: Record<BuiltinName, string> = {
   ble: 'native:mikro/ble',
   gpio: 'mikro/gpio',
-  pwm: 'native:mikro/pwm',
+  pwm: 'mikro/pwm',
   neopixel: 'mikro/neopixel',
   wifi: 'native:mikro/wifi',
   i2c: 'native:mikro/i2c',
