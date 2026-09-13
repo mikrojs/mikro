@@ -27,6 +27,7 @@ set(_MIK_TEST_SRCS
     text_encoding_test.cpp
     timers_js_test.cpp
     timers_test.cpp
+    uart_test.cpp
     udp_test.cpp
     watchdog_test.cpp
 )

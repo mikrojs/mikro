@@ -73,6 +73,9 @@ void mik_call_handler(JSContext* ctx, JSValue func, int argc, JSValue* argv);
  * tag on the device and silent by default, so lines that precede a reboot
  * (watchdog lines, panic actions) go through here instead. */
 void mik__print_error_line(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+/* The Symbol.asyncIterator atom; quickjs.h does not expose the well-known
+ * symbols. The caller frees it with JS_FreeAtom. */
+JSAtom mik__async_iterator_atom(JSContext* ctx);
 /* Prints "<owner> <id>: <call> after end(); the handle no longer owns the <resource>"
  * once per handle; `warned` is the handle's flag. */
 void mik__warn_after_end(bool* warned, const char* owner, int id, const char* call,

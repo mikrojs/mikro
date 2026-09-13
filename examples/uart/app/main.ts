@@ -5,9 +5,7 @@ import {Uart} from 'mikro/uart'
 const TX_PIN = 16
 const RX_PIN = 17
 await sleep(2000)
-const uart = new Uart(1, {tx: TX_PIN, rx: RX_PIN, baudRate: 115200})
-
-uart.begin().orPanic('Failed to start UART')
+const uart = Uart(1, {tx: TX_PIN, rx: RX_PIN, baudRate: 115200}).orPanic('Failed to start UART')
 
 const message = new TextEncoder().encode('Hello from UART!\n')
 uart.write(message).orPanic('Failed to write')
@@ -28,5 +26,5 @@ if (!reader.ok) {
   }
 }
 
-uart.end().orPanic('Failed to stop UART')
+uart.end()
 console.log('Done!')

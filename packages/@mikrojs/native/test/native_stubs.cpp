@@ -77,4 +77,3 @@ STUB_FUNCS(ota_client, "native:mikro/ota_client", "check", "watch", "config",
            "report", "settle")
 
 STUB_CLASS(wifi, "native:mikro/wifi", "Wifi")
-STUB_CLASS(uart, "native:mikro/uart", "Uart")

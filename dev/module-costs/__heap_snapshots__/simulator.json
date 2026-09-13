@@ -79,7 +79,7 @@
       "heapDelta": 10071
     },
     "test/uart.test.ts": {
-      "heapDelta": 12366
+      "heapDelta": 13216
     },
     "test/udp.test.ts": {
       "heapDelta": 11683

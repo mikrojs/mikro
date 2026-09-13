@@ -266,38 +266,6 @@ declare module 'native:mikro/nvs_kv' {
   export function info(): {entries: number; used: number; total: number; free: number}
 }
 
-declare module 'native:mikro/uart' {
-  import type {UartError} from '@mikrojs/native/runtime/uart/types'
-  import type {Result} from 'mikro/result'
-
-  export interface UartOptions {
-    tx?: number
-    rx?: number
-    baudRate: number
-  }
-
-  export declare const Uart: {
-    prototype: Uart
-    new (port: number, options: UartOptions): Uart
-  }
-
-  export interface Uart {
-    begin(): Result<void, UartError>
-
-    end(): Result<void, UartError>
-
-    write(data: Uint8Array): Result<void, UartError>
-
-    read(): Result<
-      {
-        next(): Promise<IteratorResult<Result<Uint8Array, UartError>>>
-        return(): Promise<IteratorResult<Result<Uint8Array, UartError>>>
-      },
-      UartError
-    >
-  }
-}
-
 declare module 'native:mikro/ble' {
   import type {BleError} from '@mikrojs/native/runtime/ble/types'
   import type {Result} from 'mikro/result'

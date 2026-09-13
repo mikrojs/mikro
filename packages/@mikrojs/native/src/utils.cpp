@@ -59,6 +59,17 @@ void mik__print_error_line(const char* fmt, ...) {
     MIK_GetPlatform()->stderr_write(buf, len);
 }
 
+JSAtom mik__async_iterator_atom(JSContext* ctx) {
+    JSValue g = JS_GetGlobalObject(ctx);
+    JSValue sym_ctor = JS_GetPropertyStr(ctx, g, "Symbol");
+    JSValue sym = JS_GetPropertyStr(ctx, sym_ctor, "asyncIterator");
+    JSAtom atom = JS_ValueToAtom(ctx, sym);
+    JS_FreeValue(ctx, sym);
+    JS_FreeValue(ctx, sym_ctor);
+    JS_FreeValue(ctx, g);
+    return atom;
+}
+
 void mik__warn_after_end(bool* warned, const char* owner, int id, const char* call,
                          const char* resource) {
     if (*warned) return;

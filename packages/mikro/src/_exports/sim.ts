@@ -12,6 +12,7 @@ import type {NeoPixel} from '@mikrojs/native/runtime/neopixel/types'
 import type {Pwm} from '@mikrojs/native/runtime/pwm/types'
 import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'
 import type {Spi} from '@mikrojs/native/runtime/spi/types'
+import type {Uart} from '@mikrojs/native/runtime/uart/types'
 
 type NR<T> = {ok: true; value: T} | {ok: false; error: {name: string; message: string}}
 type NRV = {ok: true} | {ok: false; error: {name: string; message: string}}
@@ -101,6 +102,9 @@ export interface SimStubMethods {
   spi: {
     Spi: typeof Spi
   }
+  uart: {
+    Uart: typeof Uart
+  }
   sleep: {
     deepSleep(sources: DeepWakeupSources): void
     lightSleep(sources: LightWakeupSources): void
@@ -146,6 +150,7 @@ export type SimNeoPixel = SimStubMethods['neopixel']
 export type SimPwm = SimStubMethods['pwm']
 export type SimI2c = SimStubMethods['i2c']
 export type SimSpi = SimStubMethods['spi']
+export type SimUart = SimStubMethods['uart']
 export type SimSleep = SimStubMethods['sleep']
 export type SimKv = SimStubMethods['kv']
 export type SimNvsKv = SimStubMethods['nvs_kv']
