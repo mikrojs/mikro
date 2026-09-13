@@ -16,7 +16,7 @@
  *
  * Motivation: the previous TS implementation (runtime/result/result.ts)
  * compiled to ~7 KB of per-runtime JS heap because every public runtime
- * module (mikrojs/pin, mikrojs/wifi, …) top-level-imported it, so both
+ * module (mikrojs/wifi, mikrojs/fs, …) top-level-imported it, so both
  * OkImpl/ErrImpl class bodies and their ~16 method closures were paid once
  * per runtime whether the app used them or not.  Moving the prototype to C
  * keeps the fluent API while collapsing that to a single shared proto +

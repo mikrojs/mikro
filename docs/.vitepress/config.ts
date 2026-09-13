@@ -117,7 +117,7 @@ export default defineConfig({
           {text: 'result', link: '/api/result'},
           {text: 'observable', link: '/api/observable'},
           {text: 'schema', link: '/api/schema'},
-          {text: 'pin', link: '/api/pin'},
+          {text: 'gpio', link: '/api/gpio'},
           {text: 'pwm', link: '/api/pwm'},
           {text: 'neopixel', link: '/api/neopixel'},
           {text: 'i2c', link: '/api/i2c'},

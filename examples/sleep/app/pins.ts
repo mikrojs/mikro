@@ -10,7 +10,7 @@ export interface XiaoPinMap {
   led: number
   /** Chip pin behind the **D7** header pad. Used by the light-sleep
    *  GPIO-wake example as a known-free, breadboard-accessible pin
-   *  that supports INPUT_PULLUP. */
+   *  that supports an internal pull-up. */
   buttonPin: number
 }
 

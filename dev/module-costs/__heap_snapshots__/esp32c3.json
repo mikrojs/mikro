@@ -76,7 +76,7 @@
       "heapDelta": 7656,
       "sysUsed": 11832
     },
-    "test/pin.test.ts": {
+    "test/gpio.test.ts": {
       "heapDelta": 8356,
       "sysUsed": 12684
     },

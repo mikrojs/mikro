@@ -64,6 +64,10 @@
       "development": "./src/_exports/fs.ts",
       "import": "./dist/_exports/fs.js"
     },
+    "./gpio": {
+      "development": "./src/_exports/gpio.ts",
+      "import": "./dist/_exports/gpio.js"
+    },
     "./http/helpers": {
       "development": "./src/_exports/http/helpers.ts",
       "import": "./dist/_exports/http/helpers.js"
@@ -121,10 +125,6 @@
       "import": "./dist/_exports/ota/client.js"
     },
     "./package.json": "./package.json",
-    "./pin": {
-      "development": "./src/_exports/pin.ts",
-      "import": "./dist/_exports/pin.js"
-    },
     "./pwm": {
       "development": "./src/_exports/pwm.ts",
       "import": "./dist/_exports/pwm.js"
@@ -196,7 +196,7 @@
     "exports": {
       ".": "./dist/_exports/index.js",
       "./result": "./dist/_exports/result.js",
-      "./pin": "./dist/_exports/pin.js",
+      "./gpio": "./dist/_exports/gpio.js",
       "./pwm": "./dist/_exports/pwm.js",
       "./reader": "./dist/_exports/reader.js",
       "./neopixel": "./dist/_exports/neopixel.js",

@@ -1,13 +1,13 @@
 export type WakeupLevel = 'high' | 'low'
 
-/** A GPIO pin number that must be RTC-capable for deep-sleep wake.
+/** A GPIO number that must be RTC-capable for deep-sleep wake.
  *  Set varies per chip:
  *  - ESP32-C6 / H2: 0–7 (LP_GPIO0–LP_GPIO7)
  *  - ESP32-C3: 0–5
  *  - ESP32-S2 / S3: 0–21 (LP_IO0–LP_IO21)
  *  - ESP32: subset of 0–39 (see datasheet for RTC_GPIO mapping)
  *
- *  Not statically validated — passing a non-RTC pin throws at runtime.
+ *  Not statically validated: passing a non-RTC GPIO throws at runtime.
  */
 export type RtcGpio = number
 
@@ -16,9 +16,11 @@ export type LightWakeupSources = {
   /** Wake after this many milliseconds. Fractional values are allowed
    *  (e.g. `0.01` = 10 µs). */
   timer?: number
-  /** Wake when `pin` reaches `level`. Any GPIO works — no RTC-capable
-   *  constraint. */
-  gpio?: {pin: number; level: WakeupLevel}
+  /** Wake when the GPIO numbered `gpio` reaches `level`. Any GPIO works; it
+   *  does not need to be RTC-capable. Only one GPIO can wake the chip. */
+  gpio?: number
+  /** The level that wakes the chip. Required with `gpio`. */
+  level?: WakeupLevel
 }
 
 /** Sources that can wake the chip from deep sleep. */
@@ -27,8 +29,8 @@ export type DeepWakeupSources = {
   timer?: number
   /** Wake on a single RTC GPIO. ESP32 / S2 / S3 only — throws on
    *  C3 / C6 / H2 (use `ext1` instead). */
-  ext0?: {pin: RtcGpio; level: WakeupLevel}
-  /** Wake when any of `pins` matches `mode`. Pins must be RTC-capable.
+  ext0?: {gpio: RtcGpio; level: WakeupLevel}
+  /** Wake when any of `gpios` matches `mode`. They must be RTC-capable.
    *
    *  Caveat — original ESP32 chip only: the EXT1 hardware on the
    *  original ESP32 cannot honor "any-low" with more than one pin (the
@@ -36,7 +38,7 @@ export type DeepWakeupSources = {
    *  Multi-pin `{mode: 'any-low'}` throws on ESP32; single-pin works,
    *  and `'any-high'` works for any pin count. Every newer chip
    *  (C3, C5, C6, S2, S3, …) supports multi-pin `'any-low'` natively. */
-  ext1?: {pins: RtcGpio[]; mode: 'any-low' | 'any-high'}
+  ext1?: {gpios: RtcGpio[]; mode: 'any-low' | 'any-high'}
 }
 
 /**

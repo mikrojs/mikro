@@ -39,17 +39,15 @@ npm create mikro
 ## Example
 
 ```ts
-import {digitalWrite, pinMode} from 'mikro/pin'
+import {DigitalOut} from 'mikro/gpio'
 import {sleep} from 'mikro/sleep'
 
-const LED = 20
-
-pinMode(LED, 'OUTPUT').orPanic('Failed to set pin mode')
+const led = DigitalOut(20).orPanic('Failed to configure LED pin')
 
 while (true) {
-  digitalWrite(LED, 1)
+  led.write(1)
   await sleep(500)
-  digitalWrite(LED, 0)
+  led.write(0)
   await sleep(500)
 }
 ```

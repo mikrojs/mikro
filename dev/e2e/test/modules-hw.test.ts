@@ -1,13 +1,11 @@
 import {assert, describe, test} from 'mikro/test'
 
-describe('module: pin', () => {
+describe('module: gpio', () => {
   test('exports exist', async () => {
-    const mod = await import('mikro/pin')
-    assert.type(mod.pinMode, 'function')
-    assert.type(mod.digitalWrite, 'function')
-    assert.type(mod.digitalRead, 'function')
-    assert.type(mod.analogRead, 'function')
-    assert.type(mod.analogReadMillivolts, 'function')
+    const mod = await import('mikro/gpio')
+    assert.type(mod.DigitalOut, 'function')
+    assert.type(mod.DigitalIn, 'function')
+    assert.type(mod.AnalogIn, 'function')
   })
 })
 

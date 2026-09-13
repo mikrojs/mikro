@@ -145,7 +145,7 @@ export function getDisplay() {
 }
 ```
 
-The board module imports from driver packages and fills in the pin numbers. Users import from the board package and get a ready-to-use API.
+The board module imports from driver packages and fills in the GPIO numbers. Users import from the board package and get a ready-to-use API.
 
 ## Step 5: board_builtins.cpp
 

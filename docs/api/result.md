@@ -99,11 +99,11 @@ Both `OkResult` and `ErrResult` share the same method interface. The behavior de
 
 ```ts twoslash
 // @noErrors
-import {pinMode} from 'mikro/pin'
+import {DigitalOut} from 'mikro/gpio'
 // ---cut---
-const result = pinMode(20, 'OUTPUT')
+const result = DigitalOut(20)
 if (!result.ok) {
-  console.error('pinMode failed:', result.error)
+  console.error('DigitalOut failed:', result.error)
   return
 }
 // result.value is available here
@@ -142,11 +142,11 @@ Chains a function that itself returns a `Result`. Useful for sequencing operatio
 
 ```ts twoslash
 import {ok} from 'mikro/result'
-import {pinMode} from 'mikro/pin'
+import {AnalogIn} from 'mikro/gpio'
 // ---cut---
-const result = ok(20)
-  .andThen((pin) => pinMode(pin, 'OUTPUT'))
-  .andThen(() => ok('ready'))
+const result = ok(2)
+  .andThen((gpio) => AnalogIn(gpio))
+  .andThen((pot) => pot.readMillivolts())
 ```
 
 ### .match(handlers)
@@ -154,8 +154,8 @@ const result = ok(20)
 Exhaustive pattern matching on the result.
 
 ```ts twoslash
-import {pinMode} from 'mikro/pin'
-const result = pinMode(20, 'OUTPUT')
+import {AnalogIn} from 'mikro/gpio'
+const result = AnalogIn(2).andThen((pot) => pot.read())
 // ---cut---
 const message = result.match({
   ok: (value) => `Got: ${value}`,
@@ -168,9 +168,9 @@ const message = result.match({
 Returns the value if Ok, or crashes the program with the given message if Err. The error is included as the `cause`.
 
 ```ts twoslash
-import {pinMode} from 'mikro/pin'
+import {DigitalOut} from 'mikro/gpio'
 // ---cut---
-const value = pinMode(20, 'OUTPUT').orPanic('Failed to set pin mode')
+const led = DigitalOut(20).orPanic('Failed to configure LED pin')
 ```
 
 Use this when failure is truly unrecoverable (for example during setup).

@@ -71,6 +71,7 @@ idf_component_register(
     "${MIK_SRC_DIR}/mik_http_client.cpp"
     "${MIK_SRC_DIR}/mik_wifi_client.cpp"
     "${MIK_SRC_DIR}/fs.cpp"
+    "${MIK_SRC_DIR}/gpio_claim.cpp"
     "${MIK_SRC_DIR}/mem.cpp"
     "${MIK_SRC_DIR}/mik_app_config.cpp"
     "${MIK_SRC_DIR}/mik_app_store.cpp"
@@ -109,7 +110,7 @@ idf_component_register(
     "mik_i2s.cpp"
     "mik_logfile.cpp"
     "mik_neopixel.cpp"
-    "mik_pin.cpp"
+    "mik_gpio.cpp"
     "mik_pwm.cpp"
     "mik_nvs_kv.cpp"
     "mik_ota.cpp"
@@ -206,12 +207,12 @@ endif()
 include("${MIK_BYTECODE_CMAKE}")
 
 # Force linker to include self-registering native modules
-set(_MIK_MODULES cbor pin i2c i2s spi http http_server rtc nvs_kv sntp sleep neopixel pwm uart ota)
+set(_MIK_MODULES cbor gpio i2c i2s spi http http_server rtc nvs_kv sntp sleep neopixel pwm uart ota)
 list(APPEND _MIK_MODULES ota_client)
 if(CONFIG_MIKROJS_WIFI)
     list(APPEND _MIK_MODULES wifi)
 endif()
-set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/server i2c i2s kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp watchdog)
+set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/server i2c i2s kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy ota ota/client ota/config pwm reader sleep spi sntp stdio stream sys test uart udp watchdog)
 if(CONFIG_BT_ENABLED)
     list(APPEND _MIK_MODULES ble)
     list(APPEND _MIK_BYTECODE_MODULES ble)

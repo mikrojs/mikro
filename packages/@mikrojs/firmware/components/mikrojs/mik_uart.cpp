@@ -77,6 +77,8 @@ static void mik__uart_finalizer(JSRuntime* rt, JSValue val) {
     if (!s) return;
     if (s->begun) {
         uart_driver_delete(s->port);
+        const int gpios[] = {s->tx_pin, s->rx_pin};
+        mik__release_gpios(gpios, countof(gpios), "Uart");
     }
     /* Note: can't untrack here (no JSContext), but destroy handles cleanup */
     free(s);
@@ -168,6 +170,10 @@ static JSValue js_uart_begin(JSContext* ctx, JSValue this_val, int argc, JSValue
     if (!s) return JS_EXCEPTION;
     if (s->begun) return mik__result_ok_void(ctx);  // idempotent
 
+    const int gpios[] = {s->tx_pin, s->rx_pin};
+    JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "Uart");
+    if (!JS_IsUndefined(claim_failed)) return claim_failed;
+
     uart_config_t uart_config = {};
     uart_config.baud_rate = s->baud_rate;
     uart_config.data_bits = UART_DATA_8_BITS;
@@ -177,27 +183,33 @@ static JSValue js_uart_begin(JSContext* ctx, JSValue this_val, int argc, JSValue
     uart_config.source_clk = UART_SCLK_DEFAULT;
 
     esp_err_t err = uart_param_config(s->port, &uart_config);
-    if (err != ESP_OK)
+    if (err != ESP_OK) {
+        mik__release_gpios(gpios, countof(gpios), "Uart");
         return mik__result_err_named(ctx, "InvalidParam",
                                      "uart_param_config failed on port %d: %s", s->port,
                                      esp_err_to_name(err));
+    }
 
     err = uart_set_pin(s->port,
                        s->tx_pin >= 0 ? s->tx_pin : UART_PIN_NO_CHANGE,
                        s->rx_pin >= 0 ? s->rx_pin : UART_PIN_NO_CHANGE,
                        UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    if (err != ESP_OK)
+    if (err != ESP_OK) {
+        mik__release_gpios(gpios, countof(gpios), "Uart");
         return mik__result_err_named(ctx, "SetPinFailed",
                                      "uart_set_pin failed on port %d (tx=%d, rx=%d): %s", s->port,
                                      s->tx_pin, s->rx_pin, esp_err_to_name(err));
+    }
 
     /* RX buffer only if we have an RX pin; no TX buffer (writes block until done) */
     int rx_buf = s->rx_pin >= 0 ? MIK_UART_RX_BUF_SIZE : 0;
     err = uart_driver_install(s->port, rx_buf, 0, 0, nullptr, ESP_INTR_FLAG_IRAM);
-    if (err != ESP_OK)
+    if (err != ESP_OK) {
+        mik__release_gpios(gpios, countof(gpios), "Uart");
         return mik__result_err_named(ctx, "DriverInstallFailed",
                                      "uart_driver_install failed on port %d: %s", s->port,
                                      esp_err_to_name(err));
+    }
 
     s->begun = true;
     mik__uart_track(ctx, s);
@@ -232,6 +244,8 @@ static JSValue js_uart_end(JSContext* ctx, JSValue this_val, int argc, JSValue* 
 
     mik__uart_untrack(ctx, s);
     uart_driver_delete(s->port);
+    const int gpios[] = {s->tx_pin, s->rx_pin};
+    mik__release_gpios(gpios, countof(gpios), "Uart");
     s->begun = false;
     return mik__result_ok_void(ctx);
 }

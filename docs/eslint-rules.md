@@ -29,10 +29,10 @@ Flags `Result` return values that aren't handled. If a function returns `Result<
 
 ```typescript
 // Bad: error is silently ignored
-pinMode(4, 'OUTPUT')
+sensor.read()
 
 // Good: error is checked
-const result = pinMode(4, 'OUTPUT')
+const result = sensor.read()
 if (!result.ok) return result
 ```
 
@@ -62,13 +62,13 @@ Flags `try/catch` blocks. Since Mikro.js functions return `Result` types, `try/c
 ```typescript
 // Bad
 try {
-  const value = analogRead(34)
+  const value = sensor.read()
 } catch (err) {
   console.error(err)
 }
 
 // Good
-const result = analogRead(34)
+const result = sensor.read()
 if (!result.ok) {
   console.error(result.error)
 }
@@ -105,14 +105,14 @@ Flags `Promise.reject()` calls and `reject()` callback invocations. Use `err()` 
 ```typescript
 // Bad: caller has to try/catch to handle this
 async function readSensor(): Promise<number> {
-  const result = analogRead(34)
+  const result = sensor.read()
   if (!result.ok) return Promise.reject(new Error('read failed'))
   return result.value
 }
 
 // Good: caller sees the error in the return type
-async function readSensor(): Promise<Result<number, PinError>> {
-  const result = analogRead(34)
+async function readSensor(): Promise<Result<number, GpioError>> {
+  const result = sensor.read()
   if (!result.ok) return result
   return ok(result.value)
 }

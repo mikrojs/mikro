@@ -1,3 +1,4 @@
+import type {GpioInUse} from '../gpio/types.js'
 import type {Result} from '../result/types.js'
 
 /**
@@ -13,6 +14,7 @@ export interface SpiOptions {
 }
 
 export type SpiError =
+  | GpioInUse
   | {name: 'BusInitFailed'; message: string}
   | {name: 'AddDeviceFailed'; message: string}
   | {name: 'NotStarted'}

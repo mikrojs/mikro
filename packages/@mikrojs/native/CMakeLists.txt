@@ -62,6 +62,7 @@ set(MIKROJS_CORE_SOURCES
     src/mik_ota_client.cpp
     src/mik_sys_codec.cpp
     src/mik_watchdog.cpp
+    src/gpio_claim.cpp
 )
 
 add_library(mikrojs STATIC
@@ -92,7 +93,7 @@ endif()
 include(cmake/mikrojs_bytecode.cmake)
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
-    MODULES abort cbor env result schema fs i2c kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy ota ota/client ota/config pin pwm reader sleep spi sntp stdio stream sys test uart udp watchdog
+    MODULES abort cbor env result schema fs i2c kv/nvs kv/rtc kv/shared module neopixel observable observable/lazy ota ota/client ota/config pwm reader sleep spi sntp stdio stream sys test uart udp watchdog
     MODULE_PREFIX "mikro"
     SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode
@@ -224,6 +225,7 @@ if(BUILD_TESTING)
         test/schema_conformance_test.cpp
         test/sys_codec_test.cpp
         test/watchdog_test.cpp
+        test/gpio_claim_test.cpp
     )
 
     # ── Check-in wire fixtures ───────────────────────────────────────

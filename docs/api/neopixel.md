@@ -30,15 +30,15 @@ pixels.end().orPanic('end failed') // release hardware
 
 ## Constructor
 
-### new NeoPixel(pin, options)
+### new NeoPixel(gpio, options)
 
 ```ts
-new NeoPixel(pin: number, options: NeoPixelOptions)
+new NeoPixel(gpio: number, options: NeoPixelOptions)
 ```
 
 **Parameters:**
 
-- `pin`: GPIO pin connected to the data line
+- `gpio`: GPIO number of the pin connected to the data line
 - `options`: see [NeoPixelOptions](#neopixeloptions)
 
 ## Methods

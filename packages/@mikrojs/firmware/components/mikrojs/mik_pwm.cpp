@@ -142,6 +142,7 @@ static void mik__pwm_finalizer(JSRuntime* rt, JSValue val) {
         ledc_stop(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(s->channel), 0);
         mik__pwm_free_channel(s->channel);
         mik__pwm_free_timer(s->timer);
+        MIK_ReleaseGpio(s->gpio, "Pwm");
     }
     free(s);
 }
@@ -171,12 +172,17 @@ static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, 
             return JS_ThrowRangeError(ctx, "duty must be between 0.0 and 1.0");
     }
 
+    if (!MIK_ClaimGpio(gpio, "Pwm")) return mik__throw_gpio_in_use(ctx, gpio);
+
     int ch = mik__pwm_alloc_channel();
-    if (ch < 0)
+    if (ch < 0) {
+        MIK_ReleaseGpio(gpio, "Pwm");
         return JS_ThrowInternalError(ctx, "no free PWM channels (max %d)", MIK_PWM_MAX_CHANNELS);
+    }
 
     int timer = mik__pwm_alloc_timer(static_cast<uint32_t>(freq));
     if (timer < 0) {
+        MIK_ReleaseGpio(gpio, "Pwm");
         mik__pwm_free_channel(ch);
         return JS_ThrowInternalError(ctx, "no free PWM timers (max %d)", MIK_PWM_MAX_TIMERS);
     }
@@ -193,6 +199,7 @@ static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, 
 
     esp_err_t err = ledc_timer_config(&timer_cfg);
     if (err != ESP_OK) {
+        MIK_ReleaseGpio(gpio, "Pwm");
         mik__pwm_free_channel(ch);
         mik__pwm_free_timer(timer);
         return JS_ThrowInternalError(ctx, "LEDC timer config failed: %s", esp_err_to_name(err));
@@ -209,6 +216,7 @@ static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, 
 
     err = ledc_channel_config(&ch_cfg);
     if (err != ESP_OK) {
+        MIK_ReleaseGpio(gpio, "Pwm");
         mik__pwm_free_channel(ch);
         mik__pwm_free_timer(timer);
         return JS_ThrowInternalError(ctx, "LEDC channel config failed: %s", esp_err_to_name(err));
@@ -224,6 +232,7 @@ static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, 
 
     auto* s = static_cast<MIKPwmState*>(calloc(1, sizeof(MIKPwmState)));
     if (!s) {
+        MIK_ReleaseGpio(gpio, "Pwm");
         mik__pwm_free_channel(ch);
         mik__pwm_free_timer(timer);
         return JS_ThrowOutOfMemory(ctx);
@@ -239,6 +248,7 @@ static JSValue js_pwm_constructor(JSContext* ctx, JSValue new_target, int argc, 
     JSValue obj = JS_NewObjectClass(ctx, mik_pwm_class_id);
     if (JS_IsException(obj)) {
         ledc_stop(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(ch), 0);
+        MIK_ReleaseGpio(gpio, "Pwm");
         mik__pwm_free_channel(ch);
         mik__pwm_free_timer(timer);
         free(s);
@@ -441,6 +451,7 @@ static JSValue js_pwm_end(JSContext* ctx, JSValue this_val, int argc, JSValue* a
     ledc_stop(LEDC_LOW_SPEED_MODE, static_cast<ledc_channel_t>(s->channel), 0);
     mik__pwm_free_channel(s->channel);
     mik__pwm_free_timer(s->timer);
+    MIK_ReleaseGpio(s->gpio, "Pwm");
     s->active = false;
     return mik__result_ok_void(ctx);
 }

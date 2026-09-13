@@ -257,6 +257,16 @@ static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_n
         for (const auto& cm : c_modules) {
             if (strcmp(cm.name, module_name) == 0) return cm.load(ctx);
         }
+        /* Platform C modules registered under their public name (mikro/gpio on ESP-IDF). */
+        for (mik_module_desc_t* d = mik__module_registry_head; d != nullptr; d = d->next) {
+            if (strcmp(d->name, module_name) == 0) {
+                JSModuleDef* reg_m = d->init(ctx);
+                if (reg_m && mik_rt && d->consume) {
+                    MIK_RegisterLoopConsumer(mik_rt, d->consume, d->destroy);
+                }
+                return reg_m;
+            }
+        }
         JSModuleDef* builtin_m = mik__load_builtin(ctx, module_name);
         if (builtin_m) return builtin_m;
         /* mik__load_builtin returns NULL either because the module isn't in

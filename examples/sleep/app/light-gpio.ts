@@ -12,22 +12,23 @@
 // header pin is convenient on your breadboard.
 //
 // Run with: pnpm mikro dev app/light-gpio.ts
-import {pinMode} from 'mikro/pin'
+import {DigitalIn} from 'mikro/gpio'
 import {lightSleep, sleep} from 'mikro/sleep'
 import {getWakeupCause} from 'mikro/sys'
 
 import {blinkLed} from './led.js'
 import {pins} from './pins.js'
 
-pinMode(pins.buttonPin, 'INPUT_PULLUP').orPanic('Failed to configure button pin')
+const button = DigitalIn(pins.buttonPin, {pull: 'up'}).orPanic('Failed to configure button pin')
 await blinkLed()
 
 console.log('Boot — wakeup cause: %s', getWakeupCause())
 
 for (let i = 1; i <= 5; i++) {
-  console.log(`[${i}/5] Sleeping. Pull D7 (GPIO ${pins.buttonPin}) LOW to wake (or wait 10 s)…`)
+  console.log(`[${i}/5] Sleeping. Pull D7 (GPIO ${button.gpio}) LOW to wake (or wait 10 s)…`)
   lightSleep({
-    gpio: {pin: pins.buttonPin, level: 'low'},
+    gpio: button.gpio,
+    level: 'low',
     timer: 10_000,
   })
   // note: need a little delay so dev console can reconnect

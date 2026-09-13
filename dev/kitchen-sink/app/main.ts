@@ -1,12 +1,12 @@
 // Import every mikrojs/* module to measure memory impact
 import {decode, encode} from 'mikro/cbor'
 import {env} from 'mikro/env'
+import {AnalogIn, DigitalIn, DigitalOut} from 'mikro/gpio'
 import {request} from 'mikro/http/request'
 import {I2c} from 'mikro/i2c'
 import {nvsStorage} from 'mikro/kv/nvs'
 import {rtcStorage} from 'mikro/kv/rtc'
 import {NeoPixel} from 'mikro/neopixel'
-import {analogRead, digitalRead, digitalWrite, pinMode} from 'mikro/pin'
 import {Pwm} from 'mikro/pwm'
 import {err, matchError, ok} from 'mikro/result'
 import * as s from 'mikro/schema'
@@ -34,7 +34,7 @@ console.log('request:', typeof request)
 console.log('i2c:', typeof I2c)
 console.log('kv:', typeof nvsStorage, typeof rtcStorage)
 console.log('neopixel:', typeof NeoPixel)
-console.log('pin:', typeof pinMode, typeof digitalWrite, typeof digitalRead, typeof analogRead)
+console.log('gpio:', typeof DigitalOut, typeof DigitalIn, typeof AnalogIn)
 console.log('pwm:', typeof Pwm)
 console.log('result:', typeof ok, typeof err, typeof matchError)
 console.log('schema:', typeof s.string, typeof s.object, typeof s.parse)
@@ -67,14 +67,16 @@ const kvRead = testVal.get()
 console.log('kv read:', kvRead)
 logMem('after kv')
 
-// --- pin ---
-const pinResult = pinMode(21, 'OUTPUT')
-console.log('pin mode:', pinResult)
-const writePin = digitalWrite(21, 1)
-console.log('pin write:', writePin)
-const readPin = digitalRead(21)
-console.log('pin read:', readPin)
-logMem('after pin')
+// --- gpio ---
+const outResult = DigitalOut(21)
+console.log('gpio out:', outResult)
+if (outResult.ok) {
+  outResult.value.write(1)
+  outResult.value.end()
+}
+const readPin = DigitalIn(21).map((input) => input.read())
+console.log('gpio read:', readPin)
+logMem('after gpio')
 
 // --- pwm ---
 const pwm = new Pwm(2, {freq: 1000})

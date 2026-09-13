@@ -1,6 +1,6 @@
 /* No-op stub registrations for ESP-only `native:*` modules.
  *
- * Linked into the host memory_bench binary so `mikrojs/wifi`, `mikrojs/pin`,
+ * Linked into the host memory_bench binary so `mikrojs/wifi`, `mikrojs/gpio`,
  * `mikrojs/fetch`, `mikrojs/kv` and friends can be import-loaded on the host
  * without their real ESP-IDF backing modules. The stubs export the right
  * symbol shape (function or constructor) but do nothing — bench cares only
@@ -61,8 +61,7 @@ JSValue stub_ctor(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     }                                                                                              \
     MIK_REGISTER_MODULE(stub_##id, mod_name, id##_init, nullptr, nullptr)
 
-STUB_FUNCS(pin, "native:mikro/pin", "pinMode", "digitalWrite", "digitalRead", "analogRead",
-           "analogReadMillivolts")
+STUB_FUNCS(gpio, "mikro/gpio", "DigitalOut", "DigitalIn", "AnalogIn")
 STUB_FUNCS(sntp, "native:mikro/sntp", "sync", "stop", "setTimezone")
 STUB_FUNCS(sleep, "native:mikro/sleep", "deepSleep", "lightSleep", "getWakeupCause",
            "canWakeFromExt0", "canWakeFromExt1")

@@ -48,7 +48,7 @@ ESP-specific modules live in `packages/@mikrojs/firmware/components/mikrojs/`:
 ```
 components/mikrojs/
 ├── platform_esp32.cpp   ESP-IDF platform implementation
-├── mik_pin.cpp          GPIO module
+├── mik_gpio.cpp         GPIO module
 ├── mik_wifi.cpp         WiFi module
 ├── mik_http.cpp         HTTP client module
 ├── mik_serial_io.cpp    Serial I/O module

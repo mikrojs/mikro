@@ -66,7 +66,7 @@ Creates a new UART instance. Provide at least one of `tx` or `rx`. The available
 \* At least one of `tx` or `rx` must be provided.
 
 ::: warning UART0
-UART0 is typically used for the console/REPL. On chips with USB Serial/JTAG (ESP32-C6, ESP32-S3, and similar), UART0 pins are free when the console runs over USB. If you open a port that the console is using, `begin()` will return a `DriverInstallFailed` error.
+The firmware claims the pins of every console it installs. On chips with USB Serial/JTAG (ESP32-C6, ESP32-S3, and similar), the default firmware installs only the USB console, so the UART0 pins are free. If you pass a console pin to `begin()`, it returns a `GpioInUse` error with `owner: 'console'`. If you open UART0 on other pins while the console uses UART0, `begin()` returns `DriverInstallFailed`.
 :::
 
 ## Methods
@@ -149,14 +149,15 @@ interface UartRx {
 
 ### UartError
 
-| Variant               | Fields    | Description                               |
-| --------------------- | --------- | ----------------------------------------- |
-| `DriverInstallFailed` | `message` | UART driver installation failed           |
-| `SetPinFailed`        | `message` | GPIO pin configuration failed             |
-| `InvalidParam`        | `message` | Invalid UART parameters                   |
-| `WriteFailed`         | `message` | Write operation failed                    |
-| `ReadFailed`          | `message` | Read operation failed                     |
-| `NotStarted`          | --        | `begin()` was not called                  |
-| `AlreadyReading`      | --        | Another `read()` iterator is still active |
-| `NoRxPin`             | --        | `read()` called but no RX pin configured  |
-| `NoTxPin`             | --        | `write()` called but no TX pin configured |
+| Variant               | Fields             | Description                                                |
+| --------------------- | ------------------ | ---------------------------------------------------------- |
+| `GpioInUse`           | `owner`, `message` | A pin is held by another handle, peripheral or the console |
+| `DriverInstallFailed` | `message`          | UART driver installation failed                            |
+| `SetPinFailed`        | `message`          | GPIO pin configuration failed                              |
+| `InvalidParam`        | `message`          | Invalid UART parameters                                    |
+| `WriteFailed`         | `message`          | Write operation failed                                     |
+| `ReadFailed`          | `message`          | Read operation failed                                      |
+| `NotStarted`          | --                 | `begin()` was not called                                   |
+| `AlreadyReading`      | --                 | Another `read()` iterator is still active                  |
+| `NoRxPin`             | --                 | `read()` called but no RX pin configured                   |
+| `NoTxPin`             | --                 | `write()` called but no TX pin configured                  |

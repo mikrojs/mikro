@@ -312,6 +312,20 @@ JSModuleDef* mik__observable_init(JSContext* ctx);
 void mik__observable_dispatch_free(struct MIKRuntime* mik_rt);
 /* mikro/observable/operators, loaded lazily through the C-module table. */
 JSModuleDef* mik__observable_operators_load(JSContext* ctx);
+/* Builds the same {observable, next, complete} triple as Observable.withEmitters(),
+ * for C modules that expose event streams. Returns -1 with an exception pending;
+ * on success the caller owns all three values. */
+int mik__observable_multicast_new(JSContext* ctx, JSValue* observable, JSValue* next,
+                                  JSValue* complete);
+
+/* GPIO claims (gpio_claim.cpp). Claims every GPIO for `owner`; on the first one
+ * already held, releases those claimed so far and returns an err Result
+ * carrying GpioInUse {name, owner, message}. Returns JS_UNDEFINED on success. */
+JSValue mik__claim_gpios(JSContext* ctx, const int* gpios, int count, const char* owner);
+void mik__release_gpios(const int* gpios, int count, const char* owner);
+/* Throws the GpioInUse message as an InternalError, for modules that report a
+ * lost claim by throwing (Pwm, NeoPixel). Call after MIK_ClaimGpio fails. */
+JSValue mik__throw_gpio_in_use(JSContext* ctx, int gpio);
 
 /* Watchdog (mik_watchdog.cpp). */
 /* Start a fresh blocking budget: top of each MIK_Loop pass, eval entry

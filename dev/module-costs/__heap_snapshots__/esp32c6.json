@@ -20,6 +20,10 @@
       "heapDelta": 9860,
       "sysUsed": 14896
     },
+    "test/gpio.test.ts": {
+      "heapDelta": 5792,
+      "sysUsed": 8308
+    },
     "test/http-helpers.test.ts": {
       "heapDelta": 6152,
       "sysUsed": 9472
@@ -75,10 +79,6 @@
     "test/ota.test.ts": {
       "heapDelta": 8696,
       "sysUsed": 13316
-    },
-    "test/pin.test.ts": {
-      "heapDelta": 8328,
-      "sysUsed": 12560
     },
     "test/pwm.test.ts": {
       "heapDelta": 7292,

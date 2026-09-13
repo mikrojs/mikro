@@ -17,7 +17,7 @@ export type PwmError =
   | {name: 'FadeFailed'; message: string}
 
 export declare class Pwm {
-  constructor(pin: number, options: PwmOptions)
+  constructor(gpio: number, options: PwmOptions)
   /** Get or set duty cycle (0.0–1.0) */
   duty(value?: number): Result<number, PwmError>
   /** Get or set frequency in Hz */

@@ -158,18 +158,6 @@ declare module 'native:mikro/stdio' {
   }
 }
 
-declare module 'native:mikro/pin' {
-  import type {PinError} from '@mikrojs/native/runtime/pin/types'
-  import type {Result} from 'mikro/result'
-  export type PinMode = 0x01 | 0x03 | 0x05
-  export function pinMode(pin: number, value: PinMode): Result<void, PinError>
-  export function digitalWrite(pin: number, value: 0 | 1): Result<void, PinError>
-  export function digitalRead(pin: number): number
-  // attenuation: 0=0dB, 1=2.5dB, 2=6dB, 3=11dB
-  export function analogRead(pin: number, attenuation: number): Result<number, PinError>
-  export function analogReadMillivolts(pin: number, attenuation: number): Result<number, PinError>
-}
-
 declare module 'native:mikro/watchdog' {
   export function feed(): void
 }
@@ -344,7 +332,7 @@ declare module 'native:mikro/pwm' {
 
   export declare const Pwm: {
     prototype: Pwm
-    new (pin: number, freq: number, duty: number): Pwm
+    new (gpio: number, freq: number, duty: number): Pwm
   }
 
   export interface Pwm {
@@ -361,7 +349,7 @@ declare module 'native:mikro/neopixel' {
 
   export declare const NeoPixel: {
     prototype: NeoPixel
-    new (pin: number, numLeds: number, bytesPerLed: number): NeoPixel
+    new (gpio: number, numLeds: number, bytesPerLed: number): NeoPixel
   }
 
   export interface NeoPixel {

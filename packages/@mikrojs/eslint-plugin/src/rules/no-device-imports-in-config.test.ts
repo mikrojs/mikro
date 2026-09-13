@@ -20,17 +20,17 @@ ruleTester.run('no-device-imports-in-config', noDeviceImportsInConfig, {
       filename: 'mikro.config.ts',
     },
     {
-      code: "import {pin} from 'mikro/pin'",
+      code: "import {pin} from 'mikro/gpio'",
       filename: 'app.ts',
     },
     {
-      code: "import {wifi} from 'mikro/wifi'\nimport {pin} from 'mikro/pin'",
+      code: "import {wifi} from 'mikro/wifi'\nimport {pin} from 'mikro/gpio'",
       filename: 'src/main.ts',
     },
   ],
   invalid: [
     {
-      code: "import {pin} from 'mikro/pin'",
+      code: "import {pin} from 'mikro/gpio'",
       filename: 'mikro.config.ts',
       errors: [{messageId: 'noDeviceImport'}],
     },
@@ -40,12 +40,12 @@ ruleTester.run('no-device-imports-in-config', noDeviceImportsInConfig, {
       errors: [{messageId: 'noDeviceImport'}],
     },
     {
-      code: "const m = await import('mikro/pin')",
+      code: "const m = await import('mikro/gpio')",
       filename: 'mikro.config.ts',
       errors: [{messageId: 'noDeviceImport'}],
     },
     {
-      code: "export {pin} from 'mikro/pin'",
+      code: "export {pin} from 'mikro/gpio'",
       filename: 'mikro.config.ts',
       errors: [{messageId: 'noDeviceImport'}],
     },

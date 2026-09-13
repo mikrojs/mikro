@@ -1,12 +1,12 @@
 import {bleBuiltin} from './ble.js'
 import {consoleBuiltin} from './console.js'
+import {gpioBuiltin} from './gpio.js'
 import {httpBuiltin} from './http.js'
 import {i2cBuiltin} from './i2c.js'
 import {kvBuiltin} from './kv.js'
 import {neopixelBuiltin} from './neopixel.js'
 import {nvsKvBuiltin} from './nvs-kv.js'
 import {otaClientBuiltin} from './ota-client.js'
-import {pinBuiltin} from './pin.js'
 import {pwmBuiltin} from './pwm.js'
 import {sleepBuiltin} from './sleep.js'
 import {sntpBuiltin} from './sntp.js'
@@ -17,10 +17,10 @@ import {wifiBuiltin} from './wifi.js'
 
 export type {BuiltinDefinition, BuiltinName} from './types.js'
 
-/** Module name mapping: builtin name → native:* module name */
+/** Module name mapping: builtin name → replaced module name */
 export const builtinModuleNames: Record<BuiltinName, string> = {
   ble: 'native:mikro/ble',
-  pin: 'native:mikro/pin',
+  gpio: 'mikro/gpio',
   pwm: 'native:mikro/pwm',
   neopixel: 'native:mikro/neopixel',
   wifi: 'native:mikro/wifi',
@@ -39,7 +39,7 @@ export const builtinModuleNames: Record<BuiltinName, string> = {
 /** Default builtin implementations for the dev runner */
 export const defaultBuiltins: Record<BuiltinName, BuiltinDefinition> = {
   ble: bleBuiltin,
-  pin: pinBuiltin,
+  gpio: gpioBuiltin,
   pwm: pwmBuiltin,
   neopixel: neopixelBuiltin,
   kv: kvBuiltin,

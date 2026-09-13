@@ -6,12 +6,13 @@
  * accidental runtime import in app code.
  */
 
+import type {AnalogIn, DigitalIn, DigitalOut} from '@mikrojs/native/runtime/gpio/types'
 import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'
 
 type NR<T> = {ok: true; value: T} | {ok: false; error: {name: string; message: string}}
 type NRV = {ok: true} | {ok: false; error: {name: string; message: string}}
 
-/** Method signatures for each overridable builtin, matching the native:* native interface */
+/** Method signatures for each overridable builtin, matching the native module it replaces */
 export interface SimStubMethods {
   wifi: {
     connect(
@@ -79,12 +80,10 @@ export interface SimStubMethods {
     cancel(id: number): void
     pendingCount(): number
   }
-  pin: {
-    pinMode(pin: number, mode: number): NRV
-    digitalWrite(pin: number, value: number): NRV
-    digitalRead(pin: number): number
-    analogRead(pin: number, attenuation: number): NR<number>
-    analogReadMillivolts(pin: number, attenuation: number): NR<number>
+  gpio: {
+    DigitalOut: typeof DigitalOut
+    DigitalIn: typeof DigitalIn
+    AnalogIn: typeof AnalogIn
   }
   i2c: {
     begin(): NRV
@@ -139,7 +138,7 @@ export type SimStubName = keyof SimStubMethods
  */
 export type SimWifi = SimStubMethods['wifi']
 export type SimHttp = SimStubMethods['http']
-export type SimPin = SimStubMethods['pin']
+export type SimGpio = SimStubMethods['gpio']
 export type SimI2c = SimStubMethods['i2c']
 export type SimSpi = SimStubMethods['spi']
 export type SimSleep = SimStubMethods['sleep']

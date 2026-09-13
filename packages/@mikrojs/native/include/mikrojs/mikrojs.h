@@ -267,7 +267,7 @@ int MIK_ReserveModuleSlot(void);
 typedef JSModuleDef* (*MIKModuleInitFn)(JSContext* ctx);
 
 typedef struct mik_module_desc_t {
-    const char* name;         /* module name, e.g. "native:mikro/pin" */
+    const char* name;         /* module name, e.g. "native:mikro/sleep" */
     MIKModuleInitFn init;     /* called on first import; returns the JSModuleDef */
     MIKLoopConsumeFn consume; /* event loop consumer (nullable) */
     MIKLoopDestroyFn destroy; /* cleanup on shutdown (nullable) */
@@ -292,6 +292,7 @@ extern mik_module_desc_t* mik__module_registry_head;
 #define MIK__REQUIRE_NATIVE_NS(name_) MIK__REQUIRE_PREFIX(name_, "native:" MIK_PACKAGE_NAME "/")
 #define MIK__REQUIRE_BUILTIN_NS(name_) MIK__REQUIRE_PREFIX(name_, MIK_PACKAGE_NAME "/")
 #else
+#define MIK__REQUIRE_PREFIX(name_, prefix_) static_assert(true, "")
 #define MIK__REQUIRE_NATIVE_NS(name_) static_assert(true, "")
 #define MIK__REQUIRE_BUILTIN_NS(name_) static_assert(true, "")
 #endif
@@ -300,6 +301,14 @@ extern mik_module_desc_t* mik__module_registry_head;
  * via -u flags (static symbols in static libraries get stripped). */
 #define MIK_REGISTER_MODULE(id, name_, init_, consume_, destroy_)              \
     MIK__REQUIRE_NATIVE_NS(name_);                                             \
+    MIK__MODULE_DESC(id, name_, init_, consume_, destroy_)
+/* A platform C module under its public mikro/ name (mikro/gpio on ESP-IDF), for
+ * modules with no bytecode layer. Core runtime only. */
+#define MIK__REGISTER_PUBLIC_MODULE(id, name_, init_, consume_, destroy_)      \
+    MIK__REQUIRE_BUILTIN_NS(name_);                                            \
+    MIK__REQUIRE_PREFIX(name_, "mikro/");                                      \
+    MIK__MODULE_DESC(id, name_, init_, consume_, destroy_)
+#define MIK__MODULE_DESC(id, name_, init_, consume_, destroy_)                 \
     mik_module_desc_t mik__mod_desc_##id = {                                   \
         name_, init_, consume_, destroy_, NULL};                               \
     static void __attribute__((constructor)) mik__register_mod_##id(void) {    \
@@ -438,6 +447,19 @@ void MIK_ProtocolServeLoop(void);
  * Does not close the session — the caller can re-attach a new runtime
  * and call MIK_ProtocolServeLoop() again. */
 void MIK_ProtocolExit(void);
+
+/* Exclusive GPIO claims, shared by every module and driver that configures a
+ * GPIO pin. MIK_ClaimGpio returns false when the GPIO is already held. `owner`
+ * must be a non-null static string, such as a class name ("Pwm"); it is
+ * reported to the app in GpioInUse errors, and a NULL owner claims and
+ * releases nothing. Numbers outside 0..63, such as -1 for an unused bus role,
+ * are not tracked: the claim succeeds and release does nothing. Release only
+ * frees a GPIO held under the same owner string, so a stale release cannot
+ * free another module's claim (two instances of one class share an owner). */
+bool MIK_ClaimGpio(int gpio, const char* owner);
+void MIK_ReleaseGpio(int gpio, const char* owner);
+/* The current owner of `gpio`, or NULL when it is free. */
+const char* MIK_GpioOwner(int gpio);
 
 #ifdef __cplusplus
 }

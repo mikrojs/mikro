@@ -6,7 +6,7 @@ describe('isBuiltinModule', () => {
   it('treats any native: specifier as a builtin', () => {
     // `native:` is a firmware-only scheme that never resolves to a file on disk,
     // so the tracer must always skip it — including app-local native modules.
-    expect(isBuiltinModule('native:mikro/pin')).toBe(true)
+    expect(isBuiltinModule('native:mikro/sleep')).toBe(true)
     expect(isBuiltinModule('native:mikrobird/melspec')).toBe(true)
     expect(isBuiltinModule('native:console')).toBe(true)
   })

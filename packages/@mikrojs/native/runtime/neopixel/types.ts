@@ -13,7 +13,7 @@ export type NeoPixelError =
   | {name: 'ShowFailed'; message: string}
 
 export declare class NeoPixel {
-  constructor(pin: number, options: NeoPixelOptions)
+  constructor(gpio: number, options: NeoPixelOptions)
   /** Set a single pixel's color (0–255 per channel) */
   setPixel(index: number, r: number, g: number, b: number, w?: number): Result<void, NeoPixelError>
   /** Set all pixels to the same color */

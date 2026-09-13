@@ -1,7 +1,7 @@
 import {describe, test} from 'mikro/test'
 
-describe('mikro/pin', () => {
+describe('mikro/gpio', () => {
   test('import', async () => {
-    await import('mikro/pin')
+    await import('mikro/gpio')
   })
 })

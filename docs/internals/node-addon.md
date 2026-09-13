@@ -155,10 +155,10 @@ Virtual modules let the host override any module with a source string:
 
 ```ts
 rt.registerModuleSource(
-  'native:pin',
+  'native:mikro/sleep',
   `
-    export function pinMode() { /* mock */ }
-    export function digitalWrite() { /* mock */ }
+    export function deepSleep() { /* mock */ }
+    export function lightSleep() { /* mock */ }
 `,
 )
 ```

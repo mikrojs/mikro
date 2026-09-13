@@ -6,8 +6,8 @@ import type {NeoPixelError, NeoPixelOptions} from './types.js'
 export class NeoPixel {
   #native: InstanceType<typeof NativeNeoPixel>
 
-  constructor(pin: number, options: NeoPixelOptions) {
-    this.#native = new NativeNeoPixel(pin, options.count, options.rgbw ? 4 : 3)
+  constructor(gpio: number, options: NeoPixelOptions) {
+    this.#native = new NativeNeoPixel(gpio, options.count, options.rgbw ? 4 : 3)
   }
 
   setPixel(

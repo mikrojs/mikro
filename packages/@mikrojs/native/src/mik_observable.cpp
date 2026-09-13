@@ -1052,27 +1052,37 @@ static JSValue multicast_emit_complete(JSContext* ctx, JSValueConst this_val, in
     return JS_UNDEFINED;
 }
 
+/* The {observable, next, complete} triple behind withEmitters(). Returns -1
+ * with an exception pending; on success the caller owns all three values. */
+static int multicast_new(JSContext* ctx, JSValue* observable, JSValue* next,
+                         JSValue* complete) {
+    JSValue mc_obj = JS_NewObjectClass(ctx, multicast_class_id);
+    if (JS_IsException(mc_obj)) return -1;
+    auto* m = new MulticastState{ctx, false, {}};
+    JS_SetOpaque(mc_obj, m);
+
+    JSValue subscribe_cb = JS_NewCFunctionData(ctx, multicast_subscribe, 1, 0, 1, &mc_obj);
+    JSValue obs = make_observable_with_cb(ctx, subscribe_cb);
+    if (JS_IsException(obs)) {
+        JS_FreeValue(ctx, mc_obj);
+        return -1;
+    }
+
+    *observable = obs;
+    *next = JS_NewCFunctionData(ctx, multicast_emit_next, 1, 0, 1, &mc_obj);
+    *complete = JS_NewCFunctionData(ctx, multicast_emit_complete, 0, 0, 1, &mc_obj);
+    JS_FreeValue(ctx, mc_obj);
+    return 0;
+}
+
 static JSValue observable_with_emitters(JSContext* ctx, JSValueConst this_val, int argc,
                                         JSValueConst* argv) {
     (void)this_val;
     (void)argc;
     (void)argv;
 
-    JSValue mc_obj = JS_NewObjectClass(ctx, multicast_class_id);
-    if (JS_IsException(mc_obj)) return mc_obj;
-    auto* m = new MulticastState{ctx, false, {}};
-    JS_SetOpaque(mc_obj, m);
-
-    JSValue subscribe_cb = JS_NewCFunctionData(ctx, multicast_subscribe, 1, 0, 1, &mc_obj);
-    JSValue observable = make_observable_with_cb(ctx, subscribe_cb);
-    if (JS_IsException(observable)) {
-        JS_FreeValue(ctx, mc_obj);
-        return observable;
-    }
-
-    JSValue next_fn = JS_NewCFunctionData(ctx, multicast_emit_next, 1, 0, 1, &mc_obj);
-    JSValue complete_fn = JS_NewCFunctionData(ctx, multicast_emit_complete, 0, 0, 1, &mc_obj);
-    JS_FreeValue(ctx, mc_obj);
+    JSValue observable, next_fn, complete_fn;
+    if (multicast_new(ctx, &observable, &next_fn, &complete_fn) < 0) return JS_EXCEPTION;
 
     JSValue result = JS_NewObject(ctx);
     JS_DefinePropertyValueStr(ctx, result, "observable", observable, JS_PROP_C_W_E);
@@ -1962,6 +1972,13 @@ JSModuleDef* mik__observable_operators_load(JSContext* ctx) {
     }
     JS_AddModuleExport(ctx, m, "pipe");
     return m;
+}
+
+int mik__observable_multicast_new(JSContext* ctx, JSValue* observable, JSValue* next,
+                                  JSValue* complete) {
+    /* A C module can hand out an Observable before any JS imports mikro/observable. */
+    ensure_protos(ctx);
+    return multicast_new(ctx, observable, next, complete);
 }
 
 void mik__observable_dispatch_free(MIKRuntime* mik_rt) {

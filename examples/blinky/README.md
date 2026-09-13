@@ -8,7 +8,7 @@ npm create mikro -- --template blinky
 
 ## Hardware
 
-Drives GPIO 20. Wire an LED + resistor to that pin, or change the pin number to match your board's built-in LED.
+Drives GPIO 20. Wire an LED + resistor to that pin, or change the GPIO number to match your board's built-in LED.
 
 ## Run
 

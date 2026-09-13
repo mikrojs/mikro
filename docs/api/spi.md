@@ -94,11 +94,12 @@ interface SpiOptions {
 
 ### SpiError
 
-| Variant           | Fields    | Description                  |
-| ----------------- | --------- | ---------------------------- |
-| `BusInitFailed`   | `message` | Failed to initialize the bus |
-| `AddDeviceFailed` | `message` | Failed to add device to bus  |
-| `NotStarted`      | —         | `begin()` was not called     |
-| `MissingPins`     | —         | Required pins not provided   |
-| `TransferFailed`  | `message` | Full-duplex transfer failed  |
-| `WriteFailed`     | `message` | Write operation failed       |
+| Variant           | Fields             | Description                                                |
+| ----------------- | ------------------ | ---------------------------------------------------------- |
+| `GpioInUse`       | `owner`, `message` | A pin is held by another handle, peripheral or the console |
+| `BusInitFailed`   | `message`          | Failed to initialize the bus                               |
+| `AddDeviceFailed` | `message`          | Failed to add device to bus                                |
+| `NotStarted`      | —                  | `begin()` was not called                                   |
+| `MissingPins`     | —                  | Required pins not provided                                 |
+| `TransferFailed`  | `message`          | Full-duplex transfer failed                                |
+| `WriteFailed`     | `message`          | Write operation failed                                     |

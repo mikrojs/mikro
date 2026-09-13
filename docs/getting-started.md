@@ -60,7 +60,7 @@ my-app/
 ```
 
 ::: tip Renamed from `mikrojs`
-The package and CLI were renamed from `mikrojs` to `mikro` with no compatibility shim. Use the `mikro` dependency, the `mikro` command, and `mikro/`-prefixed imports (for example `import {pinMode} from 'mikro/pin'`). The `@mikrojs/*` package scope is unchanged.
+The package and CLI were renamed from `mikrojs` to `mikro` with no compatibility shim. Use the `mikro` dependency, the `mikro` command, and `mikro/`-prefixed imports (for example `import {DigitalOut} from 'mikro/gpio'`). The `@mikrojs/*` package scope is unchanged.
 :::
 
 ::: details pnpm reports "Ignored build scripts: @mikrojs/quickjs"
@@ -122,18 +122,16 @@ bunx mikro dev
 This connects to your board, deploys your code, and watches for changes. Now open `app/main.ts` in your preferred code editor or IDE and write a blink program:
 
 ```ts twoslash
-import {digitalWrite, pinMode} from 'mikro/pin'
+import {DigitalOut} from 'mikro/gpio'
 import {sleep} from 'mikro/sleep'
 
 // GPIO 15 is the built-in LED on XIAO ESP32C6. Replace with your board's LED pin.
-const LED = 15
-
-pinMode(LED, 'OUTPUT').orPanic('Failed to set pin mode')
+const led = DigitalOut(15).orPanic('Failed to configure LED pin')
 
 while (true) {
-  digitalWrite(LED, 1)
+  led.write(1)
   await sleep(500)
-  digitalWrite(LED, 0)
+  led.write(0)
   await sleep(500)
 }
 ```
