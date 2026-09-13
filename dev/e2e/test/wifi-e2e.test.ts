@@ -11,21 +11,17 @@ const WIFI_PASSPHRASE = env.get('WIFI_PASSPHRASE')
 
 const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
 
-// The fetch and sntp tests load their module graphs on top of an
-// already-connected wifi stack (~20KB retained); together that needs
-// ~48KB of free JS heap (estimate). Chips with less skip those two
-// tests but still cover connect/disconnect (e.g. esp32c3).
 const m = memoryUsage()
-const fitsFetch = m.heapTotal - m.heapUsed > 48 * 1024
 
 // The firmware refuses to start the radio under 40KB of free internal RAM
 // (it would otherwise abort() in PHY init), and by the time that check runs
-// the wifi module graph and driver init have already cost ~55-60KB of system
-// heap. That puts the real entry bar near 100KB; 128KB adds room for RX
-// buffers during association. Chips under it skip rather than fail on the
-// pre-flight (e.g. esp32c3). systemFree is 0 on the host sim, where the
-// stubbed radio costs nothing.
-const fitsRadio = m.systemFree === 0 || m.systemFree > 128 * 1024
+// the wifi module graph and driver init have already cost ~55-60KB of it.
+// That puts the entry bar at 100KB of internalFree (systemFree also counts
+// PSRAM). Measured on esp32c3: from ~111KB at entry this file connects,
+// fetches over plain http and syncs sntp with 46.7KB still free at its low
+// point. TLS needs more; the http files carry their own 128KB bar.
+// internalFree is 0 on the host sim, where the stubbed radio costs nothing.
+const fitsRadio = m.internalFree === 0 || m.internalFree > 100 * 1024
 
 describe.runIf(hasWifi && fitsRadio)('wifi e2e', () => {
   // A failed first attempt costs the attempt (~4-6s) plus the 2s retry
@@ -44,7 +40,7 @@ describe.runIf(hasWifi && fitsRadio)('wifi e2e', () => {
     {timeout: 25_000},
   )
 
-  test.runIf(fitsFetch)('http request', async () => {
+  test('http request', async () => {
     const {request} = await import('mikro/http/request')
     const result = await request('http://httpbingo.org/get')
     assert.ok(result)
@@ -54,7 +50,7 @@ describe.runIf(hasWifi && fitsRadio)('wifi e2e', () => {
 
   // 20s: NTP over UDP retries on loss, and a slow DNS answer for the pool
   // hostname eats into the budget before the first packet leaves.
-  test.runIf(fitsFetch)(
+  test(
     'sntp sync',
     async () => {
       const {sntp} = await import('mikro/sntp')

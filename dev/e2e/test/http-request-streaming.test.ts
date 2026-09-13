@@ -18,11 +18,10 @@ const WIFI_PASSPHRASE = env.get('WIFI_PASSPHRASE')
 const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
 const isSim = env.get('MIKRO_ENV') === 'simulator'
 
-// The request/wifi module graph plus TLS working room needs ~48KB of
-// free JS heap (estimate; the graph alone retains ~30KB). Chips whose
-// per-file runtime has less than that skip this file (e.g. esp32c3).
+// Internal-RAM bar for wifi plus a TLS handshake; the derivation is in
+// http-request-e2e.test.ts next to its fitsHttp.
 const m = memoryUsage()
-const fitsHttp = m.heapTotal - m.heapUsed > 48 * 1024
+const fitsHttp = m.internalFree > 128 * 1024
 
 let request: typeof import('mikro/http/request').request
 let decodeUtf8: typeof import('mikro/stream').decodeUtf8

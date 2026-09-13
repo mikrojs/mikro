@@ -8,11 +8,12 @@ const WIFI_PASSPHRASE = env.get('WIFI_PASSPHRASE')
 const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
 const isSim = env.get('MIKRO_ENV') === 'simulator'
 
-// The request/wifi module graph plus TLS working room needs ~48KB of
-// free JS heap (estimate; the graph alone retains ~30KB). Chips whose
-// per-file runtime has less than that skip this file (e.g. esp32c3).
+// Requests here go to the device's own server over plain http, so the
+// bar is the radio one from wifi-e2e.test.ts, not the TLS one. Measured
+// on esp32c3: from ~111KB at entry the file passes with 21.7KB free at
+// its low point (server plus request graph, 91KB peak). That is thin.
 const m = memoryUsage()
-const fitsHttp = m.heapTotal - m.heapUsed > 48 * 1024
+const fitsHttp = m.internalFree > 100 * 1024
 
 const PORT = 8088
 

@@ -8,13 +8,17 @@ const WIFI_SSID = env.get('WIFI_SSID')
 const WIFI_PASSPHRASE = env.get('WIFI_PASSPHRASE')
 const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
 
-// The wifi module retains ~20KB once loaded (imported lazily in
-// beforeAll so the lifecycle tests still run where it doesn't fit);
-// the gate doubles that for import-time evaluation peaks and native
-// wifi startup allocations. Chips whose per-file runtime has less
-// free heap skip the roundtrip section (e.g. esp32c3).
+// The roundtrip section turns the radio on, which costs internal RAM
+// (systemFree also counts PSRAM, so the bar is on internalFree). Measured
+// on esp32c3: from ~111KB free at file entry the section uses 53KB
+// (driver, module graph, sockets) and passes, and the firmware refuses to
+// start the radio under 40KB of free internal RAM once the driver's ~60KB
+// is in. 100KB at entry keeps a margin above that floor without excluding
+// the C3; plain UDP has none of the TLS transient that sets the 128KB bar
+// in http-request-e2e.test.ts. internalFree is 0 on the host sim, where
+// the stubbed radio costs nothing.
 const m = memoryUsage()
-const fitsWifi = m.heapTotal - m.heapUsed > 40 * 1024
+const fitsWifi = m.internalFree === 0 || m.internalFree > 100 * 1024
 
 /* ── Lifecycle tests — work on bare device, no network needed ───── */
 
