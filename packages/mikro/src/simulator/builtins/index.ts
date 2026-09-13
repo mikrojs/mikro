@@ -22,7 +22,7 @@ export const builtinModuleNames: Record<BuiltinName, string> = {
   ble: 'native:mikro/ble',
   gpio: 'mikro/gpio',
   pwm: 'native:mikro/pwm',
-  neopixel: 'native:mikro/neopixel',
+  neopixel: 'mikro/neopixel',
   wifi: 'native:mikro/wifi',
   i2c: 'native:mikro/i2c',
   spi: 'native:mikro/spi',

@@ -146,6 +146,24 @@ TEST_CASE("Pwm and DigitalOut report each other as owners", "[gpio]") {
     teardown();
 }
 
+TEST_CASE("NeoPixel and DigitalOut report each other as owners", "[gpio]") {
+    setup();
+    run(R"(
+        import {DigitalOut} from 'mikro/gpio'
+        import {NeoPixel} from 'mikro/neopixel'
+        const pixels = NeoPixel(TEST_GPIO, {count: 1}).orPanic('pixels')
+        const blocked = DigitalOut(TEST_GPIO)
+        pixels.end()
+        const led = DigitalOut(TEST_GPIO).orPanic('led')
+        const blockedPixels = NeoPixel(TEST_GPIO, {count: 1})
+        globalThis.out = JSON.stringify([blocked.error.owner, blockedPixels.error.name,
+                                         blockedPixels.error.owner])
+        led.end()
+    )");
+    TEST_ASSERT_EQUAL_STRING("[\"NeoPixel\",\"GpioInUse\",\"DigitalOut\"]", out().c_str());
+    teardown();
+}
+
 TEST_CASE("DigitalIn.onChange emits level changes and completes on end()", "[gpio]") {
     setup();
     run(R"(

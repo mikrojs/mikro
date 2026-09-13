@@ -1,0 +1,54 @@
+/* Shared harness for device tests that drive a mikro module from JS: a fresh
+ * runtime per case with TEST_GPIO as a global, module-code evaluation, and
+ * results read back as JSON from globalThis.out. */
+#pragma once
+
+#include <cstring>
+#include <string>
+
+#include "mikrojs.h"
+#include "private.h"
+#include "quickjs.h"
+#include "unity.h"
+#include "utils.h"
+
+#define TEST_GPIO CONFIG_MIKROJS_TEST_GPIO_PIN
+
+namespace js_harness {
+
+inline MIKRuntime* rt;
+inline JSContext* ctx;
+
+inline void setup() {
+    rt = MIK_NewRuntime();
+    ctx = MIK_GetJSContext(rt);
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "TEST_GPIO", JS_NewInt32(ctx, TEST_GPIO));
+    JS_FreeValue(ctx, global);
+}
+
+inline void teardown() {
+    MIK_FreeRuntime(rt);
+    TEST_ASSERT_NULL_MESSAGE(MIK_GpioOwner(TEST_GPIO), "runtime teardown should release the GPIO");
+}
+
+inline void run(const char* code) {
+    JSValue ret = MIK_EvalModuleContent(ctx, "test.js", code, strlen(code));
+    if (JS_IsException(ret)) mik_dump_error(ctx);
+    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "module eval threw");
+    JS_FreeValue(ctx, ret);
+    mik__execute_jobs(ctx);
+}
+
+inline std::string out() {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue v = JS_GetPropertyStr(ctx, global, "out");
+    const char* s = JS_ToCString(ctx, v);
+    std::string result = s ? s : "";
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, v);
+    JS_FreeValue(ctx, global);
+    return result;
+}
+
+}  // namespace js_harness

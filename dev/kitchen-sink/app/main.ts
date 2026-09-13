@@ -93,11 +93,11 @@ console.log('i2c end:', i2c.end())
 logMem('after i2c')
 
 // --- neopixel ---
-const neo = new NeoPixel(8, {count: 1})
+const neo = NeoPixel(8, {count: 1}).orPanic('neopixel')
 console.log('neopixel setPixel:', neo.setPixel(0, 255, 0, 0))
 console.log('neopixel show:', neo.show())
 console.log('neopixel clear:', neo.clear())
-console.log('neopixel end:', neo.end())
+neo.end()
 logMem('after neopixel')
 
 // --- wifi ---

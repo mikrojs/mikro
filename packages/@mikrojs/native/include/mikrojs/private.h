@@ -324,7 +324,7 @@ int mik__observable_multicast_new(JSContext* ctx, JSValue* observable, JSValue* 
 JSValue mik__claim_gpios(JSContext* ctx, const int* gpios, int count, const char* owner);
 void mik__release_gpios(const int* gpios, int count, const char* owner);
 /* Throws the GpioInUse message as an InternalError, for modules that report a
- * lost claim by throwing (Pwm, NeoPixel). Call after MIK_ClaimGpio fails. */
+ * lost claim by throwing (Pwm). Call after MIK_ClaimGpio fails. */
 JSValue mik__throw_gpio_in_use(JSContext* ctx, int gpio);
 
 /* Watchdog (mik_watchdog.cpp). */

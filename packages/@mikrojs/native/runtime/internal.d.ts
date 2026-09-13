@@ -343,24 +343,6 @@ declare module 'native:mikro/pwm' {
   }
 }
 
-declare module 'native:mikro/neopixel' {
-  import type {NeoPixelError} from '@mikrojs/native/runtime/neopixel/types'
-  import type {Result} from 'mikro/result'
-
-  export declare const NeoPixel: {
-    prototype: NeoPixel
-    new (gpio: number, numLeds: number, bytesPerLed: number): NeoPixel
-  }
-
-  export interface NeoPixel {
-    setPixel(index: number, r: number, g: number, b: number, w: number): Result<void, NeoPixelError>
-    fill(r: number, g: number, b: number, w: number): Result<void, NeoPixelError>
-    show(): Result<void, NeoPixelError>
-    clear(): Result<void, NeoPixelError>
-    end(): Result<void, NeoPixelError>
-  }
-}
-
 declare module 'native:mikro/uart' {
   import type {UartError} from '@mikrojs/native/runtime/uart/types'
   import type {Result} from 'mikro/result'

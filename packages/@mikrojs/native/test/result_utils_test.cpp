@@ -329,3 +329,66 @@ TEST_CASE("PSRAM heap routes JS allocations through the platform" *
     MIK_FreeRuntime(rt);
     mik__set_quickjs_heap_psram(false);
 }
+
+/* Evaluates `src` as a global expression; the caller frees the value. */
+static JSValue eval_value(JSContext* ctx, const char* src) {
+    return JS_Eval(ctx, src, strlen(src), "args.js", JS_EVAL_TYPE_GLOBAL);
+}
+
+/* Takes the pending exception and returns its name. */
+static std::string take_exception_name(JSContext* ctx) {
+    JSValue exc = JS_GetException(ctx);
+    JSValue name = JS_GetPropertyStr(ctx, exc, "name");
+    const char* s = JS_ToCString(ctx, name);
+    std::string out = s ? s : "";
+    JS_FreeCString(ctx, s);
+    JS_FreeValue(ctx, name);
+    JS_FreeValue(ctx, exc);
+    return out;
+}
+
+TEST_CASE("factory argument readers throw TypeError for the wrong types") {
+    RtFixture f;
+    int32_t n = -7;
+
+    SUBCASE("integers") {
+        for (const char* bad : {"NaN", "1.5", "'3'", "undefined", "2 ** 40"}) {
+            JSValue v = eval_value(f.ctx, bad);
+            CHECK(mik__to_int_arg(f.ctx, v, "gpio", &n) == -1);
+            CHECK(take_exception_name(f.ctx) == "TypeError");
+            JS_FreeValue(f.ctx, v);
+        }
+        CHECK(mik__to_int_arg(f.ctx, JS_NewInt32(f.ctx, -1), "gpio", &n) == 0);
+        CHECK(n == -1);
+    }
+
+    SUBCASE("options") {
+        JSValue opts = eval_value(f.ctx, "({count: 4, rgbw: true, bad: 1})");
+        bool flag = false;
+        CHECK(mik__int_option(f.ctx, opts, "count", true, &n) == 0);
+        CHECK(n == 4);
+        CHECK(mik__int_option(f.ctx, opts, "missing", false, &n) == 0);
+        CHECK(n == 4);
+        CHECK(mik__int_option(f.ctx, opts, "missing", true, &n) == -1);
+        CHECK(take_exception_name(f.ctx) == "TypeError");
+        CHECK(mik__bool_option(f.ctx, opts, "rgbw", &flag) == 0);
+        CHECK(flag);
+        CHECK(mik__bool_option(f.ctx, opts, "bad", &flag) == -1);
+        CHECK(take_exception_name(f.ctx) == "TypeError");
+        CHECK(mik__int_option(f.ctx, JS_UNDEFINED, "count", false, &n) == 0);
+        CHECK(mik__int_option(f.ctx, JS_UNDEFINED, "count", true, &n) == -1);
+        CHECK(take_exception_name(f.ctx) == "TypeError");
+        JS_FreeValue(f.ctx, opts);
+    }
+
+    SUBCASE("the options argument") {
+        JSValue argv[] = {JS_NewInt32(f.ctx, 1), JS_NewInt32(f.ctx, 2)};
+        JSValueConst out = JS_UNDEFINED;
+        CHECK(mik__options_arg(f.ctx, 1, argv, 1, false, &out) == 0);
+        CHECK(JS_IsUndefined(out));
+        CHECK(mik__options_arg(f.ctx, 1, argv, 1, true, &out) == -1);
+        CHECK(take_exception_name(f.ctx) == "TypeError");
+        CHECK(mik__options_arg(f.ctx, 2, argv, 1, false, &out) == -1);
+        CHECK(take_exception_name(f.ctx) == "TypeError");
+    }
+}

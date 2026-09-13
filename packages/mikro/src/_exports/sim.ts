@@ -7,6 +7,7 @@
  */
 
 import type {AnalogIn, DigitalIn, DigitalOut} from '@mikrojs/native/runtime/gpio/types'
+import type {NeoPixel} from '@mikrojs/native/runtime/neopixel/types'
 import type {DeepWakeupSources, LightWakeupSources} from '@mikrojs/native/runtime/sleep/types'
 
 type NR<T> = {ok: true; value: T} | {ok: false; error: {name: string; message: string}}
@@ -85,6 +86,9 @@ export interface SimStubMethods {
     DigitalIn: typeof DigitalIn
     AnalogIn: typeof AnalogIn
   }
+  neopixel: {
+    NeoPixel: typeof NeoPixel
+  }
   i2c: {
     begin(): NRV
     end(): NRV
@@ -139,6 +143,7 @@ export type SimStubName = keyof SimStubMethods
 export type SimWifi = SimStubMethods['wifi']
 export type SimHttp = SimStubMethods['http']
 export type SimGpio = SimStubMethods['gpio']
+export type SimNeoPixel = SimStubMethods['neopixel']
 export type SimI2c = SimStubMethods['i2c']
 export type SimSpi = SimStubMethods['spi']
 export type SimSleep = SimStubMethods['sleep']

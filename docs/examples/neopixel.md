@@ -19,30 +19,29 @@ Drive WS2812 / SK6812 RGB LEDs with animated patterns. See the [neopixel API ref
 <template #code>
 
 ```ts twoslash
-// @noErrors
 import {NeoPixel} from 'mikro/neopixel'
 import {sleep} from 'mikro/sleep'
 
 const PIN = 8
 const NUM_LEDS = 24
-const BRIGHTNESS = 1
-const PATTERN_DURATION = 8000
 
-const pixels = new NeoPixel(PIN, {count: NUM_LEDS})
+const pixels = NeoPixel(PIN, {count: NUM_LEDS}).orPanic('Failed to set up the LED strip')
 
-// Define your patterns as async functions
-// Each pattern animates the pixels for PATTERN_DURATION ms
+// Maps a position from 0 to 255 on the color wheel to [r, g, b]
+function wheel(pos: number): [number, number, number] {
+  if (pos < 85) return [255 - pos * 3, pos * 3, 0]
+  if (pos < 170) return [0, 255 - (pos - 85) * 3, (pos - 85) * 3]
+  return [(pos - 170) * 3, 0, 255 - (pos - 170) * 3]
+}
 
-while (true) {
-  // Rainbow cycle
-  for (let t = 0; t < PATTERN_DURATION; t += 20) {
-    for (let i = 0; i < NUM_LEDS; i++) {
-      const hue = ((i / NUM_LEDS) * 360 + t * 0.1) % 360
-      pixels.setPixel(i, hsvToRgb(hue, 1, BRIGHTNESS)).orPanic('setPixel failed')
-    }
-    ;(await pixels.show()).orPanic('show failed')
-    await sleep(20)
+// Rainbow cycle
+for (let offset = 0; ; offset = (offset + 1) % 256) {
+  for (let i = 0; i < NUM_LEDS; i++) {
+    const [r, g, b] = wheel((Math.floor((i * 256) / NUM_LEDS) + offset) % 256)
+    pixels.setPixel(i, r, g, b).orPanic('setPixel failed')
   }
+  pixels.show().orPanic('show failed')
+  await sleep(20)
 }
 ```
 
@@ -60,12 +59,12 @@ The full example in the repository includes multiple patterns: rainbow, comet, b
 
 ## Key concepts
 
-- **`new NeoPixel(pin, {count})`**: creates a NeoPixel controller on the given GPIO pin.
-- **`pixels.setPixel(index, [r, g, b])`**: sets a pixel's color. Returns a [`Result`](/api/result).
-- **`pixels.fill([r, g, b])`**: sets all pixels to the same color.
-- **`pixels.show()`**: pushes the pixel buffer to the hardware. Returns a `Promise<Result>`.
+- **`NeoPixel(gpio, {count})`**: claims the GPIO pin for the strip's data line and returns a [`Result`](/api/result) with the handle.
+- **`pixels.setPixel(index, r, g, b)`**: sets a pixel's color, 0 to 255 per channel. Returns a [`Result`](/api/result).
+- **`pixels.fill(r, g, b)`**: sets all pixels to the same color.
+- **`pixels.show()`**: pushes the pixel buffer to the hardware. Returns a [`Result`](/api/result).
 - **`pixels.clear()`**: turns off all pixels (sets to black).
-- **`pixels.end()`**: releases the hardware resources.
+- **`pixels.end()`**: releases the hardware resources and the GPIO pin.
 
 All methods that can fail return a [`Result`](/api/result), so you can use `.orPanic()` for quick prototyping or check `.ok` for production code.
 

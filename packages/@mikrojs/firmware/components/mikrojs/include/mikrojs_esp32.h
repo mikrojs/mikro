@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <quickjs.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -110,6 +112,16 @@ void mik_logfile_reset(void);
  * source and restores the any-edge interrupt of a live DigitalIn on that GPIO. */
 void mik__gpio_wake_prepare(int gpio);
 void mik__gpio_wake_done(int gpio);
+
+/* GPIO validation for handle factories (mik_gpio.cpp). Returns the InvalidGpio
+ * Result for the first GPIO the chip lacks, or that cannot drive a signal when
+ * `output` is set; JS_UNDEFINED when all pass. Entries with gpio -1 are unused
+ * pins and skipped. Call before claiming. */
+typedef struct {
+    int gpio;
+    bool output;
+} MIKGpioCheck;
+JSValue mik__gpio_check(JSContext* ctx, const MIKGpioCheck* checks, int count);
 
 /* Serial binary I/O (mik_serial_io.cpp) */
 void mik__serial_binary_begin_no_echo(void);
