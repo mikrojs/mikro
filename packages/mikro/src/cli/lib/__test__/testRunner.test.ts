@@ -22,10 +22,10 @@ import {mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:
 import {tmpdir} from 'node:os'
 import * as pathlib from 'node:path'
 
-import {firstValueFrom, of, Subject} from 'rxjs'
+import {defer, firstValueFrom, of, Subject} from 'rxjs'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
-import {readSnapshot, writeSnapshot} from '../heapSnapshots.js'
+import {readBootSnapshot, readSnapshot, writeSnapshot} from '../heapSnapshots.js'
 import type {ReadyEvent, ReplEvent, ReplSession, TestEvent} from '../session.js'
 import {
   applyHeapSnapshot,
@@ -35,6 +35,7 @@ import {
   formatHeapStale,
   formatSuiteBreakdown,
   runTestManifest,
+  runTestManifestIsolated,
   type TestFileResult,
   type TestManifestCallbacks,
 } from '../testRunner.js'
@@ -690,6 +691,78 @@ describe('runTestManifest feature gate', () => {
     )
     const session = gateSession({features: []})
     await expect(run(session, 'app/test/dyn.test.ts')).rejects.toThrow('deploy called')
+  })
+})
+
+describe('runTestManifestIsolated', () => {
+  let originalCwd: string
+  let tempDir: string
+
+  beforeEach(() => {
+    originalCwd = process.cwd()
+    tempDir = realpathSync(mkdtempSync(pathlib.join(tmpdir(), 'test-isolate-')))
+    writeFileSync(
+      pathlib.join(tempDir, 'package.json'),
+      JSON.stringify({name: 'fixture', version: '0.0.0', type: 'module', main: './app/main.ts'}),
+    )
+    mkdirSync(pathlib.join(tempDir, 'app', 'test'), {recursive: true})
+    process.chdir(tempDir)
+  })
+
+  afterEach(() => {
+    process.chdir(originalCwd)
+    rmSync(tempDir, {recursive: true, force: true})
+  })
+
+  it('deploys each file on its own and checks the boot figures once', async () => {
+    const names = ['a', 'b']
+    const files = names.map((n) => pathlib.join(tempDir, 'app', 'test', `${n}.test.ts`))
+    for (const file of files) writeFileSync(file, 'export {}\n')
+    let boots = 0
+    const ready = {type: 'ready', chip: 'esp32c6', id: null, version: null}
+    const session = {
+      awaitReady$: () => of(ready as ReadyEvent),
+      // Every restart boots with 50KB less heap than the one before.
+      ready$: defer(() =>
+        of({...ready, heapFree: 200_000 - boots * 50_000, systemFree: 250_000} as ReadyEvent),
+      ),
+      messages$: defer(() =>
+        of(announce(1, 1, `/app/test/${names[boots - 1]}.test.js`), runDone(), manifestDone()),
+      ),
+      deploy() {
+        boots++
+        return of({type: 'complete', deployed: true, stats: {put: 1, kept: 0}})
+      },
+      restart() {},
+      close() {},
+    } as unknown as ReplSession
+    const {cb, rec} = recorder()
+    const onBoot = vi.fn()
+
+    const results = await runTestManifestIsolated(
+      session,
+      files,
+      {
+        minify: false,
+        bytecode: false,
+        envVars: [],
+        timeout: 1000,
+        buildDir: pathlib.join(tempDir, '.build'),
+        mikroEnv: 'test',
+        updateHeapSnapshots: true,
+      },
+      {...cb, onBoot},
+    )
+
+    expect(boots).toBe(2)
+    expect(rec.starts).toEqual([
+      {file: files[0], index: 0},
+      {file: files[1], index: 1},
+    ])
+    expect(results.map((r) => r.passed)).toEqual([1, 1])
+    // The second boot's lower figure is neither reported nor written.
+    expect(onBoot).toHaveBeenCalledOnce()
+    expect(readBootSnapshot(tempDir, 'esp32c6')?.heapFree).toBe(150_000)
   })
 })
 
