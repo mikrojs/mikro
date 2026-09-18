@@ -12,11 +12,12 @@ import {lastValueFrom, tap} from 'rxjs'
 
 import type {LogLevel, Minifier, MinifyLevel} from '../../../_exports/index.js'
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
-import {build, type BuildEvent} from '../../lib/build.js'
+import {build, type BuildEvent, type BuildFeatures} from '../../lib/build.js'
 import {buildConfigDefaults, serializeConfigSchema} from '../../lib/configSchema.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {formatDuplicatePackagesNotice} from '../../lib/duplicatePackages.js'
 import {describeError, UserError} from '../../lib/errorMessage.js'
+import {formatFeaturesLine} from '../../lib/featureGate.js'
 import {formatSize} from '../../lib/formatSize.js'
 import {loadMikroConfig} from '../../lib/loadMikroConfig.js'
 import {
@@ -127,6 +128,7 @@ export async function packProject(options: {
   const buildDir = pathlib.join(getMikroDir(), 'ota-build')
   let duplicatePackages: DuplicatePackage[] | undefined
 
+  let features: BuildFeatures | undefined
   await lastValueFrom(
     build(entry, buildDir, {
       minify: options.minify ?? true,
@@ -144,6 +146,11 @@ export async function packProject(options: {
         if (event.type === 'duplicatePackages') {
           duplicatePackages = event.packages
           log(formatDuplicatePackagesNotice(event.packages)!)
+        }
+        if (event.type === 'features') {
+          features = event
+          const line = formatFeaturesLine(event)
+          if (line !== undefined) log(line)
         }
       }),
     ),
@@ -193,7 +200,12 @@ export async function packProject(options: {
   const outPath = options.out ?? pathlib.resolve(`app-${version}.tgz`)
   // --snapshot is the one flag that shapes the pack rather than the build.
   log(options.snapshot ? 'Packing… (snapshot)' : 'Packing…')
-  return {...(await finalizeBuild(buildDir, outPath, manifest)), duplicatePackages}
+  return {
+    ...(await finalizeBuild(buildDir, outPath, manifest)),
+    duplicatePackages,
+    features,
+    configBoard: mikroConfig?.board,
+  }
 }
 
 export async function run(config: Args, jsonFlag = false): Promise<void> {

@@ -1,3 +1,4 @@
+import modulesJson from '@mikrojs/native/runtime/modules.json' with {type: 'json'}
 import {describe, expect, it} from 'vitest'
 
 import {isBuiltinModule} from '../constants.js'
@@ -11,14 +12,28 @@ describe('isBuiltinModule', () => {
     expect(isBuiltinModule('native:console')).toBe(true)
   })
 
-  it('matches core mikro builtins', () => {
+  it('matches mikro/<name> for every capability-table module', () => {
     expect(isBuiltinModule('mikro')).toBe(true)
-    expect(isBuiltinModule('mikro/wifi')).toBe(true)
-    expect(isBuiltinModule('fetch')).toBe(true)
+    for (const mod of modulesJson.modules) {
+      expect(isBuiltinModule(`mikro/${mod.name}`), mod.name).toBe(true)
+    }
+  })
+
+  it('matches internal (non-public) table modules', () => {
+    // The on-device loader resolves internal builtins too, so the tracer
+    // must skip them even though they have no mikro/* export subpath.
+    expect(isBuiltinModule('mikro/abort')).toBe(true)
+    expect(isBuiltinModule('mikro/kv/shared')).toBe(true)
+  })
+
+  it('does not match mikro/* names missing from the table', () => {
+    expect(isBuiltinModule('mikro/fetch')).toBe(false)
+    expect(isBuiltinModule('mikro/wify')).toBe(false)
   })
 
   it('does not match ordinary specifiers', () => {
     expect(isBuiltinModule('react')).toBe(false)
+    expect(isBuiltinModule('fetch')).toBe(false)
     expect(isBuiltinModule('@mikrojs/some-board')).toBe(false)
     expect(isBuiltinModule('./local.js')).toBe(false)
   })

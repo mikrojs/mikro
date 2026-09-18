@@ -54,12 +54,20 @@ export async function nodeFileTrace(
     }
   }
 
+  // A specifier imported statically anywhere in the graph counts static;
+  // only-ever-import()'ed specifiers are dynamic-only.
+  const dynamicOnlyImports = new Set<string>()
+  for (const spec of job.dynamicImportSpecifiers) {
+    if (!job.staticImportSpecifiers.has(spec)) dynamicOnlyImports.add(spec)
+  }
+
   return {
     fileList: job.fileList,
     reasons: job.reasons,
     warnings: job.warnings,
     duplicatePackages,
     sourcePathMap,
+    dynamicOnlyImports,
   }
 }
 
@@ -237,6 +245,10 @@ export class Tracer {
   // a symlink. Most do not, because pnpm does not link the dependencies of a
   // dependency into the app's node_modules.
   public virtualPathToRealPath = new Map<string, string>()
+  // Raw (pre-resolution) specifiers seen across the traced graph, split by
+  // import kind. Aggregated per emitted file, cached analyses included.
+  public staticImportSpecifiers = new Set<string>()
+  public dynamicImportSpecifiers = new Set<string>()
 
   constructor({
     base = process.cwd(),
@@ -635,6 +647,8 @@ export class Tracer {
     }
 
     const {imports} = analyzeResult
+    for (const spec of analyzeResult.staticImports) this.staticImportSpecifiers.add(spec)
+    for (const spec of analyzeResult.dynamicImports) this.dynamicImportSpecifiers.add(spec)
 
     await Promise.all(
       [...imports].map(async (dep) => {

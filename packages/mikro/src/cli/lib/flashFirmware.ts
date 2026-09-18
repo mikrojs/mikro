@@ -2,7 +2,8 @@ import {getEsptoolPath} from '@mikrojs/esptool'
 import {hasPrebuiltFirmware, prebuiltFirmwareDir} from '@mikrojs/firmware'
 import {lastValueFrom} from 'rxjs'
 
-import {type BoardInfo, discoverBoards} from './boards.js'
+import {type BoardInfo, discoverBoards, genericBoards} from './boards.js'
+import {didYouMean} from './didYouMean.js'
 import {UserError} from './errorMessage.js'
 import {type FlasherArgs, getWriteFlashMultiArgs, readFlasherArgs} from './esptool.js'
 import {type Chip, resolveFrom} from './firmware.js'
@@ -19,15 +20,23 @@ export interface FlashPlanOptions {
   from?: string
   /** Board name; auto-discovered from project dependencies if omitted. */
   board?: string
+  /** Board from mikro.config.ts, used when no `board` flag is given. */
+  configBoard?: string
   /** Target chip; auto-detected via esptool if omitted. */
   target?: Chip
   /** Progress callback for the resolution/flash phases. */
   onProgress?: (message: string) => void
 }
 
+/** How the flash plan's board was chosen. */
+export type BoardSource = 'flag' | 'config' | 'dependency' | 'detected'
+
 export interface FlashPlan {
   esptoolPath: string
   flasherArgs: FlasherArgs
+  /** The board flashed and how it was chosen. Absent for `--build-dir`
+   * flashes, which take the build as-is. */
+  board?: {name: string; source: BoardSource}
 }
 
 /** Detect the chip type of the device on `port` via `esptool chip-id`. */
@@ -53,25 +62,60 @@ export async function detectChip(esptoolPath: string, port: string): Promise<Chi
   )
 }
 
-/** Resolve a board package from project dependencies, honoring an explicit
- *  `--board` flag. Returns undefined when no flag is given and the project
- *  has zero or several boards (the caller falls back to chip detection). */
-export async function discoverBoard(boardFlag: string | undefined): Promise<BoardInfo | undefined> {
+/** Resolve the board to flash. Precedence: `--board` flag > `config.board` >
+ *  exactly one project board dependency > undefined (the caller falls
+ *  back to chip detection and the chip's generic board). Named boards resolve
+ *  against installed board packages first, then the synthesized
+ *  `<chip>-generic` boards. */
+export async function discoverBoard(
+  boardFlag: string | undefined,
+  configBoard?: string,
+): Promise<{board: BoardInfo; source: BoardSource} | undefined> {
   const boards = await discoverBoards(process.cwd())
-  if (boardFlag) {
-    const board = boards.find((b) => b.name === boardFlag)
+  const generics = genericBoards()
+
+  const pick = (name: string, source: BoardSource): {board: BoardInfo; source: BoardSource} => {
+    const board = boards.find((b) => b.name === name) ?? generics.find((b) => b.name === name)
     if (!board) {
+      const known = [...boards, ...generics].map((b) => b.name)
+      const suggestion = didYouMean(name, known)
       throw new UserError(
-        `Board '${boardFlag}' not found in project dependencies.\n` +
-          (boards.length > 0
-            ? `Available boards: ${boards.map((b) => b.name).join(', ')}`
-            : `No board packages found. Add a board package to your dependencies.`),
+        `Unknown board '${name}'.` +
+          (suggestion === undefined ? '' : ` Did you mean '${suggestion}'?`) +
+          `\nKnown boards: ${known.join(', ')}`,
       )
     }
-    return board
+    return {board, source}
   }
-  // Auto-discover if exactly one board
-  return boards.length === 1 ? boards[0] : undefined
+
+  if (boardFlag) return pick(boardFlag, 'flag')
+  if (configBoard) return pick(configBoard, 'config')
+  if (boards.length === 1) return {board: boards[0]!, source: 'dependency'}
+  return undefined
+}
+
+/** Hard-stop when the selected board doesn't match the connected chip.
+ *  Detection failure is not an error here: a wedged device is exactly what
+ *  `mikro flash` recovers, so the check only fires on a positive mismatch. */
+async function verifyBoardChip(
+  esptoolPath: string,
+  port: string,
+  board: BoardInfo,
+  onProgress?: (message: string) => void,
+): Promise<void> {
+  let detected: Chip
+  try {
+    onProgress?.('Detecting chip…')
+    detected = await detectChip(esptoolPath, port)
+  } catch {
+    return
+  }
+  if (detected !== board.chip) {
+    throw new UserError(
+      `${board.name} is an ${board.chip} board; the device on ${port} is an ${detected}. ` +
+        `Pass --board ${detected}-generic, or change \`board\` in mikro.config.ts.`,
+    )
+  }
 }
 
 /**
@@ -83,7 +127,7 @@ export async function discoverBoard(boardFlag: string | undefined): Promise<Boar
  *   - neither: the prebuilt firmware bundled with this CLI version
  */
 export async function resolveFlashPlan(opts: FlashPlanOptions): Promise<FlashPlan> {
-  const {port, buildDir, from, board: boardFlag, target, onProgress} = opts
+  const {port, buildDir, from, board: boardFlag, configBoard, target, onProgress} = opts
 
   if (buildDir) {
     const [flasherArgs, esptoolPath] = await Promise.all([
@@ -95,36 +139,50 @@ export async function resolveFlashPlan(opts: FlashPlanOptions): Promise<FlashPla
 
   onProgress?.('Resolving esptool…')
   const esptoolPath = await getEsptoolPath()
-  const board = await discoverBoard(boardFlag)
+  let resolved = await discoverBoard(boardFlag, configBoard)
+
+  if (resolved && target && target !== resolved.board.chip) {
+    throw new UserError(
+      `${resolved.board.name} is an ${resolved.board.chip} board, but --target is ${target}. ` +
+        `Drop --target, or pass a board for that chip.`,
+    )
+  }
+  // esptool refuses firmware for another chip by itself, but only after the
+  // firmware is resolved (and perhaps downloaded), and with its own message.
+  // Checking first costs one chip-id run and names the board that is wrong.
+  if (resolved) {
+    await verifyBoardChip(esptoolPath, port, resolved.board, onProgress)
+  }
+
+  let resolvedChip: Chip | undefined = target ?? resolved?.board.chip
+  if (!resolvedChip) {
+    onProgress?.('Detecting chip…')
+    resolvedChip = await detectChip(esptoolPath, port)
+  }
+  // No board selected: the detected (or --target) chip's generic board.
+  resolved ??= {
+    board: genericBoards().find((b) => b.chip === resolvedChip) ?? {
+      name: `${resolvedChip}-generic`,
+      chip: resolvedChip,
+      generic: true,
+    },
+    source: 'detected',
+  }
+  const boardInfo = {name: resolved.board.name, source: resolved.source}
 
   if (from) {
-    let resolvedChip: Chip | undefined = target ?? board?.chip
-    if (!resolvedChip) {
-      onProgress?.('Detecting chip…')
-      resolvedChip = await detectChip(esptoolPath, port)
-    }
     const firmwareDir = await resolveFrom({
       from,
       chip: resolvedChip,
-      board: board?.name,
+      board: resolved.board.name,
       onProgress: (message) => onProgress?.(message),
     })
     const flasherArgs = await readFlasherArgs(firmwareDir)
-    return {esptoolPath, flasherArgs}
+    return {esptoolPath, flasherArgs, board: boardInfo}
   }
 
   // Default: bundled prebuilt firmware shipped inside @mikrojs/firmware,
   // matched to this CLI's version via the lockstep release group.
-  let resolvedChip: Chip
-  if (target) {
-    resolvedChip = target
-  } else if (board) {
-    resolvedChip = board.chip
-  } else {
-    onProgress?.('Detecting chip…')
-    resolvedChip = await detectChip(esptoolPath, port)
-  }
-
   if (!hasPrebuiltFirmware(resolvedChip)) {
     throw new UserError(
       `No bundled firmware for ${resolvedChip}. ` +
@@ -134,7 +192,7 @@ export async function resolveFlashPlan(opts: FlashPlanOptions): Promise<FlashPla
   }
 
   const flasherArgs = await readFlasherArgs(prebuiltFirmwareDir(resolvedChip))
-  return {esptoolPath, flasherArgs}
+  return {esptoolPath, flasherArgs, board: boardInfo}
 }
 
 /**

@@ -17,10 +17,11 @@ import {
 } from 'rxjs'
 
 import type {Minifier, MinifyLevel} from '../../_exports/index.js'
-import {buildTests, entryRootDir} from './build.js'
+import {type BuildFeatures, buildTests, entryRootDir} from './build.js'
 import {collectFiles, type EnvVar} from './deploy.js'
 import {formatDuplicatePackagesNotice} from './duplicatePackages.js'
 import {UserError} from './errorMessage.js'
+import {missingFeaturesError} from './featureGate.js'
 import {
   applyBootSnapshot,
   type BootFigures,
@@ -223,6 +224,7 @@ export async function runTestManifest(
   const relPaths = testFiles.map((f) => pathlib.relative(cwd, f))
 
   cb.log?.('Building test manifest...')
+  let features: BuildFeatures | undefined
   await lastValueFrom(
     buildTests(relPaths, options.buildDir, {
       minify: options.minify,
@@ -235,6 +237,7 @@ export async function runTestManifest(
       env: 'test',
     }).pipe(
       tap((event) => {
+        if (event.type === 'features') features = event
         if (event.type === 'duplicatePackages') {
           cb.log?.(formatDuplicatePackagesNotice(event.packages)!)
         }
@@ -242,6 +245,13 @@ export async function runTestManifest(
     ),
     {defaultValue: undefined},
   )
+
+  // Same gate as `mikro deploy`: refuse to ship tests whose static imports
+  // need a firmware feature the device lacks. Legacy firmware reports no
+  // feature set and is never gated; dynamic-only import()s never gate. The
+  // handshake is cached, so session.deploy below reuses it.
+  const gateError = missingFeaturesError(features, await firstValueFrom(session.awaitReady$()))
+  if (gateError !== undefined) throw new UserError(gateError)
 
   const files = await collectFiles(options.buildDir)
   cb.log?.(`Deploying ${files.length} file(s)`)

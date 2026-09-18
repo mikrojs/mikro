@@ -133,6 +133,45 @@ describe('session', () => {
       session.close()
     })
 
+    it('decodes board and features from MSG_READY', () => {
+      const {transport, sendFrame} = createMockTransport()
+      const session = connectRepl(transport)
+      const events: ReplEvent[] = []
+
+      session.messages$.subscribe((e) => events.push(e))
+      sendFrame(
+        MSG_READY,
+        Buffer.from(
+          encodeCbor({chip: 'esp32c6', board: 'esp32c6-generic', features: ['wifi', 'i2s']}),
+        ),
+      )
+
+      expect(events.length).to.equal(1)
+      if (events[0]!.type === 'ready') {
+        expect(events[0]!.board).to.equal('esp32c6-generic')
+        expect(events[0]!.features).to.deep.equal(['wifi', 'i2s'])
+      }
+
+      session.close()
+    })
+
+    it('leaves board and features undefined on legacy firmware', () => {
+      const {transport, sendFrame} = createMockTransport()
+      const session = connectRepl(transport)
+      const events: ReplEvent[] = []
+
+      session.messages$.subscribe((e) => events.push(e))
+      sendFrame(MSG_READY, Buffer.from(encodeCbor({chip: 'esp32c6', id: 'aa'})))
+
+      expect(events.length).to.equal(1)
+      if (events[0]!.type === 'ready') {
+        expect(events[0]!.board).to.be.undefined
+        expect(events[0]!.features).to.be.undefined
+      }
+
+      session.close()
+    })
+
     it('emits ready event with version null for old firmware', () => {
       const {transport, sendFrame} = createMockTransport()
       const session = connectRepl(transport)

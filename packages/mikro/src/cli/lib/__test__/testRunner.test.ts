@@ -18,11 +18,11 @@
  *   - Ordinal counting breaks as soon as any e:6 is missed or any file
  *     runs out of order.
  */
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs'
+import {mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import * as pathlib from 'node:path'
 
-import {firstValueFrom, Subject} from 'rxjs'
+import {firstValueFrom, of, Subject} from 'rxjs'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
 import {readSnapshot, writeSnapshot} from '../heapSnapshots.js'
@@ -34,6 +34,7 @@ import {
   formatHeapExceeded,
   formatHeapStale,
   formatSuiteBreakdown,
+  runTestManifest,
   type TestFileResult,
   type TestManifestCallbacks,
 } from '../testRunner.js'
@@ -616,6 +617,79 @@ describe('boot line across a memReserved change', () => {
   it('says nothing extra when the reserve matches', () => {
     const line = formatBootLine({chip: 'esp32c6', measured: stored, stored, action: 'ok'}, '-u')
     expect(line).not.toContain('memReserved')
+  })
+})
+
+describe('runTestManifest feature gate', () => {
+  let originalCwd: string
+  let tempDir: string
+
+  beforeEach(() => {
+    originalCwd = process.cwd()
+    tempDir = realpathSync(mkdtempSync(pathlib.join(tmpdir(), 'test-gate-')))
+    writeFileSync(
+      pathlib.join(tempDir, 'package.json'),
+      JSON.stringify({name: 'fixture', version: '0.0.0', type: 'module', main: './app/main.ts'}),
+    )
+    mkdirSync(pathlib.join(tempDir, 'app', 'test'), {recursive: true})
+    process.chdir(tempDir)
+  })
+
+  afterEach(() => {
+    process.chdir(originalCwd)
+    rmSync(tempDir, {recursive: true, force: true})
+  })
+
+  /** Session that answers the gate's handshake with `ready` and marks any
+   * deploy attempt with a sentinel error, so a test can tell whether the
+   * gate stopped the run before the deploy. */
+  function gateSession(ready: Partial<ReadyEvent>): ReplSession {
+    return {
+      messages$: new Subject<ReplEvent>().asObservable(),
+      ready$: new Subject<ReadyEvent>().asObservable(),
+      awaitReady$: () =>
+        of({type: 'ready', chip: 'esp32c6', id: null, version: null, ...ready} as ReadyEvent),
+      deploy() {
+        throw new Error('deploy called')
+      },
+      restart() {},
+      close() {},
+    } as unknown as ReplSession
+  }
+
+  function run(session: ReplSession, file: string) {
+    return runTestManifest(session, [pathlib.join(tempDir, file)], {
+      minify: false,
+      bytecode: false,
+      envVars: [],
+      timeout: 1000,
+      buildDir: pathlib.join(tempDir, '.build'),
+      mikroEnv: 'test',
+    })
+  }
+
+  it('refuses to deploy tests needing a feature the device lacks', async () => {
+    writeFileSync(pathlib.join(tempDir, 'app', 'test', 'ble.test.ts'), `import 'mikro/ble'\n`)
+    const session = gateSession({board: 'esp32c6-generic', features: ['wifi']})
+    await expect(run(session, 'app/test/ble.test.ts')).rejects.toThrow(
+      /mikro\/ble which needs the 'ble' firmware feature.*esp32c6-generic/s,
+    )
+  })
+
+  it('skips the gate on legacy firmware (no features reported)', async () => {
+    writeFileSync(pathlib.join(tempDir, 'app', 'test', 'ble.test.ts'), `import 'mikro/ble'\n`)
+    const session = gateSession({})
+    // Reaching the deploy sentinel proves the gate let the run through.
+    await expect(run(session, 'app/test/ble.test.ts')).rejects.toThrow('deploy called')
+  })
+
+  it('never gates on dynamic-only imports', async () => {
+    writeFileSync(
+      pathlib.join(tempDir, 'app', 'test', 'dyn.test.ts'),
+      `export async function go() {\n  return import('mikro/ble')\n}\n`,
+    )
+    const session = gateSession({features: []})
+    await expect(run(session, 'app/test/dyn.test.ts')).rejects.toThrow('deploy called')
   })
 })
 

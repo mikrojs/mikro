@@ -1,7 +1,7 @@
-export function tsconfigJson(extraIncludes: readonly string[] = []): string {
+export function tsconfigJson(chip: string, extraIncludes: readonly string[] = []): string {
   const includes = [...extraIncludes, 'mikro.config.ts', 'app/**/*']
   return `{
-  "extends": "mikro/tsconfig",
+  "extends": "mikro/tsconfig/${chip}-generic",
   "include": ${inlineStringArray(includes)}
 }
 `

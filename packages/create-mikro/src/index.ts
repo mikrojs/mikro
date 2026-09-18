@@ -13,7 +13,7 @@ import {run} from '@optique/run'
 
 import {printLogo} from './logo.js'
 import {detectPkgManager, installCommand, mikroCommand} from './pkg-manager.js'
-import {scaffold, TEMPLATES} from './scaffold.js'
+import {CHIPS, scaffold, TEMPLATES} from './scaffold.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const templatesDir = path.resolve(__dirname, '..', 'src', 'templates')
@@ -29,7 +29,20 @@ const args = object({
       description: message`Template to use`,
     }),
   ),
+  chip: optional(
+    option('--chip', string({metavar: 'CHIP'}), {
+      description: message`Target chip (default: esp32c6)`,
+    }),
+  ),
 })
+
+const CHIP_LABELS: Record<(typeof CHIPS)[number], string> = {
+  esp32: 'ESP32',
+  esp32c3: 'ESP32-C3',
+  esp32c5: 'ESP32-C5',
+  esp32c6: 'ESP32-C6',
+  esp32s3: 'ESP32-S3',
+}
 
 const prog = defineProgram({
   parser: args,
@@ -90,6 +103,11 @@ async function main(config: InferValue<typeof args>): Promise<void> {
     process.exit(1)
   }
 
+  if (config.chip && !(CHIPS as readonly string[]).includes(config.chip)) {
+    p.cancel(`Unknown chip "${config.chip}". Available chips: ${CHIPS.join(', ')}`)
+    process.exit(1)
+  }
+
   const template =
     config.template ||
     ((await p.select({
@@ -102,6 +120,25 @@ async function main(config: InferValue<typeof args>): Promise<void> {
     })) as string)
 
   if (p.isCancel(template)) {
+    p.cancel('Cancelled.')
+    process.exit(0)
+  }
+
+  // A script that passes the name and --template must not meet a new prompt,
+  // so without a terminal the chip falls back to the default.
+  const chip =
+    config.chip ||
+    (!process.stdin.isTTY && 'esp32c6') ||
+    ((await p.select({
+      message: 'Select your ESP32 chip',
+      initialValue: 'esp32c6',
+      options: CHIPS.map((c) => ({
+        label: c === 'esp32c6' ? `${CHIP_LABELS[c]} (default)` : CHIP_LABELS[c],
+        value: c as string,
+      })),
+    })) as string)
+
+  if (p.isCancel(chip)) {
     p.cancel('Cancelled.')
     process.exit(0)
   }
@@ -146,6 +183,7 @@ async function main(config: InferValue<typeof args>): Promise<void> {
     mikroVersion: pkg.version,
     templatesDir,
     pkgManager: pm,
+    chip,
   })
 
   const templateMeta = TEMPLATES.find((t) => t.name === template)

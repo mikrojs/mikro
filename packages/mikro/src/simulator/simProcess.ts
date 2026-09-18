@@ -33,6 +33,7 @@ import {encode as encodeCbor} from 'cbor2'
 import pkg from 'mikro/package.json' with {type: 'json'}
 import {type Observable, scan, takeWhile, tap} from 'rxjs'
 
+import {allFeatures} from '../cli/lib/capabilities.js'
 import {
   buildFrame,
   CMD_COMPLETE,
@@ -1253,7 +1254,17 @@ async function bootOrRunManifest(): Promise<void> {
 const cliVersion = pkg.version
 
 function sendReady(): void {
-  const cbor = Buffer.from(encodeCbor({chip: 'simulator', id: null, v: cliVersion}))
+  // The full feature set: the simulator stubs (or errors) every builtin, so
+  // it must never trip a missing-feature deploy gate.
+  const cbor = Buffer.from(
+    encodeCbor({
+      chip: 'simulator',
+      id: null,
+      v: cliVersion,
+      board: 'generic',
+      features: allFeatures(),
+    }),
+  )
   send(MSG_READY, cbor)
 }
 

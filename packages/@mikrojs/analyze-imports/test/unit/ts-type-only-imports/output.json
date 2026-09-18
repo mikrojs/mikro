@@ -1,0 +1,5 @@
+[
+  "test/unit/ts-type-only-imports/input.ts",
+  "test/unit/ts-type-only-imports/kept.ts",
+  "test/unit/ts-type-only-imports/package.json"
+]

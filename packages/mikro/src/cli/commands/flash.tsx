@@ -13,7 +13,8 @@ import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {customFirmwareOf} from '../lib/bundledFirmware.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
 import {type FlasherArgs, getWriteFlashMultiArgs} from '../lib/esptool.js'
-import {resolveFlashPlan} from '../lib/flashFirmware.js'
+import {type BoardSource, resolveFlashPlan} from '../lib/flashFirmware.js'
+import {loadMikroConfig} from '../lib/loadMikroConfig.js'
 import {INITIAL_SPAWN_STATE, ospawn, spawnErrorMessage, type SpawnState} from '../lib/ospawn.js'
 import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
 import {port} from '../lib/portValueParser.js'
@@ -87,8 +88,20 @@ type Props = {
 
 type InitState =
   | {status: 'loading'; message: string}
-  | {status: 'ready'; flasherArgs: FlasherArgs; esptoolPath: string}
+  | {
+      status: 'ready'
+      flasherArgs: FlasherArgs
+      esptoolPath: string
+      board?: {name: string; source: BoardSource}
+    }
   | {status: 'error'; error: Error}
+
+const BOARD_SOURCE_LABELS: Record<BoardSource, string> = {
+  detected: 'default: detected chip',
+  flag: 'from --board',
+  config: 'from mikro.config.ts',
+  dependency: 'auto: only board dependency',
+}
 
 /** Probe handshake budget, mirroring FirmwareGate: a healthy device replies
  *  to CMD_HELLO almost immediately. On timeout the flash proceeds — silent,
@@ -178,11 +191,16 @@ export default function FlashCmd(props: Props) {
     if (probeState.status !== 'ok') return
 
     async function init() {
+      // The config board only fills in without --board or --build-dir, so
+      // those flags keep `mikro flash` working when the config does not load.
+      // A project without a config is fine.
+      const config = boardFlag || buildDir ? null : await loadMikroConfig(process.cwd())
       const plan = await resolveFlashPlan({
         port: devicePath!,
         buildDir,
         from,
         board: boardFlag,
+        configBoard: config?.board,
         target,
         onProgress: (message) => setInitState({status: 'loading', message}),
       })
@@ -331,7 +349,7 @@ export default function FlashCmd(props: Props) {
     )
   }
 
-  const {flasherArgs, esptoolPath} = initState
+  const {flasherArgs, esptoolPath, board} = initState
 
   return (
     <FlashProgress
@@ -339,6 +357,7 @@ export default function FlashCmd(props: Props) {
       flasherArgs={flasherArgs}
       port={device.path}
       baudRate={baudRate}
+      board={board}
     />
   )
 }
@@ -378,8 +397,9 @@ function FlashProgress(props: {
   flasherArgs: FlasherArgs
   port: string
   baudRate: number
+  board?: {name: string; source: BoardSource}
 }) {
-  const {esptoolPath, flasherArgs, port, baudRate} = props
+  const {esptoolPath, flasherArgs, port, baudRate, board} = props
 
   const observable = useMemo((): Observable<SpawnState> => {
     const esptoolArgs = getWriteFlashMultiArgs({
@@ -442,6 +462,13 @@ function FlashProgress(props: {
         {success ? 'Flashed' : 'Flashing'} {flasherArgs.chip} firmware via {port}
         {error ? <Text> failed</Text> : null}
       </Text>
+      {board ? (
+        <Box paddingLeft={2}>
+          <Text color="gray">
+            board: {board.name} ({BOARD_SOURCE_LABELS[board.source]})
+          </Text>
+        </Box>
+      ) : null}
       {!completed && lastLine ? (
         <Box paddingLeft={2}>
           <Text color="gray">{lastLine}</Text>

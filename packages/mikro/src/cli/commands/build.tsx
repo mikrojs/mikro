@@ -16,8 +16,9 @@ import {lastValueFrom, tap} from 'rxjs'
 import type {LogLevel, Minifier, MinifyLevel} from '../../_exports/index.js'
 import {EntryGate} from '../components/EntryGate.js'
 import {agentError, agentResult, isAgentMode} from '../lib/agent.js'
-import {build, type BuildEvent} from '../lib/build.js'
+import {build, type BuildEvent, type BuildFeatures} from '../lib/build.js'
 import {formatDuplicatePackagesNotice} from '../lib/duplicatePackages.js'
+import {agentFeatures, formatFeaturesLine} from '../lib/featureGate.js'
 import {formatSize} from '../lib/formatSize.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
@@ -64,6 +65,7 @@ export async function run(config: InferValue<typeof args>) {
   const jsonOutput = config.json === true || isAgentMode(config.agent)
   try {
     let duplicatePackages: DuplicatePackage[] | undefined
+    let features: BuildFeatures | undefined
     await lastValueFrom(
       build(entry, outDir, {
         minify: !noMinify,
@@ -75,6 +77,7 @@ export async function run(config: InferValue<typeof args>) {
       }).pipe(
         tap((event) => {
           if (event.type === 'duplicatePackages') duplicatePackages = event.packages
+          if (event.type === 'features') features = event
         }),
       ),
       {defaultValue: undefined},
@@ -87,11 +90,15 @@ export async function run(config: InferValue<typeof args>) {
       if (s.isFile()) files.push({path: '/' + e, size: s.size})
     }
     if (jsonOutput) {
-      // Omitted when every package deploys once (undefined drops out of the JSON).
-      agentResult('build', {entry, outDir, files, duplicatePackages}, [
-        {command: 'mikro deploy', description: 'Deploy build to device'},
-        {command: `mikro build ${entry} --no-bytecode`, description: 'Rebuild without bytecode'},
-      ])
+      // duplicatePackages and features are omitted when empty (undefined drops out of the JSON).
+      agentResult(
+        'build',
+        {entry, outDir, files, duplicatePackages, features: agentFeatures(features)},
+        [
+          {command: 'mikro deploy', description: 'Deploy build to device'},
+          {command: `mikro build ${entry} --no-bytecode`, description: 'Rebuild without bytecode'},
+        ],
+      )
     } else {
       const totalSize = files.reduce((sum, f) => sum + f.size, 0)
       // eslint-disable-next-line no-console
@@ -147,6 +154,7 @@ type BuildState = {
   phase: string
   files: {path: string; size: number}[]
   duplicatePackages: DuplicatePackage[]
+  features: BuildFeatures | null
   done: boolean
   error: string | null
 }
@@ -161,6 +169,8 @@ function buildReducer(state: BuildState, event: BuildAction): BuildState {
       return {...state, files: [...state.files, {path: event.path, size: event.size}]}
     case 'duplicatePackages':
       return {...state, duplicatePackages: event.packages}
+    case 'features':
+      return {...state, features: event}
     case 'done':
       return {...state, done: true}
     case 'error':
@@ -174,6 +184,7 @@ const initialState: BuildState = {
   phase: 'Starting',
   files: [],
   duplicatePackages: [],
+  features: null,
   done: false,
   error: null,
 }
@@ -218,6 +229,7 @@ function Run(props: {
   if (state.done) {
     const totalSize = state.files.reduce((sum, f) => sum + f.size, 0)
     const notice = formatDuplicatePackagesNotice(state.duplicatePackages)
+    const featuresLine = state.features ? formatFeaturesLine(state.features) : undefined
     return (
       <RenderAndExit exitCode={0}>
         <Box flexDirection="column">
@@ -225,6 +237,12 @@ function Run(props: {
             {figures.tick} Built {state.files.length} file(s) to <Text color="cyan">{outDir}</Text>,{' '}
             {formatSize(totalSize)} total
           </Text>
+          {featuresLine !== undefined ? (
+            <Text dimColor>
+              {'  '}
+              {featuresLine}
+            </Text>
+          ) : null}
           {state.files.map((file) => (
             <Text key={file.path} dimColor>
               {'  '}

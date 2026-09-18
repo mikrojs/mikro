@@ -9,6 +9,7 @@ import {createReadStream} from 'fs'
 import {mkdir, readdir, readFile, rm, stat, writeFile} from 'fs/promises'
 import {create as tarCreate} from 'tar'
 
+import type {BuildFeatures} from './build.js'
 import {UserError} from './errorMessage.js'
 
 const execFileAsync = promisify(execFile)
@@ -438,6 +439,13 @@ export interface PackArtifact {
   /** Packages the build deploys more than once (from the `duplicatePackages`
    * BuildEvent). Set by packProject; absent when every package deploys once. */
   duplicatePackages?: DuplicatePackage[]
+  /** Firmware features the build needs (from the `features` BuildEvent), for
+   * the deploy-time gate. Set by packProject; absent from finalizeBuild. */
+  features?: BuildFeatures
+  /** `config.board` from the packed project's mikro.config.ts, so deploy's
+   * auto-reflash can target it without reloading the config. Set by
+   * packProject; absent from finalizeBuild. */
+  configBoard?: string
 }
 
 /**

@@ -2,6 +2,8 @@ import {readFileSync} from 'node:fs'
 
 import {describe, expect, it} from 'vitest'
 
+import {builtinModules, isTypesOnlyModule} from '../cli/lib/capabilities.js'
+
 type ExportEntry = string | {[condition: string]: ExportEntry}
 
 /* The dev `exports` map and `publishConfig.exports` are maintained by hand,
@@ -32,6 +34,20 @@ describe('package exports', () => {
       expect(Object.keys(entry), subpath).toEqual(conditions)
       expect(Object.keys(pkg.publishConfig.exports[subpath]!), subpath).toEqual(conditions)
     }
+  })
+
+  it('every module subpath is a table builtin or a types-only subpath', () => {
+    // The build rejects any other mikro/<name> import as unknown, so an export
+    // added without a table entry would be importable in the editor only.
+    const hostOnly = (subpath: string) =>
+      ['.', './package.json', './runtime', './tsconfig'].includes(subpath) ||
+      subpath.startsWith('./tsconfig/')
+    const names = Object.keys(pkg.exports)
+      .filter((subpath) => !hostOnly(subpath))
+      .map((subpath) => subpath.slice('./'.length))
+    const builtins = builtinModules()
+    expect(names.filter((name) => !builtins.has(name) && !isTypesOnlyModule(name))).toEqual([])
+    expect(names.filter((name) => builtins.has(name) && isTypesOnlyModule(name))).toEqual([])
   })
 
   it('conditional dev entries publish a compiled dist target', () => {
