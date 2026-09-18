@@ -83,6 +83,9 @@ export interface DeviceRecord {
   trial?: boolean
   lastFirmware?: string
   lastBytecode?: number
+  /** Board name of the firmware build, as last reported. Absent on records of
+   *  devices whose firmware predates board reporting. */
+  lastBoard?: string
   /** Bytes free to download and stage one build, as last reported. A device
    *  that has never reported it is not size-gated at all, and a check-in that
    *  omits it leaves this standing rather than clearing it. */

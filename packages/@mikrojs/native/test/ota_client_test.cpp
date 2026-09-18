@@ -122,6 +122,7 @@ TEST_CASE("check: posts the CBOR-encoded report and returns up-to-date on an emp
     CHECK(CborStr(body, "firmware") == "0.16.0");
     CHECK(CborStr(body, "firmwareHash") == "fwhash");
     CHECK(CborInt(body, "bytecode") == 42);
+    CHECK(CborStr(body, "board") == "esp32c6-generic");
     CHECK(CborStr(body, "running.checksum") == "oldsum");
     CHECK(CborStr(body, "running.version") == "1.0.0");
     CHECK(CborBool(body, "running.trial") == false);
@@ -1613,7 +1614,7 @@ TEST_CASE("parseOffer: ignores compatibility fields a registry still sends") {
 }
 
 TEST_CASE("buildCheckinReport: encodes the standard report map") {
-    MIKDeviceIdentity identity = {"dev-1", "0.16.0", "fwhash", 42};
+    MIKDeviceIdentity identity = {"dev-1", "0.16.0", "fwhash", 42, "esp32c6-generic"};
     MIKOtaRunningBuild running = {"oldsum", "1.0.0", false};
     MIKOtaCheckinFacts facts;
     facts.identity = &identity;
@@ -1625,6 +1626,7 @@ TEST_CASE("buildCheckinReport: encodes the standard report map") {
     std::vector<uint8_t> body = mik__ota_build_checkin_report(facts);
 
     CHECK(CborStr(body, "deviceId") == "dev-1");
+    CHECK(CborStr(body, "board") == "esp32c6-generic");
     CHECK(CborStr(body, "running.checksum") == "oldsum");
     CHECK(CborInt(body, "name.0") == 1);
     CHECK(CborStr(body, "name.1") == "shed");
@@ -1644,6 +1646,7 @@ TEST_CASE("buildCheckinReport: omits a running build's absent fields") {
     std::vector<uint8_t> body = mik__ota_build_checkin_report(facts);
 
     CHECK(CborBool(body, "running.trial") == true);
+    CHECK(!CborHas(body, "board"));
     CHECK(!CborHas(body, "running.checksum"));
     CHECK(!CborHas(body, "running.version"));
     CHECK(!CborHas(body, "free"));

@@ -98,7 +98,8 @@ export declare const version: string
 export type BoardFeature = 'wifi' | 'ble' | 'bt' | 'ieee802154'
 
 export interface BoardInfo {
-  /** Board name from the firmware build (e.g. "xiao-esp32c6") or "generic" */
+  /** Board name from the firmware build (e.g. "xiao-esp32c6"). A build for no
+   * particular board is "<chip>-generic" (e.g. "esp32c6-generic"). */
   name: string
   /** Chip target (e.g. "esp32c6") or "host" */
   chip: string

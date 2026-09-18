@@ -227,6 +227,7 @@ void encode_report(nanocbor_encoder_t* enc, const MIKOtaCheckinFacts& f) {
     bool has_echo = f.echo_rev && f.echo_rev[0];
 
     size_t map_size = 6;  // deviceId, firmware, firmwareHash, bytecode, running, name
+    if (identity.board[0]) map_size++;
     if (f.has_free) map_size++;
     if (f.last_install) map_size++;
     if (has_echo) map_size++;
@@ -243,6 +244,13 @@ void encode_report(nanocbor_encoder_t* enc, const MIKOtaCheckinFacts& f) {
     nanocbor_put_tstr(enc, identity.firmware_hash);
     nanocbor_put_tstr(enc, "bytecode");
     nanocbor_fmt_int(enc, identity.bytecode_version);
+
+    // Optional: older firmware environments leave it empty, and the wire rule
+    // is to omit an absent field entirely.
+    if (identity.board[0]) {
+        nanocbor_put_tstr(enc, "board");
+        nanocbor_put_tstr(enc, identity.board);
+    }
 
     size_t run_size = 1;  // trial
     if (running.checksum[0]) run_size++;

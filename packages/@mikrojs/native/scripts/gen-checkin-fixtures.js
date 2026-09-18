@@ -48,6 +48,7 @@ const DEVICE_ID = 'dev-1'
 const APP = 'sensor'
 const FIRMWARE = '0.16.0'
 const BYTECODE = 42
+const BOARD = 'esp32c6-generic'
 
 /** One defaulted leaf: valid with no operator input at all. */
 const SCHEMA = JSON.stringify({kind: 'object', shape: {interval: {kind: 'number', default: 60}}})
@@ -120,6 +121,7 @@ function checkin(registry, credential, extra = {}) {
         firmware: FIRMWARE,
         firmwareHash: 'fwhash',
         bytecode: BYTECODE,
+        board: BOARD,
         running: {trial: false},
         name: [1, 'shed'],
         free: 900000,

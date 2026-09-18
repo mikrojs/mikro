@@ -171,13 +171,19 @@ static JSValue mik__sys_restart(JSContext* ctx, JSValue this_val, int argc, JSVa
     return JS_UNDEFINED;
 }
 
+const char* mik__board_name(void) {
+#ifdef MIK_BOARD_NAME
+    return MIK_BOARD_NAME;
+#elif defined(CONFIG_IDF_TARGET)
+    return CONFIG_IDF_TARGET "-generic";
+#else
+    return "generic";
+#endif
+}
+
 static JSValue mik__sys_board(JSContext* ctx) {
     JSValue obj = JS_NewObject(ctx);
-#ifdef MIK_BOARD_NAME
-    JS_SetPropertyStr(ctx, obj, "name", JS_NewString(ctx, MIK_BOARD_NAME));
-#else
-    JS_SetPropertyStr(ctx, obj, "name", JS_NewString(ctx, "generic"));
-#endif
+    JS_SetPropertyStr(ctx, obj, "name", JS_NewString(ctx, mik__board_name()));
 
 #ifdef CONFIG_IDF_TARGET
     JS_SetPropertyStr(ctx, obj, "chip", JS_NewString(ctx, CONFIG_IDF_TARGET));

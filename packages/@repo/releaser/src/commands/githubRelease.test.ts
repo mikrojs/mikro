@@ -1,6 +1,6 @@
 import {describe, expect, test} from 'vitest'
 
-import {extractChangelogSection} from './githubRelease.js'
+import {extractChangelogSection, firmwareAssetNames} from './githubRelease.js'
 
 const SAMPLE = `# Changelog
 
@@ -74,5 +74,18 @@ describe('extractChangelogSection', () => {
     const out = extractChangelogSection(tricky, '1.2.3')
     expect(out).toContain('right')
     expect(out).not.toContain('weird')
+  })
+})
+
+describe('firmwareAssetNames', () => {
+  test('a generic build is also uploaded under its old chip name', () => {
+    expect(firmwareAssetNames('esp32c6-generic')).toEqual([
+      'mikrojs-firmware-esp32c6-generic.tar.gz',
+      'mikrojs-firmware-esp32c6.tar.gz',
+    ])
+  })
+
+  test('a board build has one name', () => {
+    expect(firmwareAssetNames('xiao-esp32c6')).toEqual(['mikrojs-firmware-xiao-esp32c6.tar.gz'])
   })
 })

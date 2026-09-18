@@ -28,7 +28,7 @@ export const args = command(
     ),
     firmwareDir: optional(
       option('--firmware-dir', string({metavar: 'PATH'}), {
-        description: message`Directory whose <chip>/ subdirs are tarballed and uploaded as mikrojs-firmware-<chip>.tar.gz assets.`,
+        description: message`Directory whose <board>/ subdirs (e.g. esp32c6-generic/) are tarballed and uploaded as mikrojs-firmware-<board>.tar.gz assets.`,
       }),
     ),
   }),
@@ -103,8 +103,18 @@ function composeBody(version: string): string {
   )
 }
 
-// Tar each <chip>/ subdir under firmwareDir into a tmp file and return
-// {name, path} pairs ready for upload.
+/** Asset names one firmware dir is uploaded under. A generic build also gets
+ *  its old chip name (mikrojs-firmware-esp32c6.tar.gz), the only one that
+ *  `mikro flash --from` in CLI versions up to 0.20 looks for. */
+export function firmwareAssetNames(board: string): string[] {
+  const names = [`mikrojs-firmware-${board}.tar.gz`]
+  const generic = /^(.+)-generic$/.exec(board)
+  if (generic) names.push(`mikrojs-firmware-${generic[1]}.tar.gz`)
+  return names
+}
+
+// Tar each board-named subdir (e.g. esp32c6-generic/) under firmwareDir into a
+// tmp file and return {name, path} pairs ready for upload.
 function packFirmwareAssets(firmwareDir: string): Array<{name: string; path: string}> {
   const absDir = resolve(MONOREPO_ROOT, firmwareDir)
   if (!statSync(absDir, {throwIfNoEntry: false})?.isDirectory()) {
@@ -115,15 +125,15 @@ function packFirmwareAssets(firmwareDir: string): Array<{name: string; path: str
   const out: Array<{name: string; path: string}> = []
   for (const entry of readdirSync(absDir, {withFileTypes: true})) {
     if (!entry.isDirectory()) continue
-    const chip = entry.name
-    const tarPath = join(tmpdir(), `mikrojs-firmware-${chip}.tar.gz`)
-    const r = spawnSync('tar', ['czf', tarPath, '-C', join(absDir, chip), '.'], {
+    const board = entry.name
+    const tarPath = join(tmpdir(), `mikrojs-firmware-${board}.tar.gz`)
+    const r = spawnSync('tar', ['czf', tarPath, '-C', join(absDir, board), '.'], {
       stdio: 'inherit',
     })
     if (r.status !== 0) {
-      throw new Error(`tar failed for ${chip} (status ${r.status})`)
+      throw new Error(`tar failed for ${board} (status ${r.status})`)
     }
-    out.push({name: `mikrojs-firmware-${chip}.tar.gz`, path: tarPath})
+    for (const name of firmwareAssetNames(board)) out.push({name, path: tarPath})
   }
   return out
 }

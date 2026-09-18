@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include <nanocbor/nanocbor.h>
+
 #include <mikrojs/mikrojs.h>
 #include <mikrojs/platform.h>
 #include <mikrojs/private.h>
@@ -180,6 +182,43 @@ TEST_CASE("CMD_HELLO triggers MSG_READY" * doctest::test_suite("repl_protocol"))
                   "MSG_READY should contain chip info");
     CHECK_MESSAGE(ready->payload.find("v") != std::string::npos,
                   "MSG_READY should contain firmware version");
+    CHECK_MESSAGE(ready->payload.find("board") != std::string::npos,
+                  "MSG_READY should contain the board name");
+    CHECK_MESSAGE(ready->payload.find("features") == std::string::npos,
+                  "Host builds have no MIK_FW_FEATURES, so no features field");
+
+    proto_teardown();
+}
+
+TEST_CASE("MSG_READY board field decodes as generic on host" *
+          doctest::test_suite("repl_protocol")) {
+    proto_setup();
+
+    std::vector<uint8_t> input;
+    append_frame(input, MIK_CMD_HELLO, nullptr);
+    append_frame(input, MIK_CMD_EXIT, nullptr);
+    auto frames = run_protocol(input);
+    auto* ready = find_frame(frames, MIK_MSG_READY);
+    REQUIRE(ready != nullptr);
+
+    nanocbor_value_t top, map;
+    nanocbor_decoder_init(&top, (const uint8_t*)ready->payload.data(), ready->payload.size());
+    REQUIRE(nanocbor_enter_map(&top, &map) >= 0);
+    std::string board;
+    while (!nanocbor_at_end(&map)) {
+        const uint8_t* key = nullptr;
+        size_t key_len = 0;
+        REQUIRE(nanocbor_get_tstr(&map, &key, &key_len) >= 0);
+        if (std::string((const char*)key, key_len) == "board") {
+            const uint8_t* val = nullptr;
+            size_t val_len = 0;
+            REQUIRE(nanocbor_get_tstr(&map, &val, &val_len) >= 0);
+            board.assign((const char*)val, val_len);
+        } else {
+            REQUIRE(nanocbor_skip(&map) >= 0);
+        }
+    }
+    CHECK(board == "generic");
 
     proto_teardown();
 }

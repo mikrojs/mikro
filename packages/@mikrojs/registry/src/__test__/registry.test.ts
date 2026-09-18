@@ -1730,6 +1730,10 @@ describe('check-in validation', () => {
       {running: 'running'},
       {firmware: 'f'.repeat(65)},
       {bytecode: 1.5},
+      {board: 42},
+      {board: 'ESP32C6-Generic'},
+      {board: '-leading-dash'},
+      {board: 'b'.repeat(65)},
       {lastInstall: 'broke'},
       {lastInstall: {reason: 'r'.repeat(65)}},
       {lastInstall: {reason: 'trial-reverted', detail: 'd'.repeat(257)}},
@@ -1763,6 +1767,19 @@ describe('check-in validation', () => {
       reason: 'trial-reverted',
       detail: 'watchdog',
     })
+  })
+
+  it('stores the reported board, and an omitted board leaves it standing', async () => {
+    const storage = memoryStorage()
+    const registry = createRegistry({storage, token: TOKEN})
+    const credential = await enroll(registry)
+    await checkin(registry, credential, {board: 'esp32c6-generic'})
+    expect((await storage.getDevice('dev-1'))!.lastBoard).toBe('esp32c6-generic')
+
+    // Absent means firmware without board reporting, not "no board".
+    const without = await checkin(registry, credential)
+    expect(without.status).toBe(200)
+    expect((await storage.getDevice('dev-1'))!.lastBoard).toBe('esp32c6-generic')
   })
 
   it('requires trial whenever running is reported', async () => {

@@ -905,8 +905,12 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
 /* ── Protocol-mode REPL ──────────────────────────────────────────── */
 
 /* Fills ready_buf/ready_len with CBOR device info:
- * {"chip": tstr, "id": tstr, "v": tstr, "fw": tstr (when built with
- * MIK_FW_NAME), "name": tstr (only when named)}.
+ * {"chip": tstr, "id": tstr, "v": tstr, "board": tstr, "fw": tstr (when built
+ * with MIK_FW_NAME), "name": tstr (only when named), "features": [tstr] (when
+ * built with MIK_FW_FEATURES; host builds omit it)}.
+ * `board` is mik__board_name(). `features` lists the firmware features the
+ * build compiled in (from the comma-separated MIK_FW_FEATURES define), so the
+ * host knows which feature-gated builtins this firmware carries.
  * `fw` is the firmware identity (the firmware project's package name). The
  * host only auto-flashes its bundled prebuilt over a device whose identity
  * matches that prebuilt; omitting it reads as firmware predating identity
@@ -929,19 +933,23 @@ static void refresh_ready(MIKReplTransport* transport);
 /* Encodes the MSG_READY map into buf, or measures it when buf is null. Returns
  * the length the encoding needs, which exceeds cap when it did not fit. */
 static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const char* id,
-                           const char* version, const char* fw, const char* name, bool mem) {
+                           const char* version, const char* board, const char* fw,
+                           const char* name, const char* features, bool mem) {
     /* Measuring calls pass buf=NULL; substitute a non-null base so
      * zero-length appends never hand memcpy a null pointer (UB). */
     static uint8_t measure_base;
     nanocbor_encoder_t enc;
     nanocbor_encoder_init(&enc, buf ? buf : &measure_base, buf ? cap : 0);
-    nanocbor_fmt_map(&enc, 3 + (fw ? 1 : 0) + (name ? 1 : 0) + (mem ? 3 : 0));
+    nanocbor_fmt_map(&enc,
+                     4 + (fw ? 1 : 0) + (name ? 1 : 0) + (features ? 1 : 0) + (mem ? 3 : 0));
     nanocbor_put_tstr(&enc, "chip");
     nanocbor_put_tstr(&enc, chip);
     nanocbor_put_tstr(&enc, "id");
     nanocbor_put_tstr(&enc, id);
     nanocbor_put_tstr(&enc, "v");
     nanocbor_put_tstr(&enc, version);
+    nanocbor_put_tstr(&enc, "board");
+    nanocbor_put_tstr(&enc, board);
     if (fw) {
         nanocbor_put_tstr(&enc, "fw");
         nanocbor_put_tstr(&enc, fw);
@@ -949,6 +957,25 @@ static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const cha
     if (name) {
         nanocbor_put_tstr(&enc, "name");
         nanocbor_put_tstr(&enc, name);
+    }
+    if (features) {
+        /* `features` is the comma-separated MIK_FW_FEATURES string. */
+        size_t count = 0;
+        if (*features) {
+            count = 1;
+            for (const char* p = features; *p; p++) {
+                if (*p == ',') count++;
+            }
+        }
+        nanocbor_put_tstr(&enc, "features");
+        nanocbor_fmt_array(&enc, count);
+        const char* p = features;
+        while (*p) {
+            const char* comma = strchr(p, ',');
+            size_t len = comma ? (size_t)(comma - p) : strlen(p);
+            nanocbor_put_tstrn(&enc, p, len);
+            p = comma ? comma + 1 : p + len;
+        }
     }
     if (mem) {
         nanocbor_put_tstr(&enc, "heapFree");
@@ -979,26 +1006,45 @@ static void refresh_ready(MIKReplTransport* transport) {
 #endif
     const char* name =
         MIK_GetPlatform()->get_device_name ? MIK_GetPlatform()->get_device_name() : nullptr;
+    const char* board = mik__board_name();
+    const char* features =
+#ifdef MIK_FW_FEATURES
+        MIK_FW_FEATURES;
+#else
+        nullptr;
+#endif
     /* Measured against a null buffer first. nanocbor stops writing at the buffer
      * end but still reports the length it would have needed, so ready_len must
      * come from a run that actually fit: sending the measured length would read
-     * past ready_buf. Drop `name` rather than truncate it, since a partial pair
-     * decodes as a different name at the host. `name` goes before `fw`: a
-     * dropped `fw` reads as the host's own bundled firmware, re-enabling the
-     * auto-reflash the identity exists to prevent. */
+     * past ready_buf. Fields go in order of how little losing them costs.
+     * `features` first: without it the host treats the firmware as legacy and
+     * skips the feature gate, which is how every older firmware behaves. Then
+     * `name`, dropped whole rather than truncated, since a partial pair decodes
+     * as a different name at the host. `fw` last: a dropped `fw` reads as the
+     * host's own bundled firmware, re-enabling the auto-reflash the identity
+     * exists to prevent. `board` and the core fields are never dropped. */
     bool mem = boot_mem_captured;
     /* Diagnostics are the first thing to go when the map does not fit: losing
      * them costs a memory figure, while losing `name` or `fw` breaks identity. */
-    if (mem && encode_ready(nullptr, 0, chip, id, version, fw, name, mem) > sizeof(ready_buf)) {
+    if (mem && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, mem) >
+                   sizeof(ready_buf)) {
         mem = false;
     }
-    if (name && encode_ready(nullptr, 0, chip, id, version, fw, name, mem) > sizeof(ready_buf)) {
+    if (features &&
+        encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, mem) >
+            sizeof(ready_buf)) {
+        features = nullptr;
+    }
+    if (name && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, mem) >
+                    sizeof(ready_buf)) {
         name = nullptr;
     }
-    if (fw && encode_ready(nullptr, 0, chip, id, version, fw, name, mem) > sizeof(ready_buf)) {
+    if (fw && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, mem) >
+                  sizeof(ready_buf)) {
         fw = nullptr;
     }
-    ready_len = encode_ready(ready_buf, sizeof(ready_buf), chip, id, version, fw, name, mem);
+    ready_len = encode_ready(ready_buf, sizeof(ready_buf), chip, id, version, board, fw, name,
+                             features, mem);
     if (ready_len > sizeof(ready_buf)) ready_len = 0;
 }
 

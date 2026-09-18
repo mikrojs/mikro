@@ -47,6 +47,7 @@ typedef struct MIKDeviceIdentity {
     char firmware_version[32];
     char firmware_hash[65];
     int bytecode_version;
+    char board[48]; /* board name of this build, or empty string if unknown */
 } MIKDeviceIdentity;
 
 /* Diagnostic info from reconcile */

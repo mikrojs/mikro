@@ -169,15 +169,15 @@ console.log('Features: %s', board.features.join(', '))
 console.log('Flash: %dMB', board.flash / 1024 / 1024)
 ```
 
-| Property   | Description                                                                      |
-| ---------- | -------------------------------------------------------------------------------- |
-| `name`     | Board name from the firmware build (for example `"xiao-esp32c6"`) or `"generic"` |
-| `chip`     | Chip target (for example `"esp32c6"`) or `"host"`                                |
-| `cores`    | Number of CPU cores                                                              |
-| `revision` | Silicon revision (major \* 100 + minor on ESP32, 0 on host)                      |
-| `features` | Supported features (for example `["wifi", "ble"]`)                               |
-| `flash`    | Flash size in bytes (0 on host)                                                  |
-| `psram`    | PSRAM size in bytes (0 if unavailable)                                           |
+| Property   | Description                                                                                                                                                     |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | Board name from the firmware build (for example `"xiao-esp32c6"`). A build for no particular board is named `"<chip>-generic"`, for example `"esp32c6-generic"` |
+| `chip`     | Chip target (for example `"esp32c6"`) or `"host"`                                                                                                               |
+| `cores`    | Number of CPU cores                                                                                                                                             |
+| `revision` | Silicon revision (major \* 100 + minor on ESP32, 0 on host)                                                                                                     |
+| `features` | Supported features (for example `["wifi", "ble"]`)                                                                                                              |
+| `flash`    | Flash size in bytes (0 on host)                                                                                                                                 |
+| `psram`    | PSRAM size in bytes (0 if unavailable)                                                                                                                          |
 
 `wifi`, `ble` and `bt` appear only when the chip supports them and the matching
 stack was compiled into the firmware, so `features` answers whether the module

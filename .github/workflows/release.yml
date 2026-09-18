@@ -164,7 +164,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           pack-format: unpacked
-          artifact-name: firmware-${{ matrix.target }}
+          artifact-name: firmware-${{ matrix.target }}-generic
           # Apply the planned version so sys.version embedded in the firmware
           # matches what we publish to npm.
           version: ${{ needs.plan.outputs.version }}
@@ -267,8 +267,8 @@ jobs:
           missing=0
           for chip in $(jq -r '.chips[]' chips.json); do
             for f in flasher_args.json firmware.json bootloader/bootloader.bin partition_table/partition-table.bin mikrojs.bin; do
-              if [ ! -f "prebuilds/$chip/$f" ]; then
-                echo "Missing: prebuilds/$chip/$f"
+              if [ ! -f "prebuilds/$chip-generic/$f" ]; then
+                echo "Missing: prebuilds/$chip-generic/$f"
                 missing=1
               fi
             done
