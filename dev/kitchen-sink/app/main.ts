@@ -133,7 +133,8 @@ if (WIFI_SSID && WIFI_PASSPHRASE) {
     if (requestResult2.ok) {
       console.log('request 2 status:', requestResult2.value.status)
       const body2 = await requestResult2.value.json()
-      console.log('request 2 body title:', (body2 as {title: unknown}).title)
+      if (body2.ok) console.log('request 2 body title:', (body2.value as {title: unknown}).title)
+      else console.error('request 2 body failed:', body2.error)
     } else {
       console.error('request 2 failed:', requestResult2.error.name)
     }

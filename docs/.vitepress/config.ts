@@ -29,8 +29,10 @@ export default defineConfig({
         twoslashOptions: {
           compilerOptions: {
             // Resolve mikro package exports via the "development" condition
-            // so Twoslash finds the .ts source files instead of missing .js dist files
-            customConditions: ['development'],
+            // so Twoslash finds the .ts source files instead of missing .js
+            // dist files. The mikro:* conditions ungate the feature-gated
+            // subpaths (mikro/wifi, mikro/ble, ...) so docs samples resolve.
+            customConditions: ['development', 'mikro:wifi', 'mikro:ble', 'mikro:i2s'],
           },
         },
       }),

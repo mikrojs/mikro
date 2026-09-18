@@ -1,5 +1,5 @@
 {
-  "extends": "mikro/tsconfig",
+  "extends": "mikro/tsconfig/esp32c6-generic",
   "include": ["./**/*"],
   "exclude": ["registry"]
 }
