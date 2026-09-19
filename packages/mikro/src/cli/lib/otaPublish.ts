@@ -2,6 +2,7 @@ import {basename} from 'node:path'
 
 import {readFile} from 'fs/promises'
 
+import {UserError} from './errorMessage.js'
 import type {OtaManifest} from './ota.js'
 
 export interface PublishInput {
@@ -108,7 +109,7 @@ async function send(fetchImpl: FetchLike, url: string, init: RequestInit): Promi
   const body = await res.text().catch(() => '')
   if (!res.ok) {
     const detail = body ? `: ${body}` : ''
-    throw new Error(`Registry request to ${url} failed with ${res.status}${detail}`)
+    throw new UserError(`Registry request to ${url} failed with ${res.status}${detail}`)
   }
   return warningsFrom(parseBody(body))
 }
@@ -206,7 +207,7 @@ export async function releaseBuild(
   const body = await res.text().catch(() => '')
   if (!res.ok) {
     const detail = body ? `: ${body}` : ''
-    throw new Error(`Registry request to ${plan.url} failed with ${res.status}${detail}`)
+    throw new UserError(`Registry request to ${plan.url} failed with ${res.status}${detail}`)
   }
   // An unparseable body is tolerated: `released` stays 0 and the caller
   // reports that.

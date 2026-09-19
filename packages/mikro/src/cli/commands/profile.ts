@@ -9,6 +9,7 @@ import {string} from '@optique/core/valueparser'
 import {firstValueFrom, lastValueFrom} from 'rxjs'
 
 import {agentResult, isAgentMode} from '../lib/agent.js'
+import {UserError} from '../lib/errorMessage.js'
 import {applyBootSnapshot, type BootFigures, DEFAULT_MEM_RESERVED} from '../lib/heapSnapshots.js'
 import {loadMikroConfig} from '../lib/loadMikroConfig.js'
 import {parseSize} from '../lib/parseSize.js'
@@ -55,7 +56,7 @@ const READY_TIMEOUT_MS = 30_000
  */
 function readFigures(ready: ReadyEvent): BootFigures {
   if (ready.heapFree === undefined || ready.systemFree === undefined) {
-    throw new Error(
+    throw new UserError(
       'This firmware does not report its memory figures in the ready handshake. Rebuild and flash the firmware, then try again.',
     )
   }

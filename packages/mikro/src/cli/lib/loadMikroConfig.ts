@@ -5,6 +5,7 @@ import * as pathlib from 'node:path'
 import {pathToFileURL} from 'node:url'
 
 import type {MikroEnv, MikroJSConfig} from '../../_exports/index.js'
+import {UserError} from './errorMessage.js'
 
 /**
  * Resolve the config for `env`: the base config (every field except `env`)
@@ -45,7 +46,7 @@ export function rewriteConfigImports(
     .filter((name) => name !== 'mikro/schema')
   if (deviceImports.length > 0) {
     const unique = [...new Set(deviceImports)]
-    throw new Error(
+    throw new UserError(
       `${configPath}: cannot import on-device modules (${unique.join(', ')}) in a build-time config file. ` +
         `Only 'mikro' and 'mikro/schema' are importable here; other mikro/* subpaths are device-only.`,
     )

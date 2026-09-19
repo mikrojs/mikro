@@ -30,6 +30,7 @@ import type {
   MinifyLevel,
 } from '../../_exports/index.js'
 import {isBuiltinModule} from '../../constants.js'
+import {UserError} from './errorMessage.js'
 import {loadMikroConfig} from './loadMikroConfig.js'
 import {minifyJs} from './minify.js'
 import {parseSize} from './parseSize.js'
@@ -58,7 +59,7 @@ function loadNative(): Promise<MikrojsNative> {
       // Reset so the next call can try again (e.g. after a rebuild).
       nativePromise = null
       const detail = err instanceof Error ? err.message : String(err)
-      throw new Error(
+      throw new UserError(
         `Failed to load @mikrojs/native (required for bytecode / JSON compilation). ` +
           `Try rebuilding the native addon: pnpm -F @mikrojs/native build:native\n\n` +
           `Underlying error: ${detail}`,
@@ -374,7 +375,7 @@ export function build(
           ...(pureFuncs.length > 0 ? {pure: pureFuncs} : undefined),
         })
         if (result.errors.length > 0) {
-          throw new Error(result.errors.map((e) => e.text).join('\n'))
+          throw new UserError(result.errors.map((e) => e.text).join('\n'))
         }
         if (!result.outputFiles || result.outputFiles.length === 0) {
           throw new Error('esbuild produced no output')

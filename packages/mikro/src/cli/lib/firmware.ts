@@ -6,6 +6,7 @@ import {pipeline} from 'node:stream/promises'
 import {promisify} from 'node:util'
 
 import {paths} from './envPaths.js'
+import {UserError} from './errorMessage.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -57,7 +58,7 @@ async function getGitHubToken(): Promise<string | undefined> {
 
 function requireGitHubToken(token: string | undefined): string {
   if (!token) {
-    throw new Error(
+    throw new UserError(
       `Authentication required to download firmware.\n` +
         `Run \`gh auth login\` or set the GITHUB_TOKEN environment variable.`,
     )
@@ -69,7 +70,7 @@ async function downloadUrl(url: string, destPath: string): Promise<void> {
   const res = await fetch(url, {redirect: 'follow'})
   if (!res.ok || !res.body) {
     if (res.body) await res.text()
-    throw new Error(`Failed to download ${url}: ${res.status} ${res.statusText}`)
+    throw new UserError(`Failed to download ${url}: ${res.status} ${res.statusText}`)
   }
   await fs.mkdir(path.dirname(destPath), {recursive: true})
   const fileStream = createWriteStream(destPath)
@@ -89,9 +90,9 @@ async function resolveRefToSha(token: string, repo: string, ref: string): Promis
   if (!res.ok) {
     await res.text()
     if (res.status === 404 || res.status === 422) {
-      throw new Error(`Ref '${ref}' not found in ${repo}.`)
+      throw new UserError(`Ref '${ref}' not found in ${repo}.`)
     }
-    throw new Error(`GitHub API error: ${res.status} ${res.statusText}`)
+    throw new UserError(`GitHub API error: ${res.status} ${res.statusText}`)
   }
 
   const commit = (await res.json()) as {sha: string}
@@ -119,11 +120,11 @@ async function fetchRelease(
   if (!res.ok) {
     await res.text()
     if (res.status === 404) {
-      throw new Error(
+      throw new UserError(
         tag ? `No release '${tag}' found in ${repo}.` : `No releases found in ${repo}.`,
       )
     }
-    throw new Error(`GitHub API error: ${res.status} ${res.statusText}`)
+    throw new UserError(`GitHub API error: ${res.status} ${res.statusText}`)
   }
 
   return (await res.json()) as {assets: ReleaseAsset[]}
@@ -154,13 +155,13 @@ function selectReleaseAsset(
   if (firmwareAssets.length === 1) return firmwareAssets[0]!
 
   if (firmwareAssets.length === 0) {
-    throw new Error(
+    throw new UserError(
       `No firmware assets found in ${repo} release.\n` +
         `Available assets: ${assets.map((a) => a.name).join(', ') || 'none'}`,
     )
   }
 
-  throw new Error(
+  throw new UserError(
     `Multiple firmware assets found in ${repo} release. Use --target or --board to select one:\n` +
       firmwareAssets.map((a) => `  ${a.name}`).join('\n'),
   )
@@ -186,7 +187,7 @@ async function fetchWorkflowArtifacts(
 
   if (!runsRes.ok) {
     await runsRes.text()
-    throw new Error(`GitHub API error: ${runsRes.status} ${runsRes.statusText}`)
+    throw new UserError(`GitHub API error: ${runsRes.status} ${runsRes.statusText}`)
   }
 
   const runs = (await runsRes.json()) as {
@@ -195,7 +196,7 @@ async function fetchWorkflowArtifacts(
   }
 
   if (runs.workflow_runs.length === 0) {
-    throw new Error(
+    throw new UserError(
       `No successful workflow runs found for commit ${sha.slice(0, 8)} in ${repo}.\n` +
         `The build may have failed, not been triggered, or the artifact may have expired.`,
     )
@@ -258,13 +259,13 @@ function selectWorkflowArtifact(
   if (firmwareArtifacts.length === 1) return firmwareArtifacts[0]!
 
   if (firmwareArtifacts.length === 0) {
-    throw new Error(
+    throw new UserError(
       `No firmware artifacts found in ${repo} build.\n` +
         `Available artifacts: ${artifacts.map((a) => a.name).join(', ') || 'none'}`,
     )
   }
 
-  throw new Error(
+  throw new UserError(
     `Multiple firmware artifacts found in ${repo} build. Use --target or --board to select one:\n` +
       firmwareArtifacts.map((a) => `  ${a.name}`).join('\n'),
   )
@@ -289,7 +290,7 @@ async function downloadAndExtractReleaseAsset(
 
   if (!assetRes.ok || !assetRes.body) {
     if (assetRes.body) await assetRes.text()
-    throw new Error(`Failed to download firmware: ${assetRes.status} ${assetRes.statusText}`)
+    throw new UserError(`Failed to download firmware: ${assetRes.status} ${assetRes.statusText}`)
   }
 
   await fs.mkdir(CACHE_DIR, {recursive: true})
@@ -319,7 +320,9 @@ async function downloadAndExtractWorkflowArtifact(
 
   if (!downloadRes.ok || !downloadRes.body) {
     if (downloadRes.body) await downloadRes.text()
-    throw new Error(`Failed to download artifact: ${downloadRes.status} ${downloadRes.statusText}`)
+    throw new UserError(
+      `Failed to download artifact: ${downloadRes.status} ${downloadRes.statusText}`,
+    )
   }
 
   await fs.mkdir(path.dirname(zipPath), {recursive: true})
@@ -348,7 +351,7 @@ async function downloadAndExtractWorkflowArtifact(
   } else {
     await fs.rm(tmpDir, {recursive: true})
     await fs.rm(zipPath)
-    throw new Error(
+    throw new UserError(
       `Artifact '${artifact.name}' has no recognized firmware layout ` +
         `(expected a .tar.gz or flasher_args.json at the top level).`,
     )
@@ -433,7 +436,7 @@ async function resolveViaActions(
   const artifact = selectWorkflowArtifact(artifacts, chip, board, repo)
 
   if (artifact.expired) {
-    throw new Error(
+    throw new UserError(
       `Firmware artifact '${artifact.name}' at ${sha.slice(0, 8)} has expired.\n` +
         `GitHub Actions artifacts are retained for a limited time.`,
     )
@@ -533,6 +536,6 @@ export async function resolveFrom(options: ResolveFromOptions): Promise<string> 
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     const trailStr = trail.map((s) => `  ${s}`).join('\n')
-    throw new Error(`${msg}\n\nResolution trail:\n${trailStr}`, {cause: error})
+    throw new UserError(`${msg}\n\nResolution trail:\n${trailStr}`, {cause: error})
   }
 }

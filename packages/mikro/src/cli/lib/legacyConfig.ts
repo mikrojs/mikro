@@ -1,3 +1,5 @@
+import {UserError} from './errorMessage.js'
+
 /**
  * The package.json config namespace was renamed from `mikrojs` to `mikro`.
  * There is no compatibility shim: a lingering `mikrojs` key is almost always a
@@ -6,7 +8,7 @@
  */
 export function assertNoLegacyMikroConfig(pkg: {mikrojs?: unknown}, source: string): void {
   if (pkg.mikrojs !== undefined) {
-    throw new Error(
+    throw new UserError(
       `The "mikrojs" config key in ${source} was renamed to "mikro". ` +
         `Rename it to "mikro" to continue.`,
     )
