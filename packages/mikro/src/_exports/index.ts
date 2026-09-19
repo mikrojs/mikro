@@ -87,7 +87,8 @@ export interface MikroJSBuildConfig {
    * ```
    *
    * Levels from most to least verbose: 'debug' > 'info' > 'warn' > 'error' > 'none'.
-   * CLI `--loglevel` flag overrides this setting. Default: 'debug' (keep all). */
+   * CLI `--loglevel` flag overrides this setting. Default: 'warn' in the
+   * production environment, 'debug' in development and test (see {@link MikroEnv}). */
   logLevel?: LogLevel
 }
 

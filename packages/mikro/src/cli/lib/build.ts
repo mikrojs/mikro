@@ -296,12 +296,16 @@ export function build(
   // user's app dir so that tests deeper than entry's parent still co-locate
   // correctly.
   const rootDir = options.rootDir ?? entryRootDir(entry)
-  return defer(() => loadConfig(entry, options.env)).pipe(
+  const env = options.env ?? 'production'
+  return defer(() => loadConfig(entry, env)).pipe(
     mergeMap((config) => {
       const shouldBundle = options.bundle ?? config?.build?.bundle ?? false
       const minifier = options.minifier ?? config?.build?.minifier ?? 'esbuild'
       const minifyLevel = options.minifyLevel ?? config?.build?.minifyLevel ?? 'default'
-      const logLevel = options.logLevel ?? config?.build?.logLevel ?? 'debug'
+      // --loglevel, then mikro.config.ts, then per environment: production
+      // drops console.debug/log/info, development and test keep every call.
+      const logLevel =
+        options.logLevel ?? config?.build?.logLevel ?? (env === 'production' ? 'warn' : 'debug')
       const pureFuncs = LOG_LEVEL_PURE_FUNCS[logLevel]
       const entryJs = entry.replace(/\.ts$/, '.js')
       const entryOutputPath =

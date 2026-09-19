@@ -146,12 +146,12 @@ Logging to flash burns write cycles. Rotation caps usage at `2 × maxSize`, but 
 
 Build-time options that control how your code is compiled and bundled. These are stripped from the config before deploying to the device. Can also be overridden by CLI flags.
 
-| Option              | Type                                               | Default     | Description                             |
-| ------------------- | -------------------------------------------------- | ----------- | --------------------------------------- |
-| `build.bundle`      | `boolean`                                          | `false`     | Bundle into a single module via esbuild |
-| `build.minifier`    | `'esbuild' \| 'terser' \| 'swc'`                   | `'esbuild'` | Which minifier to use                   |
-| `build.minifyLevel` | `'default' \| 'max'`                               | `'default'` | Minification aggressiveness             |
-| `build.logLevel`    | `'none' \| 'error' \| 'warn' \| 'info' \| 'debug'` | `'debug'`   | Build-time log level threshold          |
+| Option              | Type                                               | Default                                | Description                             |
+| ------------------- | -------------------------------------------------- | -------------------------------------- | --------------------------------------- |
+| `build.bundle`      | `boolean`                                          | `false`                                | Bundle into a single module via esbuild |
+| `build.minifier`    | `'esbuild' \| 'terser' \| 'swc'`                   | `'esbuild'`                            | Which minifier to use                   |
+| `build.minifyLevel` | `'default' \| 'max'`                               | `'default'`                            | Minification aggressiveness             |
+| `build.logLevel`    | `'none' \| 'error' \| 'warn' \| 'info' \| 'debug'` | `'warn'` in production, else `'debug'` | Build-time log level threshold          |
 
 ### `build.bundle` {#buildbundle}
 
@@ -171,7 +171,7 @@ Minification aggressiveness. `'default'` uses safe transforms only. `'max'` enab
 
 Build-time log level. Console methods below this threshold are eliminated as dead code by the minifier. Levels from most to least verbose: `debug` > `info` > `warn` > `error` > `none`.
 
-The CLI `--loglevel` flag overrides this setting.
+When unset, the level depends on the [environment](#env): `warn` in `production` (removing `console.debug`, `console.log` and `console.info` calls), `debug` in `development` and `test`. The CLI `--loglevel` flag overrides this setting.
 
 ::: tip Cascading removal with `@__PURE__`
 If you have helper functions that compute values only used in log calls, annotate them with `/* @__PURE__ */` so the minifier can cascade the removal:
