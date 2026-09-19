@@ -76,7 +76,7 @@ Provide at least one of `tx` or `rx`. The available methods depend on which pins
 \* At least one of `tx` or `rx` must be provided.
 
 ::: warning UART0
-The firmware claims the pins of every console it installs. On chips with USB Serial/JTAG (ESP32-C6, ESP32-S3, and similar), the default firmware installs only the USB console, so the UART0 pins are free. If you pass a console pin to `Uart()`, it returns a `GpioInUse` error with `owner: 'console'`. If you open UART0 on other pins while the console uses UART0, `Uart()` returns `DriverInstallFailed`.
+The firmware claims the pins of every console it installs. On chips with USB Serial/JTAG (ESP32-C6, ESP32-S3, and similar), the default firmware installs only the USB console, so the UART0 pins are free. If you pass a console pin to `Uart()`, it returns a `GpioInUse` error with `owner: 'console'`. If you open UART0 on other pins while the console uses UART0, `Uart()` returns `DriverInstallFailed` and leaves the console's settings unchanged. The same applies to a port that another `Uart` handle holds: call `end()` on that handle first.
 :::
 
 ## Methods
@@ -148,15 +148,15 @@ interface UartRx {
 
 ### UartError
 
-| Variant               | Fields             | Description                                                |
-| --------------------- | ------------------ | ---------------------------------------------------------- |
-| `GpioInUse`           | `owner`, `message` | A pin is held by another handle, peripheral or the console |
-| `InvalidGpio`         | `message`          | The chip has no such GPIO, or `tx` cannot drive a signal   |
-| `InvalidParam`        | `message`          | The port or baud rate is out of range                      |
-| `DriverInstallFailed` | `message`          | UART driver installation failed                            |
-| `SetPinFailed`        | `message`          | GPIO pin configuration failed                              |
-| `WriteFailed`         | `message`          | Write operation failed                                     |
-| `ReadFailed`          | `message`          | Read operation failed                                      |
-| `AlreadyReading`      | --                 | Another `read()` iterator is still active                  |
-| `NoRxPin`             | --                 | `read()` called but no RX pin configured                   |
-| `NoTxPin`             | --                 | `write()` called but no TX pin configured                  |
+| Variant               | Fields             | Description                                                    |
+| --------------------- | ------------------ | -------------------------------------------------------------- |
+| `GpioInUse`           | `owner`, `message` | A pin is held by another handle, peripheral or the console     |
+| `InvalidGpio`         | `message`          | The chip has no such GPIO, or `tx` cannot drive a signal       |
+| `InvalidParam`        | `message`          | The port or baud rate is out of range                          |
+| `DriverInstallFailed` | `message`          | The port is already in use, or the UART driver did not install |
+| `SetPinFailed`        | `message`          | GPIO pin configuration failed                                  |
+| `WriteFailed`         | `message`          | Write operation failed                                         |
+| `ReadFailed`          | `message`          | Read operation failed                                          |
+| `AlreadyReading`      | --                 | Another `read()` iterator is still active                      |
+| `NoRxPin`             | --                 | `read()` called but no RX pin configured                       |
+| `NoTxPin`             | --                 | `write()` called but no TX pin configured                      |

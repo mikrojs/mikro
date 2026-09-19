@@ -1,3 +1,4 @@
+#include "driver/uart.h"
 #include "js_harness.h"
 
 using namespace js_harness;
@@ -49,6 +50,26 @@ TEST_CASE("Uart throws on wrong types and returns Results for bad values", "[uar
     TEST_ASSERT_EQUAL_STRING("[\"TypeError\",\"TypeError\",\"TypeError\",\"InvalidParam\","
                              "\"InvalidParam\",\"InvalidGpio\"]",
                              out().c_str());
+    teardown();
+}
+
+TEST_CASE("Uart refuses a port that is in use and leaves its settings alone", "[uart]") {
+    setup();
+    set_uart_globals();
+    run(R"(
+        import {Uart} from 'mikro/uart'
+        globalThis.uart = Uart(1, {tx: TEST_GPIO, baudRate: 9600}).orPanic('uart')
+        const second = Uart(1, {rx: RX, baudRate: 115200})
+        globalThis.out = JSON.stringify([second.ok, second.error.name])
+    )");
+    TEST_ASSERT_EQUAL_STRING("[false,\"DriverInstallFailed\"]", out().c_str());
+    /* The refused call changed neither the open port's baud rate nor its claims. */
+    uint32_t baud = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, uart_get_baudrate(UART_NUM_1, &baud));
+    TEST_ASSERT_UINT32_WITHIN(100, 9600, baud);
+    TEST_ASSERT_EQUAL_STRING("Uart", MIK_GpioOwner(TEST_GPIO));
+    TEST_ASSERT_NULL(MIK_GpioOwner(6));
+    run(R"(uart.end())");
     teardown();
 }
 
