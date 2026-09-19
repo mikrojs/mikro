@@ -7,6 +7,7 @@ import {useCallback} from 'react'
 import {filter, firstValueFrom, map, Subject, type Subscription} from 'rxjs'
 
 import {DevicePicker} from '../components/DevicePicker.js'
+import {EntryGate} from '../components/EntryGate.js'
 import {agentEmit} from '../lib/agent.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
 import {port} from '../lib/portValueParser.js'
@@ -84,6 +85,9 @@ type Props = {
 }
 
 export async function run(config: InferValue<typeof args>) {
+  // Before the device: a missing entry is worth reporting whether or not one
+  // is plugged in, and it is not a connection problem.
+  const entry = resolveEntry(config.entry)
   const deploys$ = new Subject<{force: boolean}>()
   let dev: DevSessionHandle | null = null
   let stateSub: Subscription | null = null
@@ -95,7 +99,7 @@ export async function run(config: InferValue<typeof args>) {
       onReady: async ({session}) => {
         dev = createDevSession({
           session,
-          entry: resolveEntry(config.entry),
+          entry,
           forceDeploy: config.forceDeploy === true,
           minify: !config.noMinify,
           bytecode: !config.noBytecode,
@@ -173,11 +177,19 @@ export async function run(config: InferValue<typeof args>) {
 }
 
 export default function Dev(props: Props) {
+  return (
+    <EntryGate entry={props.args.entry}>
+      {(entry) => <DevMode args={props.args} entry={entry} />}
+    </EntryGate>
+  )
+}
+
+function DevMode(props: Props & {entry: string}) {
   const {port, noMinify, noBytecode, forceDeploy, noWatch, noHooks, yes} = props.args
   const minifier = parseMinifier(props.args.minifier)
   const minifyLevel = parseMinifyLevel(props.args.minifyLevel)
   const logLevel = parseLogLevel(props.args.logLevel)
-  const entry = resolveEntry(props.args.entry)
+  const {entry} = props
 
   const driver = useCallback(
     ({session, repl}: InkReplDriverContext): InkReplDriverResult => {

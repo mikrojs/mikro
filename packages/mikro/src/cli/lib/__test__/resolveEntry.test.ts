@@ -4,6 +4,7 @@ import * as pathlib from 'node:path'
 
 import {afterEach, beforeEach, describe, expect, it} from 'vitest'
 
+import {UserError} from '../errorMessage.js'
 import {resolveEntry} from '../resolveEntry.js'
 
 describe('resolveEntry', () => {
@@ -46,6 +47,7 @@ describe('resolveEntry', () => {
     process.chdir(tempDir)
 
     expect(() => resolveEntry(undefined)).to.throw(
+      UserError,
       /No entry file specified and no package\.json found/,
     )
   })
@@ -54,13 +56,25 @@ describe('resolveEntry', () => {
     writeFileSync(pathlib.join(tempDir, 'package.json'), JSON.stringify({name: 'test'}))
     process.chdir(tempDir)
 
-    expect(() => resolveEntry(undefined)).to.throw(/package\.json has no "main" field/)
+    expect(() => resolveEntry(undefined)).to.throw(UserError, /package\.json has no "main" field/)
   })
 
   it('throws when main field points to non-existent file', () => {
     writeFileSync(pathlib.join(tempDir, 'package.json'), JSON.stringify({main: './app/missing.ts'}))
     process.chdir(tempDir)
 
-    expect(() => resolveEntry(undefined)).to.throw(/does not exist/)
+    expect(() => resolveEntry(undefined)).to.throw(UserError, /does not exist/)
+  })
+
+  it('throws with the parse error as the cause when package.json is not valid JSON', () => {
+    writeFileSync(pathlib.join(tempDir, 'package.json'), '{"main": }')
+    process.chdir(tempDir)
+
+    expect(() => resolveEntry(undefined)).to.throw(UserError, /package\.json is not valid JSON/)
+    try {
+      resolveEntry(undefined)
+    } catch (err) {
+      expect((err as UserError).cause).to.be.instanceOf(SyntaxError)
+    }
   })
 })
