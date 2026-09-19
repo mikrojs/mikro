@@ -134,6 +134,15 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
     auto uart_port = static_cast<uart_port_t>(port);
+    /* A port that is in use (the console on UART0, or another Uart handle) is
+     * refused before uart_param_config and uart_set_pin can change its baud
+     * rate and pins. */
+    if (uart_is_driver_installed(uart_port)) {
+        mik__release_gpios(gpios, countof(gpios), "Uart");
+        return mik__result_err_named(ctx, "DriverInstallFailed", "port %d is already in use",
+                                     (int)port);
+    }
+
     uart_config_t uart_config = {};
     uart_config.baud_rate = static_cast<int>(baud_rate);
     uart_config.data_bits = UART_DATA_8_BITS;
