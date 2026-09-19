@@ -38,6 +38,8 @@ export async function nodeFileTrace(
     }),
   )
 
+  await hoistDuplicatePackages(job)
+
   // Build source path map: for files in the fileList that have virtual paths,
   // map the relative output path to the real source path on disk
   const sourcePathMap = new Map<string, string>()
@@ -63,6 +65,110 @@ function getPkgNameFromPath(pathAfterNodeModules: string) {
   const segments = pathAfterNodeModules.split(sep)
   if (segments[0]![0] === '@' && segments.length > 1) return segments.slice(0, 2).join(sep)
   return segments[0]!
+}
+
+const NODE_MODULES = sep + 'node_modules' + sep
+
+// The package directory (`<dir>/node_modules/<name>`) a traced file sits in.
+function packageDirOf(file: string): string | undefined {
+  const path = sep + file
+  const idx = path.lastIndexOf(NODE_MODULES)
+  if (idx === -1) return undefined
+  const name = getPkgNameFromPath(path.slice(idx + NODE_MODULES.length))
+  return path.slice(1, idx + NODE_MODULES.length) + name
+}
+
+// Dedupes a package that the trace reached at two node_modules paths.
+//
+// A linked package (a workspace member) has its own node_modules, so it reaches
+// a dependency at a nested path. When the app reaches the same directory on disk
+// at an outer path too, the deploy would carry the package twice, and the device
+// would load it as two module instances.
+//
+// The nested files move to the outer path. That is where the device's walk up
+// from the importer ends once the nested copy is gone. A copy in a different
+// directory on disk (another version) is left alone.
+async function hoistDuplicatePackages(job: Tracer) {
+  const realDirOf = async (pkgDir: string, files: string[]) => {
+    const file = files[0]!
+    const real = await job.realpath(resolve(job.base, file))
+    const tail = file.slice(pkgDir.length)
+    return real.endsWith(tail) ? real.slice(0, -tail.length) : undefined
+  }
+
+  for (let moved = true; moved;) {
+    moved = false
+    const packages = new Map<string, string[]>()
+    for (const file of job.fileList) {
+      const pkgDir = packageDirOf(file)
+      if (pkgDir === undefined) continue
+      const files = packages.get(pkgDir)
+      if (files) files.push(file)
+      else packages.set(pkgDir, [file])
+    }
+
+    // Deepest first, then by name: the trace fills fileList in timing order, and
+    // the result must not depend on it.
+    const depth = (dir: string) => (sep + dir).split(NODE_MODULES).length
+    const ordered = [...packages].sort(
+      ([x], [y]) => depth(y) - depth(x) || (x < y ? -1 : x > y ? 1 : 0),
+    )
+    for (const [nested, files] of ordered) {
+      const path = sep + nested
+      const idx = path.lastIndexOf(NODE_MODULES)
+      const name = path.slice(idx + NODE_MODULES.length)
+      // The nearest outer copy is the one the device finds.
+      let outer: string | undefined
+      for (let dir = path.slice(0, idx); dir !== '' && outer === undefined;) {
+        dir = dir.slice(0, dir.lastIndexOf(sep))
+        const candidate = (dir + NODE_MODULES + name).slice(1)
+        if (packages.has(candidate)) outer = candidate
+      }
+      if (outer === undefined) continue
+      const nestedReal = await realDirOf(nested, files)
+      if (nestedReal === undefined) continue
+      if (nestedReal !== (await realDirOf(outer, packages.get(outer)!))) continue
+
+      // A dependency the nested copy found in a node_modules between the two
+      // paths is out of reach from the outer one: leave such a package nested.
+      const reachesOutOfSight = [...job.reasons].some(([file, reason]) => {
+        if (file.startsWith(nested + sep)) return false
+        const dependency = packageDirOf(file)
+        if (dependency === undefined) return false
+        const dependencyPath = sep + dependency
+        const owner = dependencyPath.slice(0, dependencyPath.lastIndexOf(NODE_MODULES))
+        if ((sep + outer).startsWith(owner + sep)) return false
+        return [...reason.parents].some((parent) => parent.startsWith(nested + sep))
+      })
+      if (reachesOutOfSight) continue
+
+      // Everything under the nested directory moves, its own node_modules too:
+      // the package's dependencies have to stay where it finds them.
+      const rename = (path: string) =>
+        path.startsWith(nested + sep) ? outer + path.slice(nested.length) : path
+      const moving = [...job.fileList].filter((file) => file.startsWith(nested + sep))
+      for (const file of moving) {
+        const target = rename(file)
+        const real = await job.realpath(resolve(job.base, file))
+        job.fileList.delete(file)
+        const reason = job.reasons.get(file)
+        job.reasons.delete(file)
+        if (job.fileList.has(target)) {
+          for (const parent of reason?.parents ?? []) job.reasons.get(target)?.parents.add(parent)
+          continue
+        }
+        job.fileList.add(target)
+        if (reason) job.reasons.set(target, reason)
+        job.virtualPathToRealPath.set(resolve(job.base, target), real)
+      }
+      // The guard above reads parents, so they have to follow the move.
+      for (const reason of job.reasons.values()) {
+        reason.parents = new Set([...reason.parents].map(rename))
+      }
+      moved = true
+      break
+    }
+  }
 }
 
 export class Tracer {
