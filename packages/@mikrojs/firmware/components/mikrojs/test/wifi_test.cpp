@@ -77,6 +77,25 @@ static int32_t get_wifi_status() {
     return s;
 }
 
+static int32_t get_global_int(const char* name) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue v = JS_GetPropertyStr(ctx, global, name);
+    int32_t n = -1;
+    JS_ToInt32(ctx, &n, v);
+    JS_FreeValue(ctx, v);
+    JS_FreeValue(ctx, global);
+    return n;
+}
+
+static void fire_disconnect() {
+    wifi_event_sta_disconnected_t disc = {};
+    disc.reason = WIFI_REASON_AUTH_FAIL;
+    esp_event_post(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &disc, sizeof(disc), portMAX_DELAY);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    mik__wifi_consume(ctx);
+    mik__execute_jobs(ctx);
+}
+
 /* ── Module structure tests ───────────────────────────────────────── */
 
 TEST_CASE("native:mikro/wifi exports Wifi with expected methods", "[wifi]") {
@@ -365,6 +384,69 @@ TEST_CASE("Wifi on/off registers and removes event listeners", "[wifi]") {
     TEST_ASSERT_EQUAL_INT32(1, count);  // still 1, listener was removed
 
     JS_FreeValue(ctx, global);
+    teardown();
+}
+
+TEST_CASE("Wifi listener that calls off() on itself leaves the others running once", "[wifi]") {
+    setup();
+
+    JSValue ret = eval_module(R"(
+        import { Wifi } from "native:mikro/wifi";
+        const wifi = new Wifi();
+        globalThis.__a = 0;
+        globalThis.__b = 0;
+        globalThis.__c = 0;
+        function a() {
+            globalThis.__a++;
+            wifi.off("disconnect", a);
+        }
+        wifi.on("disconnect", a);
+        wifi.on("disconnect", () => globalThis.__b++);
+        wifi.on("disconnect", () => globalThis.__c++);
+    )");
+    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
+
+    fire_disconnect();
+    TEST_ASSERT_EQUAL_INT32(1, get_global_int("__a"));
+    TEST_ASSERT_EQUAL_INT32(1, get_global_int("__b"));
+    TEST_ASSERT_EQUAL_INT32(1, get_global_int("__c"));
+
+    // a removed itself; the others keep receiving events
+    fire_disconnect();
+    TEST_ASSERT_EQUAL_INT32(1, get_global_int("__a"));
+    TEST_ASSERT_EQUAL_INT32(2, get_global_int("__b"));
+    TEST_ASSERT_EQUAL_INT32(2, get_global_int("__c"));
+
+    teardown();
+}
+
+TEST_CASE("Wifi listener added during dispatch first runs on the next event", "[wifi]") {
+    setup();
+
+    JSValue ret = eval_module(R"(
+        import { Wifi } from "native:mikro/wifi";
+        const wifi = new Wifi();
+        globalThis.__first = 0;
+        globalThis.__added = 0;
+        let added = false;
+        wifi.on("disconnect", () => {
+            globalThis.__first++;
+            if (!added) {
+                added = true;
+                wifi.on("disconnect", () => globalThis.__added++);
+            }
+        });
+    )");
+    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
+
+    fire_disconnect();
+    TEST_ASSERT_EQUAL_INT32(1, get_global_int("__first"));
+    TEST_ASSERT_EQUAL_INT32(0, get_global_int("__added"));
+
+    fire_disconnect();
+    TEST_ASSERT_EQUAL_INT32(2, get_global_int("__first"));
+    TEST_ASSERT_EQUAL_INT32(1, get_global_int("__added"));
+
     teardown();
 }
 
