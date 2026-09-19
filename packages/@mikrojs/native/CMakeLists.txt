@@ -207,6 +207,7 @@ if(BUILD_TESTING)
         test/result_utils_test.cpp
         test/modules_fs_test.cpp
         test/sys_test.cpp
+        test/teardown_test.cpp
         test/runtime_entry_test.cpp
         test/timers_test.cpp
         test/reader_test.cpp

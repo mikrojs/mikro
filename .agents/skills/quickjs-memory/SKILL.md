@@ -36,7 +36,7 @@ QuickJS uses **reference counting** for all JS values. Every `JSValue` has a ref
 | `JS_Eval(ctx, ...)`                    | You own the return value                                                            |
 | `JS_ReadObject(ctx, ...)`              | You own the return value                                                            |
 | `JS_NewArrayBufferCopy(ctx, buf, len)` | Copies data, you own the JSValue                                                    |
-| `JS_NewClassID(rt, &id)`               | Not a JSValue, but allocates a class slot                                           |
+| `MIK_NewClassID(rt, &id)`              | Not a JSValue, but allocates a class slot (never call `JS_NewClassID` directly)     |
 
 ### Functions that CONSUME arguments (do NOT free after passing)
 
@@ -180,8 +180,11 @@ static JSClassDef my_class = {
     .finalizer = my_finalizer,
 };
 
-// Registration (once, at init):
-JS_NewClassID(JS_GetRuntime(ctx), &my_class_id);
+// Registration (once, at init). MIK_NewClassID, never JS_NewClassID: QuickJS numbers
+// class IDs per runtime, but the static above outlives the runtime. A later runtime
+// would hand another class the same number, and its objects would run this finalizer.
+// One plain JS_NewClassID call can still collide with the IDs MIK_NewClassID hands out.
+MIK_NewClassID(JS_GetRuntime(ctx), &my_class_id);
 JS_NewClass(JS_GetRuntime(ctx), my_class_id, &my_class);
 
 // Creating an instance:

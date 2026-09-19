@@ -866,7 +866,7 @@ void mik__pub_fs_register(JSContext* ctx) {
     JSRuntime* rt = JS_GetRuntime(ctx);
 
     /* FileHandle class (used by open()) */
-    JS_NewClassID(rt, &mik_file_class_id);
+    MIK_NewClassID(rt, &mik_file_class_id);
     JS_NewClass(rt, mik_file_class_id, &mik_file_class);
     JSValue proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, proto, mik_file_proto_funcs, countof(mik_file_proto_funcs));

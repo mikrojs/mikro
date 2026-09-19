@@ -436,7 +436,7 @@ static JSModuleDef* mik__uart_init(JSContext* ctx) {
     JSRuntime* rt = JS_GetRuntime(ctx);
 
     /* Register Uart class */
-    JS_NewClassID(rt, &mik_uart_class_id);
+    MIK_NewClassID(rt, &mik_uart_class_id);
     JS_NewClass(rt, mik_uart_class_id, &mik_uart_class);
 
     JSValue proto = JS_NewObject(ctx);
@@ -444,7 +444,7 @@ static JSModuleDef* mik__uart_init(JSContext* ctx) {
     JS_SetClassProto(ctx, mik_uart_class_id, proto);
 
     /* Register iterator class */
-    JS_NewClassID(rt, &mik_uart_iter_class_id);
+    MIK_NewClassID(rt, &mik_uart_iter_class_id);
     JS_NewClass(rt, mik_uart_iter_class_id, &mik_uart_iter_class);
 
     JSValue iter_proto = JS_NewObject(ctx);

@@ -107,6 +107,16 @@ int MIK_RunEntryErr(MIKRuntime* mik_rt, const char* entry, char* err_buf, size_t
 
 JSContext* MIK_GetJSContext(MIKRuntime* mik_rt);
 MIKRuntime* MIK_GetRuntime(JSContext* ctx);
+
+/* JS_NewClassID for class IDs kept in process-wide statics. QuickJS allocates
+ * class IDs per runtime, so a static assigned in one runtime can collide with
+ * a class a later runtime gives the same number: the test supervisor runs one
+ * runtime per file, and some ports restart the app in place. This hands out
+ * IDs unique across every runtime in the process. Never mix it with a plain
+ * JS_NewClassID in the same process: in a later runtime QuickJS's own counter
+ * lags this one, so the plain call can return an ID handed out here. */
+JSClassID MIK_NewClassID(JSRuntime* rt, JSClassID* class_id);
+
 void MIK_SetFSBasePath(MIKRuntime* mik_rt, const char* base_path);
 void MIK_SetFSRoot(MIKRuntime* mik_rt, const char* fs_root);
 void MIK_SetFSLimit(MIKRuntime* mik_rt, size_t limit);

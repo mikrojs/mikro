@@ -1,6 +1,7 @@
 #include <quickjs.h>
 #include <string.h>
 
+#include "mikrojs/mikrojs.h"
 #include "mikrojs/utils.h"
 
 /* ---- TextEncoder ---- */
@@ -488,7 +489,7 @@ void mik__text_encoding_init(JSContext* ctx, JSValue global) {
     JSRuntime* rt = JS_GetRuntime(ctx);
 
     /* TextEncoder */
-    JS_NewClassID(rt, &textencoder_class_id);
+    MIK_NewClassID(rt, &textencoder_class_id);
     JS_NewClass(rt, textencoder_class_id, &textencoder_classdef);
     JSValue te_proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, te_proto, mik__text_encoder_proto_funcs,
@@ -499,7 +500,7 @@ void mik__text_encoding_init(JSContext* ctx, JSValue global) {
     JS_DefinePropertyValueStr(ctx, global, "TextEncoder", te_ctor, JS_PROP_C_W_E);
 
     /* TextDecoder */
-    JS_NewClassID(rt, &textdecoder_class_id);
+    MIK_NewClassID(rt, &textdecoder_class_id);
     JS_NewClass(rt, textdecoder_class_id, &textdecoder_classdef);
     JSValue td_proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, td_proto, mik__text_decoder_proto_funcs,

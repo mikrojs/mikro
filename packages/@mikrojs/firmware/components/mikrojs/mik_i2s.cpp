@@ -632,7 +632,7 @@ static JSModuleDef* mik__i2s_init(JSContext* ctx) {
 
     JSRuntime* rt = JS_GetRuntime(ctx);
 
-    JS_NewClassID(rt, &mik_i2s_class_id);
+    MIK_NewClassID(rt, &mik_i2s_class_id);
     JS_NewClass(rt, mik_i2s_class_id, &mik_i2s_class);
     JSValue proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, proto, mik_i2s_proto_funcs, countof(mik_i2s_proto_funcs));

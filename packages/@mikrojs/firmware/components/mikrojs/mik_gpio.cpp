@@ -596,7 +596,7 @@ static const JSCFunctionListEntry mik_analog_in_proto_funcs[] = {
 static void mik__gpio_class_init(JSContext* ctx, JSClassID* id, const JSClassDef* def,
                                 const JSCFunctionListEntry* funcs, int count) {
     JSRuntime* rt = JS_GetRuntime(ctx);
-    JS_NewClassID(rt, id);
+    MIK_NewClassID(rt, id);
     JS_NewClass(rt, *id, def);
     JSValue proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, proto, funcs, count);

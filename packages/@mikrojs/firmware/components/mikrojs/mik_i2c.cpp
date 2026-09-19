@@ -336,7 +336,7 @@ static JSModuleDef* mik__i2c_init(JSContext* ctx) {
     JSRuntime* rt = JS_GetRuntime(ctx);
 
     /* Register class (once per runtime) */
-    JS_NewClassID(rt, &mik_i2c_class_id);
+    MIK_NewClassID(rt, &mik_i2c_class_id);
     JS_NewClass(rt, mik_i2c_class_id, &mik_i2c_class);
 
     /* Create prototype with methods */

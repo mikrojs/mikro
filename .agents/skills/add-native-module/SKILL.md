@@ -208,8 +208,10 @@ static int mik__sensor_module_init(JSContext* ctx, JSModuleDef* m) {
 static JSModuleDef* mik__sensor_init(JSContext* ctx) {
     JSRuntime* rt = JS_GetRuntime(ctx);
 
-    // Register the class (once per runtime)
-    JS_NewClassID(rt, &my_sensor_class_id);
+    // Register the class (once per runtime). Always MIK_NewClassID, never JS_NewClassID:
+    // QuickJS numbers class IDs per runtime, the static outlives the runtime, and one plain
+    // call can collide with an ID MIK_NewClassID handed out.
+    MIK_NewClassID(rt, &my_sensor_class_id);
     JS_NewClass(rt, my_sensor_class_id, &my_sensor_class);
 
     // Create prototype with methods

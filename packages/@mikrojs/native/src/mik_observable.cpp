@@ -1994,20 +1994,20 @@ JSModuleDef* mik__observable_init(JSContext* ctx) {
         mik_rt->observable_dispatch = new MIKObservableDispatch();
     }
 
-    /* Class IDs are runtime-scoped; safe to register once per runtime. */
-    JS_NewClassID(rt, &observable_class_id);
+    /* The IDs are process-wide (MIK_NewClassID); the classes register once per runtime. */
+    MIK_NewClassID(rt, &observable_class_id);
     JS_NewClass(rt, observable_class_id, &observable_class_def);
-    JS_NewClassID(rt, &subscriber_class_id);
+    MIK_NewClassID(rt, &subscriber_class_id);
     JS_NewClass(rt, subscriber_class_id, &subscriber_class_def);
-    JS_NewClassID(rt, &subscription_class_id);
+    MIK_NewClassID(rt, &subscription_class_id);
     JS_NewClass(rt, subscription_class_id, &subscription_class_def);
-    JS_NewClassID(rt, &from_iter_class_id);
+    MIK_NewClassID(rt, &from_iter_class_id);
     JS_NewClass(rt, from_iter_class_id, &from_iter_class_def);
-    JS_NewClassID(rt, &from_promise_class_id);
+    MIK_NewClassID(rt, &from_promise_class_id);
     JS_NewClass(rt, from_promise_class_id, &from_promise_class_def);
-    JS_NewClassID(rt, &multicast_class_id);
+    MIK_NewClassID(rt, &multicast_class_id);
     JS_NewClass(rt, multicast_class_id, &multicast_class_def);
-    JS_NewClassID(rt, &op_state_class_id);
+    MIK_NewClassID(rt, &op_state_class_id);
     JS_NewClass(rt, op_state_class_id, &op_state_class_def);
 
     JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/observable", observable_module_init);
