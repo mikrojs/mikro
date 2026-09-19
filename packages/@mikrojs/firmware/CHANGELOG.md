@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.21.0 (2026-09-19)
+
+### Breaking changes
+
+- replace constructors and begin() with factories ([#387](https://github.com/mikrojs/mikro/pull/387))
+- **gpio:** replace mikro/pin with GPIO instances ([#385](https://github.com/mikrojs/mikro/pull/385))
+
+### Features
+
+- **cli:** report packages the build deploys more than once ([#402](https://github.com/mikrojs/mikro/pull/402))
+- **result:** make the orPanic message optional ([#386](https://github.com/mikrojs/mikro/pull/386))
+- **observable:** add state() and a full operator set ([#383](https://github.com/mikrojs/mikro/pull/383))
+
+### Bug fixes
+
+- **cli:** print one line instead of a stack trace when esptool fails ([#406](https://github.com/mikrojs/mikro/pull/406))
+- **cli:** deploy symlinked packages where the device resolves them ([#403](https://github.com/mikrojs/mikro/pull/403))
+- **deploy:** redeploy when the build only removes files ([#401](https://github.com/mikrojs/mikro/pull/401))
+- **cli:** prevent same package from being deployed twice in linked workspaces ([#398](https://github.com/mikrojs/mikro/pull/398))
+- **timers:** make intervals drift-free ([#381](https://github.com/mikrojs/mikro/pull/381))
+- **deps:** add `@optique` packages to catalog, update to v1.2.5 ([#371](https://github.com/mikrojs/mikro/pull/371))
+- **ota:** stop a failed nvs read from handing back the retry budget ([#369](https://github.com/mikrojs/mikro/pull/369))
+- **ota:** keep a decline record in case nvs read fails ([#370](https://github.com/mikrojs/mikro/pull/370))
+- **kv:** stop a throwing read handler from deleting stored data ([#368](https://github.com/mikrojs/mikro/pull/368))
+- improve error logging pattern ([#367](https://github.com/mikrojs/mikro/pull/367))
+- **runtime:** report failing imports instead of silently hanging ([#365](https://github.com/mikrojs/mikro/pull/365))
+
+### Other
+
+- **deps:** update dependency wrangler to v4.134.0 ([#409](https://github.com/mikrojs/mikro/pull/409))
+- **deps:** update dependency vite to v8.3.0 ([#407](https://github.com/mikrojs/mikro/pull/407))
+- **deps:** update dependency vitepress-plugin-llms to v1.14.0 ([#408](https://github.com/mikrojs/mikro/pull/408))
+- **deps:** update dependency knip to v6.37.0 ([#404](https://github.com/mikrojs/mikro/pull/404))
+- **deps:** update dependency @optique/run to v1.3.0 ([#400](https://github.com/mikrojs/mikro/pull/400))
+- **deps:** update dependency open to v11.0.4 ([#393](https://github.com/mikrojs/mikro/pull/393))
+- **deps:** update dependency @optique/core to v1.3.0 ([#399](https://github.com/mikrojs/mikro/pull/399))
+- **deps:** update vitest monorepo to v5.0.1 ([#396](https://github.com/mikrojs/mikro/pull/396))
+- **deps:** update dependency @clack/prompts to v1.8.1 ([#397](https://github.com/mikrojs/mikro/pull/397))
+- **deps:** update dependency vue to v3.5.43 ([#395](https://github.com/mikrojs/mikro/pull/395))
+- **deps:** update dependency prettier to v3.9.8 ([#394](https://github.com/mikrojs/mikro/pull/394))
+- **deps:** update dependency lefthook to v2.1.14 ([#392](https://github.com/mikrojs/mikro/pull/392))
+- **deps:** update pnpm/setup digest to 84cb39b ([#377](https://github.com/mikrojs/mikro/pull/377))
+- **deps:** update dependency @types/node to v24.13.5 ([#390](https://github.com/mikrojs/mikro/pull/390))
+- **deps:** update dependency eslint-plugin-package-json to v1.8.1 ([#391](https://github.com/mikrojs/mikro/pull/391))
+- **deps:** update pnpm to v12.4.2 ([#389](https://github.com/mikrojs/mikro/pull/389))
+- **deps:** update pnpm to v12.4.1 ([#384](https://github.com/mikrojs/mikro/pull/384))
+- **deps:** update dependency oxfmt to ^0.68.0 ([#388](https://github.com/mikrojs/mikro/pull/388))
+- **deps:** update zizmorcore/zizmor-action action to v0.6.4 ([#382](https://github.com/mikrojs/mikro/pull/382))
+- add heap memory snapshots for esp32 ([#380](https://github.com/mikrojs/mikro/pull/380))
+- **deps:** update dependency oxfmt to ^0.67.0 ([#379](https://github.com/mikrojs/mikro/pull/379))
+- consolidate pnpm and node setup with pnpm/setup v2 action ([#376](https://github.com/mikrojs/mikro/pull/376))
+- **deps:** update dependencies and actions to latest ([#372](https://github.com/mikrojs/mikro/pull/372))
+- exclude submodule dependencies from taze version checking ([#374](https://github.com/mikrojs/mikro/pull/374))
+
 ## 0.20.1 (2026-09-05)
 
 ### Features
