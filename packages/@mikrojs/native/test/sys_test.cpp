@@ -45,6 +45,21 @@ static const char* fake_get_reset_reason(void) {
     return "power-on-test";
 }
 
+static const char* fake_get_wakeup_cause(void) {
+    return "timer";
+}
+
+static const char* fake_get_chip_name(void) {
+    return "testchip";
+}
+
+static void fake_get_chip_info(MIKChipInfo* info) {
+    static const char* const features[] = {"wifi", nullptr};
+    info->cores = 2;
+    info->flash = 4 * 1024 * 1024;
+    info->features = features;
+}
+
 struct SysFixture {
     const MIKPlatform* orig = nullptr;
     MIKPlatform fake;
@@ -116,6 +131,7 @@ TEST_CASE_FIXTURE(SysFixture, "device facts come from the platform" *
               "globalThis.__version = sys.version\n"
               "globalThis.__board = sys.board.name\n"
               "globalThis.__firmware = sys.firmware.name\n"
+              "globalThis.__chip = sys.board.chip\n"
               "const up = sys.uptime()\n"
               "globalThis.__bootPositive = up.boot > 0 && up.rtc > 0\n")
                  .c_str());
@@ -124,7 +140,41 @@ TEST_CASE_FIXTURE(SysFixture, "device facts come from the platform" *
     CHECK(read_global_string(ctx, "__version") != "");
     CHECK(read_global_string(ctx, "__board") == "generic");
     CHECK(read_global_string(ctx, "__firmware") == "generic");
+    /* No get_chip_name hook on the host platform. */
+    CHECK(read_global_string(ctx, "__chip") == "host");
     CHECK(read_global_string(ctx, "__bootPositive") == "true");
+}
+
+TEST_CASE("board.chip comes from the platform's get_chip_name" * doctest::test_suite("sys")) {
+    /* sys.board is built at module init, so the hook goes in before the runtime. */
+    const MIKPlatform* orig = MIK_GetPlatform();
+    MIKPlatform fake = *orig;
+    fake.get_chip_name = fake_get_chip_name;
+    MIK_SetPlatform(&fake);
+    MIKRuntime* rt = MIK_NewRuntime();
+    REQUIRE(rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(rt);
+    run(ctx, (std::string(PRELUDE) + "globalThis.__chip = sys.board.chip\n").c_str());
+    CHECK(read_global_string(ctx, "__chip") == "testchip");
+    MIK_FreeRuntime(rt);
+    MIK_SetPlatform(orig);
+}
+
+TEST_CASE("board facts come from the platform's get_chip_info" * doctest::test_suite("sys")) {
+    const MIKPlatform* orig = MIK_GetPlatform();
+    MIKPlatform fake = *orig;
+    fake.get_chip_info = fake_get_chip_info;
+    MIK_SetPlatform(&fake);
+    MIKRuntime* rt = MIK_NewRuntime();
+    REQUIRE(rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(rt);
+    run(ctx, (std::string(PRELUDE) +
+              "const b = sys.board\n"
+              "globalThis.__facts = `${b.cores}/${b.flash}/${b.psram}/${b.features.join(',')}`\n")
+                 .c_str());
+    CHECK(read_global_string(ctx, "__facts") == "2/4194304/0/wifi");
+    MIK_FreeRuntime(rt);
+    MIK_SetPlatform(orig);
 }
 
 TEST_CASE_FIXTURE(SysFixture, "storage and memory usage report numbers" *
@@ -181,6 +231,25 @@ TEST_CASE_FIXTURE(SysFixture, "device name round-trips and clears" *
     CHECK(read_global_string(ctx, "__before") == "undefined");
     CHECK(read_global_string(ctx, "__after") == "zephyr");
     CHECK(read_global_string(ctx, "__cleared") == "undefined");
+}
+
+/* Both import the builtin mikro/sys, not native:mikro/sys: it must load on a
+ * host with no native:mikro/sleep. The hook is read per call, not at init. */
+static const char* WAKEUP_CAUSE = "import {getWakeupCause} from 'mikro/sys'\n"
+                                  "globalThis.__cause = getWakeupCause()\n";
+
+TEST_CASE_FIXTURE(SysFixture, "getWakeupCause is 'undefined' without the platform hook" *
+                                  doctest::test_suite("sys")) {
+    REQUIRE(fake.get_wakeup_cause == nullptr);
+    run(ctx, WAKEUP_CAUSE);
+    CHECK(read_global_string(ctx, "__cause") == "undefined");
+}
+
+TEST_CASE_FIXTURE(SysFixture, "getWakeupCause comes from the platform hook" *
+                                  doctest::test_suite("sys")) {
+    fake.get_wakeup_cause = fake_get_wakeup_cause;
+    run(ctx, WAKEUP_CAUSE);
+    CHECK(read_global_string(ctx, "__cause") == "timer");
 }
 
 TEST_CASE_FIXTURE(SysFixture, "setTime succeeds or reports errno" * doctest::test_suite("sys")) {

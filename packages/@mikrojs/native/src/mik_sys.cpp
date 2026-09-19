@@ -215,9 +215,11 @@ static JSValue mik__sys_board(JSContext* ctx) {
     JSValue obj = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, obj, "name", JS_NewString(ctx, mik__board_name()));
 
-#ifdef CONFIG_IDF_TARGET
-    JS_SetPropertyStr(ctx, obj, "chip", JS_NewString(ctx, CONFIG_IDF_TARGET));
+    const MIKPlatform* platform = MIK_GetPlatform();
+    const char* chip = platform->get_chip_name ? platform->get_chip_name() : nullptr;
+    JS_SetPropertyStr(ctx, obj, "chip", JS_NewString(ctx, chip ? chip : "host"));
 
+#ifdef CONFIG_IDF_TARGET
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
     JS_SetPropertyStr(ctx, obj, "cores", JS_NewInt32(ctx, chip_info.cores));
@@ -257,12 +259,17 @@ static JSValue mik__sys_board(JSContext* ctx) {
 #endif
 
 #else
-    JS_SetPropertyStr(ctx, obj, "chip", JS_NewString(ctx, "host"));
-    JS_SetPropertyStr(ctx, obj, "cores", JS_NewInt32(ctx, 1));
-    JS_SetPropertyStr(ctx, obj, "revision", JS_NewInt32(ctx, 0));
-    JS_SetPropertyStr(ctx, obj, "features", JS_NewArray(ctx));
-    JS_SetPropertyStr(ctx, obj, "flash", JS_NewInt64(ctx, 0));
-    JS_SetPropertyStr(ctx, obj, "psram", JS_NewInt64(ctx, 0));
+    MIKChipInfo info = {.cores = 1};
+    if (platform->get_chip_info) platform->get_chip_info(&info);
+    JS_SetPropertyStr(ctx, obj, "cores", JS_NewInt32(ctx, info.cores));
+    JS_SetPropertyStr(ctx, obj, "revision", JS_NewInt32(ctx, info.revision));
+    JSValue features = JS_NewArray(ctx);
+    for (uint32_t i = 0; info.features && info.features[i]; i++) {
+        JS_SetPropertyUint32(ctx, features, i, JS_NewString(ctx, info.features[i]));
+    }
+    JS_SetPropertyStr(ctx, obj, "features", features);
+    JS_SetPropertyStr(ctx, obj, "flash", JS_NewInt64(ctx, static_cast<int64_t>(info.flash)));
+    JS_SetPropertyStr(ctx, obj, "psram", JS_NewInt64(ctx, static_cast<int64_t>(info.psram)));
 #endif
     return obj;
 }
@@ -332,6 +339,17 @@ static JSValue mik__sys_set_device_name(JSContext* ctx, JSValue this_val, int ar
     return JS_UNDEFINED;
 }
 
+/* Read through the platform so `mikro/sys` loads on ports without sleep. */
+static JSValue mik__sys_get_wakeup_cause(JSContext* ctx, JSValue this_val, int argc,
+                                         JSValue* argv) {
+    (void)this_val;
+    (void)argc;
+    (void)argv;
+    const MIKPlatform* platform = MIK_GetPlatform();
+    const char* cause = platform->get_wakeup_cause ? platform->get_wakeup_cause() : NULL;
+    return JS_NewString(ctx, cause ? cause : "undefined");
+}
+
 void mik__sys_api_init(JSContext* ctx, JSValue ns) {
     JS_SetPropertyStr(ctx, ns, "evalScript",
                       JS_NewCFunction(ctx, mik__sys_eval_script, "evalScript", 1));
@@ -380,4 +398,6 @@ void mik__sys_api_init(JSContext* ctx, JSValue ns) {
         platform->get_reset_reason ? platform->get_reset_reason() : NULL;
     JS_SetPropertyStr(ctx, ns, "resetReason",
                       JS_NewString(ctx, reset_reason ? reset_reason : "unknown"));
+    JS_SetPropertyStr(ctx, ns, "getWakeupCause",
+                      JS_NewCFunction(ctx, mik__sys_get_wakeup_cause, "getWakeupCause", 0));
 }

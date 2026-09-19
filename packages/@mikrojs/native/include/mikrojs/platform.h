@@ -18,6 +18,16 @@ extern "C" {
 #define MIK_RESET_TASK_WATCHDOG "task-watchdog"
 #define MIK_RESET_BROWNOUT "brownout"
 
+/* What sys.board reports about the chip. `features` is NULL-terminated
+ * ("wifi", "ble", ...) and names only radios whose stack is compiled in. */
+typedef struct MIKChipInfo {
+    int cores;
+    int revision;
+    uint64_t flash;
+    uint64_t psram;
+    const char* const* features;
+} MIKChipInfo;
+
 typedef struct MIKPlatform {
     int64_t (*get_boot_us)(void);       /* High-res timer, resets on deep sleep */
     int64_t (*get_rtc_us)(void);        /* RTC timer, survives deep sleep */
@@ -115,6 +125,17 @@ typedef struct MIKPlatform {
      *  stack otherwise starts only as a side effect of the wifi or http
      *  module loading, and lwip aborts on a socket call before that. */
     void (*net_init)(void);
+    /** What last woke the chip from sleep, as a stable lowercase string:
+     *  "timer", "ext0", "ext1", "gpio", "touchpad", "ulp", or "undefined"
+     *  when the boot was not a wake. NULL on platforms without deep sleep. */
+    const char* (*get_wakeup_cause)(void);
+    /** The chip the firmware runs on, as a stable lowercase id ("esp32c6",
+     *  "rp2350"). NULL on hosts, where callers report "host". The returned
+     *  pointer must remain valid for the lifetime of the platform. */
+    const char* (*get_chip_name)(void);
+    /** Facts for sys.board on non-ESP-IDF chips (ESP-IDF builds read the
+     *  chip directly). NULL on hosts: 1 core, no flash, no features. */
+    void (*get_chip_info)(MIKChipInfo* info);
 } MIKPlatform;
 
 /* Log levels (matching ESP-IDF ESP_LOG_xxx values) */

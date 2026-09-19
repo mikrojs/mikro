@@ -9,7 +9,7 @@
  * with JS source compiled on demand — the simulator uses them for every
  * device stub. Critically, they get compiled from INSIDE bytecode
  * deserialization: quickjs-ng resolves a module's imports while
- * JS_ReadObject is still reading it, so loading a builtin like mikro/sys
+ * JS_ReadObject is still reading it, so loading a builtin like mikro/sleep
  * re-enters JS_Eval for the virtual native:mikro/sleep it imports. These tests
  * pin that path; it used to segfault (sim's only coverage was e2e). */
 
@@ -27,10 +27,10 @@ TEST_CASE("virtual module shadows a native module inside builtin deserialization
     auto* ctx = MIK_GetJSContext(rt);
     MIK_RegisterVirtualModule(rt, "native:mikro/sleep", SLEEP_STUB, strlen(SLEEP_STUB));
 
-    /* mikro/sys imports native:mikro/sleep; deserializing its bytecode resolves
+    /* mikro/sleep imports native:mikro/sleep; deserializing its bytecode resolves
      * (and compiles) the virtual module re-entrantly. */
-    const char* code = "import {memoryUsage} from 'mikro/sys'\n"
-                       "globalThis.__ok = typeof memoryUsage === 'function'\n";
+    const char* code = "import {deepSleep} from 'mikro/sleep'\n"
+                       "globalThis.__ok = typeof deepSleep === 'function'\n";
     JSValue ret = MIK_EvalModuleContent(ctx, "/app/main.js", code, strlen(code));
     CHECK(!JS_IsException(ret));
     JS_FreeValue(ctx, ret);
@@ -53,8 +53,8 @@ TEST_CASE("test runner builtin loads and runs with virtual native modules" *
     MIK_RegisterVirtualModule(rt, "native:mikro/http", HTTP_STUB, strlen(HTTP_STUB));
 
     /* Mirrors what the simulator does per test file: evaluate a module
-     * that registers a test through mikro/test (which pulls mikro/sys,
-     * native:mikro/sleep, native:mikro/http) and pump until the suite reports. */
+     * that registers a test through mikro/test (which pulls mikro/sys and
+     * native:mikro/http) and pump until the suite reports. */
     const char* code = "import {assert, describe, test} from 'mikro/test'\n"
                        "describe('smoke', () => {\n"
                        "  test('1+1', () => { assert.equal(1 + 1, 2) })\n"

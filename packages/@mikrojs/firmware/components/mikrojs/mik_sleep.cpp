@@ -30,16 +30,6 @@ static void mik__rtc_pull_for_wake(int pin, bool wake_on_high) {
 #endif
 }
 
-static const char* mik__wakeup_cause_str(uint32_t causes) {
-    if (causes & BIT(ESP_SLEEP_WAKEUP_TIMER)) return "timer";
-    if (causes & BIT(ESP_SLEEP_WAKEUP_EXT0)) return "ext0";
-    if (causes & BIT(ESP_SLEEP_WAKEUP_EXT1)) return "ext1";
-    if (causes & BIT(ESP_SLEEP_WAKEUP_GPIO)) return "gpio";
-    if (causes & BIT(ESP_SLEEP_WAKEUP_TOUCHPAD)) return "touchpad";
-    if (causes & BIT(ESP_SLEEP_WAKEUP_ULP)) return "ulp";
-    return "undefined";
-}
-
 /* ── Wakeup source configuration ───────────────────────────────────── */
 
 static bool mik__configure_timer(JSContext* ctx, JSValue sources) {
@@ -317,8 +307,10 @@ static JSValue mik__sleep_light(JSContext* ctx, JSValue this_val, int argc, JSVa
 
 static JSValue mik__sleep_get_wakeup_cause(JSContext* ctx, JSValue this_val, int argc,
                                             JSValue* argv) {
-    uint32_t causes = esp_sleep_get_wakeup_causes();
-    return JS_NewString(ctx, mik__wakeup_cause_str(causes));
+    /* The hook is nullable: a custom platform may leave it unset. */
+    const MIKPlatform* platform = MIK_GetPlatform();
+    return JS_NewString(
+        ctx, platform->get_wakeup_cause ? platform->get_wakeup_cause() : "undefined");
 }
 
 static JSValue mik__sleep_can_wake_from_ext0(JSContext* ctx, JSValue this_val, int argc,
