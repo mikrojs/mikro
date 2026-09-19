@@ -10,7 +10,7 @@ import {rm, stat} from 'fs/promises'
 
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
 import {displayPath} from '../../lib/displayPath.js'
-import {describeError} from '../../lib/errorMessage.js'
+import {describeError, UserError} from '../../lib/errorMessage.js'
 import {formatSize} from '../../lib/formatSize.js'
 import {readManifestFromTarball, sha256File} from '../../lib/ota.js'
 import {publishBuild, type PublishInput} from '../../lib/otaPublish.js'
@@ -211,6 +211,9 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
       packedPath === undefined ? undefined : `mikro ota push --tarball ${SCRATCH_RELATIVE}`
     if (jsonOutput) {
       agentError('ota push', describeError(err), retry === undefined ? undefined : {fix: retry})
+    } else if (err instanceof UserError) {
+      // eslint-disable-next-line no-console
+      console.error(`Error: ${describeError(err)}`)
     } else {
       // The error object, not a string: Node renders the cause chain, which is
       // where a failed upload's actual reason lives.

@@ -10,6 +10,7 @@ import {Text, useApp, useInput} from 'ink'
 import {useCallback, useEffect, useState} from 'react'
 import {filter, firstValueFrom, map, Subject, type Subscription} from 'rxjs'
 
+import {EntryGate} from '../../components/EntryGate.js'
 import {
   agentEmit,
   agentError,
@@ -270,7 +271,11 @@ interface DevModeProps {
 }
 
 export default function SimDev(props: {args: DevConfig}) {
-  return <SimDevMode config={props.args} />
+  return (
+    <EntryGate entry={props.args.entry}>
+      {(entry) => <SimDevMode config={{...props.args, entry}} />}
+    </EntryGate>
+  )
 }
 
 /**

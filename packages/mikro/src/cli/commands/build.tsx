@@ -14,6 +14,7 @@ import React, {useEffect, useMemo, useReducer} from 'react'
 import {lastValueFrom, tap} from 'rxjs'
 
 import type {LogLevel, Minifier, MinifyLevel} from '../../_exports/index.js'
+import {EntryGate} from '../components/EntryGate.js'
 import {agentError, agentResult, isAgentMode} from '../lib/agent.js'
 import {build, type BuildEvent} from '../lib/build.js'
 import {formatDuplicatePackagesNotice} from '../lib/duplicatePackages.js'
@@ -124,18 +125,21 @@ export default function Build(props: Props) {
   const minifier = parseMinifier(props.args.minifier)
   const minifyLevel = parseMinifyLevel(props.args.minifyLevel)
   const logLevel = parseLogLevel(props.args.logLevel)
-  const entry = resolveEntry(props.args.entry)
 
   return (
-    <Run
-      entry={entry}
-      outDir={outDir}
-      minify={!noMinify}
-      bytecode={!noBytecode}
-      minifier={minifier}
-      minifyLevel={minifyLevel}
-      logLevel={logLevel}
-    />
+    <EntryGate entry={props.args.entry}>
+      {(entry) => (
+        <Run
+          entry={entry}
+          outDir={outDir}
+          minify={!noMinify}
+          bytecode={!noBytecode}
+          minifier={minifier}
+          minifyLevel={minifyLevel}
+          logLevel={logLevel}
+        />
+      )}
+    </EntryGate>
   )
 }
 

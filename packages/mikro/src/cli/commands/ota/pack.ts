@@ -16,7 +16,7 @@ import {build, type BuildEvent} from '../../lib/build.js'
 import {buildConfigDefaults, serializeConfigSchema} from '../../lib/configSchema.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {formatDuplicatePackagesNotice} from '../../lib/duplicatePackages.js'
-import {describeError} from '../../lib/errorMessage.js'
+import {describeError, UserError} from '../../lib/errorMessage.js'
 import {formatSize} from '../../lib/formatSize.js'
 import {loadMikroConfig} from '../../lib/loadMikroConfig.js'
 import {
@@ -243,6 +243,9 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
   } catch (err) {
     if (jsonOutput) {
       agentError('ota pack', describeError(err))
+    } else if (err instanceof UserError) {
+      // eslint-disable-next-line no-console
+      console.error(`Error: ${describeError(err)}`)
     } else {
       // The error object, not a string: Node renders the cause chain, which is
       // where the actionable detail lives.

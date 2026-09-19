@@ -15,6 +15,7 @@ import {lastValueFrom} from 'rxjs'
 import {build} from '../../lib/build.js'
 import {connectSim} from '../../lib/connectSim.js'
 import {collectFiles, loadEnvFiles} from '../../lib/deploy.js'
+import {describeError, UserError} from '../../lib/errorMessage.js'
 import {parseMinifier, parseMinifyLevel} from '../../lib/parseMinifier.js'
 import {parseSize} from '../../lib/parseSize.js'
 import {getMikroDir, resolveProjectRoot} from '../../lib/projectRoot.js'
@@ -157,8 +158,8 @@ export async function run(config: RunConfig): Promise<void> {
   try {
     await runImpl(config)
   } catch (err) {
-    if (err instanceof SimAlreadyRunningError) {
-      console.error(`Error: ${err.message}`)
+    if (err instanceof SimAlreadyRunningError || err instanceof UserError) {
+      console.error(`Error: ${describeError(err)}`)
       process.exit(1)
     }
     console.error(`mikro sim profile failed: ${err instanceof Error ? err.message : String(err)}`)
