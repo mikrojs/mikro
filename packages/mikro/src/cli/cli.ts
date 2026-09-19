@@ -11,6 +11,7 @@ import updateNotifier from 'update-notifier'
 import pkg from '../../package.json' with {type: 'json'}
 import {isAgentMode} from './lib/agent.js'
 import {noticeLegacyAliases} from './lib/legacyAliases.js'
+import {runCommand} from './lib/runCommand.js'
 import {dispatchReplCommand} from './lib/serial/dispatchReplCommand.js'
 import {
   buildCommand,
@@ -97,7 +98,7 @@ switch (config.command.action) {
         exitOnCtrlC: false,
       })
     } else {
-      void envCommand.run(config.command)
+      runCommand(envCommand.run(config.command))
     }
     break
   }
@@ -114,7 +115,7 @@ switch (config.command.action) {
   }
   case 'list': {
     if (config.command.json || isAgentMode(config.command.agent) || !process.stdin.isTTY) {
-      void listCommand.run(config.command)
+      runCommand(listCommand.run(config.command))
       break
     }
     const {default: ListComponent} = listCommand
@@ -126,7 +127,7 @@ switch (config.command.action) {
   }
   case 'build': {
     if (config.command.json || isAgentMode(config.command.agent) || !process.stdin.isTTY) {
-      void buildCommand.run(config.command)
+      runCommand(buildCommand.run(config.command))
       break
     }
     const {default: BuildComponent} = buildCommand
@@ -152,35 +153,35 @@ switch (config.command.action) {
     break
   }
   case 'clean': {
-    void cleanCommand.run(config.command)
+    runCommand(cleanCommand.run(config.command))
     break
   }
   case 'docs': {
-    void docsCommand.run()
+    runCommand(docsCommand.run())
     break
   }
   case 'home': {
-    void homeCommand.run()
+    runCommand(homeCommand.run())
     break
   }
   case 'name': {
-    void nameCommand.run(config.command)
+    runCommand(nameCommand.run(config.command))
     break
   }
   case 'logs': {
-    void logsCommand.run(config.command)
+    runCommand(logsCommand.run(config.command))
     break
   }
   case 'test': {
-    void testCommand.run(config.command)
+    runCommand(testCommand.run(config.command))
     break
   }
   case 'ota': {
-    void otaCommand.run(config.command)
+    runCommand(otaCommand.run(config.command))
     break
   }
   case 'profile': {
-    void profileCommand.run(config.command)
+    runCommand(profileCommand.run(config.command))
     break
   }
   case 'sim': {
@@ -203,7 +204,7 @@ switch (config.command.action) {
         kittyKeyboard: {mode: 'enabled'},
       })
     } else {
-      void simCommand.run(config.command)
+      runCommand(simCommand.run(config.command))
     }
     break
   }

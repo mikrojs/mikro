@@ -7,14 +7,14 @@ import {object as objectConstruct, or as orConstruct} from '@optique/core/constr
 import type {InferValue} from '@optique/core/parser'
 import {argument, flag, option} from '@optique/core/primitives'
 import {string} from '@optique/core/valueparser'
-import {filter, map, tap} from 'rxjs'
+import {filter, lastValueFrom, map, tap} from 'rxjs'
 
 import type {LogLevel} from '../../_exports/index.js'
 import {loadMikroConfig} from '../lib/loadMikroConfig.js'
 import {logLevelAllows, parseLogLevel} from '../lib/parseMinifier.js'
 import {port} from '../lib/portValueParser.js'
 import {openSession} from '../lib/serial/openSession.js'
-import type {ReplEvent} from '../lib/session.js'
+import {failOnDisconnect, type ReplEvent} from '../lib/session.js'
 
 const portOption = optional(
   option('-p', '--port', port(), {
@@ -95,19 +95,21 @@ async function runTail(sub: {
     handles.session.restart()
   }
 
-  handles.session.messages$
-    .pipe(
-      map((event) => formatTailEvent(event, logLevel)),
-      filter((line): line is string => line !== null),
-      tap((line) => process.stdout.write(line + '\n')),
-    )
-    .subscribe()
-
   process.on('exit', () => handles.close())
   process.on('SIGINT', () => process.exit(0))
   process.on('SIGTERM', () => process.exit(0))
 
-  await new Promise(() => {})
+  // Runs until interrupted. The device going away ends it with an error, so a
+  // tail left running does not exit 0 with no output.
+  await lastValueFrom(
+    handles.session.messages$.pipe(
+      failOnDisconnect('logs tail'),
+      map((event) => formatTailEvent(event, logLevel)),
+      filter((line): line is string => line !== null),
+      tap((line) => process.stdout.write(line + '\n')),
+    ),
+    {defaultValue: undefined},
+  )
 }
 
 async function runPull(sub: {dest: string | undefined; port: string | undefined}): Promise<void> {

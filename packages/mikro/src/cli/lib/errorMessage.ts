@@ -19,3 +19,10 @@ export function describeError(err: unknown): string {
   }
   return parts.join(': ')
 }
+
+/**
+ * An error the user can act on: a busy port, a missing file. The CLI prints its
+ * message and causes in one line. Any other error is treated as a bug and keeps
+ * its stack trace.
+ */
+export class UserError extends Error {}

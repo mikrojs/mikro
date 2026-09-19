@@ -3,7 +3,7 @@ import {SerialPort} from 'serialport'
 import {BAUD_RATE, resolvePort} from '../deploy.js'
 import {triggerSafeMode} from '../recover.js'
 import {connectRepl, type ReplSession} from '../session.js'
-import {createSerialTransport} from '../transport.js'
+import {createSerialTransport, serialOpenError} from '../transport.js'
 
 export interface SessionHandles {
   session: ReplSession
@@ -45,7 +45,7 @@ export async function openSession(options: OpenSessionOptions): Promise<SessionH
 
   const serial = new SerialPort({path: devicePath, baudRate: BAUD_RATE, autoOpen: false})
   await new Promise<void>((resolve, reject) => {
-    serial.open((err) => (err ? reject(err) : resolve()))
+    serial.open((err) => (err ? reject(serialOpenError(devicePath, err)) : resolve()))
   })
 
   const transport = createSerialTransport(serial)

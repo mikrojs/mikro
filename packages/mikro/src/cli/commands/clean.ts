@@ -11,8 +11,8 @@ import {SerialPort} from 'serialport'
 import {BAUD_RATE, resolvePort} from '../lib/deploy.js'
 import {port} from '../lib/portValueParser.js'
 import {triggerSafeMode} from '../lib/recover.js'
-import {connectRepl, type ReplSession} from '../lib/session.js'
-import {createSerialTransport} from '../lib/transport.js'
+import {connectRepl, failOnDisconnect, type ReplSession} from '../lib/session.js'
+import {createSerialTransport, serialOpenError} from '../lib/transport.js'
 
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`
@@ -72,7 +72,7 @@ async function cleanDevice(
 
   const serial = new SerialPort({path: devicePath, baudRate: BAUD_RATE, autoOpen: false})
   await new Promise<void>((resolve, reject) => {
-    serial.open((err) => (err ? reject(err) : resolve()))
+    serial.open((err) => (err ? reject(serialOpenError(devicePath, err)) : resolve()))
   })
   // IMPORTANT: create the session BEFORE triggerSafeMode so connectRepl's
   // eager subscription is listening when the post-reset MSG_READY arrives.
@@ -159,7 +159,10 @@ async function cleanDeviceFull(session: ReplSession): Promise<void> {
 /** Eval JS on device and wait for the result (or error) indicating completion */
 async function evalAndWait(session: ReplSession, code: string): Promise<void> {
   const done = firstValueFrom(
-    session.messages$.pipe(filter((e) => e.type === 'result' || e.type === 'eval_error')),
+    session.messages$.pipe(
+      failOnDisconnect('clean'),
+      filter((e) => e.type === 'result' || e.type === 'eval_error'),
+    ),
   )
   session.eval(code)
   await done
