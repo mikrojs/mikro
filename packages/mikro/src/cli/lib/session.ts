@@ -162,6 +162,8 @@ export interface ErrEvent {
 export interface ChecksumResultEvent {
   type: 'checksum_result'
   match: boolean
+  /** File entries in the device's manifest. Undefined on firmware that does not report it. */
+  fileCount?: number
 }
 
 export interface ConfigEntriesEvent {
@@ -745,6 +747,7 @@ export function connectRepl(
 
       const filesToPut: DeployFile[] = []
       const filesToKeep: string[] = []
+      let deviceFileCount: number | undefined
 
       // With erase, the checksum-based KEEP optimization is unsafe: erase wipes
       // the live appDir before KEEP operations copy from it, so any file marked
@@ -773,6 +776,7 @@ export function connectRepl(
             filesToKeep.length = 0
             continue
           }
+          if (resp.type === 'checksum_result') deviceFileCount = resp.fileCount
           if (resp.type === 'checksum_result' && resp.match) {
             filesToKeep.push(file.path)
           } else {
@@ -817,7 +821,10 @@ export function connectRepl(
       }
 
       const envActuallyChanged = envChanged.length > 0 || envRemoved.length > 0
-      const hasChanges = filesToPut.length > 0 || envActuallyChanged || erase
+      // The device holds files the build no longer has. Staging only what the
+      // build names drops them at DONE, so the deploy has to go through.
+      const filesRemoved = deviceFileCount !== undefined && deviceFileCount > localHashes.size
+      const hasChanges = filesToPut.length > 0 || filesRemoved || envActuallyChanged || erase
 
       // Nothing changed: abort. Restart anyway when the caller asked for
       // it via alwaysRestart (mikro test wants a fresh runtime per run
@@ -1283,7 +1290,12 @@ function frameToEvent(frame: Frame): ReplEvent | null {
     case 'err':
       return {type: 'err', message: msg.payload.toString('utf-8')}
     case 'checksum_result':
-      return {type: 'checksum_result', match: msg.payload.length > 0 && msg.payload[0] === 1}
+      // Payload: u8 match | u16le file_count (absent on older firmware)
+      return {
+        type: 'checksum_result',
+        match: msg.payload.length > 0 && msg.payload[0] === 1,
+        fileCount: msg.payload.length >= 3 ? msg.payload.readUInt16LE(1) : undefined,
+      }
     case 'config_entries': {
       let entries: EnvEntry[] = []
       try {
