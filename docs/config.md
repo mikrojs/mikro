@@ -190,17 +190,43 @@ Setting a higher log level (such as `debug`) keeps more console calls in the bun
 
 ## Target options {#target}
 
-Options that tell the CLI which board the project is for. They are read on the host and stripped from the config before deploying.
+Options that tell the CLI which board and firmware the project is for. They are read on the host and stripped from the config before deploying.
 
-| Option  | Type     | Default | Description                                            |
-| ------- | -------- | ------- | ------------------------------------------------------ |
-| `board` | `string` | none    | The board this project targets, e.g. `esp32c6-generic` |
+| Option     | Type                           | Default | Description                                            |
+| ---------- | ------------------------------ | ------- | ------------------------------------------------------ |
+| `board`    | `string`                       | none    | The board this project targets, e.g. `esp32c6-generic` |
+| `features` | `('wifi' \| 'ble' \| 'i2s')[]` | none    | Firmware features the app needs beyond its imports     |
 
 ### `board` {#board}
 
 `mikro flash` picks the board in this order: the `--board` flag, then `board` from the config, then the project's board package when `package.json` lists exactly one. When none of them applies, the CLI detects the chip and uses its generic board, `<chip>-generic`.
 
-A name is looked up among the boards of your board packages first, then among the generic boards. Before it writes anything, `mikro flash` checks that the chip on the cable matches the board and stops if it does not.
+A name is looked up among the boards of your board packages first, then among the generic boards. Before it writes anything, `mikro flash` checks that the connected chip matches the board and stops if it does not.
+
+### `features` {#features}
+
+Four modules each need a firmware feature:
+
+| Module              | Feature |
+| ------------------- | ------- |
+| `mikro/wifi`        | `wifi`  |
+| `mikro/http/server` | `wifi`  |
+| `mikro/ble`         | `ble`   |
+| `mikro/i2s`         | `i2s`   |
+
+The build works out which features the app needs from its imports, and `mikro deploy`, `mikro dev` and `mikro test` stop when the connected firmware lacks one of them. The stock firmware has all three, so this only comes up with custom firmware that leaves a feature out.
+
+An import counts when it is a static `import`. A module that the app only ever loads with `import('mikro/ble')` does not count, so the deploy goes through and the `import()` fails on a device without BLE. List the feature in `features` when the app cannot do without it:
+
+```ts
+import {defineConfig} from 'mikro'
+
+export default defineConfig({
+  features: ['ble'],
+})
+```
+
+Firmware that predates feature reporting is never checked.
 
 ### TypeScript presets {#tsconfig-presets}
 

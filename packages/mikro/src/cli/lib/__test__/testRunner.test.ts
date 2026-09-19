@@ -672,7 +672,7 @@ describe('runTestManifest feature gate', () => {
     writeFileSync(pathlib.join(tempDir, 'app', 'test', 'ble.test.ts'), `import 'mikro/ble'\n`)
     const session = gateSession({board: 'esp32c6-generic', features: ['wifi']})
     await expect(run(session, 'app/test/ble.test.ts')).rejects.toThrow(
-      /mikro\/ble which needs the 'ble' firmware feature.*esp32c6-generic/s,
+      /- ble: imported as mikro\/ble.*esp32c6-generic/s,
     )
   })
 

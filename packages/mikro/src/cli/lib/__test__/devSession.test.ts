@@ -69,7 +69,7 @@ describe('dev session feature gate', () => {
   it('refuses to deploy an app needing a feature the device lacks', async () => {
     writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), `import 'mikro/ble'\n`)
     const message = await firstError(gateSession({board: 'esp32c6-generic', features: ['wifi']}))
-    expect(message).toMatch(/mikro\/ble which needs the 'ble' firmware feature.*esp32c6-generic/s)
+    expect(message).toMatch(/- ble: imported as mikro\/ble.*esp32c6-generic/s)
   })
 
   it('skips the gate on legacy firmware (no features reported)', async () => {

@@ -163,11 +163,12 @@ export interface MikroJSConfig {
    * uses it when no `--board` flag is given, and so does the reflash that
    * `mikro deploy --yes` runs over incompatible firmware. */
   board?: string
-  /** The feature floor: firmware features to always include even when no
-   * import needs them (e.g. an app that only ever import()s mikro/ble).
-   * Only a direct `import('mikro/ble')` counts as optional: a file of your
-   * own that is loaded with import() and imports mikro/ble statically makes
-   * ble required, and a deploy to firmware without it is refused. */
+  /** Firmware features the app needs even when no static import shows it
+   * (e.g. an app that only ever import()s mikro/ble). A deploy to firmware
+   * without one of them is refused, the same as for a statically imported
+   * module. Only a direct `import('mikro/ble')` leaves ble optional: a file
+   * of your own that is loaded with import() and imports mikro/ble
+   * statically makes ble required. */
   features?: FirmwareFeature[]
   /** Behavior after an uncaught exception. Default:
    * `{mode: 'restart', delay: 1000}`. */

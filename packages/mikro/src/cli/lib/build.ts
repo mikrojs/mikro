@@ -166,9 +166,11 @@ export function entryRootDir(entry: string): string {
 export interface BuildFeatures {
   /** Features required by statically imported gated modules. */
   imported: string[]
-  /** `config.features` floor entries not already covered by an import. */
+  /** `config.features` floor entries not already covered by an import.
+   *  Gate a deploy like `imported`. */
   floor: string[]
-  /** Features needed only by dynamic-only import()s. Never gate a deploy. */
+  /** Features needed only by dynamic-only import()s. Never gate a deploy
+   *  unless the floor also names them. */
   optional: string[]
   /** Feature → statically imported builtin modules that require it. */
   modules: Record<string, string[]>

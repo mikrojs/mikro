@@ -3,12 +3,12 @@ import {customFirmwareOf} from './bundledFirmware.js'
 import type {ReadyEvent} from './session.js'
 
 /** One-line summary of a build's firmware feature needs (e.g.
- * `features: wifi (imported), ble (floor)`), or undefined when there is
+ * `features: wifi (imported), ble (from config)`), or undefined when there is
  * nothing to report. */
 export function formatFeaturesLine(features: BuildFeatures): string | undefined {
   const parts = [
     ...features.imported.map((f) => `${f} (imported)`),
-    ...features.floor.map((f) => `${f} (floor)`),
+    ...features.floor.map((f) => `${f} (from config)`),
   ]
   return parts.length > 0 ? `features: ${parts.join(', ')}` : undefined
 }
@@ -24,10 +24,10 @@ export function agentFeatures(
   return {imported, floor, optional}
 }
 
-/** Error message when the app statically imports modules whose firmware
- * features the connected device lacks; undefined when the deploy may proceed.
- * Legacy firmware reports no feature set and is never gated; dynamic-only
- * import()s never gate either. */
+/** Error message when the connected device lacks a firmware feature the app
+ * imports statically or its config's `features` floor declares; undefined
+ * when the deploy may proceed. Legacy firmware reports no feature set and is
+ * never gated; dynamic-only import()s never gate unless the floor names them. */
 export function missingFeaturesError(
   features: BuildFeatures | undefined,
   ready: Pick<ReadyEvent, 'board' | 'chip' | 'features' | 'fw'>,
@@ -35,27 +35,49 @@ export function missingFeaturesError(
   if (features === undefined || ready.features === undefined) return undefined
   const device = new Set(ready.features)
   const missing = features.imported.filter((f) => !device.has(f))
-  if (missing.length === 0) return undefined
+  const missingFloor = features.floor.filter((f) => !device.has(f))
+  if (missing.length === 0 && missingFloor.length === 0) return undefined
   // Surplus device features (device ⊃ required ∪ floor) draw no warning:
   // full firmware is the default (slimming is opt-out), so surplus is the
   // normal case. Surfacing it is a future `mikro doctor` concern.
+  const reasons = [
+    ...missing.map((feature) => {
+      const mods = (features.modules[feature] ?? []).map((m) => `mikro/${m}`).join(', ')
+      return `  - ${feature}: imported as ${mods}`
+    }),
+    ...missingFloor.map((feature) => `  - ${feature}: listed under features in mikro.config.ts`),
+  ]
+  const all = [...missing, ...missingFloor]
+  const named =
+    all.length === 1 ? all[0]! : `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]!}`
   const firmware = ready.board ?? ready.chip ?? 'unknown'
-  const lines = missing.map((feature) => {
-    const mods = features.modules[feature] ?? []
-    const verb = mods.length === 1 ? 'needs' : 'need'
-    return (
-      `This app imports ${mods.map((m) => `mikro/${m}`).join(', ')} which ${verb} the ` +
-      `'${feature}' firmware feature, but the connected device's firmware (${firmware}) ` +
-      `does not include it.`
-    )
-  })
   // Stock firmware has every feature, so a gap usually means a custom build:
   // `mikro flash` would replace that build, and is the wrong advice for it.
   const custom = customFirmwareOf(ready)
   const fix =
     custom === undefined
-      ? 'Reflash with: mikro flash'
-      : `The device runs custom firmware ("${custom}"). Rebuild it with the feature enabled, ` +
-        'then flash it: mikro flash --build-dir <your-firmware-build>'
-  return [...lines, fix].join('\n')
+      ? [
+          `The device currently runs the ${firmware} firmware.`,
+          // Plain `mikro flash` installs the bundled <chip>-generic build,
+          // which has every feature the chip supports.
+          `To deploy this app, flash the generic ${ready.chip ?? 'chip'} firmware, ` +
+            `which includes ${named}:`,
+          '',
+          '  mikro flash',
+        ]
+      : [
+          `The device currently runs custom firmware "${custom}".`,
+          `To deploy this app, rebuild that firmware with ${named}, then flash it:`,
+          '',
+          '  mikro flash --build-dir <your-firmware-build>',
+        ]
+  return [
+    all.length > 1
+      ? "This app needs firmware features that the connected device's current firmware does not support:"
+      : "This app needs a firmware feature that the connected device's current firmware does not support:",
+    '',
+    ...reasons,
+    '',
+    ...fix,
+  ].join('\n')
 }
