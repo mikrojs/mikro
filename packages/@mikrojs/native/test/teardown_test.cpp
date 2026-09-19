@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "doctest.h"
+#include "temp_dir.h"
 
 namespace {
 
@@ -165,9 +166,7 @@ TEST_CASE("MIK_FreeRuntime finalizes app objects of a bytecode entry run by MIK_
           doctest::test_suite("teardown")) {
     /* The device path: the CLI ships the app as bytecode (app.bjs) and the
      * port starts it with MIK_RunEntry. */
-    const char* tmp = getenv("TMPDIR");
-    std::string root = std::string(tmp && *tmp ? tmp : "/tmp") + "/mik_teardown_XXXXXX";
-    REQUIRE(mkdtemp(root.data()) != nullptr);
+    std::string root = mik_test_temp_dir("mik_teardown");
 
     MIKRuntime* compiler = MIK_NewRuntime();
     JSContext* cctx = MIK_GetJSContext(compiler);

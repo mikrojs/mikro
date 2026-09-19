@@ -12,6 +12,8 @@
 
 #include <doctest.h>
 
+#include "temp_dir.h"
+
 /* Incremental OOM injection, SQLite-style: run the same module eval while the
  * JS-heap allocator fails at point n, for every n until the eval succeeds.
  * Each round must end in a clean success or a clean JS error, with the
@@ -143,9 +145,7 @@ TEST_CASE("inspect fails cleanly at every allocation point" * doctest::test_suit
 }
 
 TEST_CASE("fs operations fail cleanly at every allocation point" * doctest::test_suite("oom")) {
-    char root[64];
-    snprintf(root, sizeof(root), "/tmp/mik_oom_fs_XXXXXX");
-    REQUIRE(mkdtemp(root) != nullptr);
+    std::string root = mik_test_temp_dir("mik_oom_fs");
     oom_sweep("fs",
               "import * as fs from 'mikro/fs'\n"
               "fs.writeFile('/o.txt', 'payload-data')\n"
@@ -153,8 +153,8 @@ TEST_CASE("fs operations fail cleanly at every allocation point" * doctest::test
               "fs.readDir('/')\n"
               "fs.stat('/o.txt')\n"
               "export const done = 1\n",
-              root);
-    nftw(root, rm_cb, 8, FTW_DEPTH | FTW_PHYS);
+              root.c_str());
+    nftw(root.c_str(), rm_cb, 8, FTW_DEPTH | FTW_PHYS);
 }
 
 TEST_CASE("abort globals fail cleanly at every allocation point" * doctest::test_suite("oom")) {
@@ -170,9 +170,7 @@ TEST_CASE("abort globals fail cleanly at every allocation point" * doctest::test
 
 TEST_CASE("fs module loading fails cleanly at every allocation point" *
           doctest::test_suite("oom")) {
-    char root[64];
-    snprintf(root, sizeof(root), "/tmp/mik_oom_mods_XXXXXX");
-    REQUIRE(mkdtemp(root) != nullptr);
+    std::string root = mik_test_temp_dir("mik_oom_mods");
     auto write = [&](const char* rel, const char* data, size_t len) {
         std::string path = std::string(root) + rel;
         FILE* f = fopen(path.c_str(), "wb");
@@ -216,8 +214,8 @@ TEST_CASE("fs module loading fails cleanly at every allocation point" *
               "import {b} from '/pre.bjs'\n"
               "import data from '/data.bjson'\n"
               "export const done = v + b + data.n + cfg.a.length + note.length\n",
-              root);
-    nftw(root, rm_cb, 8, FTW_DEPTH | FTW_PHYS);
+              root.c_str());
+    nftw(root.c_str(), rm_cb, 8, FTW_DEPTH | FTW_PHYS);
 }
 
 TEST_CASE("result chains and text codecs fail cleanly at every allocation point" *

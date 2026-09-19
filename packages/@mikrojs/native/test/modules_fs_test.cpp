@@ -13,6 +13,8 @@
 
 #include <doctest.h>
 
+#include "temp_dir.h"
+
 /* Host-side tests for filesystem module loading (modules.cpp): relative ES
  * modules, JSON/text wrapping, .bjs/.bjson precompiled modules and their
  * source-shadowing preference, node_modules package resolution, import.meta,
@@ -26,28 +28,27 @@ static int rm_cb(const char* path, const struct stat*, int, struct FTW*) {
 }
 
 struct ModFixture {
-    char root[64];
+    std::string root;
     MIKRuntime* rt = nullptr;
     JSContext* ctx = nullptr;
 
     ModFixture() {
-        snprintf(root, sizeof(root), "/tmp/mik_mod_test_XXXXXX");
-        REQUIRE(mkdtemp(root) != nullptr);
+        root = mik_test_temp_dir("mik_mod_test");
         rt = MIK_NewRuntime();
         REQUIRE(rt != nullptr);
-        MIK_SetFSBasePath(rt, root);
+        MIK_SetFSBasePath(rt, root.c_str());
         ctx = MIK_GetJSContext(rt);
     }
 
     ~ModFixture() {
         MIK_FreeRuntime(rt);
-        nftw(root, rm_cb, 8, FTW_DEPTH | FTW_PHYS);
+        nftw(root.c_str(), rm_cb, 8, FTW_DEPTH | FTW_PHYS);
     }
 
     /* Write a file at logical path `rel` (creating parent dirs). */
     void write(const char* rel, const void* data, size_t len) const {
         std::string path = std::string(root) + rel;
-        for (size_t i = strlen(root) + 1; i < path.size(); i++) {
+        for (size_t i = root.size() + 1; i < path.size(); i++) {
             if (path[i] == '/') {
                 path[i] = '\0';
                 mkdir(path.c_str(), 0755);

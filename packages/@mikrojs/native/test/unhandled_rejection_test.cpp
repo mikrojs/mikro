@@ -11,15 +11,14 @@
 
 #include <doctest.h>
 
+#include "temp_dir.h"
+
 namespace {
 
 struct TmpDir {
     std::string path;
     TmpDir() {
-        char tmpl[] = "/tmp/mikrojs-unhandled-XXXXXX";
-        const char* d = mkdtemp(tmpl);
-        REQUIRE(d != nullptr);
-        path = d;
+        path = mik_test_temp_dir("mikrojs-unhandled");
     }
     std::string write(const char* name, const char* content) {
         std::string p = path + "/" + name;

@@ -7,11 +7,11 @@
 
 #include <doctest.h>
 
+#include "temp_dir.h"
+
 /* Helper: create a temporary directory and return its path */
 static std::string make_temp_dir() {
-    char tmpl[] = "/tmp/mik_app_store_test_XXXXXX";
-    char* dir = mkdtemp(tmpl);
-    return std::string(dir);
+    return mik_test_temp_dir("mik_app_store_test");
 }
 
 /* Helper: create a directory (and ignore if it exists) */

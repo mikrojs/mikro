@@ -28,6 +28,8 @@
 
 #include <doctest.h>
 
+#include "temp_dir.h"
+
 TEST_CASE("Create→eval→free cycles are idempotent"
           * doctest::test_suite("runtime_recycle")) {
     constexpr int ITERATIONS = 8;
@@ -113,11 +115,9 @@ TEST_CASE("MIK_RunEntry detects sync-rejected module promises"
      * __testFileDone that will never come — hanging the test-manifest
      * run on the first fatal file. RunEntry must flag sync-rejected as
      * an eval failure so the supervisor's synthetic-failure path fires. */
-    char dir_template[] = "/tmp/mikrojs-test-XXXXXX";
-    const char* dir = mkdtemp(dir_template);
-    REQUIRE(dir != nullptr);
-    std::string fatal_path = std::string(dir) + "/fatal.js";
-    std::string ok_path = std::string(dir) + "/ok.js";
+    std::string dir = mik_test_temp_dir("mikrojs-test");
+    std::string fatal_path = dir + "/fatal.js";
+    std::string ok_path = dir + "/ok.js";
     {
         FILE* f = fopen(fatal_path.c_str(), "w");
         REQUIRE(f != nullptr);
@@ -141,7 +141,7 @@ TEST_CASE("MIK_RunEntry detects sync-rejected module promises"
     MIK_FreeRuntime(rt);
     unlink(fatal_path.c_str());
     unlink(ok_path.c_str());
-    rmdir(dir);
+    rmdir(dir.c_str());
 }
 
 TEST_CASE("ServeLoop exits when ProtocolExit fires from inside the pump"
