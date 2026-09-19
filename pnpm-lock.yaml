@@ -172,7 +172,7 @@ catalogs:
       version: 1.3.0
     '@optique/run':
       specifier: ^1.2.5
-      version: 1.2.5
+      version: 1.3.0
     '@vitest/coverage-v8':
       specifier: ^5.0.0
       version: 5.0.1
@@ -731,7 +731,7 @@ importers:
         version: 1.3.0
       '@optique/run':
         specifier: 'catalog:'
-        version: 1.2.5
+        version: 1.3.0
       conventional-changelog-conventionalcommits:
         specifier: ^10.4.0
         version: 10.4.0
@@ -768,7 +768,7 @@ importers:
         version: 1.3.0
       '@optique/run':
         specifier: 'catalog:'
-        version: 1.2.5
+        version: 1.3.0
       type-fest:
         specifier: ^5.9.0
         version: 5.9.0
@@ -823,7 +823,7 @@ importers:
         version: 1.3.0
       '@optique/run':
         specifier: 'catalog:'
-        version: 1.2.5
+        version: 1.3.0
       cbor2:
         specifier: ^2.3.0
         version: 2.3.0
@@ -1755,16 +1755,12 @@ packages:
   '@octokit/types@16.0.0':
     resolution: {integrity: sha512-sKq+9r1Mm4efXW1FCk7hFSeJo4QKreL/tTbR0rz/qx/r1Oa2VV83LTA/H/MuCOX7uCIJmQVRKBcbmWoySjAnSg==}
 
-  '@optique/core@1.2.5':
-    resolution: {integrity: sha512-92Vx4AyM/uc6qaZclGCPA950GikYVWx8mmFgNG9EjBcaqxB+z1XMAmYRoH9V4P1gaZW9Qc4k6CgvJ/NaSTV8vQ==}
-    engines: {bun: '>=1.2.0', deno: '>=2.3.0', node: '>=20.0.0'}
-
   '@optique/core@1.3.0':
     resolution: {integrity: sha512-Mg0onYl6TswC2+BGkTIycltIQ/rFzPfu6g6LcxT63wXiu8MiyK7xoXnoRmmQGPHv+gJ3qFvl4gc/q1C8bMpdew==}
     engines: {bun: '>=1.2.0', deno: '>=2.3.0', node: '>=20.0.0'}
 
-  '@optique/run@1.2.5':
-    resolution: {integrity: sha512-4VnGgnUaasy+xMf7zcZELQwDh92GnO2bqqrmMNPprOHgUWrNdHUzYzMnP4/P/1GHx0xnJKYJnRO5V2GccaLYrA==}
+  '@optique/run@1.3.0':
+    resolution: {integrity: sha512-LhnBjIGK1CfF1nW+1sLxyI+EZ4/JZBy5EEMmkdXfmViDdQzJOvJKjEkF1ofxDpjfWcbs4fW8XkMBxE8zRCnwrA==}
     engines: {bun: '>=1.2.0', deno: '>=2.3.0', node: '>=20.0.0'}
 
   '@oxc-parser/binding-android-arm-eabi@0.147.0':
@@ -6319,13 +6315,11 @@ snapshots:
     dependencies:
       '@octokit/openapi-types': 27.0.0
 
-  '@optique/core@1.2.5': {}
-
   '@optique/core@1.3.0': {}
 
-  '@optique/run@1.2.5':
+  '@optique/run@1.3.0':
     dependencies:
-      '@optique/core': 1.2.5
+      '@optique/core': 1.3.0
 
   '@oxc-parser/binding-android-arm-eabi@0.147.0':
     optional: true
