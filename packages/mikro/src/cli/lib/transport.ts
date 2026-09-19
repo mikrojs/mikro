@@ -10,6 +10,8 @@
 import {Observable} from 'rxjs'
 import {SerialPort} from 'serialport'
 
+import {UserError} from './errorMessage.js'
+
 export interface Transport {
   /** Push data to the device. Returns a promise that resolves once the
    *  bytes have been flushed to the OS — important for tiny writes
@@ -33,7 +35,7 @@ export function openSerial(path: string, baudRate: number): Observable<SerialPor
     const serial = new SerialPort({path, baudRate, autoOpen: false})
     serial.open((err) => {
       if (err) {
-        observer.error(err)
+        observer.error(serialOpenError(path, err))
       } else {
         opened = true
         observer.next(serial)
@@ -46,6 +48,18 @@ export function openSerial(path: string, baudRate: number): Observable<SerialPor
       if (!opened && serial.isOpen) serial.close()
     }
   })
+}
+
+/**
+ * Error for a serial port that would not open, with the serial error as the
+ * cause. serialport reports a port that another program holds as "Cannot lock
+ * port" and gives no error code to test for.
+ */
+export function serialOpenError(path: string, err: Error): UserError {
+  const message = err.message.includes('Cannot lock port')
+    ? `${path} is in use by another program (close any serial monitor or other mikro command using it)`
+    : `Could not open ${path}`
+  return new UserError(message, {cause: err})
 }
 
 /** Chunk size for serial writes (avoids overflowing device UART FIFO) */
@@ -115,7 +129,7 @@ export function createSerialTransport(serialPort: SerialPort): Transport {
               // eslint-disable-next-line no-console
               console.error(`[serial tx drain error] ${String(err)}`)
             }
-            reject(err)
+            reject(new UserError('Lost the serial connection while writing', {cause: err}))
           } else {
             if (debugBytes) {
               // eslint-disable-next-line no-console

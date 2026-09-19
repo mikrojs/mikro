@@ -8,6 +8,7 @@ import {firstValueFrom, lastValueFrom, Subject} from 'rxjs'
 import {inc} from 'semver'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 
+import {UserError} from '../errorMessage.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {
   buildFrame,
@@ -191,6 +192,103 @@ describe('session', () => {
       complete()
 
       expect(events.some((e) => e.type === 'disconnect')).to.be.true
+    })
+
+    it('emits disconnect with the cause when the transport errors', () => {
+      const data = new Subject<Uint8Array>()
+      const transport: Transport = {
+        write: () => Promise.resolve(),
+        data: data.asObservable(),
+        close() {},
+      }
+      const session = connectRepl(transport)
+      const events: ReplEvent[] = []
+      let completed = false
+
+      session.messages$.subscribe({next: (e) => events.push(e), complete: () => (completed = true)})
+      data.error(new Error('Device not configured'))
+
+      expect(events.at(-1)).toEqual({type: 'disconnect', error: 'Device not configured'})
+      expect(completed).toBe(true)
+    })
+
+    it('does not leave a rejection unhandled when a fire-and-forget write fails', async () => {
+      const unhandled = vi.fn()
+      process.on('unhandledRejection', unhandled)
+      try {
+        const data = new Subject<Uint8Array>()
+        const transport: Transport = {
+          write: () => Promise.reject(new Error('Device not configured, cannot drain')),
+          data: data.asObservable(),
+          close() {},
+        }
+        const session = connectRepl(transport)
+
+        session.eval('1')
+        session.directive('help')
+        session.complete('con')
+        session.exit()
+        session.restart()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(unhandled).not.toHaveBeenCalled()
+      } finally {
+        process.off('unhandledRejection', unhandled)
+      }
+    })
+  })
+
+  describe('a device that goes away during a request', () => {
+    it('rejects with a UserError naming the request when the device disconnects', async () => {
+      const {transport, sendFrame, complete} = createMockTransport()
+      const session = connectRepl(transport)
+      sendFrame(MSG_READY, Buffer.from(encodeCbor({chip: 'test', id: '00', v: CLI_VERSION})))
+
+      const pending = session.logsReset().catch((err: unknown) => err)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      complete()
+      const error = await pending
+
+      expect(error).toBeInstanceOf(UserError)
+      expect((error as Error).message).toMatch(/^The device disconnected during /)
+    })
+
+    it('does not leave the response unhandled when the write fails first', async () => {
+      const unhandled = vi.fn()
+      process.on('unhandledRejection', unhandled)
+      try {
+        const data = new Subject<Uint8Array>()
+        const writeError = new UserError('Lost the serial connection while writing')
+        let ready = false
+        const transport: Transport = {
+          // The port's error ends the data stream before the drain callback rejects.
+          write: () => {
+            if (!ready) return Promise.resolve()
+            data.error(new Error('Device not configured'))
+            return new Promise((_, reject) => setTimeout(() => reject(writeError), 0))
+          },
+          data: data.asObservable(),
+          close() {},
+        }
+        const session = connectRepl(transport)
+        data.next(
+          new Uint8Array(
+            buildFrame(
+              MSG_READY,
+              Buffer.from(encodeCbor({chip: 'test', id: '00', v: CLI_VERSION})),
+            ),
+          ),
+        )
+        ready = true
+
+        const error = await session.fsGet('/appfs/logs/log.txt').catch((err: unknown) => err)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(error).toBe(writeError)
+        expect(unhandled).not.toHaveBeenCalled()
+      } finally {
+        process.off('unhandledRejection', unhandled)
+      }
     })
   })
 

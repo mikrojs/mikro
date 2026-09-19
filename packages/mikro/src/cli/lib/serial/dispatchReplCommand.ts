@@ -2,6 +2,7 @@ import {render} from 'ink'
 import {type ComponentType, createElement} from 'react'
 
 import {isAgentMode} from '../agent.js'
+import {runCommand} from '../runCommand.js'
 
 /**
  * Dispatch a REPL-class command (`dev`, `console`, `deploy`) between its
@@ -34,7 +35,7 @@ export function dispatchReplCommand<T extends {agent?: boolean}>(opts: {
   }
 
   if (isAgent || opts.nonInteractive === true || nonTty) {
-    void opts.run(opts.config)
+    runCommand(opts.run(opts.config))
     return
   }
 

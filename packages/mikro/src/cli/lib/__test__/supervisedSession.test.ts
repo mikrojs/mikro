@@ -162,16 +162,17 @@ describe('createSupervisedSession reconnect', () => {
     session.close()
   })
 
-  it('surfaces a hard transport error without reconnecting', async () => {
+  it('reconnects after a transport error, the same as after a clean close', async () => {
+    // A device pulled mid-write reports an error where an idle one reports a
+    // close; both mean the device went away.
     listMock.mockResolvedValue([{path: PATH_A, serialNumber: SERIAL_ABC}])
     const {session, events} = connect()
 
-    sessionAt(0).messages$.next({type: 'disconnect', error: 'write failed'})
-    await delay(50)
+    sessionAt(0).messages$.next({type: 'disconnect', error: 'Device not configured'})
 
-    expect(events).toEqual([{type: 'disconnect', error: 'write failed'}])
-    expect(listMock).not.toHaveBeenCalled()
-    expect(createdSessions).toHaveLength(1)
+    await vi.waitFor(() => expect(types(events)).toContain('reconnected'))
+    expect(types(events)).toEqual(['reconnecting', 'reconnected'])
+    expect(createdSessions).toHaveLength(2)
     session.close()
   })
 })

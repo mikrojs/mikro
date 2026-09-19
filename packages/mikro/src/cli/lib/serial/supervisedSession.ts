@@ -18,8 +18,8 @@
  *     inner's MSG_READY (delivered via `messages$` shortly after) drives
  *     the state machine back to `ready`.
  *   - `{type: 'disconnect', error: '...'}` if the device doesn't return
- *     within the timeout — the same shape as a hard transport error, so
- *     the state machine's existing handler surfaces it as an error.
+ *     within the timeout. The state machine's disconnect handler shows
+ *     the error.
  */
 
 import {
@@ -184,13 +184,6 @@ export function createSupervisedSession(
       .pipe(filter((e): e is Extract<ReplEvent, {type: 'disconnect'}> => e.type === 'disconnect'))
       .subscribe((event) => {
         if (closed) {
-          supervisorEvents$.next(event)
-          supervisorEvents$.complete()
-          return
-        }
-        if (event.error) {
-          // Hard transport error (e.g. write failure). Don't auto-reconnect;
-          // surface the original error so the state machine shows it.
           supervisorEvents$.next(event)
           supervisorEvents$.complete()
           return

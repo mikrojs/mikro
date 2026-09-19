@@ -5,6 +5,7 @@ import {catchError, from, map, type Observable, of, shareReplay, switchMap} from
 
 import type {LogLevel} from '../../../_exports/index.js'
 import {BAUD_RATE} from '../deploy.js'
+import {describeError} from '../errorMessage.js'
 import {triggerSafeMode} from '../recover.js'
 import type {ConnectReplOptions, ReplSession} from '../session.js'
 import {Spinner} from '../Spinner.js'
@@ -137,7 +138,7 @@ export function InkReplMode(props: InkReplModeProps) {
   )
 
   if (connection instanceof Error) {
-    return <Text color="red">Connection error: {connection.message}</Text>
+    return <Text color="red">Connection error: {describeError(connection)}</Text>
   }
   if (!ready) {
     return (

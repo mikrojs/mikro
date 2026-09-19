@@ -17,6 +17,7 @@ import {
   catchError,
   concat,
   defer,
+  endWith,
   filter,
   finalize,
   first,
@@ -26,6 +27,7 @@ import {
   map,
   merge,
   mergeMap,
+  type MonoTypeOperatorFunction,
   type Observable,
   of,
   scan,
@@ -42,6 +44,7 @@ import {
 
 import {customFirmwareOf} from './bundledFirmware.js'
 import {decodeDeviceName} from './deviceName.js'
+import {describeError, UserError} from './errorMessage.js'
 import {
   checkFirmwareCompat,
   type FirmwareCompatDirection,
@@ -224,6 +227,16 @@ export type ReplEvent =
 
 /** Response events that deploy/config commands wait for */
 type ResponseEvent = OkEvent | ErrEvent | ChecksumResultEvent | ConfigEntriesEvent
+
+/** Errors the stream with a UserError when the device disconnects, so a wait
+ * for some later event ends there. `context` names what was waiting. */
+export function failOnDisconnect(context: string): MonoTypeOperatorFunction<ReplEvent> {
+  return tap((event) => {
+    if (event.type === 'disconnect') {
+      throw new UserError(`The device disconnected during ${context}`, {cause: event.error})
+    }
+  })
+}
 
 function isResponseEvent(event: ReplEvent): event is ResponseEvent {
   return (
@@ -479,9 +492,10 @@ export function connectRepl(
   let rawLineBuf = ''
 
   // Core observable: transport bytes → parsed ReplEvents (shared/hot).
-  // Emits a 'disconnect' event when the transport completes, then completes.
-  const messages$: Observable<ReplEvent> = concat(
-    transport.data.pipe(
+  // Ends with a 'disconnect' event when the transport completes, or one that
+  // carries `error` when it errors (a device that dropped off USB).
+  const messages$: Observable<ReplEvent> = transport.data
+    .pipe(
       mergeMap((chunk) => {
         const {frames, raw} = frameParser.feed(Buffer.from(chunk))
         const events: ReplEvent[] = []
@@ -504,13 +518,14 @@ export function connectRepl(
 
         return events
       }),
+      endWith<ReplEvent>({type: 'disconnect'}),
+      catchError((err: unknown) => of<ReplEvent>({type: 'disconnect', error: describeError(err)})),
       finalize(() => {
         frameParser.flush()
         rawLineBuf = ''
       }),
-    ),
-    [{type: 'disconnect'} satisfies DisconnectEvent],
-  ).pipe(share())
+    )
+    .pipe(share())
 
   // Keep the pipeline alive (shared observables need at least one subscriber)
   sub = messages$.subscribe()
@@ -545,8 +560,13 @@ export function connectRepl(
   sub.add(readyWithMeta$.subscribe())
   const ready$ = readyWithMeta$.pipe(map(({event}) => event))
 
-  // Response stream: OK, ERR, CHECKSUM_RESULT, CONFIG_ENTRIES
-  const responses$ = messages$.pipe(filter(isResponseEvent))
+  /** The error to throw when waiting for a response failed. */
+  function responseError(err: unknown, timeoutMs: number, context: string): unknown {
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      return new DeviceTimeoutError(timeoutMs, context)
+    }
+    return err
+  }
 
   /** Send a command and wait for the next response event. A timeout is
    * surfaced as a `DeviceTimeoutError` so callers and the UI can tell
@@ -557,15 +577,22 @@ export function connectRepl(
     context: string,
     timeoutMs: number = RESPONSE_TIMEOUT_MS,
   ): Promise<ResponseEvent> {
-    const response = firstValueFrom(responses$.pipe(first(), timeout(timeoutMs)))
+    const response = firstValueFrom(
+      messages$.pipe(
+        failOnDisconnect(context),
+        filter(isResponseEvent),
+        first(),
+        timeout(timeoutMs),
+      ),
+    )
+    // A failed write rejects below; `response` can reject first (the port's
+    // error arrives before the drain callback), with nobody awaiting it yet.
+    response.catch(() => {})
     await transport.write(frame)
     try {
       return await response
     } catch (err) {
-      if (err instanceof Error && err.name === 'TimeoutError') {
-        throw new DeviceTimeoutError(timeoutMs, context)
-      }
-      throw err
+      throw responseError(err, timeoutMs, context)
     }
   }
 
@@ -1122,6 +1149,7 @@ export function connectRepl(
     type FsGetAcc = {chunks: Buffer[]; terminal: OkEvent | ErrEvent | null}
     const done = firstValueFrom(
       messages$.pipe(
+        failOnDisconnect(`fs get '${path}'`),
         filter(
           (e): e is FsChunkEvent | OkEvent | ErrEvent =>
             e.type === 'fs_chunk' || e.type === 'ok' || e.type === 'err',
@@ -1138,15 +1166,14 @@ export function connectRepl(
         timeout(RESPONSE_TIMEOUT_MS),
       ),
     )
+    // See sendAndWait: `done` can reject before the failed write does.
+    done.catch(() => {})
     await transport.write(buildFsGetCommand(path))
     let result: FsGetAcc & {terminal: OkEvent | ErrEvent}
     try {
       result = await done
     } catch (err) {
-      if (err instanceof Error && err.name === 'TimeoutError') {
-        throw new DeviceTimeoutError(RESPONSE_TIMEOUT_MS, `fs get '${path}'`)
-      }
-      throw err
+      throw responseError(err, RESPONSE_TIMEOUT_MS, `fs get '${path}'`)
     }
     if (result.terminal.type === 'err') {
       throw new Error(`fs get '${path}': ${result.terminal.message}`)
@@ -1163,6 +1190,12 @@ export function connectRepl(
     await sendExpectOk(buildLogResetCommand(), 'log reset')
   }
 
+  /** Send a command nothing waits on. A failed write means the link is gone,
+   * which messages$ reports as a disconnect, so the rejection adds nothing. */
+  function send(frame: Buffer): void {
+    transport.write(frame).catch(() => {})
+  }
+
   // ── Public API ─────────────────────────────────────────────────
 
   return {
@@ -1171,19 +1204,19 @@ export function connectRepl(
     awaitReady$,
 
     eval(code: string): void {
-      void transport.write(buildEvalCommand(code))
+      send(buildEvalCommand(code))
     },
 
     directive(name: string): void {
-      void transport.write(buildDirectiveCommand(name))
+      send(buildDirectiveCommand(name))
     },
 
     complete(partial: string): void {
-      void transport.write(buildCompleteCommand(partial))
+      send(buildCompleteCommand(partial))
     },
 
     exit(): void {
-      void transport.write(buildExitCommand())
+      send(buildExitCommand())
     },
 
     deploy,
@@ -1199,7 +1232,7 @@ export function connectRepl(
       // skips it and waits for a fresh post-restart MSG_READY.
       lastSeenRestartSeq = readySeq
       lastRestartAt = Date.now()
-      void transport.write(buildRestartCommand())
+      send(buildRestartCommand())
     },
 
     close(): void {
