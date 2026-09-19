@@ -649,7 +649,7 @@ Commands that build your code (`dev`, `deploy`, `build`, `test`, `ota pack`, `ot
 - `--minifier MINIFIER` selects the minifier: `esbuild` (default), `terser`, or `swc`. Can also be set via [`build.minifier`](/config#buildminifier).
 - `--minify-level LEVEL` sets minification aggressiveness: `default` or `max`. Can also be set via [`build.minifyLevel`](/config#buildminifylevel).
 - `--no-bytecode` skips compiling JavaScript to QuickJS bytecode. The device will parse JavaScript source at runtime, which uses more memory and is slower to start.
-- `--loglevel LEVEL` sets the build-time log level. Console calls below the threshold are eliminated as dead code by the minifier. Levels from most to least verbose: `debug` > `info` > `warn` > `error` > `none`. `deploy` and `build` default to `warn`; `dev` defaults to `debug`. See [`build.logLevel`](/config#buildloglevel) for details.
+- `--loglevel LEVEL` sets the build-time log level. Console calls below the threshold are eliminated as dead code by the minifier. Levels from most to least verbose: `debug` > `info` > `warn` > `error` > `none`. `deploy` and `build` default to `warn` and `dev` to `debug`, unless [`build.logLevel`](/config#buildloglevel) is set.
 
 ## Shell completion
 

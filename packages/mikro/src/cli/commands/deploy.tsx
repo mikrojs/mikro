@@ -148,10 +148,7 @@ export async function run(
     minify: !config.noMinify,
     minifier: parseMinifier(config.minifier),
     minifyLevel: parseMinifyLevel(config.minifyLevel),
-    // deploy is a production deployment, so it strips console.debug/log/info
-    // unless asked otherwise. Without the fallback the shared builder's own
-    // default ('debug') applies and every call is retained.
-    logLevel: parseLogLevel(config.logLevel) ?? 'warn',
+    logLevel: parseLogLevel(config.logLevel),
   })
   log(`Packed build: ${formatSize(artifact.size)}`)
 

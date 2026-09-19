@@ -59,7 +59,7 @@ export async function run(config: InferValue<typeof args>) {
   const {outDir, noMinify, noBytecode} = config
   const minifier = parseMinifier(config.minifier)
   const minifyLevel = parseMinifyLevel(config.minifyLevel)
-  const logLevel = parseLogLevel(config.logLevel) ?? 'warn'
+  const logLevel = parseLogLevel(config.logLevel)
   const jsonOutput = config.json === true || isAgentMode(config.agent)
   try {
     let duplicatePackages: DuplicatePackage[] | undefined

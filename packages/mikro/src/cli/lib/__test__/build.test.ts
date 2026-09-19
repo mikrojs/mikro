@@ -14,6 +14,7 @@ import * as pathlib from 'node:path'
 import {lastValueFrom, toArray} from 'rxjs'
 import {afterEach, beforeEach, describe, expect, it} from 'vitest'
 
+import type {LogLevel, MikroEnv} from '../../../_exports/index.js'
 import {build, type BuildEvent, entryRootDir} from '../build.js'
 
 function listFiles(dir: string): string[] {
@@ -195,6 +196,59 @@ describe('build', () => {
       writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), "import 'a/index.js'\n")
 
       expect(await duplicateEvents(pathlib.join(tempDir, 'out'))).to.deep.equal([])
+    })
+  })
+
+  describe('log level', () => {
+    // A production build unless `env` says otherwise: the level it resolved, and
+    // whether the minified entry kept the call.
+    async function buildConsoleLog(options: {logLevel?: LogLevel; env?: MikroEnv} = {}) {
+      writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), "console.log('hi')\n")
+      const buildDir = pathlib.join(tempDir, 'out')
+      const events = await lastValueFrom(
+        build('app/main.ts', buildDir, {
+          minify: true,
+          bytecode: false,
+          env: 'production',
+          ...options,
+        }).pipe(toArray()),
+      )
+      const settings = events.find(
+        (e): e is Extract<BuildEvent, {type: 'settings'}> => e.type === 'settings',
+      )
+      const code = readFileSync(pathlib.join(buildDir, 'app', 'main.js'), 'utf-8')
+      return {logLevel: settings?.logLevel, keepsLog: code.includes('console.log')}
+    }
+
+    function configureLogLevel(logLevel: LogLevel) {
+      writeFileSync(
+        pathlib.join(tempDir, 'mikro.config.ts'),
+        `export default {build: {logLevel: '${logLevel}'}}\n`,
+      )
+    }
+
+    it('drops console.log from a production build by default', async () => {
+      expect(await buildConsoleLog()).to.deep.equal({logLevel: 'warn', keepsLog: false})
+    })
+
+    it('keeps console.log in a development build by default', async () => {
+      expect(await buildConsoleLog({env: 'development'})).to.deep.equal({
+        logLevel: 'debug',
+        keepsLog: true,
+      })
+    })
+
+    it('uses build.logLevel from mikro.config.ts over the production default', async () => {
+      configureLogLevel('debug')
+      expect(await buildConsoleLog()).to.deep.equal({logLevel: 'debug', keepsLog: true})
+    })
+
+    it('uses --loglevel over mikro.config.ts', async () => {
+      configureLogLevel('debug')
+      expect(await buildConsoleLog({logLevel: 'warn'})).to.deep.equal({
+        logLevel: 'warn',
+        keepsLog: false,
+      })
     })
   })
 

@@ -110,7 +110,8 @@ export async function packProject(options: {
   out?: string
   entry?: string
   log?: (msg: string) => void
-  /** Build-shaping options (default: minified, esbuild, all console kept).
+  /** Build-shaping options (default: minified; minifier and loglevel from
+   *  mikro.config.ts, else esbuild and warn).
    *  Bytecode is always on: an OTA build must be loadable as `.bjs`. */
   minify?: boolean
   minifier?: Minifier
@@ -132,12 +133,7 @@ export async function packProject(options: {
       bytecode: true,
       minifier: options.minifier,
       minifyLevel: options.minifyLevel,
-      // Default to 'warn', exactly as `mikro deploy` does. Without it the shared
-      // builder falls back to 'debug', so a published build keeps every console
-      // call while the deployed one strips them: two different builds, two
-      // different checksums, and a device can never recognise the fleet build as
-      // the one it is already running.
-      logLevel: options.logLevel ?? 'warn',
+      logLevel: options.logLevel,
       env: 'production',
     }).pipe(
       // Report the settings the build resolved, not the flags passed in: a
