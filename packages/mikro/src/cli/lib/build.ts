@@ -3,7 +3,11 @@ import {stripTypeScriptTypes} from 'node:module'
 import * as pathlib from 'node:path'
 import {fileURLToPath} from 'node:url'
 
-import {nodeFileTrace, resolve as traceResolve} from '@mikrojs/analyze-imports'
+import {
+  type DuplicatePackage,
+  nodeFileTrace,
+  resolve as traceResolve,
+} from '@mikrojs/analyze-imports'
 import {mkdir, readdir, readFile, rm, stat, unlink, writeFile} from 'fs/promises'
 import {
   concat,
@@ -137,6 +141,9 @@ export type BuildEvent =
       logLevel: LogLevel
       bundle: boolean
     }
+  /** Packages the deploy tree holds more than once, by deploy path. A notice,
+   *  not an error: the build still succeeds. Not emitted for bundled builds. */
+  | {type: 'duplicatePackages'; packages: DuplicatePackage[]}
 
 function phase(name: string): Observable<BuildEvent> {
   return of({type: 'phase' as const, phase: name})
@@ -157,8 +164,27 @@ async function collectOutputFiles(buildDir: string): Promise<BuildEvent[]> {
 
 const SKIP = Promise.resolve([])
 
+// Same placement as the traced files: paths outside rootDir land under it.
+function duplicatePackagesEvent(
+  duplicates: DuplicatePackage[],
+  rootDir: string,
+): Observable<BuildEvent> {
+  if (duplicates.length === 0) return EMPTY
+  const packages = duplicates.map(({name, copies}) => ({
+    name,
+    copies: copies.map((copy) => ({
+      ...copy,
+      path:
+        rootDir === '.' || copy.path.startsWith(rootDir + '/')
+          ? copy.path
+          : pathlib.join(rootDir, copy.path),
+    })),
+  }))
+  return of({type: 'duplicatePackages' as const, packages})
+}
+
 export async function trace(entries: string[]) {
-  const {fileList, warnings, sourcePathMap} = await nodeFileTrace(entries, {
+  const {fileList, warnings, sourcePathMap, duplicatePackages} = await nodeFileTrace(entries, {
     analysis: {evaluatePureExpressions: true},
     conditions: ['import'],
     assetExtensions: ['.txt'],
@@ -180,6 +206,7 @@ export async function trace(entries: string[]) {
     fileList: [...fileList],
     warnings: [...warnings],
     sourcePathMap,
+    duplicatePackages,
   }
 }
 
@@ -283,11 +310,11 @@ export function build(
           : pathlib.join(rootDir, entryJs)
 
       const writeFilesUnbundled = defer(() => trace([entry])).pipe(
-        mergeMap(({warnings, fileList, sourcePathMap}) => {
+        mergeMap(({warnings, fileList, sourcePathMap, duplicatePackages}) => {
           if (warnings?.length > 0) {
             return throwError(() => new Error([...warnings].map((w) => w.message).join('\n')))
           }
-          return from(fileList).pipe(
+          const writes = from(fileList).pipe(
             mergeMap(async (file) => {
               // Use sourcePathMap to read from the real path on disk when the
               // output path is a virtual path (e.g. pnpm transitive dependencies)
@@ -309,7 +336,9 @@ export function build(
                   : pathlib.join(rootDir, filePath)
               return output(buildDir, outputPath, contents)
             }),
+            ignoreElements(),
           )
+          return concat(duplicatePackagesEvent(duplicatePackages, rootDir), writes)
         }),
       )
 
@@ -357,7 +386,7 @@ export function build(
             outputPrefix === '.' || outputPrefix === '' ? rel : pathlib.join(outputPrefix, rel)
           await output(buildDir, outputPath, code)
         }
-      })
+      }).pipe(ignoreElements())
 
       const writeFiles = shouldBundle ? writeFilesBundled : writeFilesUnbundled
 
@@ -444,7 +473,7 @@ export function build(
         }),
         phase(shouldBundle ? 'Bundling' : 'Tracing imports'),
         defer(() => rm(buildDir, {force: true, recursive: true})).pipe(ignoreElements()),
-        writeFiles.pipe(ignoreElements()),
+        writeFiles,
         writePackageJson.pipe(ignoreElements()),
         writeConfig.pipe(ignoreElements()),
         writeStatic.pipe(ignoreElements()),
@@ -521,11 +550,11 @@ export function buildTests(
       const entryOutputs = entries.map(toOutputPath)
 
       const writeFiles = defer(() => trace(entries)).pipe(
-        mergeMap(({warnings, fileList, sourcePathMap}) => {
+        mergeMap(({warnings, fileList, sourcePathMap, duplicatePackages}) => {
           if (warnings?.length > 0) {
             return throwError(() => new Error([...warnings].map((w) => w.message).join('\n')))
           }
-          return from(fileList).pipe(
+          const writes = from(fileList).pipe(
             mergeMap(async (file) => {
               const sourcePath = sourcePathMap.get(file) ?? file
               return transform(file, await readFile(sourcePath), {
@@ -542,7 +571,9 @@ export function buildTests(
                   : pathlib.join(rootDir, filePath)
               return output(buildDir, outputPath, contents)
             }),
+            ignoreElements(),
           )
+          return concat(duplicatePackagesEvent(duplicatePackages, rootDir), writes)
         }),
       )
 
@@ -607,7 +638,7 @@ export function buildTests(
       return concat(
         phase('Tracing imports'),
         defer(() => rm(buildDir, {force: true, recursive: true})).pipe(ignoreElements()),
-        writeFiles.pipe(ignoreElements()),
+        writeFiles,
         writePackageJson.pipe(ignoreElements()),
         writeConfig.pipe(ignoreElements()),
         writeStatic.pipe(ignoreElements()),

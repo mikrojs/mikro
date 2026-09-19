@@ -4,6 +4,7 @@ import {createRequire} from 'node:module'
 import * as pathlib from 'node:path'
 import {promisify} from 'node:util'
 
+import type {DuplicatePackage} from '@mikrojs/analyze-imports'
 import {createReadStream} from 'fs'
 import {mkdir, readdir, readFile, rm, stat, writeFile} from 'fs/promises'
 import {create as tarCreate} from 'tar'
@@ -432,6 +433,9 @@ export interface PackArtifact {
   /** Size of the `.tgz` in bytes. */
   size: number
   manifest: OtaManifest
+  /** Packages the build deploys more than once (from the `duplicatePackages`
+   * BuildEvent). Set by packProject; absent when every package deploys once. */
+  duplicatePackages?: DuplicatePackage[]
 }
 
 /**

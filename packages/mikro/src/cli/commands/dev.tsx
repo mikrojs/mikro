@@ -107,6 +107,7 @@ export async function run(config: InferValue<typeof args>) {
           envFile: config.env,
           noAutoEnv: config.noAutoEnv === true,
           externalDeploys$: deploys$.asObservable(),
+          onNotice: (text) => agentEmit({type: 'warn', text}),
         })
 
         // Translate DevSessionState transitions into agent NDJSON events.

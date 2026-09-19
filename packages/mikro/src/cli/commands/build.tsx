@@ -1,6 +1,7 @@
 import {readdir, stat} from 'node:fs/promises'
 import * as pathlib from 'node:path'
 
+import type {DuplicatePackage} from '@mikrojs/analyze-imports'
 import {command, constant, message, object, optional, withDefault} from '@optique/core'
 import type {InferValue} from '@optique/core/parser'
 import {argument, flag, option} from '@optique/core/primitives'
@@ -10,11 +11,12 @@ import spinners from 'cli-spinners'
 import figures from 'figures'
 import {Box, Text} from 'ink'
 import React, {useEffect, useMemo, useReducer} from 'react'
-import {lastValueFrom} from 'rxjs'
+import {lastValueFrom, tap} from 'rxjs'
 
 import type {LogLevel, Minifier, MinifyLevel} from '../../_exports/index.js'
 import {agentError, agentResult, isAgentMode} from '../lib/agent.js'
 import {build, type BuildEvent} from '../lib/build.js'
+import {formatDuplicatePackagesNotice} from '../lib/duplicatePackages.js'
 import {formatSize} from '../lib/formatSize.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
@@ -60,6 +62,7 @@ export async function run(config: InferValue<typeof args>) {
   const logLevel = parseLogLevel(config.logLevel) ?? 'warn'
   const jsonOutput = config.json === true || isAgentMode(config.agent)
   try {
+    let duplicatePackages: DuplicatePackage[] | undefined
     await lastValueFrom(
       build(entry, outDir, {
         minify: !noMinify,
@@ -68,7 +71,11 @@ export async function run(config: InferValue<typeof args>) {
         minifyLevel,
         logLevel,
         env: 'production',
-      }),
+      }).pipe(
+        tap((event) => {
+          if (event.type === 'duplicatePackages') duplicatePackages = event.packages
+        }),
+      ),
       {defaultValue: undefined},
     )
     const entries = await readdir(outDir, {recursive: true})
@@ -79,7 +86,8 @@ export async function run(config: InferValue<typeof args>) {
       if (s.isFile()) files.push({path: '/' + e, size: s.size})
     }
     if (jsonOutput) {
-      agentResult('build', {entry, outDir, files}, [
+      // Omitted when every package deploys once (undefined drops out of the JSON).
+      agentResult('build', {entry, outDir, files, duplicatePackages}, [
         {command: 'mikro deploy', description: 'Deploy build to device'},
         {command: `mikro build ${entry} --no-bytecode`, description: 'Rebuild without bytecode'},
       ])
@@ -91,6 +99,9 @@ export async function run(config: InferValue<typeof args>) {
         // eslint-disable-next-line no-console
         console.log(`  ${file.path} ${formatSize(file.size)}`)
       }
+      const notice = formatDuplicatePackagesNotice(duplicatePackages ?? [])
+      // eslint-disable-next-line no-console
+      if (notice !== undefined) console.error(notice)
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -131,6 +142,7 @@ export default function Build(props: Props) {
 type BuildState = {
   phase: string
   files: {path: string; size: number}[]
+  duplicatePackages: DuplicatePackage[]
   done: boolean
   error: string | null
 }
@@ -143,6 +155,8 @@ function buildReducer(state: BuildState, event: BuildAction): BuildState {
       return {...state, phase: event.phase}
     case 'file':
       return {...state, files: [...state.files, {path: event.path, size: event.size}]}
+    case 'duplicatePackages':
+      return {...state, duplicatePackages: event.packages}
     case 'done':
       return {...state, done: true}
     case 'error':
@@ -155,6 +169,7 @@ function buildReducer(state: BuildState, event: BuildAction): BuildState {
 const initialState: BuildState = {
   phase: 'Starting',
   files: [],
+  duplicatePackages: [],
   done: false,
   error: null,
 }
@@ -198,6 +213,7 @@ function Run(props: {
 
   if (state.done) {
     const totalSize = state.files.reduce((sum, f) => sum + f.size, 0)
+    const notice = formatDuplicatePackagesNotice(state.duplicatePackages)
     return (
       <RenderAndExit exitCode={0}>
         <Box flexDirection="column">
@@ -211,6 +227,11 @@ function Run(props: {
               {file.path} <Text color="cyan">{formatSize(file.size)}</Text>
             </Text>
           ))}
+          {notice !== undefined ? (
+            <Text color="yellow">
+              {figures.warning} {notice}
+            </Text>
+          ) : null}
         </Box>
       </RenderAndExit>
     )
