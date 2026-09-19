@@ -192,6 +192,7 @@ Ambient type declarations for the `native:{scope}/{name}/{module}` native module
 - `mikrojs_force_include_modules()` and `mikrojs_force_include_builtins()` are required. Without them, the linker strips the self-registration constructors from the static library.
 - The `types` export condition in package.json prevents `native:*` imports from leaking to TypeScript consumers.
 - Claim every GPIO pin the driver configures with `MIK_ClaimGpio(gpio, "{ClassName}")` before configuring it, and release with `MIK_ReleaseGpio(gpio, "{ClassName}")` in `end()` and the finalizer. A failed claim is a typed `GpioInUse` error (`{name: 'GpioInUse', owner: MIK_GpioOwner(gpio), message}`); release the GPIOs claimed before it.
+- Get class IDs with `MIK_NewClassID(rt, &id)`, never `JS_NewClassID`. QuickJS numbers class IDs per runtime, but the static that holds the ID outlives the runtime, so a later runtime can hand another class the same number and run the wrong finalizer. One plain `JS_NewClassID` call in a driver can still collide with the IDs `MIK_NewClassID` hands out.
 - Use `heap_caps_malloc(size, MALLOC_CAP_DMA)` for DMA-capable buffers (internal SRAM only, limited).
 - Vendor C files (`.c`) compile fine, but C++ code including vendor headers may need manual struct initialization instead of vendor macros (due to `-Werror`).
 

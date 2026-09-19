@@ -402,7 +402,7 @@ static JSModuleDef* mik__neopixel_init(JSContext* ctx) {
     JSRuntime* rt = JS_GetRuntime(ctx);
 
     /* Register class (once per runtime) */
-    JS_NewClassID(rt, &mik_neopixel_class_id);
+    MIK_NewClassID(rt, &mik_neopixel_class_id);
     JS_NewClass(rt, mik_neopixel_class_id, &mik_neopixel_class);
 
     /* Create prototype with methods */

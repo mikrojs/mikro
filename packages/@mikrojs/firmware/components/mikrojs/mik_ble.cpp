@@ -1464,7 +1464,7 @@ static const JSCFunctionListEntry mik__ble_proto_funcs[] = {
 static int mik__ble_module_init(JSContext* ctx, JSModuleDef* m) {
     JSRuntime* rt = JS_GetRuntime(ctx);
 
-    JS_NewClassID(rt, &mik_ble_class_id);
+    MIK_NewClassID(rt, &mik_ble_class_id);
     JS_NewClass(rt, mik_ble_class_id, &mik_ble_classdef);
 
     JSValue proto = JS_NewObject(ctx);

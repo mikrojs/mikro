@@ -460,6 +460,17 @@ void MIK_FreeRuntime(MIKRuntime* mik_rt) {
 
 JSContext* MIK_GetJSContext(MIKRuntime* mik_rt) { return mik_rt->ctx; }
 
+JSClassID MIK_NewClassID(JSRuntime* rt, JSClassID* class_id) {
+    static JSClassID next = 0;
+    if (*class_id == 0) {
+        JSClassID fresh = 0;
+        JS_NewClassID(rt, &fresh);
+        if (fresh > next) next = fresh;
+        *class_id = next++;
+    }
+    return *class_id;
+}
+
 MIKRuntime* MIK_GetRuntime(JSContext* ctx) {
     return static_cast<MIKRuntime*>(JS_GetContextOpaque(ctx));
 }

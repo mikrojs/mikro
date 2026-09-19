@@ -774,7 +774,7 @@ JSModuleDef* mik__udp_init(JSContext* ctx) {
     /* The class only carries the opaque pointer, finalizer, and gc_mark.
      * Methods/properties go directly on each socket object (see
      * mik__udp_install_methods). No class prototype is set. */
-    JS_NewClassID(rt, &udp_socket_class_id);
+    MIK_NewClassID(rt, &udp_socket_class_id);
     JS_NewClass(rt, udp_socket_class_id, &mik__udp_socket_class);
 
     JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/udp", mik__udp_module_init);
