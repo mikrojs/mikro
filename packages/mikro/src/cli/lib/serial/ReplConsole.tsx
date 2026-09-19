@@ -136,6 +136,9 @@ function testEventText(data: Record<string, unknown>): string {
   }
 }
 
+/** Radios among the firmware's features, as the connect line names them. */
+const RADIO_NAMES: Record<string, string> = {wifi: 'WiFi', ble: 'BLE'}
+
 function eventText(event: ReplLogEvent, deviceName?: string): string {
   switch (event.type) {
     case 'connecting':
@@ -145,9 +148,14 @@ function eventText(event: ReplLogEvent, deviceName?: string): string {
     case 'ready': {
       const name = deviceName ?? event.id ?? event.chip ?? 'device'
       // Chip in parens only for a real device (sim has no id, so don't repeat it).
-      const chip = event.id && event.chip ? ` (${event.chip})` : ''
+      const radios = (event.features ?? []).flatMap((f) => RADIO_NAMES[f] ?? [])
+      const detail = event.id && event.chip ? [event.chip, ...radios] : []
+      const paren = detail.length > 0 ? ` (${detail.join(', ')})` : ''
       const version = event.version ? ` Mikro.js v${event.version}` : ''
-      return `Connected to ${name}${chip}${version}`
+      // The JS heap the app starts with, as the ESP32 boot banner used to print it.
+      const heap =
+        event.heapFree === undefined ? '' : `, ${Math.round(event.heapFree / 1024)} KB free heap`
+      return `Connected to ${name}${paren}${version}${heap}`
     }
     case 'input':
       return event.code
