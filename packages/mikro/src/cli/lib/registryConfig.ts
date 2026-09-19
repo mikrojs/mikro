@@ -2,6 +2,7 @@ import {readFileSync} from 'node:fs'
 import {homedir} from 'node:os'
 import * as pathlib from 'node:path'
 
+import {UserError} from './errorMessage.js'
 import {resolveProjectRoot} from './projectRoot.js'
 
 /** Environment variable read for the registry token when --token is not passed. */
@@ -30,7 +31,7 @@ export function readRegistryFile(path: string): RegistryConnection {
   try {
     parsed = JSON.parse(raw) as typeof parsed
   } catch {
-    throw new Error(`${path} is not valid JSON`)
+    throw new UserError(`${path} is not valid JSON`)
   }
   const connection: RegistryConnection = {}
   if (typeof parsed.url === 'string' && parsed.url.length > 0) connection.url = parsed.url
@@ -92,7 +93,7 @@ export function resolveRegistryConnection(
 /** The url, or a pointed error naming the ways to provide one. */
 export function requireRegistryUrl(connection: RegistryConnection): string {
   if (connection.url === undefined) {
-    throw new Error(`No registry configured. Run \`mikro ota setup\`, or pass --registry.`)
+    throw new UserError(`No registry configured. Run \`mikro ota setup\`, or pass --registry.`)
   }
   return connection.url
 }
@@ -100,7 +101,7 @@ export function requireRegistryUrl(connection: RegistryConnection): string {
 /** The token, or a pointed error naming the ways to provide one. */
 export function requireRegistryToken(connection: RegistryConnection): string {
   if (connection.token === undefined) {
-    throw new Error(
+    throw new UserError(
       `Missing registry token. Run \`mikro ota setup\`, pass --token, or set ${TOKEN_ENV}.`,
     )
   }

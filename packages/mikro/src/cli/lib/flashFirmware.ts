@@ -3,6 +3,7 @@ import {hasPrebuiltFirmware, prebuiltFirmwareDir} from '@mikrojs/firmware'
 import {lastValueFrom} from 'rxjs'
 
 import {type BoardInfo, discoverBoards} from './boards.js'
+import {UserError} from './errorMessage.js'
 import {type FlasherArgs, getWriteFlashMultiArgs, readFlasherArgs} from './esptool.js'
 import {type Chip, resolveFrom} from './firmware.js'
 import {ospawn} from './ospawn.js'
@@ -47,7 +48,7 @@ export async function detectChip(esptoolPath: string, port: string): Promise<Chi
     // Detection failed, fall through
   }
 
-  throw new Error(
+  throw new UserError(
     `Could not detect chip type. Use --target to specify the chip (e.g. --target esp32c6).`,
   )
 }
@@ -60,7 +61,7 @@ export async function discoverBoard(boardFlag: string | undefined): Promise<Boar
   if (boardFlag) {
     const board = boards.find((b) => b.name === boardFlag)
     if (!board) {
-      throw new Error(
+      throw new UserError(
         `Board '${boardFlag}' not found in project dependencies.\n` +
           (boards.length > 0
             ? `Available boards: ${boards.map((b) => b.name).join(', ')}`
@@ -125,7 +126,7 @@ export async function resolveFlashPlan(opts: FlashPlanOptions): Promise<FlashPla
   }
 
   if (!hasPrebuiltFirmware(resolvedChip)) {
-    throw new Error(
+    throw new UserError(
       `No bundled firmware for ${resolvedChip}. ` +
         `Build a custom firmware locally and flash with --build-dir, ` +
         `or fetch a CI artifact with --from=mikrojs/mikro@<sha>.`,

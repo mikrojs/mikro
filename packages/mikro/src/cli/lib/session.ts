@@ -446,7 +446,7 @@ function formatDuration(ms: number): string {
  * RenderAndExit handlers) classify connection-class failures via
  * `instanceof DeviceTimeoutError` rather than string-matching the
  * message. */
-export class DeviceTimeoutError extends Error {
+export class DeviceTimeoutError extends UserError {
   readonly name = 'DeviceTimeoutError'
   readonly timeoutMs: number
   readonly context: string | undefined
@@ -605,7 +605,7 @@ export function connectRepl(
   async function sendExpectOk(frame: Buffer, context: string, timeoutMs?: number): Promise<Buffer> {
     const resp = await sendAndWait(frame, context, timeoutMs)
     if (resp.type === 'err') {
-      throw new Error(`${context}: ${resp.message}`)
+      throw new UserError(`${context}: ${resp.message}`)
     }
     if (resp.type !== 'ok') {
       throw new Error(`${context}: unexpected response type '${resp.type}'`)
@@ -821,7 +821,7 @@ export function connectRepl(
       if (envVars.length > 0) {
         const tooLong = envVars.filter((v) => Buffer.byteLength(v.key, 'utf-8') > 15)
         if (tooLong.length > 0) {
-          throw new Error(
+          throw new UserError(
             `Env key(s) exceed NVS 15-char limit: ${tooLong.map((v) => v.key).join(', ')}`,
           )
         }
@@ -986,7 +986,7 @@ export function connectRepl(
       if (envVars.length > 0) {
         const tooLong = envVars.filter((v) => Buffer.byteLength(v.key, 'utf-8') > 15)
         if (tooLong.length > 0) {
-          throw new Error(
+          throw new UserError(
             `Env key(s) exceed NVS 15-char limit: ${tooLong.map((v) => v.key).join(', ')}`,
           )
         }
@@ -1056,12 +1056,12 @@ export function connectRepl(
         if (payload !== null) {
           const result = parseDeployResultPayload(payload)
           if (result.status === 'fail') {
-            throw new Error(
+            throw new UserError(
               `install failed: ${result.reason}${result.detail ? ` (${result.detail})` : ''}`,
             )
           }
           if (result.status === 'none') {
-            throw new Error('install failed: device recorded no install outcome')
+            throw new UserError('install failed: device recorded no install outcome')
           }
         }
       }
@@ -1112,7 +1112,7 @@ export function connectRepl(
     async list(): Promise<EnvEntry[]> {
       await awaitReady()
       const resp = await sendAndWait(buildConfigListCommand(), 'config list')
-      if (resp.type === 'err') throw new Error(`config list: ${resp.message}`)
+      if (resp.type === 'err') throw new UserError(`config list: ${resp.message}`)
       if (resp.type === 'config_entries') return resp.entries
       throw new Error(`config list: unexpected response type '${resp.type}'`)
     },
@@ -1176,7 +1176,7 @@ export function connectRepl(
       throw responseError(err, RESPONSE_TIMEOUT_MS, `fs get '${path}'`)
     }
     if (result.terminal.type === 'err') {
-      throw new Error(`fs get '${path}': ${result.terminal.message}`)
+      throw new UserError(`fs get '${path}': ${result.terminal.message}`)
     }
     return Buffer.concat(result.chunks)
   }

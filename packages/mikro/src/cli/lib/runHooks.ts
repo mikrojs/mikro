@@ -4,6 +4,7 @@ import * as pathlib from 'node:path'
 
 import {concat, Observable} from 'rxjs'
 
+import {UserError} from './errorMessage.js'
 import {assertNoLegacyMikroConfig} from './legacyConfig.js'
 
 /**
@@ -25,7 +26,9 @@ export function getPredeployCommands(projectRoot: string): string[] {
   if (value === undefined || value === null) return []
   if (typeof value === 'string') return [value]
   if (Array.isArray(value) && value.every((v) => typeof v === 'string')) return value as string[]
-  throw new Error('Invalid mikro.predeploy in package.json: expected string or array of strings')
+  throw new UserError(
+    'Invalid mikro.predeploy in package.json: expected string or array of strings',
+  )
 }
 
 export type HookEvent =
@@ -34,7 +37,7 @@ export type HookEvent =
   | {type: 'stderr'; command: string; chunk: Uint8Array}
   | {type: 'complete'; command: string}
 
-export class HookError extends Error {
+export class HookError extends UserError {
   readonly command: string
   readonly exitCode: number | null
   readonly signal: NodeJS.Signals | null

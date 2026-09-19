@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
+import {UserError} from './errorMessage.js'
 import {assertNoLegacyMikroConfig} from './legacyConfig.js'
 
 export interface BoardInfo {
@@ -105,5 +106,5 @@ async function resolvePackageJson(packageName: string, fromDir: string): Promise
       dir = parent
     }
   }
-  throw new Error(`Cannot find package ${packageName}`)
+  throw new UserError(`Cannot find package ${packageName}`)
 }

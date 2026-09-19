@@ -6,6 +6,7 @@ import {SerialPort} from 'serialport'
 import {formatDeviceList} from './deviceLabel.js'
 import {matchPortToken} from './deviceName.js'
 import {parseDotenv} from './dotenv.js'
+import {UserError} from './errorMessage.js'
 import {TOKEN_ENV} from './registryConfig.js'
 import {TROUBLESHOOTING_URL} from './troubleshooting.js'
 
@@ -33,13 +34,13 @@ export async function resolvePort(explicit?: string): Promise<string> {
         lines.push('No devices found')
       }
       lines.push(`See ${TROUBLESHOOTING_URL} for help.`)
-      throw new Error(lines.join('\n'))
+      throw new UserError(lines.join('\n'))
     }
     return match.path
   }
 
   if (devices.length === 0) {
-    throw new Error(`No serial devices found\nSee ${TROUBLESHOOTING_URL} for help.`)
+    throw new UserError(`No serial devices found\nSee ${TROUBLESHOOTING_URL} for help.`)
   }
 
   if (devices.length === 1) {
@@ -48,7 +49,7 @@ export async function resolvePort(explicit?: string): Promise<string> {
 
   const lines = ['Multiple devices found. Use --port to select one:\n']
   lines.push(...formatDeviceList(devices).map((l) => `  ${l}`))
-  throw new Error(lines.join('\n'))
+  throw new UserError(lines.join('\n'))
 }
 
 export async function collectFiles(buildDir: string): Promise<{path: string; data: Buffer}[]> {
@@ -142,7 +143,7 @@ export async function loadEnvFiles(opts: LoadEnvOptions): Promise<EnvVar[]> {
 
   if (opts.envFile) {
     if (!(await fileExists(opts.envFile))) {
-      throw new Error(`Env file not found: ${opts.envFile}`)
+      throw new UserError(`Env file not found: ${opts.envFile}`)
     }
     vars.push(...(await readDotenvFile(opts.envFile)))
   }
@@ -169,5 +170,5 @@ export function validateNvsKeys(vars: EnvVar[]): void {
     `Env var name(s) exceed NVS limit of ${NVS_KEY_MAX_LENGTH} characters:`,
     ...tooLong.map((v) => `  ${v.key} (${v.key.length} chars)`),
   ]
-  throw new Error(lines.join('\n'))
+  throw new UserError(lines.join('\n'))
 }

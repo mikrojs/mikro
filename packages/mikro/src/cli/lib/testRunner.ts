@@ -20,6 +20,7 @@ import type {Minifier, MinifyLevel} from '../../_exports/index.js'
 import {buildTests, entryRootDir} from './build.js'
 import {collectFiles, type EnvVar} from './deploy.js'
 import {formatDuplicatePackagesNotice} from './duplicatePackages.js'
+import {UserError} from './errorMessage.js'
 import {
   applyBootSnapshot,
   type BootFigures,
@@ -182,7 +183,7 @@ export async function discoverTestFiles(
       matched++
     }
     if (matched === 0) {
-      throw new Error(`No test files matched: ${pattern}`)
+      throw new UserError(`No test files matched: ${pattern}`)
     }
   }
   return Array.from(results).sort()

@@ -5,7 +5,7 @@ import {argument, flag, option} from '@optique/core/primitives'
 import {string} from '@optique/core/valueparser'
 
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
-import {describeError} from '../../lib/errorMessage.js'
+import {describeError, UserError} from '../../lib/errorMessage.js'
 import {releaseBuild} from '../../lib/otaPublish.js'
 import {readProjectApp} from '../../lib/projectApp.js'
 import {
@@ -47,7 +47,7 @@ export async function run(config: Args): Promise<void> {
 
     const app = readProjectApp()
     if (app === undefined) {
-      throw new Error('Cannot release: package.json has no app name')
+      throw new UserError('Cannot release: package.json has no app name')
     }
 
     const {released, warnings} = await releaseBuild(
@@ -74,6 +74,9 @@ export async function run(config: Args): Promise<void> {
   } catch (err) {
     if (jsonOutput) {
       agentError('ota release', describeError(err))
+    } else if (err instanceof UserError) {
+      // eslint-disable-next-line no-console
+      console.error(`Error: ${describeError(err)}`)
     } else {
       // The error object, not a string: Node renders the cause chain, which is
       // where a failed release's actual reason lives.

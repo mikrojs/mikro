@@ -1,6 +1,7 @@
 import pkg from 'mikro/package.json' with {type: 'json'}
 import {lt, major, minor, patch, satisfies} from 'semver'
 
+import {UserError} from './errorMessage.js'
 import {
   installLatestCommand,
   installVersionCommand,
@@ -100,7 +101,7 @@ export function formatAdvisory(result: FirmwareCompatResult, pm: PkgManager): st
  * (the message is self-explanatory and shouldn't be paired with generic
  * troubleshooting hints).
  */
-export class FirmwareIncompatibleError extends Error {
+export class FirmwareIncompatibleError extends UserError {
   override name = 'FirmwareIncompatibleError'
   /** The device's reported firmware identity when it is not the firmware
    *  bundled with this CLI. Undefined means the bundled firmware, or firmware

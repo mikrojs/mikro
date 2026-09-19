@@ -1,4 +1,5 @@
 import type {Minifier, MinifyLevel} from '../../_exports/index.js'
+import {UserError} from './errorMessage.js'
 
 export async function minifyJs(
   code: string,
@@ -41,7 +42,7 @@ async function minifyWithTerser(
   try {
     terser = await importOptional('terser')
   } catch {
-    throw new Error(
+    throw new UserError(
       `Minifier 'terser' selected but the 'terser' package is not installed. ` +
         `Install it with: npm install -D terser`,
     )
@@ -85,7 +86,7 @@ async function minifyWithSwc(
   try {
     swc = await importOptional('@swc/core')
   } catch {
-    throw new Error(
+    throw new UserError(
       `Minifier 'swc' selected but the '@swc/core' package is not installed. ` +
         `Install it with: npm install -D @swc/core`,
     )

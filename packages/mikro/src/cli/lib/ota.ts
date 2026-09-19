@@ -9,6 +9,8 @@ import {createReadStream} from 'fs'
 import {mkdir, readdir, readFile, rm, stat, writeFile} from 'fs/promises'
 import {create as tarCreate} from 'tar'
 
+import {UserError} from './errorMessage.js'
+
 const execFileAsync = promisify(execFile)
 
 /** Manifest written to the build root as `mikro.app.json`. The firmware and
@@ -88,13 +90,13 @@ export async function resolveFirmwareVersion(projectRoot: string): Promise<strin
   const fromProject = createRequire(pathlib.join(projectRoot, 'noop.js'))
   const pkgPath = resolveFirmwarePkgPath(fromProject)
   if (pkgPath === null) {
-    throw new Error(
+    throw new UserError(
       'Could not resolve @mikrojs/firmware. Install it (or the mikro package) in this project.',
     )
   }
   const pkg = JSON.parse(await readFile(pkgPath, 'utf-8')) as {version?: string}
   if (typeof pkg.version !== 'string') {
-    throw new Error(`@mikrojs/firmware package.json at ${pkgPath} has no version`)
+    throw new UserError(`@mikrojs/firmware package.json at ${pkgPath} has no version`)
   }
   return pkg.version
 }
@@ -124,7 +126,7 @@ async function findFirstBjs(dir: string): Promise<string | null> {
 export async function readBytecodeVersion(buildDir: string): Promise<number> {
   const bjs = await findFirstBjs(buildDir)
   if (bjs === null) {
-    throw new Error(`No .bjs files found in ${buildDir}; build did not produce bytecode`)
+    throw new UserError(`No .bjs files found in ${buildDir}; build did not produce bytecode`)
   }
   const fd = await readFile(bjs)
   if (fd.length === 0) {
@@ -210,7 +212,7 @@ export async function createTarball(buildDir: string, outPath: string): Promise<
   await pruneMacSidecars(buildDir)
   const entries = await walkSorted(buildDir)
   if (entries.length === 0) {
-    throw new Error(`Nothing to pack: ${buildDir} is empty`)
+    throw new UserError(`Nothing to pack: ${buildDir} is empty`)
   }
   await tarCreate(
     {
@@ -240,7 +242,7 @@ export async function readManifestFromTarball(tarballPath: string): Promise<OtaM
     typeof parsed.firmwareVersion !== 'string' ||
     typeof parsed.bytecodeVersion !== 'number'
   ) {
-    throw new Error(
+    throw new UserError(
       `${tarballPath} does not contain a valid ${MANIFEST_NAME} (packed with an older CLI? re-run 'mikro ota pack')`,
     )
   }

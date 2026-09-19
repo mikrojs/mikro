@@ -11,6 +11,8 @@
 import {existsSync, readFileSync, unlinkSync, writeFileSync} from 'node:fs'
 import * as pathlib from 'node:path'
 
+import {UserError} from './errorMessage.js'
+
 const PID_FILE = 'sim.pid'
 
 function pidPath(mikroDir: string): string {
@@ -57,7 +59,7 @@ export function clearPid(mikroDir: string): void {
   }
 }
 
-export class SimAlreadyRunningError extends Error {
+export class SimAlreadyRunningError extends UserError {
   pid: number
   constructor(pid: number) {
     super(

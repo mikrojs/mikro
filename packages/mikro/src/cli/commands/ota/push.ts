@@ -108,7 +108,7 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
     let input: PublishInput
     if (config.tarball) {
       if (config.snapshot) {
-        throw new Error(
+        throw new UserError(
           '--snapshot has no effect with --tarball: the version is baked into the packed build. Pack with --snapshot instead.',
         )
       }

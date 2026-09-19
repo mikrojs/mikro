@@ -1,3 +1,4 @@
+import {UserError} from './errorMessage.js'
 import {type FetchLike, joinUrl} from './otaPublish.js'
 
 /** System-store (`mik.sys`) key holding the device update key (15-byte NVS cap). */
@@ -65,7 +66,7 @@ async function failWith(url: string, status: number, text: () => Promise<string>
   // not a transient blip worth retrying.
   const hint =
     status === 401 ? ' (the registry token is invalid or expired; run `mikro ota setup`)' : ''
-  throw new Error(`Registry request to ${url} failed with ${status}${detail}${hint}`)
+  throw new UserError(`Registry request to ${url} failed with ${status}${detail}${hint}`)
 }
 
 async function readUpdateKey(url: string, res: {text(): Promise<string>}): Promise<string> {
@@ -77,7 +78,7 @@ async function readUpdateKey(url: string, res: {text(): Promise<string>}): Promi
     updateKey = undefined
   }
   if (typeof updateKey !== 'string' || updateKey.length === 0) {
-    throw new Error(`Registry response from ${url} has no update key`)
+    throw new UserError(`Registry response from ${url} has no update key`)
   }
   return updateKey
 }

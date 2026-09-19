@@ -5,6 +5,7 @@ import * as pathlib from 'node:path'
 import {materializeDefaults, parseConfigSchema} from '@mikrojs/schema/config'
 
 import type {MikroJSConfig} from '../../_exports/index.js'
+import {UserError} from './errorMessage.js'
 import {loadMikroConfig} from './loadMikroConfig.js'
 
 /** Config schemas over this size are a mistake; matches the registry spec's
@@ -36,18 +37,18 @@ export function serializeConfigSchema(config: MikroJSConfig | null): unknown {
   } catch (cause) {
     // A circular structure throws from stringify; keep the file named so the
     // author knows where to look.
-    throw new Error(`mikro.config.ts: otaConfigSchema does not serialize to JSON`, {cause})
+    throw new UserError(`mikro.config.ts: otaConfigSchema does not serialize to JSON`, {cause})
   }
   const checked = parseConfigSchema(serialized)
   if (!checked.ok) {
     const where = checked.error.path === '' ? '' : ` at ${checked.error.path}`
-    throw new Error(
+    throw new UserError(
       `mikro.config.ts: otaConfigSchema is not a valid config schema${where}: ${checked.error.message}`,
     )
   }
   const bytes = Buffer.byteLength(JSON.stringify(serialized))
   if (bytes > CONFIG_SCHEMA_MAX_BYTES) {
-    throw new Error(
+    throw new UserError(
       `mikro.config.ts: otaConfigSchema serializes to ${bytes} bytes, over the ${CONFIG_SCHEMA_MAX_BYTES}-byte cap`,
     )
   }
@@ -57,7 +58,7 @@ export function serializeConfigSchema(config: MikroJSConfig | null): unknown {
   // author can trim.
   const docBytes = Buffer.byteLength(JSON.stringify(materializeDefaults(checked.value)))
   if (docBytes > CONFIG_DOC_MAX_BYTES) {
-    throw new Error(
+    throw new UserError(
       `mikro.config.ts: otaConfigSchema's defaults alone encode to ${docBytes} bytes, ` +
         `over the ${CONFIG_DOC_MAX_BYTES}-byte config document cap`,
     )
@@ -88,7 +89,7 @@ export function buildConfigDefaults(schema: unknown): Record<string, unknown> | 
   if (schema === undefined) return undefined
   const checked = parseConfigSchema(schema)
   if (!checked.ok) {
-    throw new Error(`config schema is not valid: ${checked.error.message}`)
+    throw new UserError(`config schema is not valid: ${checked.error.message}`)
   }
   return materializeDefaults(checked.value)
 }

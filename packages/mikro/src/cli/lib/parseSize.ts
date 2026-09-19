@@ -1,3 +1,5 @@
+import {UserError} from './errorMessage.js'
+
 /**
  * Parse a size value with optional K/M/G suffix into bytes.
  * Accepts numbers (passed through) or strings like "300k", "1.5M", "2g".
@@ -6,7 +8,7 @@ export function parseSize(value: number | string): number {
   if (typeof value === 'number') return value
   const match = value.match(/^(\d+(?:\.\d+)?)\s*([kmg]?)b?$/i)
   if (!match) {
-    throw new Error(
+    throw new UserError(
       `Invalid size: ${value}. Use a number with optional K/M/G suffix (e.g. 300K, 1M)`,
     )
   }
