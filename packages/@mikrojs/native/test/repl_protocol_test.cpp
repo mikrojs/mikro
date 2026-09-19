@@ -10,6 +10,8 @@
 
 #include <doctest.h>
 
+#include "temp_dir.h"
+
 /* ── Mock transport ──────────────────────────────────────────────── */
 
 /* A mock transport that reads from a pre-loaded input buffer and
@@ -1007,10 +1009,8 @@ TEST_CASE("Filesystem directives list, print, and remove" *
           doctest::test_suite("repl_protocol")) {
     proto_setup();
 
-    char root[64];
-    snprintf(root, sizeof(root), "/tmp/mik_repl_fs_XXXXXX");
-    REQUIRE(mkdtemp(root) != nullptr);
-    MIK_SetFSRoot(proto_rt, root);
+    std::string root = mik_test_temp_dir("mik_repl_fs");
+    MIK_SetFSRoot(proto_rt, root.c_str());
     {
         std::string sub = std::string(root) + "/sub";
         mkdir(sub.c_str(), 0755);
@@ -1049,7 +1049,7 @@ TEST_CASE("Filesystem directives list, print, and remove" *
     CHECK(stat((std::string(root) + "/f.txt").c_str(), &st) != 0);
 
     proto_teardown();
-    nftw(root, repl_rm_cb, 8, FTW_DEPTH | FTW_PHYS);
+    nftw(root.c_str(), repl_rm_cb, 8, FTW_DEPTH | FTW_PHYS);
 }
 
 TEST_CASE("Console and test-emit route to protocol frames while serving" *
@@ -1237,10 +1237,8 @@ TEST_CASE("Directive state edge cases and fs argument forms" *
           doctest::test_suite("repl_protocol")) {
     proto_setup();
 
-    char root[64];
-    snprintf(root, sizeof(root), "/tmp/mik_repl_fs2_XXXXXX");
-    REQUIRE(mkdtemp(root) != nullptr);
-    MIK_SetFSRoot(proto_rt, root);
+    std::string root = mik_test_temp_dir("mik_repl_fs2");
+    MIK_SetFSRoot(proto_rt, root.c_str());
     {
         std::string sub = std::string(root) + "/sub";
         mkdir(sub.c_str(), 0755);
@@ -1280,7 +1278,7 @@ TEST_CASE("Directive state edge cases and fs argument forms" *
     CHECK(infos[7]->payload.find("inner") != std::string::npos); /* du lists the file */
 
     proto_teardown();
-    nftw(root, repl_rm_cb, 8, FTW_DEPTH | FTW_PHYS);
+    nftw(root.c_str(), repl_rm_cb, 8, FTW_DEPTH | FTW_PHYS);
 }
 
 namespace {

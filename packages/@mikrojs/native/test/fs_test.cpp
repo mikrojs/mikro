@@ -12,6 +12,8 @@
 
 #include <doctest.h>
 
+#include "temp_dir.h"
+
 /* Host-side tests for the fs native module (src/fs.cpp) through the public
  * `mikro/fs` JS API: round-trips, write options, the File handle, the /app
  * read-only zone, path traversal clamping, the single-shot read cap, and
@@ -24,22 +26,21 @@ static int rm_cb(const char* path, const struct stat*, int, struct FTW*) {
 }
 
 struct FsFixture {
-    char root[64];
+    std::string root;
     MIKRuntime* rt = nullptr;
     JSContext* ctx = nullptr;
 
     FsFixture() {
-        snprintf(root, sizeof(root), "/tmp/mik_fs_test_XXXXXX");
-        REQUIRE(mkdtemp(root) != nullptr);
+        root = mik_test_temp_dir("mik_fs_test");
         rt = MIK_NewRuntime();
         REQUIRE(rt != nullptr);
-        MIK_SetFSRoot(rt, root);
+        MIK_SetFSRoot(rt, root.c_str());
         ctx = MIK_GetJSContext(rt);
     }
 
     ~FsFixture() {
         MIK_FreeRuntime(rt);
-        nftw(root, rm_cb, 8, FTW_DEPTH | FTW_PHYS);
+        nftw(root.c_str(), rm_cb, 8, FTW_DEPTH | FTW_PHYS);
     }
 };
 

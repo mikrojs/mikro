@@ -8,11 +8,11 @@
 
 #include <doctest.h>
 
+#include "temp_dir.h"
+
 /* Helper: create a temporary directory and return its path */
 static std::string make_temp_dir() {
-    char tmpl[] = "/tmp/mik_config_test_XXXXXX";
-    char* dir = mkdtemp(tmpl);
-    return std::string(dir);
+    return mik_test_temp_dir("mik_config_test");
 }
 
 /* Helper: create a subdirectory and return its path */

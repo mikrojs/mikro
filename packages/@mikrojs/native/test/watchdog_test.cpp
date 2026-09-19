@@ -17,6 +17,8 @@
 
 #include <doctest.h>
 
+#include "temp_dir.h"
+
 namespace {
 
 int64_t g_now_us = 1000;
@@ -195,8 +197,7 @@ void install_feed(MIKRuntime* rt, JSContext* ctx) {
 }
 
 std::string make_temp_dir() {
-    char tmpl[] = "/tmp/mik_watchdog_test_XXXXXX";
-    return std::string(mkdtemp(tmpl));
+    return mik_test_temp_dir("mik_watchdog_test");
 }
 
 void write_file(const std::string& path, const char* content) {
