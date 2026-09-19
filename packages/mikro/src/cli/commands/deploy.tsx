@@ -252,6 +252,7 @@ export async function run(
           checksum: artifact.checksum,
           size: artifact.size,
         },
+        duplicatePackages: artifact.duplicatePackages,
       },
       [
         {command: `mikro console -p ${devicePath}`, description: 'Connect to device console'},

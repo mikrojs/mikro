@@ -26,6 +26,7 @@ import {build} from '../build.js'
 import {writeDevManifest} from '../configSchema.js'
 import {collectFiles, loadEnvFiles, validateNvsKeys} from '../deploy.js'
 import {formatDeployEvent} from '../deployProgress.js'
+import {formatDuplicatePackagesNotice} from '../duplicatePackages.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {getMikroDir, resolveProjectRoot} from '../projectRoot.js'
 import {getPredeployCommands, runHooks} from '../runHooks.js'
@@ -75,6 +76,9 @@ export function createDevSession(options: {
   /** Extra deploy trigger source (e.g. an agent-mode stdin 'deploy' command).
    *  Merged with `repl?.deploys$` if both are present. */
   externalDeploys$?: Observable<{force: boolean}>
+  /** Called with the duplicate-package notice when there is no `repl` to log it
+   *  to: on the first build that has one, then only when the duplicates change. */
+  onNotice?: (notice: string) => void
   minifier?: Minifier
   minifyLevel?: MinifyLevel
   logLevel?: LogLevel
@@ -89,6 +93,7 @@ export function createDevSession(options: {
     session,
     repl,
     externalDeploys$,
+    onNotice,
     entry,
     forceDeploy,
     minify,
@@ -173,8 +178,12 @@ export function createDevSession(options: {
     })
   }
 
+  // Every save rebuilds: repeat the duplicate-package notice only when it changes.
+  let lastNotice: string | undefined
+
   function buildAndDeploy$(trigger: Trigger): Observable<DevSessionState> {
     const buildStatus: DevStatus = trigger.isInitial ? {type: 'building'} : {type: 'rebuilding'}
+    let notice: string | undefined
 
     return concat(
       // Build phase
@@ -189,6 +198,20 @@ export function createDevSession(options: {
         logLevel,
         env: 'development',
       }).pipe(
+        tap({
+          next: (event) => {
+            if (event.type === 'duplicatePackages') {
+              notice = formatDuplicatePackagesNotice(event.packages)
+            }
+          },
+          complete: () => {
+            if (notice !== undefined && notice !== lastNotice) {
+              if (repl) repl.logEvent({type: 'warn', text: notice})
+              else onNotice?.(notice)
+            }
+            lastNotice = notice
+          },
+        }),
         ignoreElements(),
         // Name the phase: the device was already restarted above, so without
         // this the boot log reads as if the deploy went through.

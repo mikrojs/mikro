@@ -6,6 +6,7 @@ import analyze, {type AnalyzeResult} from './analyze.js'
 import {CachedFileSystem} from './fs.js'
 import resolveDependency, {NotFoundError} from './resolve.js'
 import type {
+  DuplicatePackage,
   NodeFileTraceOptions,
   NodeFileTraceReasons,
   NodeFileTraceReasonType,
@@ -39,6 +40,7 @@ export async function nodeFileTrace(
   )
 
   await hoistDuplicatePackages(job)
+  const duplicatePackages = await findDuplicatePackages(job)
 
   // Build source path map: for files in the fileList that have virtual paths,
   // map the relative output path to the real source path on disk
@@ -55,6 +57,7 @@ export async function nodeFileTrace(
     fileList: job.fileList,
     reasons: job.reasons,
     warnings: job.warnings,
+    duplicatePackages,
     sourcePathMap,
   }
 }
@@ -169,6 +172,36 @@ async function hoistDuplicatePackages(job: Tracer) {
       break
     }
   }
+}
+
+// What the hoist could not merge: a package name with more than one package
+// directory in fileList, whether the copies are one package on disk or two.
+async function findDuplicatePackages(job: Tracer): Promise<DuplicatePackage[]> {
+  const dirsByName = new Map<string, Set<string>>()
+  for (const file of job.fileList) {
+    const dir = packageDirOf(file)
+    if (dir === undefined) continue
+    const path = sep + dir
+    const name = path.slice(path.lastIndexOf(NODE_MODULES) + NODE_MODULES.length)
+    const dirs = dirsByName.get(name)
+    if (dirs) dirs.add(dir)
+    else dirsByName.set(name, new Set([dir]))
+  }
+
+  const duplicates: DuplicatePackage[] = []
+  for (const [name, dirs] of dirsByName) {
+    if (dirs.size < 2) continue
+    const copies = await Promise.all(
+      [...dirs].sort().map(async (path) => {
+        // Through job.readFile, so a pnpm virtual path reads its real file.
+        const pjson = await job.readFile(resolve(job.base, path, 'package.json'))
+        const version = pjson === null ? undefined : JSON.parse(pjson.toString()).version
+        return typeof version === 'string' ? {path, version} : {path}
+      }),
+    )
+    duplicates.push({name, copies})
+  }
+  return duplicates.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export class Tracer {

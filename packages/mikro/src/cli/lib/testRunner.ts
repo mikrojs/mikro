@@ -19,6 +19,7 @@ import {
 import type {Minifier, MinifyLevel} from '../../_exports/index.js'
 import {buildTests, entryRootDir} from './build.js'
 import {collectFiles, type EnvVar} from './deploy.js'
+import {formatDuplicatePackagesNotice} from './duplicatePackages.js'
 import {
   applyBootSnapshot,
   type BootFigures,
@@ -231,7 +232,13 @@ export async function runTestManifest(
       // Tests resolve the `test` config env. (The granular .env.<mode> the run
       // loads is tracked separately via mikroEnv.)
       env: 'test',
-    }),
+    }).pipe(
+      tap((event) => {
+        if (event.type === 'duplicatePackages') {
+          cb.log?.(formatDuplicatePackagesNotice(event.packages)!)
+        }
+      }),
+    ),
     {defaultValue: undefined},
   )
 

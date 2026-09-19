@@ -63,10 +63,20 @@ export interface NodeFileTraceReasons extends Map<
   }
 > {}
 
+/** A package name traced at more than one package directory. */
+export interface DuplicatePackage {
+  name: string
+  /** One entry per directory, sorted by path. `version` is from its package.json. */
+  copies: {path: string; version?: string}[]
+}
+
 export interface NodeFileTraceResult {
   fileList: Set<string>
   reasons: NodeFileTraceReasons
   warnings: Set<Error>
+  // Packages still in fileList more than once after the hoist. Not a warning:
+  // each copy ships and loads as its own module instance, but the trace is valid.
+  duplicatePackages: DuplicatePackage[]
   // Maps output file paths to their real source paths on disk.
   // Files not in this map can be read directly from their path.
   // Populated for pnpm transitive dependencies that are remapped

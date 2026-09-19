@@ -11,10 +11,10 @@ import {
 import {tmpdir} from 'node:os'
 import * as pathlib from 'node:path'
 
-import {lastValueFrom} from 'rxjs'
+import {lastValueFrom, toArray} from 'rxjs'
 import {afterEach, beforeEach, describe, expect, it} from 'vitest'
 
-import {build, entryRootDir} from '../build.js'
+import {build, type BuildEvent, entryRootDir} from '../build.js'
 
 function listFiles(dir: string): string[] {
   return (readdirSync(dir, {recursive: true}) as string[])
@@ -123,6 +123,79 @@ describe('build', () => {
     await runBuild('./app/debug/test.ts', dotDir)
 
     expect(listFiles(dotDir)).to.deep.equal(listFiles(bareDir))
+  })
+
+  describe('duplicate packages', () => {
+    const pkg = (name: string, version: string) =>
+      JSON.stringify({name, version, type: 'module', exports: {'./*': './*'}})
+
+    function addPackage(dir: string, name: string, version: string, source: string) {
+      mkdirSync(pathlib.join(tempDir, dir), {recursive: true})
+      writeFileSync(pathlib.join(tempDir, dir, 'package.json'), pkg(name, version))
+      writeFileSync(pathlib.join(tempDir, dir, 'index.js'), source)
+    }
+
+    async function duplicateEvents(buildDir: string, options?: {bundle: boolean}) {
+      const events = await lastValueFrom(
+        build('app/main.ts', buildDir, {minify: false, bytecode: false, ...options}).pipe(
+          toArray(),
+        ),
+      )
+      return events.filter(
+        (e): e is Extract<BuildEvent, {type: 'duplicatePackages'}> =>
+          e.type === 'duplicatePackages',
+      )
+    }
+
+    it('reports two copies of a package by deploy path, and still builds', async () => {
+      addPackage('node_modules/a', 'a', '1.0.0', "import 'c/index.js'\n")
+      addPackage('node_modules/b', 'b', '1.0.0', "import 'c/index.js'\n")
+      addPackage('node_modules/a/node_modules/c', 'c', '1.2.0', 'export const c = 1\n')
+      addPackage('node_modules/b/node_modules/c', 'c', '2.0.1', 'export const c = 2\n')
+      writeFileSync(
+        pathlib.join(tempDir, 'app', 'main.ts'),
+        "import 'a/index.js'\nimport 'b/index.js'\n",
+      )
+      const buildDir = pathlib.join(tempDir, 'out')
+
+      expect(await duplicateEvents(buildDir)).to.deep.equal([
+        {
+          type: 'duplicatePackages',
+          packages: [
+            {
+              name: 'c',
+              copies: [
+                {path: 'app/node_modules/a/node_modules/c', version: '1.2.0'},
+                {path: 'app/node_modules/b/node_modules/c', version: '2.0.1'},
+              ],
+            },
+          ],
+        },
+      ])
+      expect(listFiles(buildDir)).to.include('app/node_modules/a/node_modules/c/index.js')
+      expect(listFiles(buildDir)).to.include('app/node_modules/b/node_modules/c/index.js')
+    })
+
+    // Bundled builds go through esbuild, not the tracer: no duplicate report.
+    it('reports nothing for a bundled build', async () => {
+      addPackage('node_modules/a', 'a', '1.0.0', "import 'c/index.js'\n")
+      addPackage('node_modules/b', 'b', '1.0.0', "import 'c/index.js'\n")
+      addPackage('node_modules/a/node_modules/c', 'c', '1.2.0', 'export const c = 1\n')
+      addPackage('node_modules/b/node_modules/c', 'c', '2.0.1', 'export const c = 2\n')
+      writeFileSync(
+        pathlib.join(tempDir, 'app', 'main.ts'),
+        "import 'a/index.js'\nimport 'b/index.js'\n",
+      )
+
+      expect(await duplicateEvents(pathlib.join(tempDir, 'out'), {bundle: true})).to.deep.equal([])
+    })
+
+    it('reports nothing when every package deploys once', async () => {
+      addPackage('node_modules/a', 'a', '1.0.0', 'export const a = 1\n')
+      writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), "import 'a/index.js'\n")
+
+      expect(await duplicateEvents(pathlib.join(tempDir, 'out'))).to.deep.equal([])
+    })
   })
 
   it('reports an unresolvable import by its message, without an Error prefix', async () => {

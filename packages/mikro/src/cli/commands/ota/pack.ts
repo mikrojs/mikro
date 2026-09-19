@@ -1,5 +1,6 @@
 import * as pathlib from 'node:path'
 
+import type {DuplicatePackage} from '@mikrojs/analyze-imports'
 import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
@@ -14,6 +15,7 @@ import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
 import {build, type BuildEvent} from '../../lib/build.js'
 import {buildConfigDefaults, serializeConfigSchema} from '../../lib/configSchema.js'
 import {displayPath} from '../../lib/displayPath.js'
+import {formatDuplicatePackagesNotice} from '../../lib/duplicatePackages.js'
 import {describeError} from '../../lib/errorMessage.js'
 import {formatSize} from '../../lib/formatSize.js'
 import {loadMikroConfig} from '../../lib/loadMikroConfig.js'
@@ -122,6 +124,7 @@ export async function packProject(options: {
   const projectRoot = resolveProjectRoot()
   const entry = resolveEntry(options.entry)
   const buildDir = pathlib.join(getMikroDir(), 'ota-build')
+  let duplicatePackages: DuplicatePackage[] | undefined
 
   await lastValueFrom(
     build(entry, buildDir, {
@@ -142,6 +145,10 @@ export async function packProject(options: {
       // knows what won.
       tap((event) => {
         if (event.type === 'settings') log(`Building… (${describeBuildSettings(event)})`)
+        if (event.type === 'duplicatePackages') {
+          duplicatePackages = event.packages
+          log(formatDuplicatePackagesNotice(event.packages)!)
+        }
       }),
     ),
     {defaultValue: undefined},
@@ -190,7 +197,7 @@ export async function packProject(options: {
   const outPath = options.out ?? pathlib.resolve(`app-${version}.tgz`)
   // --snapshot is the one flag that shapes the pack rather than the build.
   log(options.snapshot ? 'Packing… (snapshot)' : 'Packing…')
-  return finalizeBuild(buildDir, outPath, manifest)
+  return {...(await finalizeBuild(buildDir, outPath, manifest)), duplicatePackages}
 }
 
 export async function run(config: Args, jsonFlag = false): Promise<void> {
@@ -222,6 +229,7 @@ export async function run(config: Args, jsonFlag = false): Promise<void> {
         directory: artifact.manifest.directory,
         commit: artifact.manifest.commit,
         dirty: artifact.manifest.dirty,
+        duplicatePackages: artifact.duplicatePackages,
       })
     } else {
       // Lead with the verb and what was packed, like every other ota command.
