@@ -512,7 +512,6 @@ static JSValue js_pwm_end(JSContext* ctx, JSValue this_val, int argc, JSValue* a
     MIKPwmFadePending* fade = mik__pwm_running_fade(MIK_GetRuntime(ctx), s->channel);
     if (fade) {
         mik__pwm_stop_fade(s->channel);
-        mik__print_error_line("Pwm %d: end() cancelled a fade in progress", s->gpio);
         JSValue ok = mik__result_ok_void(ctx);
         MIK_ResolvePromise(ctx, &fade->promise, 1, &ok);
         MIK_ClearPromise(ctx, &fade->promise);
