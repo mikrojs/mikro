@@ -1114,6 +1114,9 @@ void MIK_ProtocolClose(void) {
     repl_ctx = nullptr;
     repl_mik_rt = nullptr;
     s_exit_serve_loop = false;
+    /* A port that restarts the app in place opens a session per app run, and
+     * the next one may boot with another memReserved. */
+    boot_mem_captured = false;
     MIK_GetPlatform()->log(MIK_LOG_INFO, TAG, "Protocol REPL exited");
 }
 
