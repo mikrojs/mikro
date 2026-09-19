@@ -1272,6 +1272,24 @@ static const char* mik__disconnect_reason_str(MIKWifiStatus status) {
     }
 }
 
+/* Calls each listener with one argument. Walks a snapshot, so a listener that calls on() or
+ * off() for the same event does not change the list being walked. */
+static void mik__wifi_call_listeners(JSContext* ctx, const std::vector<JSValue>& listeners,
+                                     JSValue* arg) {
+    if (listeners.empty()) {
+        return;
+    }
+    std::vector<JSValue> snapshot;
+    snapshot.reserve(listeners.size());
+    for (const JSValue& listener : listeners) {
+        snapshot.push_back(JS_DupValue(ctx, listener));
+    }
+    for (JSValue& listener : snapshot) {
+        mik_call_handler(ctx, listener, 1, arg);
+        JS_FreeValue(ctx, listener);
+    }
+}
+
 static void mik__wifi_dispatch_connect(JSContext* ctx, MIKWifiState* state,
                                        esp_netif_ip_info_t* ip_info) {
     char ip_str[16], netmask_str[16], gw_str[16];
@@ -1284,9 +1302,7 @@ static void mik__wifi_dispatch_connect(JSContext* ctx, MIKWifiState* state,
     JS_SetPropertyStr(ctx, info, "netmask", JS_NewString(ctx, netmask_str));
     JS_SetPropertyStr(ctx, info, "gateway", JS_NewString(ctx, gw_str));
 
-    for (auto& listener : state->on_connect) {
-        mik_call_handler(ctx, listener, 1, &info);
-    }
+    mik__wifi_call_listeners(ctx, state->on_connect, &info);
 
     JS_FreeValue(ctx, info);
 }
@@ -1296,9 +1312,7 @@ static void mik__wifi_dispatch_disconnect(JSContext* ctx, MIKWifiState* state,
     const char* reason = mik__disconnect_reason_str(status);
     JSValue reason_val = JS_NewString(ctx, reason);
 
-    for (auto& listener : state->on_disconnect) {
-        mik_call_handler(ctx, listener, 1, &reason_val);
-    }
+    mik__wifi_call_listeners(ctx, state->on_disconnect, &reason_val);
 
     JS_FreeValue(ctx, reason_val);
 }
@@ -1311,9 +1325,7 @@ static void mik__wifi_dispatch_ap_sta(JSContext* ctx, std::vector<JSValue>& list
     JSValue info = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, info, "mac", JS_NewString(ctx, mac_str));
 
-    for (auto& listener : listeners) {
-        mik_call_handler(ctx, listener, 1, &info);
-    }
+    mik__wifi_call_listeners(ctx, listeners, &info);
 
     JS_FreeValue(ctx, info);
 }
@@ -1445,9 +1457,7 @@ void mik__wifi_consume(JSContext* ctx) {
             }
             case MIK_WIFI_EVT_RSSI_LOW: {
                 JSValue rssi_val = JS_NewInt32(ctx, evt.rssi);
-                for (auto& listener : state->on_rssi_low) {
-                    mik_call_handler(ctx, listener, 1, &rssi_val);
-                }
+                mik__wifi_call_listeners(ctx, state->on_rssi_low, &rssi_val);
                 JS_FreeValue(ctx, rssi_val);
                 break;
             }
