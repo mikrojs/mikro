@@ -14,7 +14,7 @@ import {customFirmwareOf} from '../lib/bundledFirmware.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
 import {type FlasherArgs, getWriteFlashMultiArgs} from '../lib/esptool.js'
 import {resolveFlashPlan} from '../lib/flashFirmware.js'
-import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
+import {INITIAL_SPAWN_STATE, ospawn, spawnErrorMessage, type SpawnState} from '../lib/ospawn.js'
 import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
 import {port} from '../lib/portValueParser.js'
 import {type PostFlashResult, runPostFlash} from '../lib/postFlash.js'
@@ -453,7 +453,7 @@ function FlashProgress(props: {
               {textDecoder.decode(chunk.output)}
             </Text>
           ))}
-          <Text color="red">{error.stack}</Text>
+          <Text color="red">{spawnErrorMessage(error, 'esptool')}</Text>
         </Box>
       ) : null}
       {success && postFlash.status !== 'idle' ? (

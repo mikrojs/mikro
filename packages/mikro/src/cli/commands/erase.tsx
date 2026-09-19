@@ -11,7 +11,7 @@ import type {Observable} from 'rxjs'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
-import {INITIAL_SPAWN_STATE, ospawn, type SpawnState} from '../lib/ospawn.js'
+import {INITIAL_SPAWN_STATE, ospawn, spawnErrorMessage, type SpawnState} from '../lib/ospawn.js'
 import {port} from '../lib/portValueParser.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
@@ -209,7 +209,7 @@ function EraseProgress(props: {esptoolPath: string; port: string; baudRate: numb
           {textDecoder.decode(chunk.output)}
         </Text>
       ))}
-      {error && <Text color="red">{error.stack}</Text>}
+      {error && <Text color="red">{spawnErrorMessage(error, 'esptool')}</Text>}
     </Box>
   )
 }

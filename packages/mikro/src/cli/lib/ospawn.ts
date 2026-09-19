@@ -38,6 +38,14 @@ export class SpawnError extends Error {
   }
 }
 
+/** One line for the user about why a spawned tool failed. The tool's own
+ * output says what went wrong; a stack trace of our spawn code adds nothing. */
+export function spawnErrorMessage(error: Error, tool: string): string {
+  return error instanceof SpawnError
+    ? `${tool} exited with code ${error.exitCode}`
+    : `${tool} could not be run: ${error.message}`
+}
+
 export const INITIAL_SPAWN_STATE: SpawnState = {
   output: [],
   error: undefined,
