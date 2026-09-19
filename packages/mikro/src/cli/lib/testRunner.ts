@@ -237,11 +237,9 @@ export async function runTestManifest(
 
   const files = await collectFiles(options.buildDir)
   cb.log?.(`Deploying ${files.length} file(s)`)
-  // Incremental deploy: the device-side supervisor only executes paths
-  // listed in package.json's `tests` array, so stale files from a prior
-  // run are benign (they just sit in flash). Letting the checksum-based
-  // KEEP path run makes re-running `mikro test` after a one-file edit
-  // upload only the changed file instead of the whole manifest.
+  // Incremental deploy: letting the checksum-based KEEP path run makes
+  // re-running `mikro test` after a one-file edit upload only the changed
+  // file instead of the whole manifest.
   await lastValueFrom(
     session
       .deploy({

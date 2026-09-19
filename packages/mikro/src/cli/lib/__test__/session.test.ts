@@ -14,6 +14,8 @@ import {
   CMD_DEPLOY_ABORT,
   CMD_DEPLOY_BUILD,
   CMD_DEPLOY_CHECKSUM,
+  CMD_DEPLOY_DONE,
+  CMD_DEPLOY_KEEP,
   CMD_DEPLOY_PUT,
   CMD_DEPLOY_PUT_CHUNK,
   CMD_DEPLOY_RESULT,
@@ -339,6 +341,72 @@ describe('session', () => {
       ])
 
       session.close()
+    })
+
+    /** Deploy one unchanged file against a device that answers every checksum
+     *  query with `checksumReply`; returns the command types the CLI sent. */
+    async function deployUnchangedFile(checksumReply: Buffer) {
+      const {transport, written, sendFrame} = createMockTransport()
+      const session = connectRepl(transport)
+      session.messages$.subscribe(() => {})
+
+      sendReady(sendFrame)
+
+      let lastSeen = 0
+      const autoRespond = setInterval(() => {
+        while (lastSeen < written.length) {
+          const type = parseWrittenType(written[lastSeen]!)
+          if (type === CMD_DEPLOY_CHECKSUM) sendFrame(MSG_CHECKSUM_RESULT, checksumReply)
+          else sendFrame(MSG_OK)
+          lastSeen++
+        }
+      }, 5)
+
+      const last = await lastValueFrom(
+        session.deploy({
+          files: [{path: '/app/a.js', data: Buffer.from('a')}],
+          restart: false,
+        }),
+      )
+
+      clearInterval(autoRespond)
+      session.close()
+      return {last, types: written.map(parseWrittenType)}
+    }
+
+    it('deploys when the device holds a file the build no longer has', async () => {
+      // Device manifest lists a.js and b.js; the build only has a.js, unchanged.
+      // match=1, file count=2 (u16le).
+      const {last, types} = await deployUnchangedFile(Buffer.from([1, 2, 0]))
+
+      expect(last).to.deep.equal({type: 'complete', deployed: true, stats: {put: 0, kept: 1}})
+      // KEEP a.js, PUT the new manifest (begin + chunk), DONE drops b.js.
+      expect(types).to.deep.equal([
+        CMD_RUNTIME_PAUSE,
+        CMD_DEPLOY_CHECKSUM,
+        CMD_DEPLOY_KEEP,
+        CMD_DEPLOY_PUT,
+        CMD_DEPLOY_PUT_CHUNK,
+        CMD_DEPLOY_DONE,
+        CMD_RUNTIME_RESUME,
+      ])
+    })
+
+    it('aborts as unchanged when the device file count equals the build', async () => {
+      const {last, types} = await deployUnchangedFile(Buffer.from([1, 1, 0]))
+
+      expect(last).to.deep.equal({type: 'complete', deployed: false, stats: {put: 0, kept: 1}})
+      expect(types).to.include(CMD_DEPLOY_ABORT)
+      expect(types).to.not.include(CMD_DEPLOY_DONE)
+    })
+
+    it('aborts as unchanged on firmware that reports no file count', async () => {
+      // Older firmware answers with the match byte only.
+      const {last, types} = await deployUnchangedFile(Buffer.from([1]))
+
+      expect(last).to.deep.equal({type: 'complete', deployed: false, stats: {put: 0, kept: 1}})
+      expect(types).to.include(CMD_DEPLOY_ABORT)
+      expect(types).to.not.include(CMD_DEPLOY_DONE)
     })
 
     it('deploy resumes the device when the pause is never acked', async () => {

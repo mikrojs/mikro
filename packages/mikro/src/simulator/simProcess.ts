@@ -629,6 +629,15 @@ function handleDeployKeep(payload: Buffer): void {
   sendOk()
 }
 
+/** File entries in the deployed `.checksums` manifest, as u16le. Mirrors firmware. */
+function manifestFileCount(): Buffer {
+  const manifestPath = pathlib.join(appDir, '.checksums')
+  const lines = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf-8').split('\n') : []
+  const count = Buffer.alloc(2)
+  count.writeUInt16LE(lines.filter((line) => line.length >= 67 && !line.startsWith('#')).length)
+  return count
+}
+
 function handleDeployChecksum(payload: Buffer): void {
   const nameLen = payload.readUInt16LE(0)
   const name = payload.subarray(2, 2 + nameLen).toString('utf-8')
@@ -638,13 +647,17 @@ function handleDeployChecksum(payload: Buffer): void {
   const filePath = resolveSandboxPath(fsRoot, name)
   if (!existsSync(filePath)) {
     // File doesn't exist: no match
-    send(MSG_CHECKSUM_RESULT, Buffer.from([0x00]))
+    send(MSG_CHECKSUM_RESULT, Buffer.concat([Buffer.from([0x00]), manifestFileCount()]))
     return
   }
 
   const actualHash = createHash('sha256').update(readFileSync(filePath)).digest()
   const match = actualHash.equals(expectedHash)
-  send(MSG_CHECKSUM_RESULT, Buffer.from([match ? 0x01 : 0x00]))
+  // Payload: u8 match | u16le manifest file count
+  send(
+    MSG_CHECKSUM_RESULT,
+    Buffer.concat([Buffer.from([match ? 0x01 : 0x00]), manifestFileCount()]),
+  )
 }
 
 function handleDeployErase(): void {

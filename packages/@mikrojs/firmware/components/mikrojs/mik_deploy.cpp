@@ -160,6 +160,22 @@ static bool manifest_matches(const ChecksumsManifest& m, const char* name, uint1
     return false;
 }
 
+/** Number of file entries in the manifest (the "#firmware:" line is not one). */
+static uint16_t manifest_file_count(const ChecksumsManifest& m) {
+    if (!m.data) return 0;
+
+    uint16_t count = 0;
+    const char* p = m.data;
+    const char* end = m.data + m.len;
+    while (p < end) {
+        const char* nl = static_cast<const char*>(memchr(p, '\n', end - p));
+        size_t line_len = nl ? static_cast<size_t>(nl - p) : static_cast<size_t>(end - p);
+        if (line_len >= 67 && p[0] != '#' && count < UINT16_MAX) count++;
+        p = nl ? nl + 1 : end;
+    }
+    return count;
+}
+
 /* ── Filesystem helpers ──────────────────────────────────────────── */
 
 /* Deploy handlers run on the main task without returning to MIK_Loop, so
@@ -262,6 +278,7 @@ static bool s_deploy_active = false;
 static bool s_deploy_erased = false;
 static bool s_deploy_prev_paused = false;
 static ChecksumsManifest s_deploy_manifest = {nullptr, 0};
+static uint16_t s_deploy_manifest_files = 0;
 
 /* In-progress streaming PUT. Set by CMD_DEPLOY_PUT (open file + record size),
  * appended to by CMD_DEPLOY_PUT_CHUNK, cleared when total_remaining hits zero
@@ -292,6 +309,7 @@ static void deploy_ensure_init() {
     mik__repl_set_paused(true);
     rmdir_recursive(DEPLOY_TMP);
     s_deploy_manifest = load_checksums_manifest();
+    s_deploy_manifest_files = manifest_file_count(s_deploy_manifest);
 }
 
 static void deploy_cleanup() {
@@ -358,8 +376,12 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
                 if (!path_exists(src_path)) match = false;
             }
 
-            uint8_t result_byte = match ? 0x01 : 0x00;
-            mik__proto_send(transport, MIK_MSG_CHECKSUM_RESULT, &result_byte, 1);
+            /* Payload: u8 match | u16le manifest file count. The count lets the
+             * client see files this device holds that the build no longer has. */
+            uint8_t result[3] = {static_cast<uint8_t>(match ? 0x01 : 0x00),
+                                 static_cast<uint8_t>(s_deploy_manifest_files & 0xff),
+                                 static_cast<uint8_t>(s_deploy_manifest_files >> 8)};
+            mik__proto_send(transport, MIK_MSG_CHECKSUM_RESULT, result, sizeof(result));
             return true;
         }
 
