@@ -162,7 +162,7 @@ struct MIKOtaEnv {
     bool (*kv_set_i32)(void* opaque, const char* key, int32_t val);
     bool (*kv_remove)(void* opaque, const char* key);
 
-    /* ── Install ops (firmware mik_ota.cpp) ────────────────────────────── */
+    /* ── Install ops (mik_ota.cpp) ────────────────────────────── */
     bool (*stage_begin)(void* opaque, const char* checksum, size_t size, size_t* out_resume_offset,
                         char* err_buf, size_t err_len);
     bool (*stage_write)(void* opaque, const uint8_t* data, size_t len, char* err_buf,

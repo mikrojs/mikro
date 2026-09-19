@@ -3,6 +3,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -177,4 +178,35 @@ void mik__app_recover(const char* base) {
     if (has_tmp) {
         mik__rmdir_recursive(tmp);
     }
+}
+
+long mik__file_size(const char* path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return -1;
+    return (long)st.st_size;
+}
+
+bool mik__fs_space(long* total, long* free_bytes) {
+    const MIKPlatform* p = MIK_GetPlatform();
+    size_t t = 0;
+    size_t u = 0;
+    if (!p || !p->get_fs_info || !p->get_fs_info("user", &t, &u)) return false;
+    *total = (long)t;
+    *free_bytes = t > u ? (long)(t - u) : 0;
+    return true;
+}
+
+char* mik__join_paths(const char* base, const char* const* suffixes, size_t count,
+                      const char** const* slots) {
+    const size_t base_len = strlen(base);
+    size_t total = 0;
+    for (size_t i = 0; i < count; i++) total += base_len + strlen(suffixes[i]) + 1;
+    char* block = static_cast<char*>(malloc(total));
+    if (!block) return nullptr;
+    size_t at = 0;
+    for (size_t i = 0; i < count; i++) {
+        *slots[i] = block + at;
+        at += (size_t)snprintf(block + at, total - at, "%s%s", base, suffixes[i]) + 1;
+    }
+    return block;
 }

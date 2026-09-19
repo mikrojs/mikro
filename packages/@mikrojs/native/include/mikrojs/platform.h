@@ -9,6 +9,15 @@
 extern "C" {
 #endif
 
+/* get_reset_reason() values the OTA trial verdict compares against: the
+ * watchdog and panic resets count as a crash of the trial build, a brownout
+ * as ambiguous. A platform reports these resets with these strings. */
+#define MIK_RESET_PANIC "panic"
+#define MIK_RESET_WATCHDOG "watchdog"
+#define MIK_RESET_INT_WATCHDOG "interrupt-watchdog"
+#define MIK_RESET_TASK_WATCHDOG "task-watchdog"
+#define MIK_RESET_BROWNOUT "brownout"
+
 typedef struct MIKPlatform {
     int64_t (*get_boot_us)(void);       /* High-res timer, resets on deep sleep */
     int64_t (*get_rtc_us)(void);        /* RTC timer, survives deep sleep */

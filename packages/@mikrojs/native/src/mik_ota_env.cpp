@@ -1,5 +1,7 @@
 /**
- * MIKOtaEnv for ESP-IDF: the platform side of the native OTA client.
+ * MIKOtaEnv: the platform side of the native OTA client, built from the
+ * platform hooks (mikrojs/platform.h), the device store (mikrojs/device_store.h)
+ * and the HTTP module's native path (mikrojs/http_native.h).
  *
  * Every seam here is deliberately thin. The parts that are easy to get subtly
  * wrong — how a mik.sys value is encoded, how the device-name pair is spelled —
@@ -8,21 +10,17 @@
  * device state in a way no compile catches.
  */
 
-#include <esp_app_desc.h>
-#include <esp_random.h>
-#include <esp_system.h>
-#include <esp_timer.h>
-#include <nvs.h>
-
+#include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
-#include "esp_log.h"
-#include "mik_http_internal.h"
-#include "mik_ota_native.h"
+#include "mikrojs/device_store.h"
+#include "mikrojs/http_native.h"
 #include "mikrojs/mikrojs.h"
-#include "mikrojs/private.h"
+#include "mikrojs/ota.h"
 #include "mikrojs/platform.h"
+#include "mikrojs/private.h"
 #include "mikrojs/sys_codec.h"
 
 #define MIK_OTA_ENV_TAG "native:mikro/ota_client"
@@ -48,53 +46,17 @@ EnvState g_state = {};
 // native:mikro/nvs_kv writes them, so `ota.tries` means the same thing whether
 // the C policy or the JS one reads it.
 
-/* Absence is the only silent outcome: a missing namespace (nothing ever stored)
- * or a missing key reads as absent. Every other failure is an error, so a read
- * starved by heap pressure — nvs_open allocates its handle — is never mistaken
- * for "not stored". Same rule as native:mikro/nvs_kv's get. */
+/* Through the device store's kv hooks, which read and write the same blobs as
+ * native:mikro/nvs_kv. The store keeps absent and failed apart. */
 MIKOtaKvStatus kv_read_blob(const char* key, uint8_t* out, size_t* inout_len) {
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(MIK_OTA_SYS_NS, NVS_READONLY, &h);
-    if (err == ESP_ERR_NVS_NOT_FOUND) return MIK_OTA_KV_ABSENT;
-    if (err != ESP_OK) return MIK_OTA_KV_ERROR;
-
-    size_t len = 0;
-    err = nvs_get_blob(h, key, nullptr, &len);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-        nvs_close(h);
-        return MIK_OTA_KV_ABSENT;
-    }
-    if (err != ESP_OK) {
-        nvs_close(h);
-        return MIK_OTA_KV_ERROR;
-    }
-    if (len == 0) {
-        nvs_close(h);
-        return MIK_OTA_KV_ABSENT;
-    }
-    if (!out) {
-        *inout_len = len;
-        nvs_close(h);
-        return MIK_OTA_KV_OK;
-    }
-    if (*inout_len < len) {
-        nvs_close(h);
-        return MIK_OTA_KV_ERROR;
-    }
-    err = nvs_get_blob(h, key, out, &len);
-    nvs_close(h);
-    if (err != ESP_OK) return MIK_OTA_KV_ERROR;
-    *inout_len = len;
-    return MIK_OTA_KV_OK;
+    const MIKDeviceStore* store = mik__device_store();
+    if (!store || !store->kv_get) return MIK_OTA_KV_ERROR;
+    return store->kv_get(MIK_OTA_SYS_NS, key, out, inout_len);
 }
 
 bool kv_write_blob(const char* key, const uint8_t* data, size_t len) {
-    nvs_handle_t h;
-    if (nvs_open(MIK_OTA_SYS_NS, NVS_READWRITE, &h) != ESP_OK) return false;
-    esp_err_t err = nvs_set_blob(h, key, data, len);
-    if (err == ESP_OK) err = nvs_commit(h);
-    nvs_close(h);
-    return err == ESP_OK;
+    const MIKDeviceStore* store = mik__device_store();
+    return store && store->kv_set && store->kv_set(MIK_OTA_SYS_NS, key, data, len);
 }
 
 MIKOtaKvStatus env_kv_get_blob(void*, const char* key, uint8_t* out, size_t* inout_len) {
@@ -137,20 +99,16 @@ bool env_kv_set_i32(void*, const char* key, int32_t value) {
 }
 
 bool env_kv_remove(void*, const char* key) {
-    nvs_handle_t h;
-    if (nvs_open(MIK_OTA_SYS_NS, NVS_READWRITE, &h) != ESP_OK) return false;
-    esp_err_t err = nvs_erase_key(h, key);
-    if (err == ESP_OK) err = nvs_commit(h);
-    nvs_close(h);
-    /* A key that was never there is not a failure: the client removes slots
-     * unconditionally. */
-    return err == ESP_OK || err == ESP_ERR_NVS_NOT_FOUND;
+    const MIKDeviceStore* store = mik__device_store();
+    /* A key that was never there is not a failure (kv_delete returns 0): the
+     * client removes slots unconditionally. */
+    return store && store->kv_delete && store->kv_delete(MIK_OTA_SYS_NS, key) >= 0;
 }
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
 // Borrowed from native:mikro/http: its task, TLS setup, inflight ceiling and
-// chunk budget. A second esp_http_client path would double the handshake heap
-// spike this device has the least of.
+// chunk budget. A second HTTP client would double the handshake heap spike
+// these devices have the least of.
 
 void* env_http_request(void* opaque, const MIKOtaHttpRequest* req,
                        const MIKOtaHttpCallbacks* cbs) {
@@ -194,10 +152,9 @@ bool env_identity(void* opaque, MIKDeviceIdentity* out) {
 #else
     snprintf(out->firmware_version, sizeof(out->firmware_version), "0.0.0-dev");
 #endif
-    const esp_app_desc_t* desc = esp_app_get_description();
-    for (int i = 0; i < 32; i++) {
-        snprintf(out->firmware_hash + i * 2, 3, "%02x", desc->app_elf_sha256[i]);
-    }
+    const MIKDeviceStore* store = mik__device_store();
+    const char* hash = store && store->firmware_hash ? store->firmware_hash() : nullptr;
+    snprintf(out->firmware_hash, sizeof(out->firmware_hash), "%s", hash ? hash : "");
     out->bytecode_version = state->bytecode_version;
     snprintf(out->board, sizeof(out->board), "%s", mik__board_name());
     return true;
@@ -234,11 +191,11 @@ void env_restart(void*) {
     if (platform->restart) platform->restart();
 }
 
-int64_t env_monotonic_ms(void*) { return esp_timer_get_time() / 1000; }
+int64_t env_monotonic_ms(void*) { return MIK_GetPlatform()->get_boot_us() / 1000; }
 
 double env_random_fraction(void*) {
-    /* esp_random is uniform over the full 32-bit range; scale to [0, 1). */
-    return static_cast<double>(esp_random()) / 4294967296.0;
+    /* The platform's random is uniform over the full 32-bit range; scale to [0, 1). */
+    return static_cast<double>(MIK_GetPlatform()->random()) / 4294967296.0;
 }
 
 void env_log(void*, int level, const char* fmt, ...) {
@@ -247,20 +204,8 @@ void env_log(void*, int level, const char* fmt, ...) {
     char buf[320];
     vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
-    switch (level) {
-        case MIK_LOG_ERROR:
-            ESP_LOGE(MIK_OTA_ENV_TAG, "%s", buf);
-            break;
-        case MIK_LOG_WARN:
-            ESP_LOGW(MIK_OTA_ENV_TAG, "%s", buf);
-            break;
-        case MIK_LOG_DEBUG:
-            ESP_LOGD(MIK_OTA_ENV_TAG, "%s", buf);
-            break;
-        default:
-            ESP_LOGI(MIK_OTA_ENV_TAG, "%s", buf);
-            break;
-    }
+    const MIKPlatform* platform = MIK_GetPlatform();
+    if (platform && platform->log) platform->log(level, MIK_OTA_ENV_TAG, "%s", buf);
 }
 
 /* Join a JS-level app path onto the runtime's fs base, the way the fs layer

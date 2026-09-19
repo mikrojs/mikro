@@ -314,17 +314,17 @@ static const char* esp32_get_reset_reason(void) {
         case ESP_RST_SW:
             return "software";
         case ESP_RST_PANIC:
-            return "panic";
+            return MIK_RESET_PANIC;
         case ESP_RST_INT_WDT:
-            return "interrupt-watchdog";
+            return MIK_RESET_INT_WATCHDOG;
         case ESP_RST_TASK_WDT:
-            return "task-watchdog";
+            return MIK_RESET_TASK_WATCHDOG;
         case ESP_RST_WDT:
-            return "watchdog";
+            return MIK_RESET_WATCHDOG;
         case ESP_RST_DEEPSLEEP:
             return "deep-sleep";
         case ESP_RST_BROWNOUT:
-            return "brownout";
+            return MIK_RESET_BROWNOUT;
         case ESP_RST_SDIO:
             return "sdio";
         case ESP_RST_USB:

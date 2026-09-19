@@ -44,41 +44,6 @@ static_assert(MIK_WATCHDOG_BLOCKING_DEFAULT_MS / 1000 + MIK_TWDT_MARGIN_S <
               "`mikro idf set-target` so sdkconfig.defaults applies");
 #endif
 
-/* Error handler armed during a normal boot: when the app hits a fatal JS error
- * (uncaught exception or unhandled rejection) while running an OTA trial build,
- * flag the trial so the next reconcile reverts it. A JS error reboots as a clean
- * software reset, which the trial state machine can't otherwise tell from a
- * healthy restart. No-op outside a trial. */
-static void ota_trial_error_handler(JSContext* ctx, JSValue error, void* /*opaque*/) {
-    if (!mik__ota_in_trial()) {
-        return;
-    }
-    char detail[160] = "uncaught error";
-    if (JS_IsObject(error)) {
-        JSValue name_v = JS_GetPropertyStr(ctx, error, "name");
-        JSValue msg_v = JS_GetPropertyStr(ctx, error, "message");
-        const char* name = JS_ToCString(ctx, name_v);
-        const char* msg = JS_ToCString(ctx, msg_v);
-        if (name && name[0] && msg && msg[0]) {
-            snprintf(detail, sizeof(detail), "%s: %s", name, msg);
-        } else if (msg && msg[0]) {
-            snprintf(detail, sizeof(detail), "%s", msg);
-        } else if (name && name[0]) {
-            snprintf(detail, sizeof(detail), "%s", name);
-        }
-        /* A throwing getter (or a toString that throws) leaves an exception
-         * pending on ctx that nothing downstream would ever clear. */
-        if (!name || !msg) {
-            JS_FreeValue(ctx, JS_GetException(ctx));
-        }
-        if (name) JS_FreeCString(ctx, name);
-        if (msg) JS_FreeCString(ctx, msg);
-        JS_FreeValue(ctx, name_v);
-        JS_FreeValue(ctx, msg_v);
-    }
-    mik__ota_note_trial_failure(detail);
-}
-
 /* Apply the MIK_LOG_LEVEL env var (if set in NVS) to our log tags.
  *
  * The firmware compiles in all levels up to DEBUG
@@ -120,105 +85,6 @@ static void mik__apply_nvs_log_level(void) {
     esp_log_level_set("mik_app_config", level);
 }
 
-/* Fixed sizes instead of PATH_MAX scaling — on newlib PATH_MAX can be 4096,
- * which is absurd for our purposes. These fit any realistic on-device test
- * path. */
-#define MIK_SUP_PATH_MAX 384
-/* Exception text captured by MIK_RunEntryErr when a test file fails to
- * evaluate. */
-#define MIK_SUP_ERR_MAX 192
-
-/* Minimal JSON string-escape into a bounded buffer. Handles `"`, `\`, and
- * control characters; everything else copies verbatim. Returns bytes
- * written (excluding NUL) on success, or -1 on overflow. Used to synthesize
- * test-event JSON frames from raw C strings where the path may contain
- * characters that would otherwise corrupt the frame. */
-static int mik__json_escape(char* dst, size_t dst_size, const char* src) {
-    if (dst_size == 0) return -1;
-    size_t w = 0;
-    for (const unsigned char* p = (const unsigned char*)src; *p; p++) {
-        unsigned char c = *p;
-        if (c == '"' || c == '\\') {
-            if (w + 2 >= dst_size) return -1;
-            dst[w++] = '\\';
-            dst[w++] = (char)c;
-        } else if (c < 0x20) {
-            if (w + 7 >= dst_size) return -1;
-            int n = snprintf(dst + w, dst_size - w, "\\u%04x", c);
-            if (n < 0 || (size_t)n >= dst_size - w) return -1;
-            w += (size_t)n;
-        } else {
-            if (w + 1 >= dst_size) return -1;
-            dst[w++] = (char)c;
-        }
-    }
-    if (w >= dst_size) return -1;
-    dst[w] = '\0';
-    return (int)w;
-}
-
-/* Supervisor frame buffers live on these noinline helpers' stacks, called
- * only while no JS runs. Not in MIK_Main's frame: it stays live under the
- * eval chain, and 1-2 KB of locals there faulted in mik_module_normalizer.
- * Not on the heap: that held ~3 KB through every test file's network calls. */
-
-/* Announce the file about to run so the CLI can confirm the supervisor's
- * iteration matches its own testFiles order. The MSG_DEBUG frame is
- * rendered as a dim log line. */
-[[gnu::noinline]] static void mik__sup_announce(MIKReplTransport* transport, size_t i, size_t count,
-                                                const char* path) {
-    char dbg[MIK_SUP_PATH_MAX + 64];
-    int n = snprintf(dbg, sizeof(dbg), "[supervisor] running %zu/%zu: %s", i + 1, count, path);
-    if (n > 0 && n < (int)sizeof(dbg)) {
-        mik__proto_send(transport, MIK_MSG_DEBUG, dbg, n);
-    }
-}
-
-/* Synthesize a failing test + run_done so the CLI accounts for this file
- * instead of stalling waiting for a run_done the runtime will never emit.
- * `err` is the captured exception text, or null. */
-[[gnu::noinline]] static void mik__sup_report_failure(MIKReplTransport* transport,
-                                                      const char* path, const char* reason,
-                                                      const char* err) {
-    char esc[MIK_SUP_PATH_MAX * 2 + 8];
-    char err_esc[MIK_SUP_ERR_MAX * 2 + 8];
-    char buf[MIK_SUP_PATH_MAX * 2 + 512];
-
-    ESP_LOGE(TAG, "%s: %s", reason, path);
-    /* Escape the path so any `"` or `\` in it doesn't corrupt the JSON frame. */
-    if (mik__json_escape(esc, sizeof(esc), path) < 0) {
-        /* Path too long to fit even escaped — fall back to basename so the
-         * frame at least identifies something. */
-        const char* base = strrchr(path, '/');
-        if (!base || mik__json_escape(esc, sizeof(esc), base + 1) < 0) {
-            esc[0] = '?';
-            esc[1] = '\0';
-        }
-    }
-    /* Append the captured exception text (escaped) so the CLI shows the
-     * actual error, not just "Evaluation threw". */
-    err_esc[0] = '\0';
-    if (err && err[0] != '\0') {
-        if (mik__json_escape(err_esc, sizeof(err_esc), err) < 0) {
-            err_esc[0] = '\0';
-        }
-    }
-    int n;
-    if (err_esc[0] != '\0') {
-        n = snprintf(buf, sizeof(buf),
-                     "{\"e\":3,\"s\":\"<load>\",\"t\":\"%s\",\"d\":0,\"m\":\"%s: %s\"}", esc,
-                     reason, err_esc);
-    } else {
-        n = snprintf(buf, sizeof(buf),
-                     "{\"e\":3,\"s\":\"<load>\",\"t\":\"%s\",\"d\":0,\"m\":\"%s\"}", esc, reason);
-    }
-    if (n > 0 && n < (int)sizeof(buf)) {
-        mik__proto_send(transport, MIK_MSG_TEST, buf, n);
-    }
-    static const char kRunDone[] = "{\"e\":6,\"p\":0,\"f\":1,\"k\":0,\"o\":0,\"d\":0}";
-    mik__proto_send(transport, MIK_MSG_TEST, kRunDone, sizeof(kRunDone) - 1);
-}
-
 /* ── Serial transport ───────────────────────────────────────────── */
 
 static int serial_transport_read(uint8_t* buf, size_t size, void* ctx) {
@@ -233,19 +99,13 @@ static void serial_transport_write(const void* buf, size_t len, void* ctx) {
 
 /* ── Platform command handler (deploy, config, restart) ─────────── */
 
-/* Forward declarations for deploy and config handlers.
- * These receive the TLV header info but must read the payload bytes
- * themselves from the transport via mik__proto_read_exact(). */
-bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
-                                uint32_t payload_len);
-bool mik__handle_config_command(MIKReplTransport* transport, uint8_t cmd_type,
-                                uint32_t payload_len);
+/* File pull handler (mik_fs_get.cpp). Deploy and config handlers live in the
+ * portable library (mikrojs/device_store.h). */
 bool mik__handle_fs_get(MIKReplTransport* transport, uint32_t payload_len);
-void mik__deploy_session_reset(void);
 
 static void platform_session_end(void* ctx) {
     (void)ctx;
-    mik__deploy_session_reset();
+    MIK_DeploySessionReset();
     /* Safety net: if the CLI paused the runtime via CMD_RUNTIME_PAUSE and
      * disconnected before sending RESUME or RESTART, the app would stay
      * frozen until the next reboot. Always resume on session end. */
@@ -279,7 +139,7 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
     if ((cmd_type >= MIK_CMD_DEPLOY_PUT && cmd_type <= MIK_CMD_DEPLOY_CHECKSUM) ||
         cmd_type == MIK_CMD_DEPLOY_BUILD || cmd_type == MIK_CMD_DEPLOY_CHECKSUM_LIST ||
         cmd_type == MIK_CMD_DEPLOY_KEEP_MANY) {
-        return mik__handle_deploy_command(transport, cmd_type, payload_len);
+        return MIK_HandleDeployCommand(transport, cmd_type, payload_len);
     }
 
     /* Install outcome (0x2E): report + clear the result of the last staged
@@ -287,22 +147,7 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
      * standalone read after the post-deploy reboot and must not start a
      * deploy session (pause the runtime, clear the staging dir). */
     if (cmd_type == MIK_CMD_DEPLOY_RESULT) {
-        mik__proto_drain(transport, payload_len);
-        MIKDeployResult res;
-        mik__ota_take_deploy_result(&res);
-        uint8_t buf[1 + 3 * 2 + sizeof(res.checksum) + sizeof(res.reason) + sizeof(res.detail)];
-        size_t n = 0;
-        buf[n++] = res.status;
-        const char* fields[] = {res.checksum, res.reason, res.detail};
-        for (const char* s : fields) {
-            size_t len = strlen(s);
-            buf[n++] = (uint8_t)(len & 0xFF);
-            buf[n++] = (uint8_t)((len >> 8) & 0xFF);
-            memcpy(buf + n, s, len);
-            n += len;
-        }
-        mik__proto_send(transport, MIK_MSG_OK, buf, n);
-        return true;
+        return MIK_OtaHandleDeployResult(transport, payload_len);
     }
 
     /* File pull (0x2B) */
@@ -320,7 +165,7 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
 
     /* Config + kv provisioning commands (0x40-0x44) */
     if (cmd_type >= MIK_CMD_CONFIG_LIST && cmd_type <= MIK_CMD_KV_DELETE) {
-        return mik__handle_config_command(transport, cmd_type, payload_len);
+        return MIK_HandleConfigCommand(transport, cmd_type, payload_len);
     }
 
     /* Unknown command: drain payload to stay in sync */
@@ -525,6 +370,9 @@ void MIK_Main(void) {
         return;
     }
 
+    /* Deploy, config and OTA reach LittleFS and NVS through the store. */
+    MIK_SetDeviceStore(&MIK_Esp32DeviceStore);
+
     /* Recover from incomplete deploys */
     MIK_DeployRecover();
 
@@ -539,7 +387,8 @@ void MIK_Main(void) {
      * without this, the recovery window opens onto an install that panics
      * before anything can be typed into it. */
     if (!safe_mode) {
-        mik__ota_boot_reconcile();
+        /* Start the installed build on a clean heap. */
+        if (MIK_OtaBootReconcile()) esp_restart();
     }
 
     /* Load app config (mikro.config.json) if present */
@@ -630,6 +479,10 @@ void MIK_Main(void) {
         MIK_SetFSBasePath(rt, "/appfs");
         MIK_SetConfig(rt, &app_config);
         return rt;
+    };
+
+    auto create_test_runtime = [](void* opaque) -> MIKRuntime* {
+        return (*static_cast<decltype(create_runtime)*>(opaque))();
     };
 
     MIKRuntime* mik_rt = create_runtime();
@@ -773,44 +626,8 @@ void MIK_Main(void) {
         /* Discard the primary runtime — each test gets a fresh one. */
         MIK_FreeRuntime(mik_rt);
         mik_rt = nullptr;
-
-        for (size_t i = 0; i < test_count; i++) {
-            mik__sup_announce(&transport, i, test_count, test_paths[i]);
-            MIKRuntime* rt = create_runtime();
-            MIK_EnableTestHelpers(rt);
-            MIK_ProtocolAttach(rt);
-            /* Held only across the entry eval; a null buffer just drops the
-             * exception text. */
-            auto* err = static_cast<char*>(malloc(MIK_SUP_ERR_MAX));
-            int rc = MIK_RunEntryErr(rt, test_paths[i], err, err ? MIK_SUP_ERR_MAX : 0);
-            const char* fail_reason = nullptr;
-            if (rc == -ENOENT) {
-                fail_reason = "Test file not found";
-            } else if (rc == -EFAULT) {
-                fail_reason = "Evaluation threw";
-            } else {
-                free(err);
-                err = nullptr;
-                /* Entry eval returned successfully (rc == 0). The test module
-                 * may still asynchronously reject (e.g. top-level throw in a
-                 * module eval'd as a Promise) — that's caught after ServeLoop
-                 * by inspecting MIK_IsStopRequested below. */
-                MIK_ProtocolServeLoop();
-                if (MIK_IsStopRequested(rt)) {
-                    fail_reason = "Unhandled rejection";
-                }
-            }
-            if (fail_reason) {
-                mik__sup_report_failure(&transport, test_paths[i], fail_reason, err);
-            }
-            free(err);
-            MIK_ProtocolDetach();
-            MIK_FreeRuntime(rt);
-        }
-
-        /* Signal end-of-manifest so the CLI can finalize its report
-         * without waiting on a silent stream. */
-        mik__proto_send(&transport, MIK_MSG_MANIFEST_DONE, nullptr, 0);
+        MIK_RunTestManifest(&transport, test_paths, test_count, create_test_runtime,
+                            &create_runtime);
 
         /* Keep the session alive for REPL / deploy commands. */
         mik_rt = create_runtime();
@@ -826,7 +643,7 @@ void MIK_Main(void) {
              * throw to this handler itself, the loop's rejection flush hands it
              * unhandled rejections. Both note the failure and arm the panic
              * restart so reconcile reverts on the next (clean-looking) boot. */
-            MIK_SetErrorHandler(mik_rt, ota_trial_error_handler, nullptr);
+            MIK_SetErrorHandler(mik_rt, MIK_OtaTrialErrorHandler, nullptr);
             int rc = MIK_RunEntry(mik_rt, app_config.entry_point);
             if (rc == -EINVAL) {
                 ESP_LOGW(TAG, "No entry point configured (no \"main\" field in package.json)");

@@ -51,8 +51,11 @@ set(MIKROJS_CORE_SOURCES
     src/mik_console.cpp
     src/mik_sys.cpp
     src/mik_repl.cpp
+    src/mik_deploy.cpp
+    src/mik_config.cpp
     src/mik_app_config.cpp
     src/mik_app_store.cpp
+    src/mik_test_supervisor.cpp
     src/mik_udp.cpp
     src/mik_observable.cpp
     src/mik_ota_policy.cpp
@@ -64,6 +67,12 @@ set(MIKROJS_CORE_SOURCES
     src/mik_watchdog.cpp
     src/gpio_claim.cpp
 )
+# Left out of the host library, listed by the device builds:
+# - src/mik_build_install.cpp needs miniz's tinfl, which the host does not
+#   have. Its host test is `pn test:ota-unpack`.
+# - src/mik_ota.cpp, src/mik_ota_env.cpp and src/mik_ota_client_module.cpp
+#   need it or the HTTP module's native path. The host tests compile them
+#   against stand-ins for both (test/ota_stubs.cpp).
 
 add_library(mikrojs STATIC
     ${MIKROJS_CORE_SOURCES}
@@ -246,6 +255,14 @@ if(BUILD_TESTING)
         test/watchdog_test.cpp
         test/gpio_claim_test.cpp
         test/test_runner_test.cpp
+        test/device_store_test.cpp
+        test/ota_install_test.cpp
+        # The OTA device files, which the library leaves out, against
+        # stand-ins for the build unpack and the HTTP module's native path.
+        test/ota_stubs.cpp
+        src/mik_ota.cpp
+        src/mik_ota_env.cpp
+        src/mik_ota_client_module.cpp
     )
 
     # ── Check-in wire fixtures ───────────────────────────────────────

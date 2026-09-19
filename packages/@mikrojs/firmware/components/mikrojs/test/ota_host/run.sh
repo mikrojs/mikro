@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Host test for the pure OTA unpack path in ../../mik_ota.cpp. Compiles the REAL
+# Host test for the pure build unpack path in
+# packages/@mikrojs/native/src/mik_build_install.cpp. Compiles the REAL
 # unpack_tgz()/sha256_file() on the host, runs them through a tinfl shim that
 # models the esp32c6 ROM over-reading the gzip trailer, and asserts:
 #   - a real `tar -czf` build unpacks byte-identical to `tar -xzf`
@@ -17,7 +18,7 @@ set -euo pipefail
 export COPYFILE_DISABLE=1
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC="$DIR/../../mik_ota.cpp"
+NATIVE_INCLUDE="$DIR/../../../../../native/include"
 CACHE="${MINIZ_DIR:-$DIR/.cache}"
 BUILD="$DIR/.build"
 CXX="${CXX:-c++}"
@@ -47,7 +48,7 @@ fi
 # miniz is C — build it once as a C object (it isn't valid C++), then link.
 "$CC" -O2 -I"$CACHE" -c "$CACHE/miniz.c" -o "$BUILD/miniz.o"
 "$CXX" -std=c++17 -O2 -Wall -Wno-unused-function -Wno-unneeded-internal-declaration \
-    -I"$CACHE" "$DIR/gunzip_host_test.cpp" "$BUILD/miniz.o" -o "$BUILD/test"
+    -I"$CACHE" -I"$NATIVE_INCLUDE" "$DIR/gunzip_host_test.cpp" "$BUILD/miniz.o" -o "$BUILD/test"
 
 TEST="$BUILD/test"
 

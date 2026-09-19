@@ -212,7 +212,8 @@ A thin adapter that:
 - Compiles QuickJS and mikrojs sources directly (ESP-IDF requires `idf_component_register(SRCS ...)`)
 - Runs its own bytecode generation (esbuild bundle + qjsc compile) during the build
 - Provides `platform_esp32.cpp` (ESP-IDF platform implementation)
-- Contains ESP-specific modules: GPIO (`mik_gpio.cpp`), WiFi (`mik_wifi.cpp`), HTTP (`mik_http.cpp`), serial I/O (`mik_serial_io.cpp`), deploy protocol (`mik_deploy.cpp`), config protocol (`mik_config.cpp`)
+- Contains ESP-specific modules: GPIO (`mik_gpio.cpp`), WiFi (`mik_wifi.cpp`), HTTP (`mik_http.cpp`), serial I/O (`mik_serial_io.cpp`)
+- Provides the device store (`mik_device_store.cpp`): LittleFS and NVS behind `MIKDeviceStore` (`packages/@mikrojs/native/include/mikrojs/device_store.h`). The deploy and config handlers and the OTA install core are portable (`packages/@mikrojs/native/src/`) and reach storage through it. The test supervisor (`mik_test_supervisor.cpp`) is portable too and takes a runtime factory
 - ESP-specific public API in `include/mikrojs_esp32.h`
 - Backward-compatible wrapper headers in `include/` (forward to `mikrojs/` headers)
 - `MIK_Main()` entry point: the default firmware bootstrap (NVS, LittleFS, JS runtime, REPL, deploy/config protocols)
