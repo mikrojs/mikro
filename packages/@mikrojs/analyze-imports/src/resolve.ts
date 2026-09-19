@@ -2,9 +2,8 @@ import {isAbsolute, resolve, sep} from 'path'
 
 import type {Tracer} from './trace.js'
 
-// ESM-only node resolver.
-// Custom implementation to emit only needed package.json files for resolver
-// (package.json files are emitted as they are hit).
+// ESM-only node resolver. The tracer emits the package.json files a resolution
+// needs, at the paths they deploy to.
 export default async function resolveDependency(
   specifier: string,
   parent: string,
@@ -201,10 +200,7 @@ async function packageImportsResolve(name: string, parent: string, job: Tracer):
           true,
           parent,
         )
-        if (importsResolved) {
-          await job.emitFile(pjsonBoundary + sep + 'package.json', 'resolve', parent)
-          return importsResolved
-        }
+        if (importsResolved) return importsResolved
       }
     }
   }
@@ -245,8 +241,6 @@ async function resolvePackage(
           false,
           parent,
         )
-        if (selfResolved)
-          await job.emitFile(pjsonBoundary + sep + 'package.json', 'resolve', parent)
       }
     }
   }
@@ -270,10 +264,7 @@ async function resolvePackage(
         false,
         parent,
       )
-      if (resolved) {
-        await job.emitFile(nodeModulesDir + sep + pkgName + sep + 'package.json', 'resolve', parent)
-        return resolved
-      }
+      if (resolved) return resolved
     } else {
       const resolved = await resolveFile(nodeModulesDir + sep + name, parent, job)
       if (resolved) {

@@ -1,6 +1,6 @@
 import {matchesGlob} from 'node:path'
 
-import {basename, dirname, join, relative, resolve, sep} from 'path'
+import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'path'
 
 import analyze, {type AnalyzeResult} from './analyze.js'
 import {CachedFileSystem} from './fs.js'
@@ -39,6 +39,7 @@ export async function nodeFileTrace(
     }),
   )
 
+  await job.verifyPlacements()
   await hoistDuplicatePackages(job)
   const duplicatePackages = await findDuplicatePackages(job)
 
@@ -220,13 +221,21 @@ export class Tracer {
   private analysisCache: Map<string, AnalyzeResult>
   public fileList: Set<string>
   public processed: Set<string>
+  // Maps a node_modules path that the trace made up (it is not on disk) to the
+  // real directory of the package that deploys there.
+  private placed = new Map<string, string>()
+  // One entry per import of a package. The key is the first path the device
+  // tries, `<importer's directory>/node_modules/<name>`. The value is the real
+  // directory of the package the device has to find.
+  private placements = new Map<string, string>()
   public warnings: Set<Error>
   public reasons: NodeFileTraceReasons = new Map()
   private cachedFileSystem: CachedFileSystem
-  // Maps virtual paths (e.g. node_modules/A/node_modules/B/index.js) to their
-  // real filesystem paths (e.g. .pnpm/A@1/node_modules/B/index.js).
-  // This is needed for pnpm symlink stores where transitive dependencies don't
-  // have their own symlink in the project's node_modules.
+  // Maps a deployed path to the file it is read from, where the two differ. For
+  // example, node_modules/a/node_modules/b/index.js is read from
+  // .pnpm/a@1/node_modules/b/index.js. Some of these paths exist on disk through
+  // a symlink. Most do not, because pnpm does not link the dependencies of a
+  // dependency into the app's node_modules.
   public virtualPathToRealPath = new Map<string, string>()
 
   constructor({
@@ -249,21 +258,13 @@ export class Tracer {
     this.ignoreFn = () => false
     if (typeof ignore === 'string') ignore = [ignore]
     if (typeof ignore === 'function') {
-      const ig = ignore
-      this.ignoreFn = (path: string) => {
-        if (path.startsWith('..' + sep)) return true
-        if (ig(path)) return true
-        return false
-      }
+      this.ignoreFn = ignore
     } else if (Array.isArray(ignore)) {
       const resolvedIgnores = ignore.map((ignore) =>
         relative(base, resolve(base || process.cwd(), ignore)),
       )
-      this.ignoreFn = (path: string) => {
-        if (path.startsWith('..' + sep)) return true
-        if (resolvedIgnores.some((pattern) => matchesGlob(path, pattern))) return true
-        return false
-      }
+      this.ignoreFn = (path: string) =>
+        resolvedIgnores.some((pattern) => matchesGlob(path, pattern))
     }
     this.base = base
     this.cwd = resolve(processCwd || base)
@@ -326,87 +327,150 @@ export class Tracer {
     }
   }
 
-  // Remap a resolved real path to a virtual path nested under the symlink parent's
-  // package directory. This makes pnpm transitive dependencies appear as nested
-  // node_modules in the output (e.g. node_modules/A/node_modules/B/...).
-  private remapToVirtualPath(resolved: string, symlinkParent: string, realParent: string): string {
-    // Find the last node_modules/ segment in the real parent to locate the
-    // pnpm virtual store's node_modules directory
-    const nmSegment = sep + 'node_modules' + sep
-    const realNmIdx = realParent.lastIndexOf(nmSegment)
-    if (realNmIdx === -1) return resolved
-    const realNodeModulesDir = realParent.slice(0, realNmIdx + nmSegment.length - 1)
-
-    if (!resolved.startsWith(realNodeModulesDir + sep)) return resolved
-    // tail = "parse-ms/index.js"
-    const tail = resolved.slice(realNodeModulesDir.length + 1)
-
-    // Find the symlink parent's package directory
-    const symlinkNmIdx = symlinkParent.lastIndexOf(nmSegment)
-    if (symlinkNmIdx === -1) return resolved
-    const afterNm = symlinkParent.slice(symlinkNmIdx + nmSegment.length)
-    const pkgName = getPkgNameFromPath(afterNm)
-    const symlinkPkgDir = symlinkParent.slice(0, symlinkNmIdx + nmSegment.length) + pkgName
-
-    // Construct virtual path: .../node_modules/A/node_modules/B/index.js
-    const virtualPath = join(symlinkPkgDir, 'node_modules', tail)
-
-    // Store mapping so realpath() and readFile() can find the real file
-    this.virtualPathToRealPath.set(virtualPath, resolved)
-    return virtualPath
+  // The real directory of the package that deploys at a node_modules path, or
+  // undefined when no package does.
+  private async packageAt(pkgDir: string): Promise<string | undefined> {
+    const placed = this.placed.get(pkgDir)
+    if (placed !== undefined) return placed
+    return (await this.stat(pkgDir)) ? this.realpath(pkgDir) : undefined
   }
 
-  private remapResolved(
-    resolved: string | string[],
-    symlinkParent: string,
-    realParent: string,
-  ): string | string[] {
-    if (Array.isArray(resolved)) {
-      return resolved.map((r) => this.remapToVirtualPath(r, symlinkParent, realParent))
+  // The real directory of the `name` that the package deployed at `pkgDir`
+  // depends on. Node finds it in the package's own node_modules, or next to the
+  // package (pnpm's layout).
+  private async dependencyOf(pkgDir: string, name: string): Promise<string | undefined> {
+    // This applies to a package's own directory only, not to a directory inside
+    // it and not to node_modules itself.
+    if (packageDirOf(pkgDir + sep + 'package.json') !== pkgDir) return undefined
+    const real = await this.packageAt(pkgDir)
+    if (real === undefined) return undefined
+    const dirs = [real + NODE_MODULES]
+    if (packageDirOf(real + sep + 'package.json') === real) {
+      dirs.push(real.slice(0, real.lastIndexOf(NODE_MODULES) + NODE_MODULES.length))
     }
-    return this.remapToVirtualPath(resolved, symlinkParent, realParent)
+    for (const dir of dirs) {
+      if (await this.stat(dir + name)) return this.realpath(dir + name)
+    }
+    return undefined
   }
 
-  private maybeEmitDep = async (
+  // The device has to reach the package each import was given before any other
+  // package with that name. A package placed later in the trace can end up in
+  // between, so this runs after the trace.
+  async verifyPlacements() {
+    for (const [first, realPkgDir] of this.placements) {
+      const name = first.slice(first.lastIndexOf(NODE_MODULES) + NODE_MODULES.length)
+      const from = first.slice(0, first.lastIndexOf(NODE_MODULES))
+      let holds: string | undefined
+      let dir = from
+      for (; holds === undefined && (dir === this.base || inPath(dir, this.base));) {
+        holds = await this.packageAt(dir + NODE_MODULES + name)
+        if (holds === undefined) dir = dirname(dir)
+      }
+      if (holds === realPkgDir) continue
+      this.warnings.add(
+        new Error(
+          `On the device, "${name}" imported from "${relative(this.base, from)}" resolves to ` +
+            `"${relative(this.base, dir + NODE_MODULES + name)}", which is not the version ` +
+            `the build resolved`,
+        ),
+      )
+    }
+  }
+
+  // The path a resolved file deploys to, given where its importer deploys.
+  // `resolved` is what Node finds from `realParent`. The device has no symlinks.
+  // It walks up from the importer's deployed directory, looks in every
+  // node_modules on the way, and takes the first package with that name. A
+  // directory on the way up that already holds the same package is shared.
+  // Otherwise the package nests under its importer
+  // (node_modules/a/node_modules/b), where the walk finds it first.
+  private async placeDependency(
     dep: string,
-    symlinkPath: string,
-    realPath: string,
-    depth: number,
-  ) => {
-    let resolved: string | string[] = ''
-    let error: Error | undefined
+    resolved: string,
+    parent: string,
+    realParent: string,
+  ): Promise<string | undefined> {
+    let target = join(dirname(parent), relative(dirname(realParent), resolved))
+    let found: string | undefined
+    if (!dep.startsWith('.') && !dep.startsWith('#') && !isAbsolute(dep)) {
+      for (let dir = dirname(realParent); found === undefined && dir !== dirname(dir);) {
+        if (resolved.startsWith(dir + NODE_MODULES)) found = dir + NODE_MODULES
+        dir = dirname(dir)
+      }
+    }
+    if (found !== undefined) {
+      const name = getPkgNameFromPath(resolved.slice(found.length))
+      const realPkgDir = await this.realpath(found + name)
+      let pkgDir: string | undefined
+      for (let dir = dirname(parent); dir === this.base || inPath(dir, this.base);) {
+        const holds = await this.packageAt(dir + NODE_MODULES + name)
+        if (holds === realPkgDir) pkgDir = dir + NODE_MODULES + name
+        // Another version here hides every copy further up.
+        if (holds !== undefined) break
+        // A package on the way up that depends on another version does the
+        // same: that version nests here once the trace reaches the import.
+        const nests = await this.dependencyOf(dir, name)
+        if (nests !== undefined && nests !== realPkgDir) break
+        dir = dirname(dir)
+      }
+      if (pkgDir === undefined) {
+        // Two versions of two packages that import each other would nest without
+        // end. No tree without symlinks can hold them. One copy above is fine: a
+        // second copy below another version can share what the first one nested.
+        // A third copy means the nesting repeats.
+        const outer = (dir: string) => packageDirOf(dir.slice(0, dir.lastIndexOf(NODE_MODULES)))
+        let copies = 0
+        for (let dir = packageDirOf(parent); dir !== undefined; dir = outer(dir)) {
+          if ((await this.packageAt(dir)) !== realPkgDir || ++copies < 2) continue
+          this.warnings.add(
+            new Error(
+              `Cannot deploy "${name}", imported from "${relative(this.base, parent)}": ` +
+                `packages on this path import each other at different versions, and the ` +
+                `nesting would not end. Use one version of "${name}".`,
+            ),
+          )
+          return undefined
+        }
+        pkgDir = (packageDirOf(parent) ?? this.base) + NODE_MODULES + name
+        this.placed.set(pkgDir, realPkgDir)
+      }
+      this.placements.set(dirname(parent) + NODE_MODULES + name, realPkgDir)
+      // The device reads the package's package.json to resolve the import.
+      const realPjson = found + name + sep + 'package.json'
+      if (await this.isFile(realPjson)) {
+        const pjson = pkgDir + sep + 'package.json'
+        if (pjson !== realPjson) this.virtualPathToRealPath.set(pjson, realPjson)
+        await this.emitFile(pjson, 'resolve', parent)
+      }
+      target = pkgDir + resolved.slice(found.length + name.length)
+    }
+    if (target !== resolved) this.virtualPathToRealPath.set(target, resolved)
+    return target
+  }
 
-    // First, try resolving from the symlink path
+  private maybeEmitDep = async (dep: string, path: string, realPath: string, depth: number) => {
+    let resolved: string | string[]
+    let from = realPath
     try {
-      resolved = await this.resolveWithTs(dep, symlinkPath)
-    } catch (e1: any) {
-      error = e1
-    }
-
-    // If resolution failed and the real path differs from the symlink path,
-    // try resolving from the real path and remap the result to a virtual
-    // symlink-relative path (needed for pnpm transitive dependencies)
-    if (error && realPath !== symlinkPath) {
+      // Node resolves from the real path.
+      resolved = await this.resolveWithTs(dep, realPath)
+    } catch (error: any) {
+      // The device walks up from the deployed path, and may find a package there
+      // that the real path can't see.
       try {
-        resolved = await this.resolveWithTs(dep, realPath)
-        resolved = this.remapResolved(resolved, symlinkPath, realPath)
-        error = undefined
+        if (path === realPath) throw error
+        resolved = await this.resolveWithTs(dep, path)
+        from = path
       } catch {
-        // Keep original error
+        this.warnings.add(new Error(`Failed to resolve dependency "${dep}":\n${error?.message}`))
+        return
       }
     }
 
-    if (error) {
-      this.warnings.add(new Error(`Failed to resolve dependency "${dep}":\n${error?.message}`))
-      return
-    }
-
-    if (Array.isArray(resolved)) {
-      for (const item of resolved) {
-        await this.emitDependency(item, symlinkPath, depth)
-      }
-    } else {
-      await this.emitDependency(resolved, symlinkPath, depth)
+    for (const item of Array.isArray(resolved) ? resolved : [resolved]) {
+      const target = await this.placeDependency(dep, item, path, from)
+      if (target !== undefined) await this.emitDependency(target, path, depth)
     }
   }
 
@@ -453,13 +517,24 @@ export class Tracer {
   }
 
   async emitFile(path: string, reasonType: NodeFileTraceReasonType, parent?: string) {
-    const real = await this.realpath(path, parent)
-    // Prefer the real path, but fall back to the original (symlink-based) path when
-    // the real path is outside base — the file is still reachable at the symlink path.
-    path = relative(this.base, inPath(real, this.base) ? real : path)
+    // The given path is where the device looks. The real path is used only for a
+    // file that was reached at a path outside base.
+    path = relative(this.base, inPath(path, this.base) ? path : await this.realpath(path, parent))
 
     if (parent) {
       parent = relative(this.base, parent)
+    }
+    // A path above base can't be deployed. The device would not find the file,
+    // so the build warns.
+    if (path.startsWith('..' + sep)) {
+      if (parent && reasonType === 'dependency') {
+        this.warnings.add(
+          new Error(
+            `Cannot deploy "${path}", imported from "${parent}": it is outside the app directory`,
+          ),
+        )
+      }
+      return false
     }
     let reasonEntry = this.reasons.get(path)
 
@@ -501,42 +576,38 @@ export class Tracer {
 
     const realPath = await this.realpath(path, parent)
 
-    if (this.processed.has(realPath)) {
+    // A file reached at two paths deploys twice, and each copy finds its imports
+    // from its own path.
+    if (this.processed.has(path)) {
       if (parent) {
         await this.emitFile(path, 'dependency', parent)
       }
       return
     }
-    this.processed.add(realPath)
+    this.processed.add(path)
 
     const emitted = await this.emitFile(path, 'dependency', parent)
     if (!emitted) return
     if (realPath.endsWith('.json')) return
     if (this.assetExtensions.some((ext) => realPath.endsWith(ext))) return
 
-    // Check for package.json boundary — use the path that's inside base
-    // (which may be a virtual path for remapped pnpm transitive deps)
-    const isVirtual = this.virtualPathToRealPath.has(path)
-    const pjsonSearchPath = inPath(realPath, this.base) ? realPath : isVirtual ? path : undefined
-    const pjsonBoundary = pjsonSearchPath
-      ? await this.getPjsonBoundary(isVirtual ? realPath : pjsonSearchPath)
-      : undefined
-    if (pjsonBoundary) {
-      let pjsonEmitPath = pjsonBoundary + sep + 'package.json'
-      // For virtual paths, the pjsonBoundary is on the real filesystem but we need
-      // to emit the package.json under the virtual tree
-      if (isVirtual && !inPath(pjsonBoundary, this.base)) {
-        // Walk up from the virtual path to the package root (find last node_modules/pkg)
-        const nmSegment = sep + 'node_modules' + sep
-        const nmIdx = path.lastIndexOf(nmSegment)
-        if (nmIdx !== -1) {
-          const afterNm = path.slice(nmIdx + nmSegment.length)
-          const pkgName = getPkgNameFromPath(afterNm)
-          const virtualPjsonDir = path.slice(0, nmIdx + nmSegment.length) + pkgName
-          const virtualPjsonPath = virtualPjsonDir + sep + 'package.json'
-          this.virtualPathToRealPath.set(virtualPjsonPath, pjsonEmitPath)
-          pjsonEmitPath = virtualPjsonPath
-        }
+    // The nearest package.json deploys at the same place relative to the file.
+    const pjsonBoundary = await this.getPjsonBoundary(realPath)
+    let pjsonDir = pjsonBoundary
+    if (pjsonBoundary && path !== realPath) {
+      const tail = realPath.slice(pjsonBoundary.length)
+      const pkgDir = packageDirOf(path)
+      const dir = path.endsWith(tail) ? path.slice(0, -tail.length) : undefined
+      // A package.json above the package is not part of what deploys here, so it
+      // is neither emitted nor checked for `type: module`.
+      const inPackage =
+        dir !== undefined && pkgDir !== undefined && (dir + sep).startsWith(pkgDir + sep)
+      pjsonDir = inPackage ? dir : undefined
+    }
+    if (pjsonBoundary && pjsonDir) {
+      const pjsonEmitPath = pjsonDir + sep + 'package.json'
+      if (pjsonDir !== pjsonBoundary) {
+        this.virtualPathToRealPath.set(pjsonEmitPath, pjsonBoundary + sep + 'package.json')
       }
       await this.emitFile(pjsonEmitPath, 'resolve', path)
       const pjsonRaw = await this.readFile(pjsonEmitPath)
