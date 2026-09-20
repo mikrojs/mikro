@@ -4,10 +4,11 @@
  * Frame format: [type: u8][length: u32le][payload: bytes]  (5-byte header)
  *
  * Replaces the previous separate REPL, deploy, and config protocols with
- * a single framing scheme. On connect the CLI sends CMD_HELLO; the device
- * replies with MSG_READY containing its identity. The device never sends
- * MSG_READY unprompted, which keeps the wire silent for passive viewers
- * (e.g. idf.py monitor).
+ * a single framing scheme. The device sends MSG_READY, carrying its
+ * identity, once per boot when it opens the protocol session, and again in
+ * reply to every CMD_HELLO. A host that connects after the boot has missed
+ * the announcement, so the CLI drives the handshake with CMD_HELLO instead
+ * of waiting for one. Nothing in a MSG_READY says which of the two it is.
  */
 
 import {decode as decodeCbor} from 'cbor2'

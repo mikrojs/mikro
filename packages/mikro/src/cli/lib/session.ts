@@ -310,10 +310,11 @@ export interface ReplSession {
   /** Send exit command */
   exit(): void
 
-  /** Emits each time the device sends MSG_READY (in response to CMD_HELLO).
-   *  shareReplay(1) means late subscribers get the most recent ready event.
-   *  The device only replies to HELLO, so something must drive the
-   *  handshake (deploy/config/eraseApp do this internally; otherwise call
+  /** Emits each time the device sends MSG_READY (its boot announcement, or
+   *  a reply to CMD_HELLO). shareReplay(1) means late subscribers get the
+   *  most recent ready event. A host that connected after the device booted
+   *  missed the announcement, so something must drive the handshake
+   *  (deploy/config/eraseApp do this internally; otherwise call
    *  awaitReady$). */
   ready$: Observable<ReadyEvent>
 
@@ -680,9 +681,9 @@ export function connectRepl(
         throw err
       })
 
-    // The device only sends MSG_READY in response to CMD_HELLO, so poll
-    // HELLO at a steady interval until a ready arrives. The first tick fires
-    // immediately. Best-effort writes: during the post-restart USB-CDC
+    // The device announces itself once per boot, which a host connecting
+    // later has missed, so poll HELLO at a steady interval until a ready
+    // arrives. The first tick fires immediately. Best-effort writes: during the post-restart USB-CDC
     // re-enumeration window the transport may reject — swallow and retry on
     // the next tick.
     const hello$ = timer(0, HELLO_POLL_INTERVAL_MS).pipe(

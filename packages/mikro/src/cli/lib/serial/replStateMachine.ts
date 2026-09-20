@@ -298,14 +298,36 @@ function reduceSessionEvent(
 ): [ReplMachineState, ReplEffect[]] {
   switch (event.type) {
     case 'ready': {
-      if (state.connection.type === 'ready') return [state, []]
+      // A MSG_READY is either the device's boot announcement or a reply to a
+      // CMD_HELLO, and the frame doesn't say which, so this can't prove the
+      // device rebooted. Stop waiting for the eval either way: a reboot is
+      // the case where no result is ever coming (code that calls restart(),
+      // deep sleep, a panic), and in the others — a rename's handshake, a
+      // reconnect after light sleep — the result still renders if it lands.
+      // Say so, so the input line doesn't just sit there with nothing under
+      // it, on both paths: a bridge board that keeps its port open across
+      // the reboot never leaves `ready`.
+      const stopped: ReplLogEvent[] = state.evaluating
+        ? [
+            {
+              type: 'info',
+              text: 'Stopped waiting for a result: the device restarted or reconnected.',
+            },
+          ]
+        : []
+      if (state.connection.type === 'ready') {
+        if (!state.evaluating) return [state, []]
+        const events = [...state.events, ...stopped]
+        return [{...state, evaluating: false, pendingTiming: null, events}, []]
+      }
       const connection: ConnectionState = {
         type: 'ready',
         chip: event.chip,
         deviceId: event.id,
         firmwareVersion: event.version,
       }
-      return [{...state, connection, events: [...state.events, event]}, []]
+      const events = [...state.events, ...stopped, event]
+      return [{...state, connection, evaluating: false, pendingTiming: null, events}, []]
     }
     case 'log':
     case 'warn':
@@ -389,7 +411,19 @@ function reduceKey(
   if (key.ctrl && ch === 'r') {
     const connection: ConnectionState = {type: 'connecting', message: 'Restarting…'}
     const event: ReplLogEvent = {type: 'restarting'}
-    return [{...state, connection, events: [...state.events, event]}, [{type: 'restart'}]]
+    // The restart takes any eval in flight down with it. Drop the spinner
+    // now, rather than running it under "Restarting…" and then explaining
+    // the loss of a result the user just asked for.
+    return [
+      {
+        ...state,
+        connection,
+        evaluating: false,
+        pendingTiming: null,
+        events: [...state.events, event],
+      },
+      [{type: 'restart'}],
+    ]
   }
 
   if (key.ctrl && ch === 'd' && state.input === '') {
@@ -841,10 +875,10 @@ export function createRepl(options: {
       }),
     )
 
-  // The device only sends MSG_READY in reply to CMD_HELLO. awaitReady$
-  // polls HELLO until a fresh ready arrives; we merge it as a side-effect
-  // (no actions emitted) so the existing 'ready' deviceEvent flow drives
-  // the state machine.
+  // The device's boot announcement predates this connection, so we can't
+  // wait for a MSG_READY on our own. awaitReady$ polls HELLO until a fresh
+  // ready arrives; we merge it as a side-effect (no actions emitted) so the
+  // existing 'ready' deviceEvent flow drives the state machine.
   const handshakeDriver$ = driveHandshake$()
 
   // After a user-triggered restart (Ctrl+R) the device reboots and stops

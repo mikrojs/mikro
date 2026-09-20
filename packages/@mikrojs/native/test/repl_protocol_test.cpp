@@ -145,15 +145,22 @@ static std::vector<ParsedFrame> run_protocol(const std::vector<uint8_t>& input) 
 
 /* ── Tests: Protocol lifecycle ───────────────────────────────────── */
 
-TEST_CASE("Protocol stays silent until CMD_HELLO" * doctest::test_suite("repl_protocol")) {
+/* Regression: a client whose link survives the reboot (USB-UART bridges keep
+ * the port open) learns the runtime is new only from this frame. Without it,
+ * a REPL waiting on the result of an eval that restarted the device waits
+ * forever, because nothing sends CMD_HELLO while a session is up. */
+TEST_CASE("Protocol announces itself once at open" * doctest::test_suite("repl_protocol")) {
     proto_setup();
 
-    /* Just send an empty input — transport will EOF immediately. The device
-     * should not emit any frames unless asked. */
+    /* Empty input — the transport EOFs immediately, so the announcement is
+     * the only frame the device gets to send. */
     std::vector<uint8_t> input;
     auto frames = run_protocol(input);
 
-    CHECK_MESSAGE(frames.empty(), "Device must not send any frames before CMD_HELLO");
+    REQUIRE_MESSAGE(frames.size() == 1, "Open must announce exactly once");
+    CHECK_MESSAGE(frames[0].type == MIK_MSG_READY, "The announcement is a MSG_READY");
+    CHECK_MESSAGE(frames[0].payload.find("chip") != std::string::npos,
+                  "MSG_READY should contain chip info");
 
     proto_teardown();
 }
@@ -185,7 +192,9 @@ TEST_CASE("Protocol exits on CMD_EXIT" * doctest::test_suite("repl_protocol")) {
 
     auto frames = run_protocol(input);
 
-    CHECK_MESSAGE(frames.empty(), "Plain CMD_EXIT should produce no output");
+    /* Nothing beyond the announcement the open sends. */
+    REQUIRE(frames.size() == 1);
+    CHECK_MESSAGE(frames[0].type == MIK_MSG_READY, "Plain CMD_EXIT should produce no reply");
 
     proto_teardown();
 }

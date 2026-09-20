@@ -117,12 +117,17 @@ static std::vector<ParsedFrame> run_protocol(const std::vector<uint8_t>& input) 
 
 /* ── Tests ───────────────────────────────────────────────────────── */
 
-TEST_CASE("Protocol stays silent until CMD_HELLO", "[repl_protocol]") {
+/* Regression: a client whose link survives the reboot (USB-UART bridges keep
+ * the port open) learns the runtime is new only from this frame. Without it,
+ * a REPL waiting on the result of an eval that restarted the device waits
+ * forever, because nothing sends CMD_HELLO while a session is up. */
+TEST_CASE("Protocol announces itself once at open", "[repl_protocol]") {
     std::vector<uint8_t> input;
     auto frames = run_protocol(input);
 
-    TEST_ASSERT_TRUE_MESSAGE(frames.empty(),
-                             "Device must not send any frames before CMD_HELLO");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, (int)frames.size(), "Open must announce exactly once");
+    TEST_ASSERT_EQUAL_MESSAGE(MIK_MSG_READY, frames[0].type,
+                              "The announcement is a MSG_READY");
 }
 
 TEST_CASE("CMD_HELLO triggers MSG_READY", "[repl_protocol]") {
