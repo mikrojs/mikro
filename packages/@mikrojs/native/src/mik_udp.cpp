@@ -19,8 +19,9 @@
 /* ── Per-socket state ────────────────────────────────────────────────
  *
  * One of these per open UDP socket. Lifetime is tied to the JS UdpSocket
- * object; the finalizer (mik__udp_finalizer) closes the OS socket and
- * removes the entry from g_open_sockets.
+ * object, which MIK_KeepHandle keeps alive until close(); the finalizer
+ * (mik__udp_finalizer) closes the OS socket and removes the entry from
+ * g_open_sockets.
  *
  * Closed sockets are kept in g_open_sockets with closed=true until the
  * GC actually finalizes the JS object — mik__udp_consume skips them.
@@ -353,6 +354,7 @@ static JSValue mik__udp_close(JSContext* ctx, JSValue this_val, int argc, JSValu
         close(s->fd);
         s->fd = -1;
     }
+    MIK_DropHandle(ctx, this_val);
     return JS_UNDEFINED;
 }
 
@@ -641,6 +643,7 @@ static JSValue mik__udp_bind(JSContext* ctx, JSValue this_val, int argc, JSValue
 
     g_open_sockets.push_back(s);
 
+    MIK_KeepHandle(ctx, obj);
     JSValue ok = mik__result_ok(ctx, obj);
     return MIK_NewResolvedPromise(ctx, 1, &ok);
 }

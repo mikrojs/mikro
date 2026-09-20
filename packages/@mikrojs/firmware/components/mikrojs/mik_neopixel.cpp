@@ -271,6 +271,7 @@ static JSValue js_neopixel(JSContext* ctx, JSValue this_val, int argc, JSValue* 
         return obj;
     }
     JS_SetOpaque(obj, s);
+    MIK_KeepHandle(ctx, obj);
     return mik__result_ok(ctx, obj);
 }
 
@@ -378,6 +379,7 @@ static JSValue js_neopixel_end(JSContext* ctx, JSValue this_val, int argc, JSVal
     auto* s = mik__neopixel_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
     if (s->active) mik__neopixel_release(s);
+    MIK_DropHandle(ctx, this_val);
     return JS_UNDEFINED;
 }
 

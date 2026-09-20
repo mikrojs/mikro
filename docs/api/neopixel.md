@@ -83,7 +83,7 @@ Turn off all pixels and transmit (equivalent to `fill(0, 0, 0)` + `show()`).
 end(): void
 ```
 
-Release the RMT hardware channel and the GPIO pin. Calling it again does nothing. After `end()` the other methods do nothing and return `ok()`, and the first such call prints a warning.
+Release the RMT hardware channel and the GPIO pin. Calling it again does nothing. After `end()` the other methods do nothing and return `ok()`, and the first such call prints a warning. The handle keeps the hardware and its GPIO pin until you call `end()`, even when your code no longer refers to the handle.
 
 ## Types
 

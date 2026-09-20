@@ -88,7 +88,7 @@ await led.fade(0, 1000) // fade to off over 1 second
 end(): void
 ```
 
-Stops the PWM output and releases the hardware channel and the GPIO pin. Calling it again does nothing. A fade in progress resolves with `ok()`. After `end()`, setters and `fade()` do nothing, getters return the last value, and the first such call prints a warning.
+Stops the PWM output and releases the hardware channel and the GPIO pin. Calling it again does nothing. A fade in progress resolves with `ok()`. After `end()`, setters and `fade()` do nothing, getters return the last value, and the first such call prints a warning. The handle keeps the hardware and its GPIO pin until you call `end()`, even when your code no longer refers to the handle.
 
 ## Types
 

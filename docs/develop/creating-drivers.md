@@ -316,6 +316,7 @@ A GPIO pin has one owner at a time. `mikro/gpio`, `Pwm`, the bus modules and the
 1. Claim each GPIO before you configure it, with `MIK_ClaimGpio(gpio, "Epaper")` from `mikrojs/mikrojs.h`. Pass your class name as a string literal. The table stores the pointer, and the app sees the name in `GpioInUse` errors.
 2. If a claim fails, release the GPIOs that the same call already claimed. Then report the owner that `MIK_GpioOwner(gpio)` returns.
 3. Release each GPIO in `end()` and in the finalizer with `MIK_ReleaseGpio(gpio, "Epaper")`. A release only frees a claim held under the same name, so a late release cannot free a pin that another module has claimed since.
+4. If the handle is a native class, keep it alive until `end()`. Call `MIK_KeepHandle(ctx, obj)` when you create the handle. Call `MIK_DropHandle(ctx, this_val)` in `end()`. The claim then lasts until `end()`, even when the app no longer refers to the handle. The finalizer runs only after `end()`, or when the runtime is freed.
 
 Expose a hardware handle the way the core modules do: a factory function that shares the handle's name and returns a `Result`, with an `end()` that returns nothing and does nothing when called again. The factory claims the pins before it touches the hardware. This native `claimPins()` for an e-paper display claims the reset and busy pins. On a conflict it returns a `GpioInUse` error object instead of throwing:
 

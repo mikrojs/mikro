@@ -8,8 +8,7 @@ import {Observable} from 'mikro/observable'
 import {err, ok} from 'mikro/result'
 import type {SimGpio} from 'mikro/sim'
 
-// Unlike the device, a handle dropped without end() keeps its GPIO claimed here:
-// the simulator has no finalizer to release it.
+// As on the device, a handle keeps its GPIO claimed until end().
 const owners = new Map<number, string>()
 // Maps a GPIO to a setter for its DigitalIn level. The setter emits onChange
 // when the level changes.

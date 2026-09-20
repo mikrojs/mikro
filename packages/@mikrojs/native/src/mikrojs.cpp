@@ -434,6 +434,11 @@ void MIK_FreeRuntime(MIKRuntime* mik_rt) {
         }
     }
 
+    /* Runs after the destroy hooks: finalizers expect the hooks to have cleared their state. */
+    std::vector<JSValue> kept;
+    kept.swap(mik_rt->kept_handles);
+    for (JSValue handle : kept) JS_FreeValue(mik_rt->ctx, handle);
+
     /* Destroy all timers */
     mik__timers_destroy(mik_rt->ctx);
     delete mik_rt->timers;
@@ -540,6 +545,22 @@ void MIK_RegisterLoopConsumer(MIKRuntime* mik_rt, MIKLoopConsumeFn consume_fn,
         if (consumer.consume_fn == consume_fn && consumer.destroy_fn == destroy_fn) return;
     }
     mik_rt->loop_consumers.push_back({consume_fn, destroy_fn});
+}
+
+void MIK_KeepHandle(JSContext* ctx, JSValueConst handle) {
+    MIK_GetRuntime(ctx)->kept_handles.push_back(JS_DupValue(ctx, handle));
+}
+
+void MIK_DropHandle(JSContext* ctx, JSValueConst handle) {
+    auto& kept = MIK_GetRuntime(ctx)->kept_handles;
+    for (auto it = kept.begin(); it != kept.end(); ++it) {
+        if (JS_VALUE_GET_PTR(*it) != JS_VALUE_GET_PTR(handle)) continue;
+        JSValue value = *it;
+        kept.erase(it);
+        /* Free after the erase: the free may run the finalizer. */
+        JS_FreeValue(ctx, value);
+        return;
+    }
 }
 
 void MIK_SetModuleData(MIKRuntime* mik_rt, int slot, void* data) {

@@ -169,6 +169,7 @@ static JSValue mik__gpio_new_handle(JSContext* ctx, JSClassID class_id, MIKGpioS
         return obj;
     }
     JS_SetOpaque(obj, s);
+    MIK_KeepHandle(ctx, obj);
     return mik__result_ok(ctx, obj);
 }
 
@@ -442,6 +443,7 @@ static JSValue js_gpio_end(JSContext* ctx, JSValueConst this_val, int argc, JSVa
     mik__gpio_remove_isr(s);
     mik__gpio_unlink_live(s);
     MIK_ReleaseGpio(s->gpio, s_owner_names[s->kind]);
+    MIK_DropHandle(ctx, this_val);
 
     /* Complete before dropping `self`: subscribers' teardowns may still use
      * the handle, and `self` may be the last reference to it. */

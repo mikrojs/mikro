@@ -169,6 +169,7 @@ static JSValue js_i2c(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
         return obj;
     }
     JS_SetOpaque(obj, s);
+    MIK_KeepHandle(ctx, obj);
     return mik__result_ok(ctx, obj);
 }
 
@@ -179,6 +180,7 @@ static JSValue js_i2c_end(JSContext* ctx, JSValue this_val, int argc, JSValue* a
     auto* s = mik__i2c_get(ctx, this_val);
     if (!s) return JS_EXCEPTION;
     if (s->active) mik__i2c_release(s);
+    MIK_DropHandle(ctx, this_val);
     return JS_UNDEFINED;
 }
 

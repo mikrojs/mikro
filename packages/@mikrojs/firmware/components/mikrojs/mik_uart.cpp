@@ -200,6 +200,7 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
     }
     JS_SetOpaque(obj, s);
     mik__uart_track(MIK_GetRuntime(ctx), s);
+    MIK_KeepHandle(ctx, obj);
     return mik__result_ok(ctx, obj);
 }
 
@@ -228,6 +229,7 @@ static JSValue js_uart_end(JSContext* ctx, JSValue this_val, int argc, JSValue* 
     }
 
     mik__uart_release(MIK_GetRuntime(ctx), s);
+    MIK_DropHandle(ctx, this_val);
     return JS_UNDEFINED;
 }
 

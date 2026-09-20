@@ -350,7 +350,7 @@ The public API exposes no constructors and no `new`. Handles come from PascalCas
 
 ### GPIO Claims
 
-Every module or driver that configures a GPIO pin claims it with `MIK_ClaimGpio(gpio, "ClassName")` (or `mik__claim_gpios` for several, which on a conflict releases the ones it claimed and returns a `GpioInUse` Result) and releases it with `MIK_ReleaseGpio(gpio, "ClassName")` in `end()` and the finalizer. The console's GPIO pins are claimed at boot with owner `console`.
+Every module or driver that configures a GPIO pin claims it with `MIK_ClaimGpio(gpio, "ClassName")` (or `mik__claim_gpios` for several, which on a conflict releases the ones it claimed and returns a `GpioInUse` Result) and releases it with `MIK_ReleaseGpio(gpio, "ClassName")` in `end()` and the finalizer. A handle lives until `end()`, even when the app no longer refers to it. Call `MIK_KeepHandle(ctx, obj)` when creating the handle and `MIK_DropHandle(ctx, this_val)` in `end()`. The finalizer then runs only after `end()` or at runtime teardown. The console's GPIO pins are claimed at boot with owner `console`.
 
 ## Pre-commit Hooks
 
