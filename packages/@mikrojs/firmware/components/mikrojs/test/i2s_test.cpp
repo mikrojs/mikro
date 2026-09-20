@@ -215,6 +215,8 @@ TEST_CASE("I2s factory starts a TX channel and rejects bad values", "[i2s]") {
                         I2s(0, {...tx, dout: 100})].map((r) => r.error.name)
         globalThis.out = JSON.stringify([...results, writeThrew, ...thrown, ...errors])
     )");
+    /* The first write after start finds no free DMA buffer, so the loop consumer settles it. */
+    js_harness::loop_passes(10);
     TEST_ASSERT_EQUAL_STRING(
         "[true,\"InvalidParam\",\"NoRxPin\",\"GpioInUse\",\"TypeError\",\"TypeError\",\"TypeError\","
         "\"TypeError\",\"TypeError\",\"InvalidParam\",\"InvalidParam\",\"InvalidParam\","

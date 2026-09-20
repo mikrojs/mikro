@@ -168,8 +168,9 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
                                      tx, rx, esp_err_to_name(err));
     }
 
-    /* RX buffer only if we have an RX pin; no TX buffer (writes block until done) */
-    int rx_buf = rx >= 0 ? MIK_UART_RX_BUF_SIZE : 0;
+    /* No TX buffer (writes block until done). Without an RX pin, the smallest RX
+     * buffer the driver accepts: it refuses a size up to the hardware FIFO length. */
+    int rx_buf = rx >= 0 ? MIK_UART_RX_BUF_SIZE : UART_HW_FIFO_LEN(uart_port) + 1;
     err = uart_driver_install(uart_port, rx_buf, 0, 0, nullptr, ESP_INTR_FLAG_IRAM);
     if (err != ESP_OK) {
         mik__release_gpios(gpios, countof(gpios), "Uart");

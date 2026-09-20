@@ -8,7 +8,7 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="littlefs_partition.csv"
 
 # --- Flash ---
-# Test partition layout needs > 2MB (factory 0x1E0000 + littlefs 0x30000 + header).
+# Test partition layout needs > 2MB (factory 0x280000 + littlefs 0x30000 + header).
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 CONFIG_ESPTOOLPY_FLASHFREQ="80m"
