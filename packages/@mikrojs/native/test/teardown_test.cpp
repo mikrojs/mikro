@@ -38,6 +38,18 @@ JSValue tracked_new(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     return JS_NewObjectClass(ctx, static_cast<int>(g_tracked_class_id));
 }
 
+/* A tracked object kept alive with MIK_KeepHandle, like a hardware handle. */
+JSValue tracked_keep(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+    JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(g_tracked_class_id));
+    MIK_KeepHandle(ctx, obj);
+    return obj;
+}
+
+JSValue tracked_drop(JSContext* ctx, JSValueConst, int, JSValueConst* argv) {
+    MIK_DropHandle(ctx, argv[0]);
+    return JS_UNDEFINED;
+}
+
 /* Ends MIK_Loop with the app still pending, the way a host restart does. */
 JSValue tracked_stop(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     MIK_Stop(MIK_GetRuntime(ctx));
@@ -46,6 +58,8 @@ JSValue tracked_stop(JSContext* ctx, JSValueConst, int, JSValueConst*) {
 
 int tracked_mod_init(JSContext* ctx, JSModuleDef* m) {
     JS_SetModuleExport(ctx, m, "track", JS_NewCFunction(ctx, tracked_new, "track", 0));
+    JS_SetModuleExport(ctx, m, "keep", JS_NewCFunction(ctx, tracked_keep, "keep", 0));
+    JS_SetModuleExport(ctx, m, "drop", JS_NewCFunction(ctx, tracked_drop, "drop", 1));
     return JS_SetModuleExport(ctx, m, "stop", JS_NewCFunction(ctx, tracked_stop, "stop", 0));
 }
 
@@ -58,6 +72,8 @@ JSModuleDef* tracked_init(JSContext* ctx) {
     JSModuleDef* m = JS_NewCModule(ctx, "native:mikro/test-tracked", tracked_mod_init);
     if (m) {
         JS_AddModuleExport(ctx, m, "track");
+        JS_AddModuleExport(ctx, m, "keep");
+        JS_AddModuleExport(ctx, m, "drop");
         JS_AddModuleExport(ctx, m, "stop");
     }
     return m;
@@ -202,6 +218,54 @@ TEST_CASE("MIK_FreeRuntime finalizes app objects of a bytecode entry run by MIK_
 
     unlink(path.c_str());
     rmdir(root.c_str());
+}
+
+namespace {
+
+/* Runs `src` and returns the finalizer count while the runtime is still up.
+ * g_finalized holds the count after MIK_FreeRuntime. */
+int finalized_after_eval(const char* src) {
+    g_finalized = 0;
+    MIKRuntime* rt = MIK_NewRuntime();
+    REQUIRE(rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(rt);
+    JSValue rv = JS_Eval(ctx, src, strlen(src), "mikro/test-teardown", JS_EVAL_TYPE_MODULE);
+    REQUIRE(!JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+    mik__execute_jobs(ctx);
+    int before_free = g_finalized;
+    MIK_FreeRuntime(rt);
+    return before_free;
+}
+
+}  // namespace
+
+TEST_CASE("a kept handle outlives the module that created it" *
+          doctest::test_suite("teardown")) {
+    /* QuickJS frees a finished module's uncaptured bindings (quickjs patch 0002). */
+    CHECK(finalized_after_eval("import {keep} from 'native:mikro/test-tracked'\n"
+                               "const kept = keep()\n"
+                               "globalThis.seen = typeof kept\n") == 0);
+    CHECK(g_finalized == 1);
+}
+
+TEST_CASE("a kept handle with no binding lives until the runtime is freed" *
+          doctest::test_suite("teardown")) {
+    CHECK(finalized_after_eval("import {keep} from 'native:mikro/test-tracked'\n"
+                               "keep()\n"
+                               "keep()\n") == 0);
+    CHECK(g_finalized == 2);
+}
+
+TEST_CASE("MIK_DropHandle lets a handle be finalized once nothing refers to it" *
+          doctest::test_suite("teardown")) {
+    CHECK(finalized_after_eval("import {drop, keep} from 'native:mikro/test-tracked'\n"
+                               "const other = keep()\n"
+                               "drop(keep())\n"
+                               "drop(other)\n"
+                               "drop(other)\n"
+                               "globalThis.kept = other\n") == 1);
+    CHECK(g_finalized == 2);
 }
 
 namespace {

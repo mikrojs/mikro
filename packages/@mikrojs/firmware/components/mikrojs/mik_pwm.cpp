@@ -312,6 +312,7 @@ static JSValue js_pwm(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
         return obj;
     }
     JS_SetOpaque(obj, s);
+    MIK_KeepHandle(ctx, obj);
     return mik__result_ok(ctx, obj);
 }
 
@@ -518,6 +519,7 @@ static JSValue js_pwm_end(JSContext* ctx, JSValue this_val, int argc, JSValue* a
         s_fade_count--;
     }
     mik__pwm_release(s);
+    MIK_DropHandle(ctx, this_val);
     return JS_UNDEFINED;
 }
 

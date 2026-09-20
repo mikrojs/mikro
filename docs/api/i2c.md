@@ -51,7 +51,7 @@ Claims the `sda` and `scl` pins, starts the bus and returns a [`Result`](/api/re
 end(): void
 ```
 
-Deletes the bus and releases its GPIO pins. Calling it again does nothing. After `end()`, `write()` does nothing, `read()` and `scan()` return an empty array, and the first such call prints a warning.
+Deletes the bus and releases its GPIO pins. Calling it again does nothing. After `end()`, `write()` does nothing, `read()` and `scan()` return an empty array, and the first such call prints a warning. The handle keeps the hardware and its GPIO pins until you call `end()`, even when your code no longer refers to the handle.
 
 ### bus.read(address, bytes)
 

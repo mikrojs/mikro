@@ -390,6 +390,7 @@ static JSValue js_i2s(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
         return obj;
     }
     JS_SetOpaque(obj, s);
+    MIK_KeepHandle(ctx, obj);
     return mik__result_ok(ctx, obj);
 }
 
@@ -422,6 +423,7 @@ static JSValue js_i2s_end(JSContext* ctx, JSValue this_val, int argc, JSValue* a
     const int gpios[] = MIK__I2S_GPIOS(s);
     mik__release_gpios(gpios, countof(gpios), "I2s");
     s->active = false;
+    MIK_DropHandle(ctx, this_val);
     return JS_UNDEFINED;
 }
 

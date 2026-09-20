@@ -471,6 +471,14 @@ void MIK_ReleaseGpio(int gpio, const char* owner);
 /* The current owner of `gpio`, or NULL when it is free. */
 const char* MIK_GpioOwner(int gpio);
 
+/* A handle that owns a resource lives until its end() or close(), even when
+ * the app no longer refers to it. Call MIK_KeepHandle when you create the
+ * handle and MIK_DropHandle in end(). MIK_FreeRuntime releases the handles that
+ * are still kept, so their finalizers run. MIK_DropHandle does nothing for a
+ * handle that is not kept. */
+void MIK_KeepHandle(JSContext* ctx, JSValueConst handle);
+void MIK_DropHandle(JSContext* ctx, JSValueConst handle);
+
 #ifdef __cplusplus
 }
 #endif

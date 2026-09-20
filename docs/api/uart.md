@@ -87,7 +87,7 @@ The firmware claims the pins of every console it installs. On chips with USB Ser
 end(): void
 ```
 
-Uninstall the UART driver and release the GPIO pins. An active `read()` iterator completes. Calling `end()` again does nothing. After `end()`, `write()` does nothing, `read()` returns an iterable that completes at once, and the first such call prints a warning.
+Uninstall the UART driver and release the GPIO pins. An active `read()` iterator completes. Calling `end()` again does nothing. After `end()`, `write()` does nothing, `read()` returns an iterable that completes at once, and the first such call prints a warning. The handle keeps the hardware and its GPIO pins until you call `end()`, even when your code no longer refers to the handle.
 
 ### uart.write(data)
 

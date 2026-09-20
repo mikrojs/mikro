@@ -110,6 +110,8 @@ struct MIKRuntime {
     MIKTimerRegistry* timers;
     std::vector<MIKNativeModuleEntry> native_modules;
     std::vector<MIKLoopConsumerEntry> loop_consumers;
+    /* Handles kept alive by MIK_KeepHandle; each entry owns a reference. */
+    std::vector<JSValue> kept_handles;
     /* Promises that rejected without a handler, awaiting the end-of-turn
      * unhandled-rejection check. The host rejection tracker adds a promise
      * here on `reject` and removes it on `handle`; whatever remains after a

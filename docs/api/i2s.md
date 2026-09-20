@@ -117,7 +117,7 @@ Common I2S mics (INMP441, ICS-43434) are 24-bit samples left-justified in 32-bit
 end(): void
 ```
 
-Stop the DMA, release the channels and the GPIO pins, and resolve any queued `write()` calls with `ok()`; samples not yet handed to DMA are dropped. Calling `end()` again does nothing. After `end()`, `write()` resolves `ok()`, `capture()` returns an empty `Int16Array`, and the first such call prints a warning.
+Stop the DMA, release the channels and the GPIO pins, and resolve any queued `write()` calls with `ok()`; samples not yet handed to DMA are dropped. Calling `end()` again does nothing. After `end()`, `write()` resolves `ok()`, `capture()` returns an empty `Int16Array`, and the first such call prints a warning. The handle keeps the hardware and its GPIO pins until you call `end()`, even when your code no longer refers to the handle.
 
 ### i2s.write(data)
 

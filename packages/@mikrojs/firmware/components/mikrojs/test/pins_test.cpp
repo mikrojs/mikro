@@ -107,6 +107,19 @@ TEST_CASE("a second claim on a GPIO returns GpioInUse", "[gpio]") {
     teardown();
 }
 
+TEST_CASE("a handle nothing refers to keeps its claim until the runtime is freed", "[gpio]") {
+    setup();
+    run(R"(
+        import {DigitalOut} from 'mikro/gpio'
+        DigitalOut(TEST_GPIO).orPanic('dropped')
+        globalThis.out = JSON.stringify(DigitalOut(TEST_GPIO).error.owner)
+    )");
+    TEST_ASSERT_EQUAL_STRING("\"DigitalOut\"", out().c_str());
+    JS_RunGC(JS_GetRuntime(ctx));
+    TEST_ASSERT_EQUAL_STRING("DigitalOut", MIK_GpioOwner(TEST_GPIO));
+    teardown();
+}
+
 TEST_CASE("end() releases the GPIO and a later write does nothing", "[gpio]") {
     setup();
     run(R"(
@@ -197,7 +210,7 @@ TEST_CASE("onChange keeps delivering after the app drops the handle", "[gpio]") 
     run(R"(
         import {DigitalIn} from 'mikro/gpio'
         globalThis.events = []
-        // No binding: module-scope bindings would keep the handle alive.
+        // No binding. The handle lives until end() anyway.
         DigitalIn(TEST_GPIO, {pull: 'down'})
             .orPanic('button')
             .onChange.subscribe((v) => events.push(v))

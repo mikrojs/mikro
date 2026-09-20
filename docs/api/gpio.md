@@ -11,7 +11,7 @@ import {DigitalOut, DigitalIn, AnalogIn} from 'mikro/gpio'
 
 Control GPIO pins for digital and analog I/O.
 
-You use a GPIO pin through a handle, and you pick the pin by its GPIO number: the number in the chip's datasheet and pinout diagram, never a board label such as `D7`. `DigitalOut`, `DigitalIn` and `AnalogIn` claim the pin, configure it and return a [`Result`](/api/result) with the handle. A GPIO pin has one owner at a time: if another handle, a peripheral such as `Pwm` or `Spi`, or the console already holds it, you get a `GpioInUse` error that names the owner. Call `end()` to release the pin.
+You use a GPIO pin through a handle, and you pick the pin by its GPIO number: the number in the chip's datasheet and pinout diagram, never a board label such as `D7`. `DigitalOut`, `DigitalIn` and `AnalogIn` claim the pin, configure it and return a [`Result`](/api/result) with the handle. A GPIO pin has one owner at a time: if another handle, a peripheral such as `Pwm` or `Spi`, or the console already holds it, you get a `GpioInUse` error that names the owner. Call `end()` to release the pin. The handle keeps the pin until you call `end()`, even when your code no longer refers to the handle.
 
 ## Usage
 

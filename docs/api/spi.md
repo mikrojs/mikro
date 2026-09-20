@@ -50,7 +50,7 @@ Claims the pins, starts the bus and returns a [`Result`](/api/result) with the h
 end(): void
 ```
 
-Frees the bus and releases its GPIO pins. Calling it again does nothing. After `end()`, `write()` does nothing, `transfer()` returns an empty array, and the first such call prints a warning.
+Frees the bus and releases its GPIO pins. Calling it again does nothing. After `end()`, `write()` does nothing, `transfer()` returns an empty array, and the first such call prints a warning. The handle keeps the hardware and its GPIO pins until you call `end()`, even when your code no longer refers to the handle.
 
 ### spi.transfer(data)
 

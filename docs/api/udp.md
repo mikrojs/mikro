@@ -105,7 +105,7 @@ leaveMulticastGroup(group: {address: string}): Result<void, UdpError>
 close(): void
 ```
 
-Closes the socket. Idempotent. Subsequent `send` calls resolve to `{name: 'Closed'}`. There is no GC finalizer that closes sockets; explicit `close()` is required to release the file descriptor.
+Closes the socket. Idempotent. Subsequent `send` calls resolve to `{name: 'Closed'}`. A socket stays open until you call `close()`, even when your code no longer refers to it. Call `close()` to release the file descriptor.
 
 ## Socket properties
 

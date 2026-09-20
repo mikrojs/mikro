@@ -279,8 +279,8 @@ TEST_CASE("ipv4 socket rejects an IPv6 peer on send" * doctest::test_suite("udp"
 
 TEST_CASE("onMessage that finalizes a sibling socket does not corrupt iteration"
           * doctest::test_suite("udp")) {
-    /* Regression: a callback dropping the last reference to another socket
-     * synchronously triggers its finalizer. Pre-fix, the consume loop's
+    /* Regression: a callback closing another socket and dropping the last
+     * reference to it synchronously triggers its finalizer. Pre-fix, the consume loop's
      * snapshotted size + immediate erase combination produced an OOB read
      * (or skipped a live socket). Fix is the iteration_depth + dead-mark
      * pattern; this test exercises that path. */
@@ -296,6 +296,7 @@ TEST_CASE("onMessage that finalizes a sibling socket does not corrupt iteration"
         "  globalThis.__sock1 = r1.value;\n"
         "  let extra = (await bind({port: 0, family: 'ipv4'})).value;\n"
         "  globalThis.__sock1.onMessage.subscribe(() => {\n"
+        "    extra.close();\n"
         "    extra = null;\n"  /* drops last ref → sync finalizer */
         "    globalThis.__phase = 'received';\n"
         "  });\n"
@@ -317,6 +318,39 @@ TEST_CASE("onMessage that finalizes a sibling socket does not corrupt iteration"
     /* Pump a few more ticks; this would crash pre-fix on a use-after-free. */
     for (int i = 0; i < 20; i++) MIK_Loop(rt);
 
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("a socket nothing refers to keeps receiving until close()" *
+          doctest::test_suite("udp")) {
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    JSValue rv = eval_module(ctx,
+        "import {bind} from 'mikro/udp';\n"
+        "globalThis.__phase = 'init';\n"
+        "(async () => {\n"
+        "  const receiver = (await bind({port: 0, family: 'ipv4'})).value;\n"
+        "  globalThis.__port = receiver.port;\n"
+        "  receiver.onMessage.subscribe(() => { globalThis.__phase = 'received'; });\n"
+        "})();\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+    /* The async function has returned: nothing in JS refers to the receiver. */
+    for (int i = 0; i < 5; i++) MIK_Loop(rt);
+    JS_RunGC(JS_GetRuntime(ctx));
+
+    rv = eval_module(ctx,
+        "import {bind} from 'mikro/udp';\n"
+        "(async () => {\n"
+        "  globalThis.__sender = (await bind({port: 0, family: 'ipv4'})).value;\n"
+        "  await globalThis.__sender.send('hi',\n"
+        "    {address:'127.0.0.1',port:globalThis.__port,family:'ipv4'});\n"
+        "})();\n");
+    CHECK_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+
+    CHECK(pump_until(rt, 500, [&] { return read_global_string(ctx, "__phase") == "received"; }));
     MIK_FreeRuntime(rt);
 }
 
@@ -361,8 +395,6 @@ struct UdpFixture {
 
 TEST_CASE_FIXTURE(UdpFixture, "ipv6 loopback roundtrip" * doctest::test_suite("udp")) {
     run_async(
-        /* pin on globalThis: locals are refcount-freed (and the finalizer
-         * closes the socket) as soon as main() resolves, before delivery */
         "  const a = globalThis.__a = (await bind({family: 'ipv6', address: '::1', port: 0})).value\n"
         "  const b = globalThis.__b = (await bind({family: 'ipv6', address: '::1', port: 0})).value\n"
         "  b.onMessage.subscribe(({msg, from}) => {\n"
