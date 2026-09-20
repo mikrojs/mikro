@@ -3,7 +3,6 @@ import {sleep} from 'mikro/sleep'
 
 // Set a friendly name. If omitted, the runtime uses "mikrojs-<MAC suffix>".
 ble.name = 'mikrojs-beacon'
-console.log('hi')
 
 // Encode a fake temperature reading as manufacturer-specific data.
 // First two bytes are the company ID (0xFFFF = "no company", reserved for testing).
@@ -55,4 +54,3 @@ if (!result.ok) {
     }
   }
 }
-console.log('hi')
