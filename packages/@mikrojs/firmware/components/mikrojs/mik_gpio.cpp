@@ -28,9 +28,8 @@ struct MIKGpioState {
     bool warned_after_end; /* use after end() is reported once per handle */
     adc_channel_t channel;
     adc_atten_t atten;
-    /* DigitalIn events. `self` is a strong reference to the handle, held from
-     * the first onChange read until end(), so subscribers keep receiving
-     * events when the app drops the handle itself. */
+    /* DigitalIn events. `self` is a borrowed pointer back to the handle, which
+     * owns this state; MIK_KeepHandle keeps the handle alive until end(). */
     JSContext* ctx;
     JSValue self;
     JSValue observable;
@@ -218,8 +217,8 @@ static int mik__gpio_level(const MIKGpioState* s) {
 
 static void mik__gpio_finalizer_common(JSRuntime* rt, MIKGpioState* s) {
     if (!s) return;
-    /* A handle with live events holds `self`, so it only reaches here after
-     * end() or from mik__gpio_destroy, both of which unlink it. */
+    /* A kept handle only reaches here after end() or after mik__gpio_destroy,
+     * both of which unlink it. */
     mik__gpio_remove_isr(s);
     if (!s->released) MIK_ReleaseGpio(s->gpio, s_owner_names[s->kind]);
     JS_FreeValueRT(rt, s->observable);
@@ -246,8 +245,7 @@ static void mik__analog_in_finalizer(JSRuntime* rt, JSValue val) {
 static void mik__digital_in_gc_mark(JSRuntime* rt, JSValueConst val, JS_MarkFunc* mark_func) {
     auto* s = static_cast<MIKGpioState*>(JS_GetOpaque(val, mik_digital_in_class_id));
     if (!s) return;
-    /* `self` is deliberately not marked: as an unmarked reference it roots the
-     * handle, so cycle collection cannot free it while events are live. */
+    /* `self` is borrowed, not a counted reference, so it must not be marked. */
     JS_MarkValue(rt, s->observable, mark_func);
     JS_MarkValue(rt, s->next_fn, mark_func);
     JS_MarkValue(rt, s->complete_fn, mark_func);
@@ -442,18 +440,16 @@ static JSValue js_gpio_end(JSContext* ctx, JSValueConst this_val, int argc, JSVa
     s->released = true;
     mik__gpio_remove_isr(s);
     mik__gpio_unlink_live(s);
+    s->self = JS_UNDEFINED;
     MIK_ReleaseGpio(s->gpio, s_owner_names[s->kind]);
     MIK_DropHandle(ctx, this_val);
 
-    /* Complete before dropping `self`: subscribers' teardowns may still use
-     * the handle, and `self` may be the last reference to it. */
-    JSValue self = s->self;
-    s->self = JS_UNDEFINED;
+    /* Subscribers' teardowns may still use the handle; the caller holds
+     * `this_val`, so it cannot be finalized during this call. */
     JSValue ret = JS_UNDEFINED;
     if (!JS_IsUndefined(s->complete_fn)) {
         ret = JS_Call(ctx, s->complete_fn, JS_UNDEFINED, 0, nullptr);
     }
-    JS_FreeValue(ctx, self);
     /* A subscriber's exception panics inside the multicast, so only an
      * out-of-memory error reaches here; return it to the caller. */
     if (JS_IsException(ret)) return JS_EXCEPTION;
@@ -523,7 +519,7 @@ static JSValue js_digital_in_get_on_change(JSContext* ctx, JSValueConst this_val
     }
     s->isr_added = true;
     s->ctx = ctx;
-    s->self = JS_DupValue(ctx, this_val);
+    s->self = this_val;
     s->next_live = s_live_head;
     s_live_head = s;
     return JS_DupValue(ctx, s->observable);
@@ -692,8 +688,8 @@ void mik__gpio_wake_done(int gpio) {
     gpio_set_intr_type(num, GPIO_INTR_DISABLE);
 }
 
-/* Runtime teardown: drop the `self` references so the handles can be
- * finalized (which releases their GPIO pins). */
+/* Runtime teardown: stop event delivery. MIK_FreeRuntime then releases the
+ * kept handles, whose finalizers release their GPIO pins. */
 static void mik__gpio_destroy(JSContext* ctx) {
     for (MIKGpioState** p = &s_live_head; *p;) {
         MIKGpioState* s = *p;
@@ -704,9 +700,7 @@ static void mik__gpio_destroy(JSContext* ctx) {
         *p = s->next_live;
         s->next_live = nullptr;
         mik__gpio_remove_isr(s);
-        JSValue self = s->self;
         s->self = JS_UNDEFINED;
-        JS_FreeValue(ctx, self);
     }
 }
 
