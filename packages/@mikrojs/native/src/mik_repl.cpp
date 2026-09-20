@@ -919,9 +919,11 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
  * Rebuilt per CMD_HELLO rather than cached at protocol open: the running app
  * can adopt a registry name mid-session, and a host holding a revision from the
  * opening handshake would write its next rename at a stale revision, which the
- * registry then reads as behind and reverts. Only ever emitted in reply to a
- * client CMD_HELLO, so a passive serial viewer (e.g. idf.py monitor) still
- * doesn't see the device announcing itself unprompted. */
+ * registry then reads as behind and reverts.
+ *
+ * Emitted in reply to a client CMD_HELLO, and once unprompted from
+ * MIK_ProtocolOpen so a host that kept its link open across a reboot learns
+ * the runtime is new (see there). */
 static void refresh_ready(MIKReplTransport* transport);
 
 /* Encodes the MSG_READY map into buf, or measures it when buf is null. Returns
@@ -1010,6 +1012,17 @@ void MIK_ProtocolOpen(MIKReplTransport* transport) {
     show_depth = 2;
     show_hidden = false;
 
+    /* Announce the boot, unprompted. A host whose serial link survives the
+     * reboot (USB-UART bridges keep the port open, unlike USB serial JTAG)
+     * has no other way to learn the runtime is gone: MSG_READY otherwise
+     * only answers CMD_HELLO, which nothing sends while a session is up, so
+     * a client waiting for the result of an eval that restarted the device
+     * (restart(), deep sleep, a panic) waits forever. Console output is
+     * already TLV-framed from here on, so this costs one frame and changes
+     * nothing for a passive viewer. Dropped silently when nothing is
+     * draining the console. */
+    refresh_ready(transport);
+    mik__proto_send(transport, MIK_MSG_READY, ready_buf, ready_len);
 }
 
 void MIK_CaptureBootMemory(MIKRuntime* mik_rt) {

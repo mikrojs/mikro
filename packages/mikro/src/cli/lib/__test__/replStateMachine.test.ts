@@ -532,6 +532,81 @@ describe('replStateMachine', () => {
       expect(next.evaluating).toBe(false)
     })
 
+    // Regression: code that restarts the device (`restart()`, deep sleep, a
+    // panic) never sends a result, so the spinner used to run forever.
+    test('a reconnect after a device-initiated restart clears evaluating', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      const s = typeChars(ready, "(await import('mikro/sys')).restart()")
+      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      expect(submitted.evaluating).toBe(true)
+
+      // The device reboots: the port drops, the supervisor reconnects, and the
+      // new handshake answers with a fresh MSG_READY. No result ever arrives.
+      const [dropped] = reduce(submitted, deviceEvent({type: 'reconnecting'}))
+      const [next] = reduce(
+        dropped,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      expect(next.evaluating).toBe(false)
+      expect(next.connection.type).toBe('ready')
+      expect(next.events).toContainEqual({
+        type: 'info',
+        text: 'Stopped waiting for a result: the device restarted or reconnected.',
+      })
+    })
+
+    test('a fresh ready on a surviving link clears evaluating', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      const s = typeChars(ready, 'restart()')
+      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+
+      // USB-UART boards keep the link open across the reboot, so the machine
+      // stays in `ready` and only sees the device's boot announcement.
+      const [next] = reduce(
+        submitted,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      expect(next.evaluating).toBe(false)
+      expect(next.events.at(-1)).toEqual({
+        type: 'info',
+        text: 'Stopped waiting for a result: the device restarted or reconnected.',
+      })
+      // Still deduped: no second "Connected to…" line.
+      expect(next.events.filter((e) => e.type === 'ready')).toHaveLength(1)
+    })
+
+    // Ctrl+R kills the eval the user was waiting on, and they asked for it,
+    // so the spinner stops with the keypress rather than at the next ready.
+    test('Ctrl+R clears evaluating', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      const s = typeChars(ready, 'while (true) {}')
+      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      expect(submitted.evaluating).toBe(true)
+
+      const [restarting, effects] = reduce(submitted, keyAction('r', {ctrl: true}))
+      expect(restarting.evaluating).toBe(false)
+      expect(effects).toContainEqual({type: 'restart'})
+
+      // The ready that ends the restart adds no line about the lost result.
+      const [next] = reduce(
+        restarting,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      expect(next.events.filter((e) => e.type === 'info')).toHaveLength(0)
+    })
+
     test('completions with single item replaces input', () => {
       const state = createInitialState()
       const [ready] = reduce(

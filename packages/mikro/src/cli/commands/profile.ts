@@ -126,8 +126,9 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
   let chip: string
   let measured: BootFigures
   try {
-    // The device only sends MSG_READY in reply to CMD_HELLO, so the handshake
-    // has to be driven. awaitReady$ polls it; plain ready$ would wait forever.
+    // The device announced itself at boot, long before this connection, so
+    // the handshake has to be driven. awaitReady$ polls CMD_HELLO; plain
+    // ready$ would wait for an announcement that already came and went.
     // Not `{fresh: true}`: the figures are captured once at boot, so a cached
     // ready carries the same values.
     const ready = await firstValueFrom(handles.session.awaitReady$(READY_TIMEOUT_MS))
