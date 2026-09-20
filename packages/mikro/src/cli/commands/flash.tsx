@@ -302,18 +302,9 @@ export default function FlashCmd(props: Props) {
     )
   }
 
-  if (!confirmed) {
-    return (
-      <ConfirmFlash
-        port={device.path}
-        onConfirm={() => setConfirmed(true)}
-        onCancel={() => process.exit(0)}
-      />
-    )
-  }
-
-  // Rendered after the confirmation so the user can confirm while the probe
-  // runs; on a silent device this otherwise reads as a 4s unexplained stall.
+  // The probe and the flash plan can both refuse the flash (custom firmware,
+  // no firmware for the chip), so they finish before the prompt: asking for a
+  // go-ahead and then refusing reads as the confirmation having failed.
   if (probeState.status === 'pending') {
     return (
       <Text>
@@ -327,6 +318,16 @@ export default function FlashCmd(props: Props) {
       <Text>
         <Spinner spinner={spinners.dots} /> {initState.message}
       </Text>
+    )
+  }
+
+  if (!confirmed) {
+    return (
+      <ConfirmFlash
+        port={device.path}
+        onConfirm={() => setConfirmed(true)}
+        onCancel={() => process.exit(0)}
+      />
     )
   }
 
