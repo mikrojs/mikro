@@ -195,10 +195,12 @@ Simulator-specific options. These are stripped from the config before deploying 
 | Option         | Type               | Default           | Description                       |
 | -------------- | ------------------ | ----------------- | --------------------------------- |
 | `sim.memLimit` | `number \| string` | `'300k'`          | QuickJS heap memory limit         |
-| `sim.fsLimit`  | `number \| string` | `'1m'`            | Virtual filesystem size limit     |
+| `sim.fsLimit`  | `number \| string` | `'1472k'`         | Virtual filesystem size limit     |
 | `sim.fsRoot`   | `string`           | `'.mikro/sim-fs'` | Filesystem sandbox root directory |
 
 All size options accept a number of bytes or a string with K/M suffix (for example `'300k'` or `'1m'`).
+
+The `sim.fsLimit` default matches the generic firmware's [filesystem](/developing-for-microcontrollers#filesystem). If your device has a different partition table, set `sim.fsLimit` to the size that `storageUsage().total` reports on the device.
 
 ## Per-environment overrides {#env}
 

@@ -12,6 +12,7 @@
 #include "esp_heap_caps.h"
 #include "esp_littlefs.h"
 #include "esp_log.h"
+#include "esp_partition.h"
 #include "esp_system.h"
 #if CONFIG_ESP_TASK_WDT_EN
 #include "esp_task_wdt.h"
@@ -275,6 +276,51 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
 
 /* ── LittleFS mount ─────────────────────────────────────────────── */
 
+/* Fit the fs to its partition: it keeps its formatted size otherwise. Measured
+ * first because lfs_fs_grow() aborts on a shrink. Call with the fs mounted. */
+static esp_err_t fit_littlefs_to_partition(const char* base_path, const char* partition_label) {
+    const esp_partition_t* part = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, partition_label);
+    size_t fs_size = 0;
+    if (!part || esp_littlefs_info(partition_label, &fs_size, NULL) != ESP_OK) return ESP_OK;
+    if (fs_size == part->size) return ESP_OK;
+
+    if (fs_size > part->size) {
+        /* Flashed with a table that gives the partition less room than the fs
+         * was made for. Blocks past the end are unreadable, so reformat, as a
+         * failed mount does. */
+        ESP_LOGW(TAG,
+                 "Filesystem on '%s' (%u bytes) is larger than its partition (%u); reformatting",
+                 partition_label, (unsigned)fs_size, (unsigned)part->size);
+        esp_err_t ret = esp_littlefs_format(partition_label);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to reformat LittleFS partition '%s': %s", partition_label,
+                     esp_err_to_name(ret));
+        }
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "Growing filesystem on '%s' from %u to %u bytes", partition_label,
+             (unsigned)fs_size, (unsigned)part->size);
+    esp_vfs_littlefs_unregister(partition_label);
+
+    esp_vfs_littlefs_conf_t conf = {};
+    conf.base_path = base_path;
+    conf.partition_label = partition_label;
+    conf.grow_on_mount = true;
+    /* No format_if_mount_failed on either attempt: this fs mounted a moment
+     * ago, and its files are what the grow is for. A failed grow keeps the
+     * old size rather than costing the boot. */
+    esp_err_t ret = esp_vfs_littlefs_register(&conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to grow LittleFS partition '%s': %s; keeping the old size",
+                 partition_label, esp_err_to_name(ret));
+        conf.grow_on_mount = false;
+        ret = esp_vfs_littlefs_register(&conf);
+    }
+    return ret;
+}
+
 static esp_err_t mount_littlefs(const char* base_path, const char* partition_label) {
     esp_vfs_littlefs_conf_t conf = {};
     conf.base_path = base_path;
@@ -282,11 +328,12 @@ static esp_err_t mount_littlefs(const char* base_path, const char* partition_lab
     conf.format_if_mount_failed = true;
 
 #if CONFIG_ESP_TASK_WDT_EN
-    /* A first-boot format runs for seconds inside this one call, where no
-     * feed can reach; unsubscribe the main task for its duration. */
+    /* A format (first boot, or a shrunk partition) runs for seconds inside
+     * these calls, where no feed can reach; unsubscribe the main task. */
     esp_task_wdt_delete(NULL);
 #endif
     esp_err_t ret = esp_vfs_littlefs_register(&conf);
+    if (ret == ESP_OK) ret = fit_littlefs_to_partition(base_path, partition_label);
 #if CONFIG_ESP_TASK_WDT_EN
     esp_task_wdt_add(NULL);
 #endif

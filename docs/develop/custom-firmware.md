@@ -165,5 +165,35 @@ The firmware archive must be a `.tar.gz` containing `flasher_args.json` and the 
 
 - **sdkconfig**: Add a local `sdkconfig.defaults` file. It takes priority over the firmware package defaults.
 - **WiFi**: Set `CONFIG_MIKROJS_WIFI=n` in that file to leave the WiFi driver and the `mikro/wifi` module out. This frees about 20 KB of internal RAM for apps that do all their networking over another link, such as a cellular modem. IDF's own `CONFIG_ESP_WIFI_ENABLED` cannot be turned off on WiFi-capable chips.
-- **Partition table**: Add a local `partitions.csv` file.
+- **Partition table**: Add a local `partitions.csv` file. See [Partition table](#partition-table).
 - **main.cpp**: Provide your own `main/` directory with custom initialization.
+
+## Partition table
+
+A local `partitions.csv` replaces the one in `@mikrojs/firmware`. Start from a copy of `node_modules/@mikrojs/firmware/partitions.csv`, which is laid out for 4 MB of flash. The firmware expects:
+
+- A `data, littlefs` partition named `user`. The firmware finds it by that name, both to mount the app filesystem and to read its free space for OTA.
+- An app partition large enough for the firmware binary. The stock table's `factory` partition is 2560 KB.
+
+::: warning Do not make the user partition smaller
+Before you flash a new table, compare its `user` size with `storageUsage().total` on the device. If the new partition is smaller, the device reformats the filesystem on the next boot, which deletes the app and all its files. Firmware built for a smaller flash chip usually has a smaller `user` partition.
+:::
+
+To use a larger flash chip, set its size in your `sdkconfig.defaults` and give the extra space to `user`. For 8 MB:
+
+```ini
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+```
+
+```csv
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x6000,
+phy_init, data, phy,     0xf000,  0x1000,
+factory,  app,  factory, 0x10000, 0x280000,
+user,     data, littlefs,      ,  0x570000,
+```
+
+That gives the filesystem 5568 KB. For 16 MB, set `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y` and `CONFIG_ESPTOOLPY_FLASHSIZE="16MB"`, and give `user` a size of `0xD70000` (13760 KB). A changed `sdkconfig.defaults` takes effect only after you delete `sdkconfig` and run `idf.py set-target` again; see [sdkconfig notes](/develop/building-firmware#sdkconfig-notes).
+
+`mikro flash` writes the partition table along with the firmware. An over-the-air update does not, so a new table reaches a device only when you flash it over a cable. On the first boot after that, the device grows the filesystem to fill a larger `user` partition and keeps the files on it.

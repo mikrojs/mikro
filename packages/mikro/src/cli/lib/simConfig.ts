@@ -14,7 +14,7 @@ export interface ResolvedSimConfig {
 }
 
 const DEFAULT_MEM_LIMIT = 300 * 1024
-const DEFAULT_FS_LIMIT = 1024 * 1024
+const DEFAULT_FS_LIMIT = 1472 * 1024 // matches the device's 'user' partition
 
 export function resolveSimConfig(config: MikroJSConfig | null): ResolvedSimConfig {
   const sim = config?.sim ?? {}
