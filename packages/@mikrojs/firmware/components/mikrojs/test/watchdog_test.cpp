@@ -134,7 +134,7 @@ TEST_CASE("lightSleep past the blocking budget does not fire", "[watchdog]") {
         const spin = (ms) => { const end = Date.now() + ms; while (Date.now() < end) {} };
         spin(300); /* lands a budget stamp well before the sleep */
         try {
-            lightSleep({timer: 1500000});
+            lightSleep({timer: 1500});
         } catch (e) {
             globalThis.__skipped = true; /* board cannot light-sleep; not a watchdog failure */
         }

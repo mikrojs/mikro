@@ -151,7 +151,9 @@ TEST_CASE("Protocol exits on CMD_EXIT", "[repl_protocol]") {
 
     auto frames = run_protocol(input);
 
-    TEST_ASSERT_TRUE_MESSAGE(frames.empty(), "Plain CMD_EXIT should produce no output");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, (int)frames.size(),
+                                  "Plain CMD_EXIT should add nothing to the open announcement");
+    TEST_ASSERT_EQUAL(MIK_MSG_READY, frames[0].type);
 }
 
 TEST_CASE("CMD_EVAL returns MSG_RESULT for expression", "[repl_protocol]") {

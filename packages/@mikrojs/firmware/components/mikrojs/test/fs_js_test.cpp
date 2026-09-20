@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "esp_littlefs.h"
 #include "mikrojs.h"
 #include "private.h"
@@ -30,7 +32,21 @@ void setUp() {
     esp_vfs_littlefs_register(&conf);
 }
 
-void tearDown() { esp_vfs_littlefs_unregister("littlefs"); }
+/* Failed test names, printed again after the run: light sleep drops a USB
+ * Serial/JTAG console, and the results printed during the drop are lost. */
+static const char* failed_tests[16];
+static int failed_count;
+
+void tearDown() {
+    esp_vfs_littlefs_unregister("littlefs");
+    if (Unity.CurrentTestFailed && failed_count < 16) {
+        failed_tests[failed_count++] = Unity.CurrentTestName;
+    }
+}
+
+void mik_test_print_failures() {
+    for (int i = 0; i < failed_count; i++) printf("FAILED: %s\n", failed_tests[i]);
+}
 
 static MIKRuntime* mik_rt;
 static JSContext* mik_ctx;

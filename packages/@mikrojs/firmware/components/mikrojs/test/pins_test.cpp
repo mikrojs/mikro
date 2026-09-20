@@ -20,6 +20,8 @@ static MIKRuntime* rt;
 static JSContext* ctx;
 
 static void setup() {
+    /* A failed assert jumps past teardown(); free what that test left behind. */
+    if (rt) MIK_FreeRuntime(rt);
     rt = MIK_NewRuntime();
     ctx = MIK_GetJSContext(rt);
     JSValue global = JS_GetGlobalObject(ctx);
@@ -30,6 +32,7 @@ static void setup() {
 
 static void teardown() {
     MIK_FreeRuntime(rt);
+    rt = nullptr;
     TEST_ASSERT_NULL_MESSAGE(MIK_GpioOwner(TEST_GPIO), "runtime teardown should release the GPIO");
 }
 
@@ -37,8 +40,16 @@ static void run(const char* code) {
     JSValue ret = MIK_EvalModuleContent(ctx, "pins_test.js", code, strlen(code));
     if (JS_IsException(ret)) mik_dump_error(ctx);
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "module eval threw");
-    JS_FreeValue(ctx, ret);
     mik__execute_jobs(ctx);
+    /* A throw while the module runs rejects its promise instead of raising here. */
+    bool rejected = JS_PromiseState(ctx, ret) == JS_PROMISE_REJECTED;
+    if (rejected) {
+        JSValue reason = JS_PromiseResult(ctx, ret);
+        mik_dump_error1(ctx, reason);
+        JS_FreeValue(ctx, reason);
+    }
+    JS_FreeValue(ctx, ret);
+    TEST_ASSERT_FALSE_MESSAGE(rejected, "module rejected");
 }
 
 static std::string out() {
@@ -97,7 +108,8 @@ TEST_CASE("a second claim on a GPIO returns GpioInUse", "[gpio]") {
     setup();
     run(R"(
         import {DigitalOut, DigitalIn} from 'mikro/gpio'
-        const first = DigitalOut(TEST_GPIO).orPanic('first')
+        // On globalThis: a module-scope binding is freed once the module has evaluated.
+        globalThis.first = DigitalOut(TEST_GPIO).orPanic('first')
         const second = DigitalIn(TEST_GPIO)
         globalThis.out = JSON.stringify([first.gpio === TEST_GPIO, second.ok, second.error.name,
                                          second.error.owner])
@@ -228,7 +240,7 @@ TEST_CASE("onChange keeps its edge interrupt across a light-sleep GPIO wake", "[
 
     /* The wake source switches the pin to a level interrupt; the timer wakes the chip. */
     run(R"(
-        import {lightSleep} from 'native:mikro/sleep'
+        import {lightSleep} from 'mikro/sleep'
         lightSleep({gpio: TEST_GPIO, level: 'low', timer: 20})
     )");
     loop_passes(2);

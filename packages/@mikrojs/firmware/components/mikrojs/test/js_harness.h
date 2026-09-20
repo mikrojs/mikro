@@ -22,6 +22,8 @@ inline MIKRuntime* rt;
 inline JSContext* ctx;
 
 inline void setup() {
+    /* A failed assert jumps past teardown(); free what that test left behind. */
+    if (rt) MIK_FreeRuntime(rt);
     rt = MIK_NewRuntime();
     ctx = MIK_GetJSContext(rt);
     JSValue global = JS_GetGlobalObject(ctx);
@@ -31,6 +33,7 @@ inline void setup() {
 
 inline void teardown() {
     MIK_FreeRuntime(rt);
+    rt = nullptr;
     TEST_ASSERT_NULL_MESSAGE(MIK_GpioOwner(TEST_GPIO), "runtime teardown should release the GPIO");
 }
 
@@ -38,8 +41,16 @@ inline void run(const char* code) {
     JSValue ret = MIK_EvalModuleContent(ctx, "test.js", code, strlen(code));
     if (JS_IsException(ret)) mik_dump_error(ctx);
     TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "module eval threw");
-    JS_FreeValue(ctx, ret);
     mik__execute_jobs(ctx);
+    /* A throw while the module runs rejects its promise instead of raising here. */
+    bool rejected = JS_PromiseState(ctx, ret) == JS_PROMISE_REJECTED;
+    if (rejected) {
+        JSValue reason = JS_PromiseResult(ctx, ret);
+        mik_dump_error1(ctx, reason);
+        JS_FreeValue(ctx, reason);
+    }
+    JS_FreeValue(ctx, ret);
+    TEST_ASSERT_FALSE_MESSAGE(rejected, "module rejected");
 }
 
 inline std::string out() {
