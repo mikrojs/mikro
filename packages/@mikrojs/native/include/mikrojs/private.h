@@ -203,6 +203,9 @@ struct MIKRuntime {
 void mik__pub_fs_register(JSContext* ctx);
 void mik__stdio_init(JSContext* ctx, JSValue ns);
 void mik__sys_api_init(JSContext* ctx, JSValue ns);
+/* Board name of this build: MIK_BOARD_NAME if defined, else "<chip>-generic"
+ * on device, "generic" on host. Static storage, never NULL. */
+const char* mik__board_name(void);
 void mik__text_encoding_init(JSContext* ctx, JSValue global);
 void mik__abort_init(JSContext* ctx, JSValue global_obj);
 

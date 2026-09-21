@@ -154,7 +154,22 @@ export interface MikroJSWatchdogConfig {
   awake?: number
 }
 
+/** A firmware feature a builtin module can be gated behind. Mirrors the
+ * `feature` gates declared in @mikrojs/native/runtime/modules.json. */
+export type FirmwareFeature = 'wifi' | 'ble' | 'i2s'
+
 export interface MikroJSConfig {
+  /** The board this project targets (e.g. 'esp32c6-generic'). `mikro flash`
+   * uses it when no `--board` flag is given, and so does the reflash that
+   * `mikro deploy --yes` runs over incompatible firmware. */
+  board?: string
+  /** Firmware features the app needs even when no static import shows it
+   * (e.g. an app that only ever import()s mikro/ble). A deploy to firmware
+   * without one of them is refused, the same as for a statically imported
+   * module. Only a direct `import('mikro/ble')` leaves ble optional: a file
+   * of your own that is loaded with import() and imports mikro/ble
+   * statically makes ble required. */
+  features?: FirmwareFeature[]
   /** Behavior after an uncaught exception. Default:
    * `{mode: 'restart', delay: 1000}`. */
   onPanic?: MikroJSPanicAction

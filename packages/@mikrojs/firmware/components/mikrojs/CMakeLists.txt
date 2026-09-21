@@ -200,23 +200,75 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_BUILD_DATE_UTC=\"${_MIK
 
 # Board name from MIKROJS_BOARD env var (set by CI or developer)
 if(DEFINED ENV{MIKROJS_BOARD})
+    # The registry rejects a check-in whose board name has another shape, and
+    # the device keeps it in a 48-byte buffer: a bad name means no OTA updates.
+    string(LENGTH "$ENV{MIKROJS_BOARD}" _MIK_BOARD_NAME_LEN)
+    if(NOT "$ENV{MIKROJS_BOARD}" MATCHES "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$" OR _MIK_BOARD_NAME_LEN GREATER 47)
+        message(FATAL_ERROR
+            "mikrojs: MIKROJS_BOARD is \"$ENV{MIKROJS_BOARD}\". A board name has at most 47 "
+            "characters: lowercase letters, digits, '.' and '-', and it starts and ends with a "
+            "letter or digit.")
+    endif()
     target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_BOARD_NAME=\"$ENV{MIKROJS_BOARD}\"")
 endif()
+
+# ── Module lists derived from runtime/modules.json ───────────────────
+# Feature gating for the derived lists: ble-gated modules compile only when
+# NimBLE is available (see _MIK_BLE_SRCS above), wifi-gated ones only under
+# CONFIG_MIKROJS_WIFI (see _MIK_WIFI_SRCS).
+if(CONFIG_BT_ENABLED)
+    set(_MIK_BLE_FLAG "--ble=on")
+else()
+    set(_MIK_BLE_FLAG "--ble=off")
+endif()
+if(CONFIG_MIKROJS_WIFI)
+    set(_MIK_WIFI_FLAG "--wifi=on")
+else()
+    set(_MIK_WIFI_FLAG "--wifi=off")
+endif()
+
+# Firmware feature list (e.g. "wifi,i2s,ble"), reported in MSG_READY so the
+# host knows which feature-gated builtins this firmware carries.
+execute_process(
+    COMMAND node "${MIK_SCRIPTS_DIR}/modules-list.js" features ${_MIK_BLE_FLAG} ${_MIK_WIFI_FLAG}
+    OUTPUT_VARIABLE _MIK_FEATURES
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _MIK_FEATURES_RESULT
+)
+if(NOT _MIK_FEATURES_RESULT EQUAL 0)
+    message(FATAL_ERROR "modules-list.js features failed")
+endif()
+string(REPLACE ";" "," _MIK_FEATURES "${_MIK_FEATURES}")
+target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_FEATURES=\"${_MIK_FEATURES}\"")
+
+execute_process(
+    COMMAND node "${MIK_SCRIPTS_DIR}/modules-list.js" native ${_MIK_BLE_FLAG} ${_MIK_WIFI_FLAG}
+    OUTPUT_VARIABLE _MIK_MODULES
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _MIK_MODULES_RESULT
+)
+if(NOT _MIK_MODULES_RESULT EQUAL 0)
+    message(FATAL_ERROR "modules-list.js native failed")
+endif()
+execute_process(
+    COMMAND node "${MIK_SCRIPTS_DIR}/modules-list.js" bytecode ${_MIK_BLE_FLAG} ${_MIK_WIFI_FLAG}
+    OUTPUT_VARIABLE _MIK_BYTECODE_MODULES
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _MIK_BYTECODE_RESULT
+)
+if(NOT _MIK_BYTECODE_RESULT EQUAL 0)
+    message(FATAL_ERROR "modules-list.js bytecode failed")
+endif()
+# The lists are read at configure time, so configure must re-run when the
+# table or the script changes.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${MIK_RUNTIME_DIR}/modules.json"
+    "${MIK_SCRIPTS_DIR}/modules-list.js")
 
 # ── Bytecode generation ──────────────────────────────────────────────
 include("${MIK_BYTECODE_CMAKE}")
 
 # Force linker to include self-registering native modules
-set(_MIK_MODULES cbor gpio i2c i2s spi http http_server rtc nvs_kv sntp sleep neopixel pwm uart ota)
-list(APPEND _MIK_MODULES ota_client)
-if(CONFIG_MIKROJS_WIFI)
-    list(APPEND _MIK_MODULES wifi)
-endif()
-set(_MIK_BYTECODE_MODULES abort cbor env result schema fs http/server kv/nvs kv/rtc kv/shared module observable observable/lazy ota ota/client ota/config reader sleep sntp stdio stream sys test udp watchdog)
-if(CONFIG_BT_ENABLED)
-    list(APPEND _MIK_MODULES ble)
-    list(APPEND _MIK_BYTECODE_MODULES ble)
-endif()
 mikrojs_force_include_modules(${_MIK_MODULES})
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${MIK_RUNTIME_DIR}"

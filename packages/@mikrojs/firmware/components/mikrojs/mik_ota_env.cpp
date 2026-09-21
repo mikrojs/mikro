@@ -199,6 +199,7 @@ bool env_identity(void* opaque, MIKDeviceIdentity* out) {
         snprintf(out->firmware_hash + i * 2, 3, "%02x", desc->app_elf_sha256[i]);
     }
     out->bytecode_version = state->bytecode_version;
+    snprintf(out->board, sizeof(out->board), "%s", mik__board_name());
     return true;
 }
 

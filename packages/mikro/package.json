@@ -28,6 +28,7 @@
   "files": [
     "dist",
     "runtime.d.ts",
+    "tsconfig",
     "tsconfig.base.json",
     "!**/__test__",
     "!**/*.test.js",
@@ -41,8 +42,10 @@
       "import": "./dist/_exports/index.js"
     },
     "./ble": {
-      "development": "./src/_exports/ble.ts",
-      "import": "./dist/_exports/ble.js"
+      "mikro:ble": {
+        "development": "./src/_exports/ble.ts",
+        "import": "./dist/_exports/ble.js"
+      }
     },
     "./cbor": {
       "development": "./src/_exports/cbor.ts",
@@ -77,16 +80,20 @@
       "import": "./dist/_exports/http/request.js"
     },
     "./http/server": {
-      "development": "./src/_exports/http/server.ts",
-      "import": "./dist/_exports/http/server.js"
+      "mikro:wifi": {
+        "development": "./src/_exports/http/server.ts",
+        "import": "./dist/_exports/http/server.js"
+      }
     },
     "./i2c": {
       "development": "./src/_exports/i2c.ts",
       "import": "./dist/_exports/i2c.js"
     },
     "./i2s": {
-      "development": "./src/_exports/i2s.ts",
-      "import": "./dist/_exports/i2s.js"
+      "mikro:i2s": {
+        "development": "./src/_exports/i2s.ts",
+        "import": "./dist/_exports/i2s.js"
+      }
     },
     "./inspect": {
       "development": "./src/_exports/inspect.ts",
@@ -174,7 +181,12 @@
       "development": "./src/_exports/test.ts",
       "import": "./dist/_exports/test.js"
     },
-    "./tsconfig": "./tsconfig.base.json",
+    "./tsconfig": "./tsconfig/default.json",
+    "./tsconfig/esp32-generic": "./tsconfig/esp32-generic.json",
+    "./tsconfig/esp32c3-generic": "./tsconfig/esp32c3-generic.json",
+    "./tsconfig/esp32c5-generic": "./tsconfig/esp32c5-generic.json",
+    "./tsconfig/esp32c6-generic": "./tsconfig/esp32c6-generic.json",
+    "./tsconfig/esp32s3-generic": "./tsconfig/esp32s3-generic.json",
     "./uart": {
       "development": "./src/_exports/uart.ts",
       "import": "./dist/_exports/uart.js"
@@ -188,8 +200,10 @@
       "import": "./dist/_exports/watchdog.js"
     },
     "./wifi": {
-      "development": "./src/_exports/wifi.ts",
-      "import": "./dist/_exports/wifi.js"
+      "mikro:wifi": {
+        "development": "./src/_exports/wifi.ts",
+        "import": "./dist/_exports/wifi.js"
+      }
     }
   },
   "publishConfig": {
@@ -205,19 +219,27 @@
       "./observable": "./dist/_exports/observable.js",
       "./observable/operators": "./dist/_exports/observable/operators.js",
       "./i2c": "./dist/_exports/i2c.js",
-      "./i2s": "./dist/_exports/i2s.js",
+      "./i2s": {
+        "mikro:i2s": "./dist/_exports/i2s.js"
+      },
       "./spi": "./dist/_exports/spi.js",
-      "./ble": "./dist/_exports/ble.js",
+      "./ble": {
+        "mikro:ble": "./dist/_exports/ble.js"
+      },
       "./cbor": "./dist/_exports/cbor.js",
       "./http/helpers": "./dist/_exports/http/helpers.js",
       "./http/request": "./dist/_exports/http/request.js",
-      "./http/server": "./dist/_exports/http/server.js",
+      "./http/server": {
+        "mikro:wifi": "./dist/_exports/http/server.js"
+      },
       "./kv/nvs": "./dist/_exports/kv/nvs.js",
       "./kv/rtc": "./dist/_exports/kv/rtc.js",
       "./module": "./dist/_exports/module.js",
       "./sleep": "./dist/_exports/sleep.js",
       "./sntp": "./dist/_exports/sntp.js",
-      "./wifi": "./dist/_exports/wifi.js",
+      "./wifi": {
+        "mikro:wifi": "./dist/_exports/wifi.js"
+      },
       "./sys": "./dist/_exports/sys.js",
       "./format": "./dist/_exports/format.js",
       "./console": "./dist/_exports/console.js",
@@ -229,7 +251,12 @@
       "./schema": "./dist/_exports/schema.js",
       "./sim": "./dist/_exports/sim.js",
       "./test": "./dist/_exports/test.js",
-      "./tsconfig": "./tsconfig.base.json",
+      "./tsconfig": "./tsconfig/default.json",
+      "./tsconfig/esp32-generic": "./tsconfig/esp32-generic.json",
+      "./tsconfig/esp32c3-generic": "./tsconfig/esp32c3-generic.json",
+      "./tsconfig/esp32c5-generic": "./tsconfig/esp32c5-generic.json",
+      "./tsconfig/esp32c6-generic": "./tsconfig/esp32c6-generic.json",
+      "./tsconfig/esp32s3-generic": "./tsconfig/esp32s3-generic.json",
       "./uart": "./dist/_exports/uart.js",
       "./udp": "./dist/_exports/udp.js",
       "./watchdog": "./dist/_exports/watchdog.js",
@@ -238,7 +265,8 @@
     }
   },
   "scripts": {
-    "build:ts": "tsc -p tsconfig.build.json",
+    "build:presets": "node scripts/emit-tsconfig-presets.js",
+    "build:ts": "node scripts/emit-tsconfig-presets.js && tsc -p tsconfig.build.json",
     "publint": "publint",
     "test:device": "DEVICE_TEST=1 vitest run src/cli/lib/__test__/protocol-device.test.ts",
     "typecheck": "tsc --noEmit",
@@ -279,7 +307,8 @@
     "esbuild": "^0.28.2",
     "ink-testing-library": "^4.0.0",
     "terser": "^5.51.2",
-    "tsx": "catalog:"
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   },
   "peerDependencies": {
     "@swc/core": "^1.0.0",

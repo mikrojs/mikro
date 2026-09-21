@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url'
 
 import {afterEach, beforeEach, describe, expect, it} from 'vitest'
 
-import {scaffold, TEMPLATES} from './scaffold.js'
+import {CHIPS, scaffold, TEMPLATES} from './scaffold.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const templatesDir = __dirname + '/templates'
@@ -94,9 +94,9 @@ describe.each(TEMPLATES)('template: $name', ({name}) => {
     expect(pkg.engines).toBeUndefined()
   })
 
-  it('creates tsconfig.json extending the mikro base config', () => {
+  it('creates tsconfig.json extending the default chip preset', () => {
     const tsconfig = JSON.parse(readFileSync(path.join(targetDir, 'tsconfig.json'), 'utf-8'))
-    expect(tsconfig.extends).toBe('mikro/tsconfig')
+    expect(tsconfig.extends).toBe('mikro/tsconfig/esp32c6-generic')
     expect(tsconfig.include).toContain('app/**/*')
     expect(tsconfig.include).toContain('mikro.config.ts')
   })
@@ -158,5 +158,41 @@ describe.each(TEMPLATES)('template: $name', ({name}) => {
       stdio: 'pipe',
       env: {...process.env, NODE_OPTIONS: ''},
     })
+  })
+})
+
+describe('chip option', () => {
+  let tempDir: string
+  let targetDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(path.join(tmpdir(), 'create-mikro-test-options-'))
+    targetDir = path.join(tempDir, 'test-project')
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, {recursive: true, force: true})
+  })
+
+  it('offers exactly the chips the firmware supports', () => {
+    // create-mikro ships standalone, so it keeps its own copy of the list.
+    const {chips} = JSON.parse(
+      readFileSync(path.join(workspaceRoot, 'packages/@mikrojs/firmware/chips.json'), 'utf-8'),
+    ) as {chips: string[]}
+    expect([...CHIPS]).toEqual(chips)
+  })
+
+  it('uses the selected chip for the tsconfig extends', () => {
+    scaffold({
+      targetDir,
+      template: 'blank',
+      projectName: 'test-project',
+      mikroVersion: '0.0.0',
+      templatesDir,
+      pkgManager: 'npm',
+      chip: 'esp32s3',
+    })
+    const tsconfig = JSON.parse(readFileSync(path.join(targetDir, 'tsconfig.json'), 'utf-8'))
+    expect(tsconfig.extends).toBe('mikro/tsconfig/esp32s3-generic')
   })
 })

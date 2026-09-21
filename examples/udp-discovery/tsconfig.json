@@ -1,4 +1,4 @@
 {
-  "extends": "mikro/tsconfig",
+  "extends": "mikro/tsconfig/esp32c6-generic",
   "include": ["env.d.ts", "app/**/*", "scripts/**/*", "mikro.config.ts"]
 }

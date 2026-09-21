@@ -704,7 +704,7 @@ public:
     }
 
     // ── system ─────────────────────────────────────────────────────────────
-    MIKDeviceIdentity dev_id = {"dev-1", "0.16.0", "fwhash", 42};
+    MIKDeviceIdentity dev_id = {"dev-1", "0.16.0", "fwhash", 42, "esp32c6-generic"};
     bool has_storage_free = true;
     size_t storage_free_val = 900000;
     int name_rev = 1;

@@ -14,7 +14,9 @@ const config = {
       ignoreDependencies: ['mikro', 'wrangler'],
     },
     'packages/@mikrojs/firmware': {
-      ignoreDependencies: ['@mikrojs/native', '@mikrojs/quickjs', 'esbuild'],
+      // @mikrojs/native is imported by modules-list.test.js, so knip sees it;
+      // the others are consumed by CMake only.
+      ignoreDependencies: ['@mikrojs/quickjs', 'esbuild'],
       // resolve.js is invoked by CMake, not imported. The ota_host .build/ tree
       // is scratch the gunzip host test generates (gitignored); knip still walks
       // it once the test has run, so the ignore is only redundant on a clean
@@ -77,12 +79,14 @@ const config = {
       // for the symbol-map invocation), not via JS imports — so knip can't
       // see them and we declare them as entries explicitly. gen-checkin-fixtures.js
       // is the same: CMakeLists.txt runs it for the host test build, and so is
-      // gen-schema-fixtures.js.
+      // gen-schema-fixtures.js. modules-list.js is run by both CMake builds at
+      // configure time to derive the builtin module lists from runtime/modules.json.
       entry: [
         'scripts/bundle-runtime.js',
         'scripts/generate-symbol-map.js',
         'scripts/gen-checkin-fixtures.js',
         'scripts/gen-schema-fixtures.js',
+        'scripts/modules-list.js',
       ],
       ignore: ['runtime/**'],
       // node-addon-api, @mikrojs/quickjs: resolved by CMake/node-gyp, not by JS imports

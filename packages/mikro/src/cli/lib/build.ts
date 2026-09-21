@@ -30,6 +30,15 @@ import type {
   MinifyLevel,
 } from '../../_exports/index.js'
 import {isBuiltinModule} from '../../constants.js'
+import {
+  allFeatures,
+  builtinModules,
+  isTableModule,
+  isTypesOnlyModule,
+  moduleFeature,
+  requiredFeatures,
+} from './capabilities.js'
+import {didYouMean} from './didYouMean.js'
 import {UserError} from './errorMessage.js'
 import {loadMikroConfig} from './loadMikroConfig.js'
 import {minifyJs} from './minify.js'
@@ -69,18 +78,42 @@ function loadNative(): Promise<MikrojsNative> {
   return nativePromise
 }
 
+/** How a builtin was imported. Dynamic-only imports never gate a deploy. */
+type BuiltinImportKind = 'static' | 'dynamic'
+
+function unknownModuleError(name: string): string {
+  if (isTypesOnlyModule(name)) {
+    return `'mikro/${name}' exports types only. Import it with \`import type\`.`
+  }
+  const suggestion = didYouMean(name, builtinModules())
+  return (
+    `Unknown module 'mikro/${name}'` +
+    (suggestion === undefined ? '' : `. Did you mean 'mikro/${suggestion}'?`)
+  )
+}
+
 /** esbuild plugin that marks mikrojs firmware builtins as external so the
  * on-device loader resolves them against the baked-in bytecode table instead
  * of esbuild trying to inline their source. Pure-JS `@mikrojs/*` packages
- * (no ./cmake export) fall through to normal resolution and get bundled. */
-function mikrojsExternalsPlugin(): import('esbuild').Plugin {
+ * (no ./cmake export) fall through to normal resolution and get bundled.
+ * `mikro/*` names are validated against the capability table; each resolved
+ * one is reported through `onBuiltinImport` with its import kind. */
+function mikrojsExternalsPlugin(
+  onBuiltinImport?: (name: string, kind: BuiltinImportKind) => void,
+): import('esbuild').Plugin {
   return {
     name: 'mikrojs-externals',
     setup(build) {
-      build.onResolve({filter: /^(mikro$|mikro\/|native:)/}, (args) => ({
-        path: args.path,
-        external: true,
-      }))
+      build.onResolve({filter: /^(mikro$|mikro\/|native:)/}, (args) => {
+        if (args.path.startsWith('mikro/')) {
+          const name = args.path.slice('mikro/'.length)
+          if (!isTableModule(name)) {
+            return {errors: [{text: unknownModuleError(name)}]}
+          }
+          onBuiltinImport?.(name, args.kind === 'dynamic-import' ? 'dynamic' : 'static')
+        }
+        return {path: args.path, external: true}
+      })
       // Any bare package specifier (scoped `@scope/...` or unscoped `name/...`)
       // that resolves to a firmware builtin package is externalized so it binds
       // to the firmware builtin instead of being bundled. Not limited to
@@ -127,10 +160,27 @@ export function entryRootDir(entry: string): string {
   return idx === -1 ? '.' : entry.slice(0, idx)
 }
 
+/** Firmware features the built app needs, derived from its import graph and
+ *  the config's feature floor. Carried on the `features` BuildEvent and the
+ *  pack artifact so deploy can gate against the device's feature set. */
+export interface BuildFeatures {
+  /** Features required by statically imported gated modules. */
+  imported: string[]
+  /** `config.features` floor entries not already covered by an import.
+   *  Gate a deploy like `imported`. */
+  floor: string[]
+  /** Features needed only by dynamic-only import()s. Never gate a deploy
+   *  unless the floor also names them. */
+  optional: string[]
+  /** Feature → statically imported builtin modules that require it. */
+  modules: Record<string, string[]>
+}
+
 export type BuildEvent =
   | {type: 'phase'; phase: string}
   | {type: 'file'; path: string; size: number}
   | {type: 'done'}
+  | ({type: 'features'} & BuildFeatures)
   /** What this build actually resolved to, once mikro.config.ts has been read.
    *  Emitted before any work, so a caller can report the settings that applied
    *  rather than re-deriving them from its own flags and missing the config. */
@@ -148,6 +198,25 @@ export type BuildEvent =
 
 function phase(name: string): Observable<BuildEvent> {
   return of({type: 'phase' as const, phase: name})
+}
+
+function computeFeatures(
+  builtinImports: Map<string, BuiltinImportKind> | undefined,
+  configFloor: readonly string[] | undefined,
+): BuildFeatures {
+  const entries = [...(builtinImports ?? [])]
+  const staticNames = entries.filter(([, kind]) => kind === 'static').map(([name]) => name)
+  const dynamicNames = entries.filter(([, kind]) => kind === 'dynamic').map(([name]) => name)
+  const imported = requiredFeatures(staticNames)
+  const optional = requiredFeatures(dynamicNames).filter((f) => !imported.includes(f))
+  const floorSet = new Set(configFloor ?? [])
+  const floor = allFeatures().filter((f) => floorSet.has(f) && !imported.includes(f))
+  const modules: Record<string, string[]> = {}
+  for (const name of staticNames) {
+    const feature = moduleFeature(name)
+    if (feature !== undefined) (modules[feature] ??= []).push(name)
+  }
+  return {imported, floor, optional, modules}
 }
 
 async function collectOutputFiles(buildDir: string): Promise<BuildEvent[]> {
@@ -185,29 +254,43 @@ function duplicatePackagesEvent(
 }
 
 export async function trace(entries: string[]) {
-  const {fileList, warnings, sourcePathMap, duplicatePackages} = await nodeFileTrace(entries, {
-    analysis: {evaluatePureExpressions: true},
-    conditions: ['import'],
-    assetExtensions: ['.txt'],
-    ts: true,
-    resolve: (id, parent, job) => {
-      if (isBuiltinModule(id)) {
-        return SKIP
-      }
-      // Skip firmware builtin packages (any scope) — they have native code and
-      // a ./cmake export, and resolve to the firmware builtin. Pure JS packages
-      // are traced and bundled normally.
-      if (isFirmwareBuiltin(id)) {
-        return SKIP
-      }
-      return traceResolve(id, parent, job)
-    },
-  })
+  const mikroSpecifiers = new Set<string>()
+  const {fileList, warnings, sourcePathMap, duplicatePackages, dynamicOnlyImports} =
+    await nodeFileTrace(entries, {
+      analysis: {evaluatePureExpressions: true},
+      conditions: ['import'],
+      assetExtensions: ['.txt'],
+      ts: true,
+      resolve: (id, parent, job) => {
+        if (id.startsWith('mikro/')) {
+          mikroSpecifiers.add(id)
+        }
+        if (isBuiltinModule(id)) {
+          return SKIP
+        }
+        // Skip firmware builtin packages (any scope) — they have native code and
+        // a ./cmake export, and resolve to the firmware builtin. Pure JS packages
+        // are traced and bundled normally.
+        if (isFirmwareBuiltin(id)) {
+          return SKIP
+        }
+        return traceResolve(id, parent, job)
+      },
+    })
+  const names = [...mikroSpecifiers].map((id) => id.slice('mikro/'.length))
+  const unknown = names.filter((name) => !isTableModule(name))
+  if (unknown.length > 0) {
+    throw new UserError(unknown.map(unknownModuleError).join('\n'))
+  }
+  const builtinImports = new Map<string, BuiltinImportKind>(
+    names.map((name) => [name, dynamicOnlyImports.has(`mikro/${name}`) ? 'dynamic' : 'static']),
+  )
   return {
     fileList: [...fileList],
     warnings: [...warnings],
     sourcePathMap,
     duplicatePackages,
+    builtinImports,
   }
 }
 
@@ -228,12 +311,15 @@ const DEFAULT_LOG_DIR = '/appfs/logs'
 function serializeRuntimeConfig(config: MikroJSConfig): Record<string, unknown> {
   // `env` is resolved away at load time; drop it defensively so the override
   // map can never leak into the device JSON. `otaConfigSchema` is host-only
-  // (the config schema ships in the manifest, not here).
+  // (the config schema ships in the manifest, not here). `board` and
+  // `features` steer flash/build on the host and must not reach the device.
   const {
     sim: _sim,
     build: _build,
     env: _env,
     otaConfigSchema: _otaConfigSchema,
+    board: _board,
+    features: _features,
     wifi,
     logFile,
     fsReadMax,
@@ -314,37 +400,44 @@ export function build(
           ? entryJs
           : pathlib.join(rootDir, entryJs)
 
+      // Populated by whichever write path runs; read by the features event
+      // emitted after it.
+      let builtinImports: Map<string, BuiltinImportKind> | undefined
+
       const writeFilesUnbundled = defer(() => trace([entry])).pipe(
-        mergeMap(({warnings, fileList, sourcePathMap, duplicatePackages}) => {
-          if (warnings?.length > 0) {
-            return throwError(() => new Error([...warnings].map((w) => w.message).join('\n')))
-          }
-          const writes = from(fileList).pipe(
-            mergeMap(async (file) => {
-              // Use sourcePathMap to read from the real path on disk when the
-              // output path is a virtual path (e.g. pnpm transitive dependencies)
-              const sourcePath = sourcePathMap.get(file) ?? file
-              return transform(file, await readFile(sourcePath), {
-                minify: options.minify,
-                minifier,
-                minifyLevel,
-                pureFuncs,
-              })
-            }),
-            mergeMap(({path: filePath, contents}) => {
-              // Place files outside rootDir (e.g. node_modules/ when rootDir
-              // is a subdirectory) inside rootDir so the on-device module
-              // resolver can find them when walking up from the entry.
-              const outputPath =
-                rootDir === '.' || filePath.startsWith(rootDir + '/')
-                  ? filePath
-                  : pathlib.join(rootDir, filePath)
-              return output(buildDir, outputPath, contents)
-            }),
-            ignoreElements(),
-          )
-          return concat(duplicatePackagesEvent(duplicatePackages, rootDir), writes)
-        }),
+        mergeMap(
+          ({warnings, fileList, sourcePathMap, duplicatePackages, builtinImports: traced}) => {
+            builtinImports = traced
+            if (warnings?.length > 0) {
+              return throwError(() => new Error([...warnings].map((w) => w.message).join('\n')))
+            }
+            const writes = from(fileList).pipe(
+              mergeMap(async (file) => {
+                // Use sourcePathMap to read from the real path on disk when the
+                // output path is a virtual path (e.g. pnpm transitive dependencies)
+                const sourcePath = sourcePathMap.get(file) ?? file
+                return transform(file, await readFile(sourcePath), {
+                  minify: options.minify,
+                  minifier,
+                  minifyLevel,
+                  pureFuncs,
+                })
+              }),
+              mergeMap(({path: filePath, contents}) => {
+                // Place files outside rootDir (e.g. node_modules/ when rootDir
+                // is a subdirectory) inside rootDir so the on-device module
+                // resolver can find them when walking up from the entry.
+                const outputPath =
+                  rootDir === '.' || filePath.startsWith(rootDir + '/')
+                    ? filePath
+                    : pathlib.join(rootDir, filePath)
+                return output(buildDir, outputPath, contents)
+              }),
+              ignoreElements(),
+            )
+            return concat(duplicatePackagesEvent(duplicatePackages, rootDir), writes)
+          },
+        ),
       )
 
       const writeFilesBundled = defer(async () => {
@@ -357,23 +450,44 @@ export function build(
         // siblings, so relative() gives us clean, prefix-free paths.
         const virtualOutdir = pathlib.resolve(process.cwd(), '__mikro_bundle_out__')
         const entryDir = pathlib.dirname(entry)
-        const result = await esbuild.build({
-          entryPoints: [entry],
-          bundle: true,
-          splitting: true,
-          outdir: virtualOutdir,
-          outbase: entryDir,
-          write: false,
-          minify: useEsbuildMinify,
-          treeShaking: true,
-          target: 'es2024',
-          platform: 'neutral',
-          format: 'esm',
-          legalComments: 'none',
-          logLevel: 'silent',
-          plugins: [mikrojsExternalsPlugin()],
-          ...(pureFuncs.length > 0 ? {pure: pureFuncs} : undefined),
-        })
+        const bundleImports = new Map<string, BuiltinImportKind>()
+        builtinImports = bundleImports
+        const result = await esbuild
+          .build({
+            entryPoints: [entry],
+            // esbuild's service keeps the cwd it was started with; a later
+            // build from another directory (tests, a multi-project session)
+            // would resolve the entry against the stale one.
+            absWorkingDir: process.cwd(),
+            bundle: true,
+            splitting: true,
+            outdir: virtualOutdir,
+            outbase: entryDir,
+            write: false,
+            minify: useEsbuildMinify,
+            treeShaking: true,
+            target: 'es2024',
+            platform: 'neutral',
+            format: 'esm',
+            legalComments: 'none',
+            logLevel: 'silent',
+            plugins: [
+              mikrojsExternalsPlugin((name, kind) => {
+                // Static wins: a module imported both ways gates like a static one.
+                if (kind === 'static' || !bundleImports.has(name)) bundleImports.set(name, kind)
+              }),
+            ],
+            ...(pureFuncs.length > 0 ? {pure: pureFuncs} : undefined),
+          })
+          .catch((err: unknown) => {
+            // esbuild rejects with its own error carrying the message array;
+            // rethrow just the texts so plugin errors surface cleanly.
+            const errors = (err as {errors?: {text: string}[]} | null)?.errors
+            if (errors && errors.length > 0) {
+              throw new UserError(errors.map((e) => e.text).join('\n'))
+            }
+            throw err
+          })
         if (result.errors.length > 0) {
           throw new UserError(result.errors.map((e) => e.text).join('\n'))
         }
@@ -479,6 +593,10 @@ export function build(
         phase(shouldBundle ? 'Bundling' : 'Tracing imports'),
         defer(() => rm(buildDir, {force: true, recursive: true})).pipe(ignoreElements()),
         writeFiles,
+        // After writeFiles: both write paths populate builtinImports as they run.
+        defer(() =>
+          of<BuildEvent>({type: 'features', ...computeFeatures(builtinImports, config?.features)}),
+        ),
         writePackageJson.pipe(ignoreElements()),
         writeConfig.pipe(ignoreElements()),
         writeStatic.pipe(ignoreElements()),
@@ -554,32 +672,39 @@ export function buildTests(
       }
       const entryOutputs = entries.map(toOutputPath)
 
+      // Populated by the trace inside writeFiles; read by the features event
+      // emitted after it.
+      let builtinImports: Map<string, BuiltinImportKind> | undefined
+
       const writeFiles = defer(() => trace(entries)).pipe(
-        mergeMap(({warnings, fileList, sourcePathMap, duplicatePackages}) => {
-          if (warnings?.length > 0) {
-            return throwError(() => new Error([...warnings].map((w) => w.message).join('\n')))
-          }
-          const writes = from(fileList).pipe(
-            mergeMap(async (file) => {
-              const sourcePath = sourcePathMap.get(file) ?? file
-              return transform(file, await readFile(sourcePath), {
-                minify: options.minify,
-                minifier,
-                minifyLevel,
-                pureFuncs,
-              })
-            }),
-            mergeMap(({path: filePath, contents}) => {
-              const outputPath =
-                rootDir === '.' || filePath.startsWith(rootDir + '/')
-                  ? filePath
-                  : pathlib.join(rootDir, filePath)
-              return output(buildDir, outputPath, contents)
-            }),
-            ignoreElements(),
-          )
-          return concat(duplicatePackagesEvent(duplicatePackages, rootDir), writes)
-        }),
+        mergeMap(
+          ({warnings, fileList, sourcePathMap, duplicatePackages, builtinImports: traced}) => {
+            builtinImports = traced
+            if (warnings?.length > 0) {
+              return throwError(() => new Error([...warnings].map((w) => w.message).join('\n')))
+            }
+            const writes = from(fileList).pipe(
+              mergeMap(async (file) => {
+                const sourcePath = sourcePathMap.get(file) ?? file
+                return transform(file, await readFile(sourcePath), {
+                  minify: options.minify,
+                  minifier,
+                  minifyLevel,
+                  pureFuncs,
+                })
+              }),
+              mergeMap(({path: filePath, contents}) => {
+                const outputPath =
+                  rootDir === '.' || filePath.startsWith(rootDir + '/')
+                    ? filePath
+                    : pathlib.join(rootDir, filePath)
+                return output(buildDir, outputPath, contents)
+              }),
+              ignoreElements(),
+            )
+            return concat(duplicatePackagesEvent(duplicatePackages, rootDir), writes)
+          },
+        ),
       )
 
       const writePackageJson = defer(async () => {
@@ -644,6 +769,9 @@ export function buildTests(
         phase('Tracing imports'),
         defer(() => rm(buildDir, {force: true, recursive: true})).pipe(ignoreElements()),
         writeFiles,
+        defer(() =>
+          of<BuildEvent>({type: 'features', ...computeFeatures(builtinImports, config?.features)}),
+        ),
         writePackageJson.pipe(ignoreElements()),
         writeConfig.pipe(ignoreElements()),
         writeStatic.pipe(ignoreElements()),

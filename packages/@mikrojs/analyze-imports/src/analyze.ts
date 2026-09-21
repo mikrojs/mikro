@@ -19,6 +19,10 @@ globalBindings['globalThis'] = globalBindings
 
 export interface AnalyzeResult {
   imports: Set<string>
+  /** Specifiers imported via static declarations (import/export-from). */
+  staticImports: Set<string>
+  /** Specifiers imported via dynamic import() expressions. */
+  dynamicImports: Set<string>
 }
 
 export default async function analyze(
@@ -27,6 +31,8 @@ export default async function analyze(
   job: Tracer,
 ): Promise<AnalyzeResult> {
   const imports = new Set<string>()
+  const staticImports = new Set<string>()
+  const dynamicImports = new Set<string>()
 
   // remove shebang
   code = code.replace(/^#![^\n\r]*[\r\n]/, '')
@@ -43,17 +49,26 @@ export default async function analyze(
     job.warnings.add(
       new Error(`Failed to parse ${id} as module:\n${e instanceof Error ? e.message : String(e)}`),
     )
-    return {imports}
+    return {imports, staticImports, dynamicImports}
   }
 
   // Process top-level ESM declarations
   if (isAst(ast)) {
     for (const decl of ast.body as Node[]) {
+      // `import type` / `export type ... from` is erased by every TypeScript
+      // transform, so nothing is imported. Inline `type` specifiers do not
+      // qualify: verbatimModuleSyntax keeps those as a side-effect import.
+      if (decl.importKind === 'type' || decl.exportKind === 'type') continue
       if (decl.type === 'ImportDeclaration') {
         const source = String(decl.source.value)
         imports.add(source)
+        staticImports.add(source)
       } else if (decl.type === 'ExportNamedDeclaration' || decl.type === 'ExportAllDeclaration') {
-        if (decl.source) imports.add(String(decl.source.value))
+        if (decl.source) {
+          const source = String(decl.source.value)
+          imports.add(source)
+          staticImports.add(source)
+        }
       }
     }
   }
@@ -83,9 +98,16 @@ export default async function analyze(
 
     if ('value' in computed && typeof computed.value === 'string') {
       imports.add(computed.value)
+      dynamicImports.add(computed.value)
     } else if ('ifTrue' in computed) {
-      if (typeof computed.ifTrue === 'string') imports.add(computed.ifTrue)
-      if (typeof computed.else === 'string') imports.add(computed.else)
+      if (typeof computed.ifTrue === 'string') {
+        imports.add(computed.ifTrue)
+        dynamicImports.add(computed.ifTrue)
+      }
+      if (typeof computed.else === 'string') {
+        imports.add(computed.else)
+        dynamicImports.add(computed.else)
+      }
     }
   }
 
@@ -102,7 +124,7 @@ export default async function analyze(
     },
   })
 
-  return {imports}
+  return {imports, staticImports, dynamicImports}
 }
 
 function isAst(ast: unknown): ast is Ast {

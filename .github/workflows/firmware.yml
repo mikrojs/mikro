@@ -66,4 +66,4 @@ jobs:
         with:
           target: ${{ matrix.target }}
           pack-format: tarball
-          artifact-name: mikrojs-firmware-${{ matrix.target }}
+          artifact-name: mikrojs-firmware-${{ matrix.target }}-generic

@@ -15,7 +15,8 @@ import {lastValueFrom, toArray} from 'rxjs'
 import {afterEach, beforeEach, describe, expect, it} from 'vitest'
 
 import type {LogLevel, MikroEnv} from '../../../_exports/index.js'
-import {build, type BuildEvent, entryRootDir} from '../build.js'
+import {build, type BuildEvent, buildTests, entryRootDir} from '../build.js'
+import {UserError} from '../errorMessage.js'
 
 function listFiles(dir: string): string[] {
   return (readdirSync(dir, {recursive: true}) as string[])
@@ -258,5 +259,161 @@ describe('build', () => {
     await expect(runBuild('app/main.ts', buildDir)).rejects.toThrow(
       /^Failed to resolve dependency "lalala"/,
     )
+  })
+
+  // `board` and `features` steer flash/build on the host; leaking them
+  // would land them in device RAM via mikro.config.json on every boot.
+  it('strips board and features from the deployed runtime config', async () => {
+    writeFileSync(
+      pathlib.join(tempDir, 'mikro.config.ts'),
+      `export default {board: 'esp32c6-generic', features: ['ble'], wifi: {country: 'NO'}}\n`,
+    )
+    const buildDir = pathlib.join(tempDir, 'out-host-only')
+    await runBuild('app/main.ts', buildDir)
+
+    const runtime = JSON.parse(
+      readFileSync(pathlib.join(buildDir, 'app', 'mikro.config.json'), 'utf-8'),
+    )
+    expect(runtime.board).toBeUndefined()
+    expect(runtime.features).toBeUndefined()
+    expect(runtime['wifi.country']).toBe('NO')
+  })
+
+  async function runBuildEvents(entry: string, buildDir: string): Promise<BuildEvent[]> {
+    return lastValueFrom(build(entry, buildDir, {minify: false, bytecode: false}).pipe(toArray()))
+  }
+
+  function featuresEvent(events: BuildEvent[]) {
+    return events.find((e) => e.type === 'features')
+  }
+
+  it('derives required features from static imports and optional from dynamic-only', async () => {
+    writeFileSync(
+      pathlib.join(tempDir, 'app', 'main.ts'),
+      `import {wifi} from 'mikro/wifi'\n` +
+        `export async function go() {\n` +
+        `  const ble = await import('mikro/ble')\n` +
+        `  return [wifi, ble]\n` +
+        `}\n`,
+    )
+    const events = await runBuildEvents('app/main.ts', pathlib.join(tempDir, 'out-feat'))
+    expect(featuresEvent(events)).toEqual({
+      type: 'features',
+      imported: ['wifi'],
+      floor: [],
+      optional: ['ble'],
+      modules: {wifi: ['wifi']},
+    })
+  })
+
+  it('ignores type-only imports: no feature required, no unknown-module error', async () => {
+    writeFileSync(
+      pathlib.join(tempDir, 'app', 'main.ts'),
+      `import type {BleError} from 'mikro/ble'\n` +
+        `import type {FormatOptions} from 'mikro/format'\n` +
+        `export type {WifiError} from 'mikro/wifi'\n` +
+        `export const e: BleError | FormatOptions | undefined = undefined\n`,
+    )
+    const events = await runBuildEvents('app/main.ts', pathlib.join(tempDir, 'out-type-only'))
+    expect(featuresEvent(events)).toEqual({
+      type: 'features',
+      imported: [],
+      floor: [],
+      optional: [],
+      modules: {},
+    })
+  })
+
+  it('reports the config feature floor minus already-imported features', async () => {
+    writeFileSync(
+      pathlib.join(tempDir, 'mikro.config.ts'),
+      `export default {features: ['ble', 'wifi']}\n`,
+    )
+    writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), `import 'mikro/wifi'\n`)
+    const events = await runBuildEvents('app/main.ts', pathlib.join(tempDir, 'out-floor'))
+    expect(featuresEvent(events)).toEqual({
+      type: 'features',
+      imported: ['wifi'],
+      floor: ['ble'],
+      optional: [],
+      modules: {wifi: ['wifi']},
+    })
+  })
+
+  it('buildTests emits the same features derivation as build', async () => {
+    writeFileSync(
+      pathlib.join(tempDir, 'app', 'debug', 'test.ts'),
+      `import 'mikro/wifi'\n` +
+        `export async function go() {\n` +
+        `  return import('mikro/ble')\n` +
+        `}\n`,
+    )
+    const events = await lastValueFrom(
+      buildTests(['app/debug/test.ts'], pathlib.join(tempDir, 'out-tests'), {
+        minify: false,
+        bytecode: false,
+        rootDir: 'app',
+      }).pipe(toArray()),
+    )
+    expect(featuresEvent(events)).toEqual({
+      type: 'features',
+      imported: ['wifi'],
+      floor: [],
+      optional: ['ble'],
+      modules: {wifi: ['wifi']},
+    })
+  })
+
+  it('errors on unknown mikro/* imports with a suggestion', async () => {
+    writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), `import 'mikro/wify'\n`)
+    const failure = runBuild('app/main.ts', pathlib.join(tempDir, 'out-unknown'))
+    await expect(failure).rejects.toThrow("Unknown module 'mikro/wify'. Did you mean 'mikro/wifi'?")
+    // A typo is the user's to fix, so it must not print as a crash.
+    await expect(failure).rejects.toBeInstanceOf(UserError)
+  })
+
+  it('names a value import of a types-only subpath as such', async () => {
+    // verbatimModuleSyntax keeps an inline `type` specifier as a side-effect
+    // import, so this reaches the device loader unless the build refuses it.
+    writeFileSync(
+      pathlib.join(tempDir, 'app', 'main.ts'),
+      `import {type FormatOptions} from 'mikro/format'\n` +
+        `export const o: FormatOptions | undefined = undefined\n`,
+    )
+    await expect(runBuild('app/main.ts', pathlib.join(tempDir, 'out-types-only'))).rejects.toThrow(
+      "'mikro/format' exports types only. Import it with `import type`.",
+    )
+  })
+
+  it('validates and derives features in bundle mode too', async () => {
+    writeFileSync(
+      pathlib.join(tempDir, 'app', 'main.ts'),
+      `import {wifi} from 'mikro/wifi'\nexport const w = wifi\n`,
+    )
+    const events = await lastValueFrom(
+      build('app/main.ts', pathlib.join(tempDir, 'out-bundle'), {
+        minify: false,
+        bytecode: false,
+        bundle: true,
+      }).pipe(toArray()),
+    )
+    expect(featuresEvent(events)).toEqual({
+      type: 'features',
+      imported: ['wifi'],
+      floor: [],
+      optional: [],
+      modules: {wifi: ['wifi']},
+    })
+
+    writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), `import 'mikro/wify'\n`)
+    await expect(
+      lastValueFrom(
+        build('app/main.ts', pathlib.join(tempDir, 'out-bundle-unknown'), {
+          minify: false,
+          bytecode: false,
+          bundle: true,
+        }),
+      ),
+    ).rejects.toThrow("Unknown module 'mikro/wify'")
   })
 })

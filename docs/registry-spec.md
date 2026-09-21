@@ -565,6 +565,7 @@ Request body:
 | `firmware`     | string (semver)                             | Firmware version                                                                                          |
 | `firmwareHash` | string                                      | Firmware build hash                                                                                       |
 | `bytecode`     | integer                                     | Bytecode version the device can load                                                                      |
+| `board`        | string, optional                            | Board name of the firmware build (e.g. `esp32c6-generic`)                                                 |
 | `running`      | map `{checksum?, version?, trial}`          | The build executing right now                                                                             |
 | `lastInstall`  | map `{reason, detail?}`, optional           | Diagnostic from a failed install, sent once                                                               |
 | `lastDecline`  | map `{checksum, reason, detail?}`, optional | Why the last offered build was not taken, sent once (see Declined offers)                                 |
@@ -580,14 +581,21 @@ Every field here is untrusted input that ends up in a stored record, so validate
 cap the lengths rather than storing whatever arrives. The reference implementation answers `400`
 with `{"error": "Invalid <field>"}` for a malformed field instead of dropping it silently. It
 requires `running.checksum` to match `^[0-9a-f]{64}$`; `running.version` and `firmware` to be at
-most 64 characters; `bytecode` to be an integer; `lastInstall` to be exactly `{reason, detail?}`
-with `reason` at most 64 characters and `detail` at most 256, with unknown keys dropped;
+most 64 characters; `bytecode` to be an integer; `board` to be at most 64 characters and match
+the board-name format below; `lastInstall` to be exactly `{reason, detail?}` with `reason` at
+most 64 characters and `detail` at most 256, with unknown keys dropped;
 `lastDecline` to be exactly `{checksum, reason, detail?}` with the same caps as `lastInstall` and
 a `checksum` matching `^[0-9a-f]{64}$`; `name` at most 64 characters; `configRev` at most 64
 characters; and `configError` to be exactly
 `{rev, message, path?}` with `rev` at most 64, `message` at most 256, `path` at most 64, and
 unknown keys dropped. `deviceId` at enrollment is capped at 128 characters. A `400` is not
 a `401`, so the device keeps its update key and its normal cadence.
+
+**Board names.** `board` names the board the firmware was built for: lowercase, matching
+`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`. A generic per-chip build reports `<chip>-generic` (e.g.
+`esp32c6-generic`). `+` is not part of a board name: a registry answers `400` to it. A check-in
+without `board` is firmware that predates the field, and stays valid. The Mikro.js firmware build
+accepts a name of at most 47 characters, because the device keeps it in a 48-byte buffer.
 
 `free` stops a registry offering a build the device has no room for. Without it, that failure
 shows up only once the download is under way and the staging write hits a full filesystem.

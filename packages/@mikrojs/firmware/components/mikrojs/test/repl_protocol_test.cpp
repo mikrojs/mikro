@@ -143,6 +143,10 @@ TEST_CASE("CMD_HELLO triggers MSG_READY", "[repl_protocol]") {
                              "MSG_READY should contain chip info");
     TEST_ASSERT_TRUE_MESSAGE(ready->payload.find("v") != std::string::npos,
                              "MSG_READY should contain firmware version");
+    TEST_ASSERT_TRUE_MESSAGE(ready->payload.find("board") != std::string::npos,
+                             "MSG_READY should contain the board name");
+    TEST_ASSERT_TRUE_MESSAGE(ready->payload.find("features") != std::string::npos,
+                             "Device builds define MIK_FW_FEATURES, so MSG_READY lists features");
 }
 
 TEST_CASE("Protocol exits on CMD_EXIT", "[repl_protocol]") {

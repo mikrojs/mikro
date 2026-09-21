@@ -5,6 +5,7 @@ import {
   concat,
   defer,
   EMPTY,
+  firstValueFrom,
   ignoreElements,
   map,
   merge,
@@ -22,11 +23,13 @@ import {
 import {exhaustMapWithTrailing} from 'rxjs-exhaustmap-with-trailing'
 
 import type {LogLevel, Minifier, MinifyLevel} from '../../../_exports/index.js'
-import {build} from '../build.js'
+import {build, type BuildFeatures} from '../build.js'
 import {writeDevManifest} from '../configSchema.js'
 import {collectFiles, loadEnvFiles, validateNvsKeys} from '../deploy.js'
 import {formatDeployEvent} from '../deployProgress.js'
 import {formatDuplicatePackagesNotice} from '../duplicatePackages.js'
+import {UserError} from '../errorMessage.js'
+import {missingFeaturesError} from '../featureGate.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {getMikroDir, resolveProjectRoot} from '../projectRoot.js'
 import {getPredeployCommands, runHooks} from '../runHooks.js'
@@ -184,6 +187,7 @@ export function createDevSession(options: {
   function buildAndDeploy$(trigger: Trigger): Observable<DevSessionState> {
     const buildStatus: DevStatus = trigger.isInitial ? {type: 'building'} : {type: 'rebuilding'}
     let notice: string | undefined
+    let features: BuildFeatures | undefined
 
     return concat(
       // Build phase
@@ -200,6 +204,7 @@ export function createDevSession(options: {
       }).pipe(
         tap({
           next: (event) => {
+            if (event.type === 'features') features = event
             if (event.type === 'duplicatePackages') {
               notice = formatDuplicatePackagesNotice(event.packages)
             }
@@ -223,6 +228,12 @@ export function createDevSession(options: {
 
       // Deploy phase
       defer(async () => {
+        // Same gate as `mikro deploy`: refuse to ship an app whose static
+        // imports need a firmware feature the device lacks. The ready
+        // handshake is cached, so session.deploy below reuses it.
+        const ready = await firstValueFrom(session.awaitReady$())
+        const gateError = missingFeaturesError(features, ready)
+        if (gateError !== undefined) throw new UserError(gateError)
         // The manifest (for ota.config()'s defaults) rides the file sync.
         await writeDevManifest({projectRoot, buildDir})
         const files = await collectFiles(buildDir)

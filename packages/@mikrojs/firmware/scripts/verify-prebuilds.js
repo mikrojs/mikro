@@ -25,8 +25,8 @@ const required = [
 const missing = []
 for (const chip of chips) {
   for (const file of required) {
-    const path = join(prebuildsDir, chip, file)
-    if (!existsSync(path)) missing.push(`${chip}/${file}`)
+    const path = join(prebuildsDir, `${chip}-generic`, file)
+    if (!existsSync(path)) missing.push(`${chip}-generic/${file}`)
   }
 }
 

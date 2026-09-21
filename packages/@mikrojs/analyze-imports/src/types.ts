@@ -82,4 +82,7 @@ export interface NodeFileTraceResult {
   // Populated for pnpm transitive dependencies that are remapped
   // from the pnpm store to virtual nested node_modules paths.
   sourcePathMap: Map<string, string>
+  // Raw specifiers imported ONLY via dynamic import() across the traced
+  // graph. A specifier also imported statically anywhere is not listed.
+  dynamicOnlyImports: Set<string>
 }

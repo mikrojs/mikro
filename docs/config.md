@@ -188,6 +188,60 @@ console.log(`[mem] heap: ${m.heapUsed}`)
 Setting a higher log level (such as `debug`) keeps more console calls in the bundle. Each call site adds string formatting, template literal evaluation, and argument allocation at runtime. On memory-constrained devices this extra work can push the QuickJS heap past its limit and cause `InternalError: out of memory`. If you need verbose logging on a tight device, add it incrementally and monitor heap usage with `/mem` in the REPL.
 :::
 
+## Target options {#target}
+
+Options that tell the CLI which board and firmware the project is for. They are read on the host and stripped from the config before deploying.
+
+| Option     | Type                           | Default | Description                                            |
+| ---------- | ------------------------------ | ------- | ------------------------------------------------------ |
+| `board`    | `string`                       | none    | The board this project targets, e.g. `esp32c6-generic` |
+| `features` | `('wifi' \| 'ble' \| 'i2s')[]` | none    | Firmware features the app needs beyond its imports     |
+
+### `board` {#board}
+
+`mikro flash` picks the board in this order: the `--board` flag, then `board` from the config, then the project's board package when `package.json` lists exactly one. When none of them applies, the CLI detects the chip and uses its generic board, `<chip>-generic`.
+
+A name is looked up among the boards of your board packages first, then among the generic boards. Before it writes anything, `mikro flash` checks that the connected chip matches the board and stops if it does not.
+
+### `features` {#features}
+
+Four modules each need a firmware feature:
+
+| Module              | Feature |
+| ------------------- | ------- |
+| `mikro/wifi`        | `wifi`  |
+| `mikro/http/server` | `wifi`  |
+| `mikro/ble`         | `ble`   |
+| `mikro/i2s`         | `i2s`   |
+
+The build works out which features the app needs from its imports, and `mikro deploy`, `mikro dev` and `mikro test` stop when the connected firmware lacks one of them. The stock firmware has all three, so this only comes up with custom firmware that leaves a feature out.
+
+An import counts when it is a static `import`. A module that the app only ever loads with `import('mikro/ble')` does not count, so the deploy goes through and the `import()` fails on a device without BLE. List the feature in `features` when the app cannot do without it:
+
+```ts
+import {defineConfig} from 'mikro'
+
+export default defineConfig({
+  features: ['ble'],
+})
+```
+
+Firmware that predates feature reporting is never checked.
+
+### TypeScript presets {#tsconfig-presets}
+
+The types of `mikro/wifi`, `mikro/ble`, `mikro/i2s` and `mikro/http/server` resolve only when the project's `tsconfig.json` grants their feature. Extend the preset for your chip:
+
+```json
+{
+  "extends": "mikro/tsconfig/esp32c6-generic"
+}
+```
+
+There is one preset per chip (`esp32-generic`, `esp32c3-generic`, `esp32c5-generic`, `esp32c6-generic`, `esp32s3-generic`). The bare `mikro/tsconfig` grants every feature.
+
+The presets grant features through `customConditions`. If your own `tsconfig.json` sets `customConditions`, it replaces the preset's list, so add the conditions you need to it: `mikro:wifi`, `mikro:ble`, `mikro:i2s`. Without them, an import of `mikro/wifi` reports "Cannot find module".
+
 ## Simulator options {#sim}
 
 Simulator-specific options. These are stripped from the config before deploying to a real device.

@@ -37,6 +37,32 @@ describe('unit tests', () => {
   }
 })
 
+describe('dynamicOnlyImports', () => {
+  it('reports specifiers imported only via import()', async () => {
+    const unitPath = join(testDir, 'esm-dynamic-import')
+    const {dynamicOnlyImports} = await nodeFileTrace([join(unitPath, 'input.js')], {
+      processCwd: unitPath,
+      base: unitPath,
+    })
+
+    expect([...dynamicOnlyImports]).toEqual(['./dep.js'])
+  })
+
+  it('does not report specifiers that are also imported statically', async () => {
+    const unitPath = join(testDir, 'esm-paths')
+    const {dynamicOnlyImports} = await nodeFileTrace([join(unitPath, 'input.js')], {
+      processCwd: process.cwd(),
+      base: pkgDir,
+      paths: {
+        dep: join(testDir, 'esm-paths/esm-dep.js'),
+        'dep/': join(testDir, 'esm-paths-trailer/'),
+      },
+    })
+
+    expect([...dynamicOnlyImports]).toEqual([])
+  })
+})
+
 describe('assetExtensions', () => {
   it('should include asset files but not parse them for imports', async () => {
     const unitPath = join(testDir, 'asset-extensions')

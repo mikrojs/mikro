@@ -126,6 +126,12 @@ export interface ReadyEvent {
   /** The `memReserved` the device booted with, which set `mem_limit`. Lets the
    *  host spot a device still running a config older than the project's. */
   memReserved?: number | undefined
+  /** Board the firmware was built for (e.g. 'esp32c6-generic'). Absent on
+   *  firmware predating board reporting. */
+  board?: string | undefined
+  /** Firmware features compiled in (e.g. ['wifi', 'i2s']). Absent on legacy
+   *  firmware, which callers treat as unknown: no feature gating. */
+  features?: string[] | undefined
   advisory?: FirmwareAdvisory | null
 }
 
@@ -1289,6 +1295,8 @@ function frameToEvent(frame: Frame): ReplEvent | null {
       let heapFree: number | undefined
       let systemFree: number | undefined
       let memReserved: number | undefined
+      let board: string | undefined
+      let features: string[] | undefined
       try {
         const info = decodeCbor(msg.payload) as {
           chip?: string
@@ -1299,6 +1307,8 @@ function frameToEvent(frame: Frame): ReplEvent | null {
           heapFree?: number
           sysFree?: number
           memRes?: number
+          board?: string
+          features?: string[]
         }
         chip = info.chip ?? null
         id = info.id ?? null
@@ -1313,6 +1323,10 @@ function frameToEvent(frame: Frame): ReplEvent | null {
         heapFree = typeof info.heapFree === 'number' ? info.heapFree : undefined
         systemFree = typeof info.sysFree === 'number' ? info.sysFree : undefined
         memReserved = typeof info.memRes === 'number' ? info.memRes : undefined
+        board = typeof info.board === 'string' ? info.board : undefined
+        features = Array.isArray(info.features)
+          ? info.features.filter((f): f is string => typeof f === 'string')
+          : undefined
       } catch {
         // ignore
       }
@@ -1328,6 +1342,8 @@ function frameToEvent(frame: Frame): ReplEvent | null {
         heapFree,
         systemFree,
         memReserved,
+        board,
+        features,
       }
     }
     case 'log':

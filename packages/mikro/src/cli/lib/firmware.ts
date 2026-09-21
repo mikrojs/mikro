@@ -136,7 +136,9 @@ function selectReleaseAsset(
   board: string | undefined,
   repo: string,
 ): ReleaseAsset {
-  // Try board-specific
+  // Try board-specific. For generic boards this is
+  // mikrojs-firmware-<chip>-generic.tar.gz; releases predating generic
+  // naming only ship the chip asset, which the chip fallback covers.
   if (board) {
     const boardAsset = assets.find((a) => a.name === getBoardAssetName(board))
     if (boardAsset) return boardAsset
@@ -240,7 +242,8 @@ function selectWorkflowArtifact(
   board: string | undefined,
   repo: string,
 ): WorkflowArtifact {
-  // Try board-specific
+  // Try board-specific (generic boards: firmware-<chip>-generic, with the
+  // chip candidates below as the legacy fallback)
   if (board) {
     const names = artifactNameCandidates(board)
     const boardArtifact = artifacts.find((a) => names.includes(a.name))

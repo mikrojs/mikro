@@ -12,7 +12,7 @@ const testDir = pathlib.join(here, '../test')
 // observed from inside a test file.
 const NOT_CENSUSED = new Set([
   './package.json',
-  './tsconfig',
+  './tsconfig', // and the ./tsconfig/<preset> entries, filtered below
   './runtime', // host-side build entry
   './sim', // host-side simulator stubs
   './console', // type-only shim; console is a global
@@ -26,7 +26,9 @@ function censusFile(specifier: string): string {
 }
 
 const pkg = JSON.parse(readFileSync(pathlib.join(root, 'packages/mikro/package.json'), 'utf-8'))
-const specifiers = Object.keys(pkg.exports).filter((k) => k !== '.' && !NOT_CENSUSED.has(k))
+const specifiers = Object.keys(pkg.exports).filter(
+  (k) => k !== '.' && !NOT_CENSUSED.has(k) && !k.startsWith('./tsconfig/'),
+)
 
 test('every public builtin has a census file', () => {
   const missing = specifiers.filter((s) => !existsSync(pathlib.join(testDir, censusFile(s))))

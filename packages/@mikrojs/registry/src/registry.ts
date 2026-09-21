@@ -116,6 +116,10 @@ const MAX_CHANNEL_LENGTH = 64
  *  a name cannot carry the key delimiter or control characters. */
 const CHANNEL_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/
 const MAX_VERSION_LENGTH = 64
+const MAX_BOARD_LENGTH = 64
+/** Board names are lowercase with inner `.` and `-` (docs/registry-spec.md,
+ *  "Board names"), e.g. `esp32c6-generic`. */
+const BOARD_RE = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/
 const MAX_REASON_LENGTH = 64
 const MAX_DETAIL_LENGTH = 256
 const MAX_NOTE_LENGTH = 512
@@ -1287,6 +1291,8 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
     deviceId?: unknown
     firmware?: unknown
     bytecode?: unknown
+    /** Board name of the firmware build; absent means firmware predating it. */
+    board?: unknown
     /** `{checksum?, version?, trial?}` once validated. */
     running?: unknown
     /** Bytes free to download and stage one build. */
@@ -1638,6 +1644,16 @@ mints a token with exactly that access and hands it to the waiting CLI.</p>
         return bad('bytecode')
       }
       updated.lastBytecode = body.bytecode
+    }
+    if (body.board !== undefined) {
+      if (
+        typeof body.board !== 'string' ||
+        body.board.length > MAX_BOARD_LENGTH ||
+        !BOARD_RE.test(body.board)
+      ) {
+        return bad('board')
+      }
+      updated.lastBoard = body.board
     }
     if (body.free !== undefined) {
       if (typeof body.free !== 'number' || !Number.isInteger(body.free) || body.free < 0) {

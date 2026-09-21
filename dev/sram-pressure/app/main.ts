@@ -46,7 +46,8 @@ async function sweep() {
       console.warn('  HTTP %d after %dms', result.value.status, elapsed)
     } else {
       const body = await result.value.text()
-      console.log('  OK %d bytes in %dms', body.length, elapsed)
+      if (body.ok) console.log('  OK %d bytes in %dms', body.value.length, elapsed)
+      else console.error('  body read failed after %dms:', elapsed, body.error)
     }
     // Post-fetch read shows the low-water mark left by mbedTLS handshake +
     // socket buffers. Compare to the pre-fetch reading: the handshake's own

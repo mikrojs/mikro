@@ -8,7 +8,7 @@ import {string} from '@optique/core/valueparser'
 import {path} from '@optique/run'
 import {useInput} from 'ink'
 import React, {useEffect, useState} from 'react'
-import {lastValueFrom, tap} from 'rxjs'
+import {firstValueFrom, lastValueFrom, tap} from 'rxjs'
 
 import {DevicePicker} from '../components/DevicePicker.js'
 import type {PortInfo} from '../hooks/useDevices.js'
@@ -16,6 +16,8 @@ import {agentEmit, agentResult, isAgentMode} from '../lib/agent.js'
 import {clearStaleConfigState} from '../lib/configSchema.js'
 import {loadEnvFiles, validateNvsKeys} from '../lib/deploy.js'
 import {formatDeployEvent} from '../lib/deployProgress.js'
+import {UserError} from '../lib/errorMessage.js'
+import {agentFeatures, missingFeaturesError} from '../lib/featureGate.js'
 import {FirmwareIncompatibleError} from '../lib/firmwareCompat.js'
 import {flashFirmware} from '../lib/flashFirmware.js'
 import {formatSize} from '../lib/formatSize.js'
@@ -183,6 +185,15 @@ export async function run(
   const {session, devicePath} = handles
 
   try {
+    // Gate on the device's firmware features before anything ships: an app
+    // whose static imports need a feature the firmware lacks would only fail
+    // at import time on the device. Legacy firmware reports no feature set
+    // and is never gated. The ready handshake is cached, so this does not
+    // add a round-trip for deployBuild below.
+    const ready = await firstValueFrom(session.awaitReady$())
+    const gateError = missingFeaturesError(artifact.features, ready)
+    if (gateError !== undefined) throw new UserError(gateError)
+
     // A cable deploy replaces the install cycle the config-pairing state
     // describes, and the trial accounting is not version-aware: a leftover
     // trial would burn boots (and roll a document back) under the new app.
@@ -226,7 +237,13 @@ export async function run(
       // native modules. The error message already carries the rebuild hint.
       if (err.customFw !== undefined) throw err
       log('Device firmware is incompatible with this CLI. Flashing CLI-matched firmware…')
-      await flashFirmware({port: devicePath, onProgress: (m) => log(m)})
+      // The pack already loaded mikro.config.ts; its board steers which
+      // firmware the reflash targets, same as `mikro flash` without --board.
+      await flashFirmware({
+        port: devicePath,
+        configBoard: artifact.configBoard,
+        onProgress: (m) => log(m),
+      })
       const pm = await detectPreferredPm()
       log(`Firmware updated. Re-run ${rerunCommand(pm)}.`)
       process.exit(0)
@@ -250,6 +267,8 @@ export async function run(
           size: artifact.size,
         },
         duplicatePackages: artifact.duplicatePackages,
+        // Omitted when the build needs no features.
+        features: agentFeatures(artifact.features),
       },
       [
         {command: `mikro console -p ${devicePath}`, description: 'Connect to device console'},

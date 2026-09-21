@@ -1,6 +1,8 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
+import {chips} from '@mikrojs/firmware'
+
 import {UserError} from './errorMessage.js'
 import {assertNoLegacyMikroConfig} from './legacyConfig.js'
 
@@ -15,10 +17,26 @@ export interface BoardInfo {
   runtimePath?: string
   /** Path to sdkconfig defaults file (absolute) */
   sdkconfigPath?: string
-  /** Package that provides this board (e.g. "@mikrojs/some-board") */
-  packageName: string
-  /** Import specifier (e.g. "@mikrojs/some-board/some-variant") */
-  importSpecifier: string
+  /** Package that provides this board (e.g. "@mikrojs/some-board").
+   * Absent for synthesized generic boards. */
+  packageName?: string
+  /** Import specifier (e.g. "@mikrojs/some-board/some-variant").
+   * Absent for synthesized generic boards. */
+  importSpecifier?: string
+  /** Synthesized `<chip>-generic` board, not backed by a board package. */
+  generic?: boolean
+}
+
+/** The generic `<chip>-generic` boards, one per supported chip. These are
+ * synthesized (no board package): plain chip firmware with no board-specific
+ * runtime or sdkconfig. */
+export function genericBoards(): BoardInfo[] {
+  return chips.map((chip) => ({
+    name: `${chip}-generic`,
+    chip,
+    description: `Generic ${chip} board`,
+    generic: true,
+  }))
 }
 
 interface BoardManifestEntry {

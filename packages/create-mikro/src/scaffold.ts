@@ -28,6 +28,9 @@ interface TemplateMeta {
   envVars?: readonly string[]
 }
 
+/** Chips with a generic board (`<chip>-generic`) and a tsconfig preset. */
+export const CHIPS = ['esp32', 'esp32c3', 'esp32c5', 'esp32c6', 'esp32s3'] as const
+
 export const TEMPLATES: readonly TemplateMeta[] = [
   {
     name: 'blank',
@@ -175,10 +178,13 @@ export interface ScaffoldOptions {
   mikroVersion: string
   templatesDir: string
   pkgManager: PkgManager
+  /** Target chip; it selects the tsconfig preset. Default: 'esp32c6'. */
+  chip?: string
 }
 
 export function scaffold(options: ScaffoldOptions) {
   const {targetDir, template, projectName, mikroVersion, templatesDir, pkgManager} = options
+  const chip = options.chip ?? 'esp32c6'
 
   // Create project directory
   fs.mkdirSync(targetDir, {recursive: true})
@@ -206,7 +212,7 @@ export function scaffold(options: ScaffoldOptions) {
   const hasEnvDts = fs.existsSync(path.join(targetDir, 'env.d.ts'))
   fs.writeFileSync(
     path.join(targetDir, 'tsconfig.json'),
-    tsconfigJson(hasEnvDts ? ['env.d.ts'] : []),
+    tsconfigJson(chip, hasEnvDts ? ['env.d.ts'] : []),
   )
   fs.writeFileSync(path.join(targetDir, 'eslint.config.js'), eslintConfig)
   fs.writeFileSync(path.join(targetDir, '.prettierrc.json'), prettierConfig)
