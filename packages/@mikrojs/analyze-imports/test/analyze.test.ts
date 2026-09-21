@@ -11,6 +11,7 @@ it('reports every import with its kind and the range of its specifier', async ()
     "import type {T} from './types.js'",
     "const d = await import('d')",
     "const e = await import(flag ? 'e1' : 'e2')",
+    "const h = await import(override || 'h')",
     "const f = await import('./f/' + 'g.js')",
     'const unknown = await import(name)',
   ].join('\n')
@@ -25,6 +26,7 @@ it('reports every import with its kind and the range of its specifier', async ()
     ['d', 'dynamic'],
     ['e1', 'dynamic'],
     ['e2', 'dynamic'],
+    ['h', 'dynamic'],
     ['./f/g.js', 'dynamic'],
   ])
   const text = ({range}: (typeof imports)[number]) => range && code.slice(range[0], range[1])
@@ -35,6 +37,7 @@ it('reports every import with its kind and the range of its specifier', async ()
     'd',
     'e1',
     'e2',
+    'h',
     undefined,
   ])
 })

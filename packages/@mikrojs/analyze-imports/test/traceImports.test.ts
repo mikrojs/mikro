@@ -1,4 +1,8 @@
-import {describe, expect, it} from 'vitest'
+import {mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync} from 'node:fs'
+import {tmpdir} from 'node:os'
+import {dirname, isAbsolute, join} from 'node:path'
+
+import {afterEach, describe, expect, it} from 'vitest'
 
 import {applyRewrites, type FileSystem, traceImports} from '../src/index.js'
 import {type Package, pkg, pnpmInstall} from './install.js'
@@ -241,6 +245,82 @@ describe.each(['app', 'workspace'] as const)('a pnpm store in the %s', (storeIn)
   })
 })
 
+describe('packages with one name', () => {
+  it('keeps each version apart when one imports a package that imports the other', async () => {
+    // q needs b@1 again, below p's b@2.
+    const {app, fs} = pnpmInstall(
+      'app',
+      {
+        'b@1.0.0': {files: {'index.js': "import 'p/index.js'\n"}, deps: {p: '1.0.0'}},
+        'p@1.0.0': {
+          files: {'index.js': "import 'b/index.js'\nimport 'q/index.js'\n"},
+          deps: {b: '2.0.0', q: '1.0.0'},
+        },
+        'q@1.0.0': {files: {'index.js': "import 'b/index.js'\n"}, deps: {b: '1.0.0'}},
+        'b@2.0.0': {files: {'index.js': 'export const v = 2\n'}},
+      },
+      {b: '1.0.0'},
+      "import 'b/index.js'\n",
+    )
+    const {problems, code} = await trace(fs(), app)
+
+    expect(problems).toEqual([])
+    expect(await code('node_modules/p/index.js')).toBe(
+      "import '../b@2.0.0/index.js'\nimport '../q/index.js'\n",
+    )
+    expect(await code('node_modules/q/index.js')).toBe("import '../b@1.0.0/index.js'\n")
+  })
+
+  it('numbers two copies on disk that have the same version', async () => {
+    // npm nests a copy under each importer when it cannot hoist one.
+    const copy = JSON.stringify({name: 'c', version: '1.0.0', type: 'module', exports: './index.js'})
+    const fs = memoryFs({
+      '/ws/app/package.json': pkg('app'),
+      '/ws/app/input.js': "import 'a/index.js'\nimport 'b/index.js'\n",
+      '/ws/app/node_modules/a/package.json': pkg('a'),
+      '/ws/app/node_modules/a/index.js': "import 'c'\n",
+      '/ws/app/node_modules/a/node_modules/c/package.json': copy,
+      '/ws/app/node_modules/a/node_modules/c/index.js': 'export {}\n',
+      '/ws/app/node_modules/b/package.json': pkg('b'),
+      '/ws/app/node_modules/b/index.js': "import 'c'\n",
+      '/ws/app/node_modules/b/node_modules/c/package.json': copy,
+      '/ws/app/node_modules/b/node_modules/c/index.js': 'export {}\n',
+    })
+    const {problems, duplicatePackages, code} = await trace(fs, '/ws/app')
+
+    expect(problems).toEqual([])
+    expect(duplicatePackages).toEqual([
+      {
+        name: 'c',
+        copies: [
+          {path: 'node_modules/c@1.0.0', version: '1.0.0'},
+          {path: 'node_modules/c@1.0.0_2', version: '1.0.0'},
+        ],
+      },
+    ])
+    expect(await code('node_modules/a/index.js')).toBe("import '../c@1.0.0/index.js'\n")
+    expect(await code('node_modules/b/index.js')).toBe("import '../c@1.0.0_2/index.js'\n")
+  })
+
+  it('deploys a package under its own name when the app imports it by an alias', async () => {
+    const fs = memoryFs(
+      {
+        '/ws/app/package.json': pkg('app'),
+        '/ws/app/input.js': "import 'alias/index.js'\n",
+        '/ws/pkgs/real/package.json': pkg('real'),
+        '/ws/pkgs/real/index.js': 'export {}\n',
+      },
+      {'/ws/app/node_modules/alias': '../../pkgs/real'},
+    )
+    const {paths, problems, code} = await trace(fs, '/ws/app')
+
+    expect(problems).toEqual([])
+    // No package.json: nothing imports it as `real`, so there is no subpath to map.
+    expect(paths).toEqual(['input.js', 'node_modules/real/index.js'])
+    expect(await code('input.js')).toBe("import './node_modules/real/index.js'\n")
+  })
+})
+
 describe('a linked workspace package', () => {
   it('deploys once when the app and another package both reach it', async () => {
     const fs = memoryFs(
@@ -423,6 +503,31 @@ describe('an app', () => {
     ])
   })
 
+  it('reports a relative import that leaves its package', async () => {
+    const fs = memoryFs({
+      '/ws/app/package.json': pkg('app'),
+      '/ws/app/input.js': "import 'a/index.js'\n",
+      '/ws/app/node_modules/a/package.json': pkg('a'),
+      '/ws/app/node_modules/a/index.js': "import '../b/index.js'\n",
+      '/ws/app/node_modules/b/package.json': pkg('b'),
+      '/ws/app/node_modules/b/index.js': 'export {}\n',
+    })
+    const {problems} = await trace(fs, '/ws/app')
+
+    expect(problems).toEqual([
+      'Cannot deploy "node_modules/b/index.js", imported from "node_modules/a/index.js": ' +
+        'it is outside its package',
+    ])
+  })
+
+  it('reports an entry that does not exist', async () => {
+    const fs = memoryFs({'/ws/app/package.json': pkg('app')})
+    const {paths, problems} = await trace(fs, '/ws/app')
+
+    expect(paths).toEqual([])
+    expect(problems).toEqual(['Cannot find entry "/ws/app/input.js"'])
+  })
+
   it('reports an import that does not resolve, a file that does not parse, and CommonJS', async () => {
     const fs = memoryFs({
       '/ws/app/package.json': pkg('app'),
@@ -499,6 +604,49 @@ describe('a deployed package', () => {
     expect(await code('node_modules/a/index.js')).toBe(
       "import meta from './_package.json' with {type: 'json'}\n",
     )
+  })
+})
+
+describe('the disk', () => {
+  let root: string | undefined
+  afterEach(() => {
+    if (root !== undefined) rmSync(root, {recursive: true, force: true})
+    root = undefined
+  })
+
+  it('traces a pnpm install the same way the in-memory tree does', async () => {
+    const {app, files, links, fs} = pnpmInstall(
+      'workspace',
+      {
+        'a@1.0.0': {files: {'index.js': "import 'b/index.js'\n"}, deps: {b: '2.0.0'}},
+        'b@1.0.0': {files: {'index.js': 'export const v = 1\n'}},
+        'b@2.0.0': {files: {'index.js': 'export const v = 2\n'}},
+      },
+      {a: '1.0.0', b: '1.0.0'},
+      "import 'a/index.js'\nimport 'b/index.js'\n",
+    )
+    const dir = (root = realpathSync(mkdtempSync(join(tmpdir(), 'mik-trace-'))))
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(dirname(dir + path), {recursive: true})
+      writeFileSync(dir + path, contents)
+    }
+    for (const [path, target] of Object.entries(links)) {
+      mkdirSync(dirname(dir + path), {recursive: true})
+      symlinkSync(isAbsolute(target) ? dir + target : target, dir + path)
+    }
+
+    const summary = ({files, ...rest}: Awaited<ReturnType<typeof traceImports>>, prefix: string) => ({
+      ...rest,
+      files: [...files].map(([path, file]) => [
+        path,
+        'source' in file ? {...file, source: file.source.slice(prefix.length)} : file,
+      ]),
+    })
+    const inMemory = await traceImports([`${app}/input.js`], {root: app, fs: fs()})
+    const onDisk = await traceImports([`${dir}${app}/input.js`], {root: dir + app})
+
+    expect(inMemory.problems).toEqual([])
+    expect(summary(onDisk, dir)).toEqual(summary(inMemory, ''))
   })
 })
 
