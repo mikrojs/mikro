@@ -1,5 +1,4 @@
 [
-  "test/unit/module-sync-condition-es-nested/import.js",
-  "test/unit/module-sync-condition-es-nested/input.js",
-  "test/unit/module-sync-condition-es-nested/package.json"
+  "import.js",
+  "input.js"
 ]

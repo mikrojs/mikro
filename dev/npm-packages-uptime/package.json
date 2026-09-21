@@ -1,0 +1,20 @@
+{
+  "name": "@repo/uptime",
+  "version": "1.2.3",
+  "private": true,
+  "description": "Linked package for the dev/npm-packages fixture; not a fixture to run on its own. Its package.json uses what the device's resolver cannot read: a condition object, a wildcard export and an imports entry.",
+  "type": "module",
+  "imports": {
+    "#clock": "./internal/clock.ts"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    },
+    "./formats/*": "./formats/*.ts"
+  },
+  "dependencies": {
+    "pretty-ms": "^8.0.0"
+  }
+}

@@ -35,6 +35,15 @@ const config = {
       // the device or simulator), not imported by anything.
       entry: ['test/*.test.ts'],
     },
+    'dev/npm-packages': {
+      // test/*.test.ts is a `mikro test` entry. Both language files are entries
+      // too: they are picked with import(), which knip does not follow.
+      entry: ['test/*.test.ts', 'app/lang/*.ts'],
+    },
+    'dev/npm-packages-uptime': {
+      // formats/*.ts is reached through the wildcard export, not an import path.
+      entry: ['formats/*.ts'],
+    },
     'dev/watchdog': {
       // One entry per watchdog, picked with `pnpm dev:<name>`; same shape as
       // examples/sleep.

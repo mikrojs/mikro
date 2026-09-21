@@ -46,7 +46,6 @@
   "dependencies": {
     "@sveltejs/acorn-typescript": "^1.0.13",
     "acorn": "^8.18.0",
-    "async-sema": "^3.1.1",
     "estree-walker": "^3.0.3"
   },
   "devDependencies": {

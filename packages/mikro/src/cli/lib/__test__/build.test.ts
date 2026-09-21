@@ -167,15 +167,48 @@ describe('build', () => {
             {
               name: 'c',
               copies: [
-                {path: 'app/node_modules/a/node_modules/c', version: '1.2.0'},
-                {path: 'app/node_modules/b/node_modules/c', version: '2.0.1'},
+                {path: 'app/node_modules/c@1.2.0', version: '1.2.0'},
+                {path: 'app/node_modules/c@2.0.1', version: '2.0.1'},
               ],
             },
           ],
         },
       ])
-      expect(listFiles(buildDir)).to.include('app/node_modules/a/node_modules/c/index.js')
-      expect(listFiles(buildDir)).to.include('app/node_modules/b/node_modules/c/index.js')
+      expect(listFiles(buildDir)).to.include('app/node_modules/c@1.2.0/index.js')
+      expect(listFiles(buildDir)).to.include('app/node_modules/c@2.0.1/index.js')
+      // Importable by name (from the REPL) only where one package has the name.
+      expect(
+        readFileSync(pathlib.join(buildDir, 'app/node_modules/a/package.json'), 'utf-8'),
+      ).to.equal('{"exports":{"./index.js":"./index.js"}}')
+      expect(listFiles(buildDir)).to.not.include('app/node_modules/c@1.2.0/package.json')
+      expect(listFiles(buildDir)).to.not.include('app/node_modules/c@2.0.1/package.json')
+      expect(readFileSync(pathlib.join(buildDir, 'app/node_modules/a/index.js'), 'utf-8')).to.equal(
+        "import '../c@1.2.0/index.js'\n",
+      )
+      expect(readFileSync(pathlib.join(buildDir, 'app/main.js'), 'utf-8')).to.equal(
+        "import './node_modules/a/index.js'\nimport './node_modules/b/index.js'\n",
+      )
+    })
+
+    it('compiles the rewritten imports to bytecode', async () => {
+      addPackage('node_modules/a', 'a', '1.0.0', "import 'c/index.js'\n")
+      addPackage('node_modules/a/node_modules/c', 'c', '1.2.0', 'export const c = 1\n')
+      addPackage('node_modules/c', 'c', '2.0.1', 'export const c = 2\n')
+      writeFileSync(
+        pathlib.join(tempDir, 'app', 'main.ts'),
+        "import 'a/index.js'\nimport 'c/index.js'\n",
+      )
+      const buildDir = pathlib.join(tempDir, 'out')
+
+      await lastValueFrom(build('app/main.ts', buildDir, {minify: true, bytecode: true}))
+
+      expect(listFiles(buildDir)).to.include.members([
+        'app/main.bjs',
+        'app/node_modules/a/index.bjs',
+        // The app imports c@2.0.1 itself, so that copy keeps the plain name.
+        'app/node_modules/c/index.bjs',
+        'app/node_modules/c@1.2.0/index.bjs',
+      ])
     })
 
     // Bundled builds go through esbuild, not the tracer: no duplicate report.
@@ -258,6 +291,51 @@ describe('build', () => {
     const buildDir = pathlib.join(tempDir, 'out')
     await expect(runBuild('app/main.ts', buildDir)).rejects.toThrow(
       /^Failed to resolve dependency "lalala"/,
+    )
+  })
+
+  it('deploys a package.json that code imports as it is on disk', async () => {
+    const dir = pathlib.join(tempDir, 'node_modules', 'lib')
+    const pjson = JSON.stringify({
+      name: 'lib',
+      version: '1.2.3',
+      type: 'module',
+      description: 'kept',
+      exports: './index.js',
+    })
+    mkdirSync(dir, {recursive: true})
+    writeFileSync(pathlib.join(dir, 'package.json'), pjson)
+    writeFileSync(
+      pathlib.join(dir, 'index.js'),
+      "import meta from './package.json' with {type: 'json'}\nexport default meta\n",
+    )
+    writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), "import 'lib'\n")
+    const buildDir = pathlib.join(tempDir, 'out')
+    await runBuild('app/main.ts', buildDir)
+
+    const deployed = pathlib.join(buildDir, 'app/node_modules/lib')
+    expect(readFileSync(pathlib.join(deployed, '_package.json'), 'utf-8')).to.equal(pjson)
+    expect(readFileSync(pathlib.join(deployed, 'package.json'), 'utf-8')).to.equal(
+      '{"exports":{".":"./index.js"}}',
+    )
+  })
+
+  it('reports trace problems as a UserError, so the CLI prints them without a stack', async () => {
+    writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), "import 'lalala'\n")
+    await expect(runBuild('app/main.ts', pathlib.join(tempDir, 'out'))).rejects.toBeInstanceOf(
+      UserError,
+    )
+  })
+
+  // The build rewrites imports in .ts, .js and .mjs only. A .tsx file would
+  // deploy with its imports as written, and fail on the device.
+  it('refuses a file whose imports it cannot rewrite', async () => {
+    writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), "import './view.tsx'\n")
+    writeFileSync(pathlib.join(tempDir, 'app', 'view.tsx'), "import './dep.ts'\n")
+    writeFileSync(pathlib.join(tempDir, 'app', 'dep.ts'), 'export {}\n')
+    await expect(runBuild('app/main.ts', pathlib.join(tempDir, 'out'))).rejects.toThrow(
+      'Cannot deploy "app/view.tsx": its imports have to be rewritten, and the build rewrites ' +
+        'only .ts, .js, .mjs files',
     )
   })
 

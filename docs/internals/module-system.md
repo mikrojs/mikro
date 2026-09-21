@@ -106,7 +106,11 @@ If no virtual, native, or builtin module matches, the loader falls back to the f
 
 File paths are resolved relative to `fs_base_path` (set during runtime creation). On ESP32, this points to the LittleFS partition. On desktop, it points to the project directory.
 
-Bare specifiers (not starting with `.`, `/`, `native:`, or `mikro/`) are resolved as npm packages via `node_modules` directory walking. The normalizer parses the package name, walks up from the importing module's directory looking for `node_modules/<package>/package.json`, and resolves the entry point via the `exports` field.
+A deployed app does not import packages by name. The build resolves every package import on the host, the way Node.js resolves ESM, and rewrites it to a relative path: `import 'tiny-font'` deploys as `import '../node_modules/tiny-font/index.js'`. Each package deploys once, at `node_modules/<name>/`. When the app uses more than one version of a package, the version the app's own files import keeps that directory, and the others deploy at `node_modules/<name>@<version>/`.
+
+The loader still resolves bare specifiers (not starting with `.`, `/`, `native:`, or `mikro/`), for code that no build has rewritten: the REPL, and files written on the device. The normalizer parses the package name, walks up from the importing module's directory looking for `node_modules/<package>/package.json`, and reads the entry point from its `exports` field. It matches exact subpath keys with the `import` and `default` conditions. It does not read wildcard patterns or the `imports` field.
+
+The build writes that `package.json` itself. A package at `node_modules/<name>/` gets one that maps the subpaths the app imports to the deployed files. A `<name>@<version>` directory gets none, so it cannot be imported by name.
 
 A preprocessor hook can transform source before compilation. The Node.js addon uses this to strip TypeScript types from `.ts` files.
 
