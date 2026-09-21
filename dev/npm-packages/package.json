@@ -1,0 +1,20 @@
+{
+  "name": "@repo/npm-packages",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dev fixture that loads npm packages on the device: a package from the registry in two versions, and a linked workspace package",
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "build": "mikro build --no-bytecode --no-minify",
+    "dev": "mikro dev",
+    "dev:sim": "mikro sim dev",
+    "test": "mikro test",
+    "test:sim": "mikro sim test"
+  },
+  "dependencies": {
+    "@repo/uptime": "workspace:*",
+    "mikro": "workspace:*",
+    "pretty-ms": "^9.0.0"
+  }
+}

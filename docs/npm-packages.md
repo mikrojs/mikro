@@ -10,7 +10,7 @@ You can use npm packages in your Mikro.js projects. When you build or deploy, th
 ```ts
 import prettyMs from 'pretty-ms'
 
-console.log(prettyMs(123456)) // "2m 3.5s"
+console.log(prettyMs(123456)) // "2m 3.4s"
 ```
 
 This works because `pretty-ms` is a pure JavaScript ESM package with no platform dependencies.

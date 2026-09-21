@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "test/packages.test.ts": {
+      "heapDelta": 5824,
+      "sysUsed": 8616
+    }
+  },
+  "boot": {
+    "heapFree": 222588,
+    "systemFree": 278064,
+    "memReserved": 65536
+  }
+}
