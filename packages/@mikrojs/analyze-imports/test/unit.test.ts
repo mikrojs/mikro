@@ -8,6 +8,8 @@ import {nodeFileTrace} from '../src/index.js'
 const testDir = join(import.meta.dirname, 'unit')
 const pkgDir = join(import.meta.dirname, '..')
 const unitTestDirs = readdirSync(testDir).filter((d) => d !== 'asset-extensions')
+// Every other fixture has to trace without a warning.
+const expectedWarnings: Record<string, RegExp[]> = {'syntax-err': [/^Failed to parse /]}
 
 describe('unit tests', () => {
   for (const testName of unitTestDirs) {
@@ -15,7 +17,7 @@ describe('unit tests', () => {
 
     it(`should correctly trace ${testName}`, async () => {
       const inputFiles = readdirSync(unitPath).filter((f) => f.startsWith('input.'))
-      const {fileList, reasons} = await nodeFileTrace(
+      const {fileList, warnings} = await nodeFileTrace(
         inputFiles.map((f) => join(unitPath, f)),
         {
           processCwd: process.cwd(),
@@ -33,6 +35,11 @@ describe('unit tests', () => {
       const sortedExpected = [...expected].sort()
 
       expect(sortedFileList).toEqual(sortedExpected)
+
+      const messages = [...warnings].map((warning) => warning.message)
+      const patterns = expectedWarnings[testName] ?? []
+      expect(messages).toHaveLength(patterns.length)
+      patterns.forEach((pattern, i) => expect(messages[i]).toMatch(pattern))
     })
   }
 })

@@ -2,7 +2,6 @@ import {tsPlugin} from '@sveltejs/acorn-typescript'
 import {Parser as AcornParser} from 'acorn'
 import {type AsyncHandler, asyncWalk} from 'estree-walker'
 
-import type {Tracer} from './trace.js'
 import {evaluate} from './utils/static-eval.js'
 import type {Ast, EvaluatedValue, Node, StaticValue} from './utils/types.js'
 
@@ -17,25 +16,24 @@ const globalBindings: Record<string, unknown> = {
 
 globalBindings['globalThis'] = globalBindings
 
-export interface AnalyzeResult {
-  imports: Set<string>
-  /** Specifiers imported via static declarations (import/export-from). */
-  staticImports: Set<string>
-  /** Specifiers imported via dynamic import() expressions. */
-  dynamicImports: Set<string>
+/** One import of one specifier. A specifier imported twice in a file is two refs. */
+export interface ImportRef {
+  specifier: string
+  /** `static`: an import or export-from declaration. `dynamic`: an import() expression. */
+  kind: 'static' | 'dynamic'
+  /** Where the specifier is in the source, between its quotes. Absent when the
+   *  specifier was computed from an expression. */
+  range?: [start: number, end: number]
 }
 
-export default async function analyze(
-  id: string,
-  code: string,
-  job: Tracer,
-): Promise<AnalyzeResult> {
-  const imports = new Set<string>()
-  const staticImports = new Set<string>()
-  const dynamicImports = new Set<string>()
+export interface AnalyzeResult {
+  imports: ImportRef[]
+  /** Set when the file did not parse; `imports` is then empty. */
+  parseError?: string
+}
 
-  // remove shebang
-  code = code.replace(/^#![^\n\r]*[\r\n]/, '')
+export default async function analyze(id: string, code: string): Promise<AnalyzeResult> {
+  const imports: ImportRef[] = []
 
   let ast: Node
 
@@ -44,12 +42,12 @@ export default async function analyze(
       ecmaVersion: 2026,
       sourceType: 'module',
       allowAwaitOutsideFunction: true,
+      // Keeps the offsets of `range` valid for a file with a shebang.
+      allowHashBang: true,
     }) as unknown as Node
   } catch (e: unknown) {
-    job.warnings.add(
-      new Error(`Failed to parse ${id} as module:\n${e instanceof Error ? e.message : String(e)}`),
-    )
-    return {imports, staticImports, dynamicImports}
+    const parseError = `Failed to parse ${id} as module:\n${e instanceof Error ? e.message : String(e)}`
+    return {imports, parseError}
   }
 
   // Process top-level ESM declarations
@@ -59,18 +57,27 @@ export default async function analyze(
       // transform, so nothing is imported. Inline `type` specifiers do not
       // qualify: verbatimModuleSyntax keeps those as a side-effect import.
       if (decl.importKind === 'type' || decl.exportKind === 'type') continue
-      if (decl.type === 'ImportDeclaration') {
-        const source = String(decl.source.value)
-        imports.add(source)
-        staticImports.add(source)
-      } else if (decl.type === 'ExportNamedDeclaration' || decl.type === 'ExportAllDeclaration') {
-        if (decl.source) {
-          const source = String(decl.source.value)
-          imports.add(source)
-          staticImports.add(source)
-        }
+      if (
+        decl.type === 'ImportDeclaration' ||
+        decl.type === 'ExportNamedDeclaration' ||
+        decl.type === 'ExportAllDeclaration'
+      ) {
+        if (!decl.source) continue
+        imports.push({
+          specifier: String(decl.source.value),
+          kind: 'static',
+          range: [decl.source.start + 1, decl.source.end - 1],
+        })
       }
     }
+  }
+
+  function addComputed(specifier: unknown) {
+    if (typeof specifier !== 'string') return
+    const known = imports.some(
+      (ref) => ref.kind === 'dynamic' && ref.range === undefined && ref.specifier === specifier,
+    )
+    if (!known) imports.push({specifier, kind: 'dynamic'})
   }
 
   async function computePureStaticValue(expr: Node, computeBranches = true) {
@@ -93,21 +100,23 @@ export default async function analyze(
       return
     }
 
+    if (expression.type === 'Literal' && typeof expression.value === 'string') {
+      imports.push({
+        specifier: expression.value,
+        kind: 'dynamic',
+        range: [expression.start + 1, expression.end - 1],
+      })
+      return
+    }
+
     const computed = await computePureStaticValue(expression, true)
     if (!computed) return
 
-    if ('value' in computed && typeof computed.value === 'string') {
-      imports.add(computed.value)
-      dynamicImports.add(computed.value)
+    if ('value' in computed) {
+      addComputed(computed.value)
     } else if ('ifTrue' in computed) {
-      if (typeof computed.ifTrue === 'string') {
-        imports.add(computed.ifTrue)
-        dynamicImports.add(computed.ifTrue)
-      }
-      if (typeof computed.else === 'string') {
-        imports.add(computed.else)
-        dynamicImports.add(computed.else)
-      }
+      addComputed(computed.ifTrue)
+      addComputed(computed.else)
     }
   }
 
@@ -124,7 +133,7 @@ export default async function analyze(
     },
   })
 
-  return {imports, staticImports, dynamicImports}
+  return {imports}
 }
 
 function isAst(ast: unknown): ast is Ast {

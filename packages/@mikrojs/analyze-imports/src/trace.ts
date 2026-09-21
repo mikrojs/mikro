@@ -3,8 +3,8 @@ import {matchesGlob} from 'node:path'
 import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'path'
 
 import analyze, {type AnalyzeResult} from './analyze.js'
-import {CachedFileSystem} from './fs.js'
-import resolveDependency, {NotFoundError} from './resolve.js'
+import {type FileSystem, nodeFileSystem} from './fs.js'
+import resolveDependency, {getPjsonBoundary, NotFoundError, type ResolveContext} from './resolve.js'
 import type {
   DuplicatePackage,
   NodeFileTraceOptions,
@@ -24,9 +24,6 @@ export async function nodeFileTrace(
 ): Promise<NodeFileTraceResult> {
   const job = new Tracer(opts)
 
-  if (opts.readFile) job.readFile = opts.readFile
-  if (opts.stat) job.stat = opts.stat
-  if (opts.readlink) job.readlink = opts.readlink
   if (opts.resolve) job.resolve = opts.resolve
 
   job.ts = true
@@ -204,7 +201,7 @@ async function findDuplicatePackages(job: Tracer): Promise<DuplicatePackage[]> {
       [...dirs].sort().map(async (path) => {
         // Through job.readFile, so a pnpm virtual path reads its real file.
         const pjson = await job.readFile(resolve(job.base, path, 'package.json'))
-        const version = pjson === null ? undefined : JSON.parse(pjson.toString()).version
+        const version = pjson === undefined ? undefined : JSON.parse(pjson).version
         return typeof version === 'string' ? {path, version} : {path}
       }),
     )
@@ -226,7 +223,7 @@ export class Tracer {
   public analysis: {
     evaluatePureExpressions?: boolean
   }
-  private analysisCache: Map<string, AnalyzeResult>
+  private analysisCache = new Map<string, AnalyzeResult>()
   public fileList: Set<string>
   public processed: Set<string>
   // Maps a node_modules path that the trace made up (it is not on disk) to the
@@ -238,7 +235,9 @@ export class Tracer {
   private placements = new Map<string, string>()
   public warnings: Set<Error>
   public reasons: NodeFileTraceReasons = new Map()
-  private cachedFileSystem: CachedFileSystem
+  private fs: FileSystem
+  // What the resolver reads through: a deployed path reads its real file.
+  public resolveContext: ResolveContext
   // Maps a deployed path to the file it is read from, where the two differ. For
   // example, node_modules/a/node_modules/b/index.js is read from
   // .pnpm/a@1/node_modules/b/index.js. Some of these paths exist on disk through
@@ -260,8 +259,7 @@ export class Tracer {
     log = false,
     ts = true,
     analysis = {},
-    cache,
-    fileIOConcurrency = 1024,
+    fs = nodeFileSystem(),
     depth = Infinity,
     assetExtensions = [],
   }: NodeFileTraceOptions) {
@@ -291,7 +289,18 @@ export class Tracer {
     this.log = log
     this.depth = depth
     this.assetExtensions = assetExtensions
-    this.cachedFileSystem = new CachedFileSystem({cache, fileIOConcurrency})
+    this.fs = fs
+    this.resolveContext = {
+      fs: {
+        readFile: (path) => this.readFile(path),
+        stat: (path) => this.stat(path),
+        readlink: (path) => this.readlink(path),
+      },
+      conditions,
+      ts,
+      base,
+      paths: resolvedPaths,
+    }
     this.analysis = {}
     if (analysis !== false) {
       Object.assign(
@@ -303,29 +312,21 @@ export class Tracer {
       )
     }
 
-    this.analysisCache = (cache && cache.analysisCache) || new Map()
-
-    if (cache) {
-      cache.analysisCache = this.analysisCache
-    }
-
     this.fileList = new Set()
     this.processed = new Set()
     this.warnings = new Set()
   }
 
   async readlink(path: string) {
-    return this.cachedFileSystem.readlink(path)
+    return this.fs.readlink(path)
   }
 
   async isFile(path: string) {
-    const stats = await this.stat(path)
-    if (stats) return stats.isFile()
-    return false
+    return (await this.stat(path)) === 'file'
   }
 
   async stat(path: string) {
-    return this.cachedFileSystem.stat(path)
+    return this.fs.stat(path)
   }
 
   private resolveWithTs = async (dep: string, parent: string) => {
@@ -487,13 +488,11 @@ export class Tracer {
   }
 
   async resolve(id: string, parent: string, job: Tracer): Promise<string | string[]> {
-    return resolveDependency(id, parent, job)
+    return resolveDependency(id, parent, job.resolveContext)
   }
 
-  async readFile(path: string): Promise<Buffer | string | null> {
-    const realPath = this.virtualPathToRealPath.get(path)
-    if (realPath) return this.cachedFileSystem.readFile(realPath)
-    return this.cachedFileSystem.readFile(path)
+  async readFile(path: string): Promise<string | undefined> {
+    return this.fs.readFile(this.virtualPathToRealPath.get(path) ?? path)
   }
 
   async realpath(path: string, parent?: string, seen = new Set()): Promise<string> {
@@ -573,16 +572,6 @@ export class Tracer {
     return true
   }
 
-  async getPjsonBoundary(path: string) {
-    const rootSeparatorIndex = path.indexOf(sep)
-    let separatorIndex: number
-    while ((separatorIndex = path.lastIndexOf(sep)) > rootSeparatorIndex) {
-      path = path.slice(0, separatorIndex)
-      if (await this.isFile(path + sep + 'package.json')) return path
-    }
-    return undefined
-  }
-
   async emitDependency(path: string, parent?: string, depth: number = this.depth) {
     if (depth < 0) throw new Error('invariant - depth option cannot be negative')
 
@@ -604,7 +593,7 @@ export class Tracer {
     if (this.assetExtensions.some((ext) => realPath.endsWith(ext))) return
 
     // The nearest package.json deploys at the same place relative to the file.
-    const pjsonBoundary = await this.getPjsonBoundary(realPath)
+    const pjsonBoundary = await getPjsonBoundary(this.resolveContext.fs, realPath)
     let pjsonDir = pjsonBoundary
     if (pjsonBoundary && path !== realPath) {
       const tail = realPath.slice(pjsonBoundary.length)
@@ -626,7 +615,7 @@ export class Tracer {
       if (!pjsonRaw) {
         throw new Error(`package.json found but not readable: ${pjsonEmitPath}`)
       }
-      const pjson = JSON.parse(pjsonRaw.toString('utf-8'))
+      const pjson = JSON.parse(pjsonRaw)
       if (pjson.type !== 'module') {
         throw new Error(`Non-ESM dependency detected: ${pjson.name}`)
       }
@@ -641,14 +630,20 @@ export class Tracer {
       analyzeResult = cachedAnalysis
     } else {
       const source = await this.readFile(realPath)
-      if (source === null) throw new Error('File ' + realPath + ' does not exist.')
-      analyzeResult = await analyze(realPath, source.toString(), this)
+      if (source === undefined) throw new Error('File ' + realPath + ' does not exist.')
+      analyzeResult = await analyze(realPath, source)
+      if (analyzeResult.parseError !== undefined) {
+        this.warnings.add(new Error(analyzeResult.parseError))
+      }
       this.analysisCache.set(realPath, analyzeResult)
     }
 
-    const {imports} = analyzeResult
-    for (const spec of analyzeResult.staticImports) this.staticImportSpecifiers.add(spec)
-    for (const spec of analyzeResult.dynamicImports) this.dynamicImportSpecifiers.add(spec)
+    const imports = new Set<string>()
+    for (const {specifier, kind} of analyzeResult.imports) {
+      imports.add(specifier)
+      if (kind === 'static') this.staticImportSpecifiers.add(specifier)
+      else this.dynamicImportSpecifiers.add(specifier)
+    }
 
     await Promise.all(
       [...imports].map(async (dep) => {

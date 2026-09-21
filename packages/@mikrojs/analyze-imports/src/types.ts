@@ -1,32 +1,5 @@
+import type {FileSystem} from './fs.js'
 import type {Tracer} from './trace.js'
-
-export interface Stats {
-  isFile(): boolean
-  isDirectory(): boolean
-  isBlockDevice(): boolean
-  isCharacterDevice(): boolean
-  isSymbolicLink(): boolean
-  isFIFO(): boolean
-  isSocket(): boolean
-  dev: number
-  ino: number
-  mode: number
-  nlink: number
-  uid: number
-  gid: number
-  rdev: number
-  size: number
-  blksize: number
-  blocks: number
-  atimeMs: number
-  mtimeMs: number
-  ctimeMs: number
-  birthtimeMs: number
-  atime: Date
-  mtime: Date
-  ctime: Date
-  birthtime: Date
-}
 
 export interface NodeFileTraceOptions {
   base?: string
@@ -39,15 +12,12 @@ export interface NodeFileTraceOptions {
     | {
         evaluatePureExpressions?: boolean
       }
-  cache?: any
   paths?: Record<string, string>
   ts?: boolean
   log?: boolean
-  readFile?: (path: string) => Promise<Buffer | string | null>
-  stat?: (path: string) => Promise<Stats | null>
-  readlink?: (path: string) => Promise<string | null>
+  /** Defaults to the disk. */
+  fs?: FileSystem
   resolve?: (id: string, parent: string, job: Tracer) => Promise<string | string[]>
-  fileIOConcurrency?: number
   depth?: number
   assetExtensions?: string[]
 }

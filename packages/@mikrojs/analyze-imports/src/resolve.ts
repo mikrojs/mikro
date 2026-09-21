@@ -1,15 +1,23 @@
 import {isAbsolute, resolve, sep} from 'path'
 
-import type {Tracer} from './trace.js'
+import type {FileSystem} from './fs.js'
 
-// ESM-only node resolver. The tracer emits the package.json files a resolution
-// needs, at the paths they deploy to.
+export interface ResolveContext {
+  fs: FileSystem
+  conditions: string[]
+  /** Try `.ts` and `.tsx` for an extensionless path under `base`, outside node_modules. */
+  ts: boolean
+  base: string
+  paths: Record<string, string>
+}
+
+// ESM-only node resolver.
 export default async function resolveDependency(
   specifier: string,
   parent: string,
-  job: Tracer,
-): Promise<string | string[]> {
-  let resolved: string | string[]
+  ctx: ResolveContext,
+): Promise<string> {
+  let resolved: string
   if (
     isAbsolute(specifier) ||
     specifier === '.' ||
@@ -21,45 +29,63 @@ export default async function resolveDependency(
     resolved = await resolvePath(
       resolve(parent, '..', specifier) + (trailingSlash ? '/' : ''),
       parent,
-      job,
+      ctx,
     )
   } else if (specifier[0] === '#') {
-    resolved = await packageImportsResolve(specifier, parent, job)
+    resolved = await packageImportsResolve(specifier, parent, ctx)
   } else {
-    resolved = await resolvePackage(specifier, parent, job)
+    resolved = await resolvePackage(specifier, parent, ctx)
   }
 
   return resolved
 }
 
-async function resolvePath(path: string, parent: string, job: Tracer): Promise<string> {
-  const result = await resolveFile(path, parent, job)
+async function resolvePath(path: string, parent: string, ctx: ResolveContext): Promise<string> {
+  const result = await resolveFile(path, parent, ctx)
   if (!result) {
     throw new NotFoundError(path, parent)
   }
   return result
 }
 
-async function resolveFile(path: string, parent: string, job: Tracer): Promise<string | undefined> {
+async function resolveFile(
+  path: string,
+  parent: string,
+  ctx: ResolveContext,
+): Promise<string | undefined> {
   if (path.endsWith('/')) return undefined
-  //path = await job.realpath(path, parent)
-  if (await job.isFile(path)) return path
+  if (await isFile(ctx.fs, path)) return path
   if (
-    job.ts &&
-    path.startsWith(job.base) &&
-    path.slice(job.base.length).indexOf(sep + 'node_modules' + sep) === -1 &&
-    (await job.isFile(path + '.ts'))
+    ctx.ts &&
+    path.startsWith(ctx.base) &&
+    path.slice(ctx.base.length).indexOf(sep + 'node_modules' + sep) === -1 &&
+    (await isFile(ctx.fs, path + '.ts'))
   )
     return path + '.ts'
   if (
-    job.ts &&
-    path.startsWith(job.base) &&
-    path.slice(job.base.length).indexOf(sep + 'node_modules' + sep) === -1 &&
-    (await job.isFile(path + '.tsx'))
+    ctx.ts &&
+    path.startsWith(ctx.base) &&
+    path.slice(ctx.base.length).indexOf(sep + 'node_modules' + sep) === -1 &&
+    (await isFile(ctx.fs, path + '.tsx'))
   )
     return path + '.tsx'
-  if (await job.isFile(path + '.js')) return path + '.js'
-  if (await job.isFile(path + '.json')) return path + '.json'
+  if (await isFile(ctx.fs, path + '.js')) return path + '.js'
+  if (await isFile(ctx.fs, path + '.json')) return path + '.json'
+  return undefined
+}
+
+async function isFile(fs: FileSystem, path: string) {
+  return (await fs.stat(path)) === 'file'
+}
+
+/** The nearest directory above `path` that has a package.json. */
+export async function getPjsonBoundary(fs: FileSystem, path: string) {
+  const rootSeparatorIndex = path.indexOf(sep)
+  let separatorIndex: number
+  while ((separatorIndex = path.lastIndexOf(sep)) > rootSeparatorIndex) {
+    path = path.slice(0, separatorIndex)
+    if (await isFile(fs, path + sep + 'package.json')) return path
+  }
   return undefined
 }
 
@@ -87,11 +113,11 @@ interface PkgCfg {
   imports: {[key: string]: PackageTarget}
 }
 
-async function getPkgCfg(pkgPath: string, job: Tracer): Promise<PkgCfg | undefined> {
-  const pjsonSource = await job.readFile(pkgPath + sep + 'package.json')
+async function getPkgCfg(pkgPath: string, ctx: ResolveContext): Promise<PkgCfg | undefined> {
+  const pjsonSource = await ctx.fs.readFile(pkgPath + sep + 'package.json')
   if (pjsonSource) {
     try {
-      return JSON.parse(pjsonSource.toString())
+      return JSON.parse(pjsonSource)
     } catch {
       // invalid JSON → treat as missing config
     }
@@ -121,27 +147,19 @@ function getExportsTarget(exports: PackageTarget, conditions: string[]): string 
   return undefined
 }
 
-async function validateAndResolvePaths(
-  paths: string[],
-  parent: string,
-  job: Tracer,
-): Promise<string[]> {
-  const validatedPaths: string[] = []
-  for (const path of paths) {
-    if (!(await job.isFile(path))) throw new NotFoundError(path, parent)
-    validatedPaths.push(path)
-  }
-  return validatedPaths
+async function existingFile(path: string, parent: string, ctx: ResolveContext): Promise<string> {
+  if (!(await isFile(ctx.fs, path))) throw new NotFoundError(path, parent)
+  return path
 }
 
 async function resolveExportsImports(
   pkgPath: string,
   obj: PackageTarget,
   subpath: string,
-  job: Tracer,
+  ctx: ResolveContext,
   isImports: boolean,
   parent: string,
-): Promise<string[] | undefined> {
+): Promise<string | undefined> {
   let matchObj: {[key: string]: PackageTarget}
   if (isImports) {
     if (!(typeof obj === 'object' && !Array.isArray(obj) && obj !== null)) return undefined
@@ -158,45 +176,49 @@ async function resolveExportsImports(
   }
 
   if (subpath in matchObj) {
-    const target = getExportsTarget(matchObj[subpath]!, job.conditions)
+    const target = getExportsTarget(matchObj[subpath]!, ctx.conditions)
     if (typeof target === 'string' && target.startsWith('./')) {
       const resolvedPath = pkgPath + target.slice(1)
-      return await validateAndResolvePaths([resolvedPath], parent, job)
+      return existingFile(resolvedPath, parent, ctx)
     }
   }
   for (const match of Object.keys(matchObj).sort((a, b) => b.length - a.length)) {
     if (match.endsWith('*') && subpath.startsWith(match.slice(0, -1))) {
-      const target = getExportsTarget(matchObj[match]!, job.conditions)
+      const target = getExportsTarget(matchObj[match]!, ctx.conditions)
       if (typeof target === 'string' && target.startsWith('./')) {
         const resolvedPath =
           pkgPath + target.slice(1).replace(/\*/g, subpath.slice(match.length - 1))
-        return await validateAndResolvePaths([resolvedPath], parent, job)
+        return existingFile(resolvedPath, parent, ctx)
       }
     }
     if (!match.endsWith('/')) continue
     if (subpath.startsWith(match)) {
-      const target = getExportsTarget(matchObj[match]!, job.conditions)
+      const target = getExportsTarget(matchObj[match]!, ctx.conditions)
       if (typeof target === 'string' && target.endsWith('/') && target.startsWith('./')) {
         const resolvedPath = pkgPath + target.slice(1) + subpath.slice(match.length)
-        return await validateAndResolvePaths([resolvedPath], parent, job)
+        return existingFile(resolvedPath, parent, ctx)
       }
     }
   }
   return undefined
 }
 
-async function packageImportsResolve(name: string, parent: string, job: Tracer): Promise<string[]> {
-  if (name !== '#' && !name.startsWith('#/') && job.conditions) {
-    const pjsonBoundary = await job.getPjsonBoundary(parent)
+async function packageImportsResolve(
+  name: string,
+  parent: string,
+  ctx: ResolveContext,
+): Promise<string> {
+  if (name !== '#' && !name.startsWith('#/')) {
+    const pjsonBoundary = await getPjsonBoundary(ctx.fs, parent)
     if (pjsonBoundary) {
-      const pkgCfg = await getPkgCfg(pjsonBoundary, job)
+      const pkgCfg = await getPkgCfg(pjsonBoundary, ctx)
       const {imports: pkgImports} = pkgCfg || {}
       if (pkgCfg && pkgImports !== null && pkgImports !== undefined) {
         const importsResolved = await resolveExportsImports(
           pjsonBoundary,
           pkgImports,
           name,
-          job,
+          ctx,
           true,
           parent,
         )
@@ -207,41 +229,30 @@ async function packageImportsResolve(name: string, parent: string, job: Tracer):
   throw new NotFoundError(name, parent)
 }
 
-async function resolvePackage(
-  name: string,
-  parent: string,
-  job: Tracer,
-): Promise<string | string[]> {
+async function resolvePackage(name: string, parent: string, ctx: ResolveContext): Promise<string> {
   let packageParent = parent
   if (name.startsWith('node:')) {
     throw new Error('node: imports not supported')
   }
 
   const pkgName = getPkgName(name) || ''
+  const subpath = '.' + name.slice(pkgName.length)
 
-  // package own name resolution
-  let selfResolved: string | string[] | undefined
-  if (job.conditions) {
-    const pjsonBoundary = await job.getPjsonBoundary(parent)
-    if (pjsonBoundary) {
-      const pkgCfg = await getPkgCfg(pjsonBoundary, job)
-      const {exports: pkgExports} = pkgCfg || {}
-      if (
-        pkgCfg &&
-        pkgCfg.name &&
-        pkgCfg.name === pkgName &&
-        pkgExports !== null &&
-        pkgExports !== undefined
-      ) {
-        selfResolved = await resolveExportsImports(
-          pjsonBoundary,
-          pkgExports,
-          '.' + name.slice(pkgName.length),
-          job,
-          false,
-          parent,
-        )
-      }
+  // A package's own name resolves through its own exports first, as in Node.
+  const pjsonBoundary = await getPjsonBoundary(ctx.fs, parent)
+  if (pjsonBoundary) {
+    const pkgCfg = await getPkgCfg(pjsonBoundary, ctx)
+    const pkgExports = pkgCfg?.exports
+    if (pkgCfg?.name === pkgName && pkgExports !== null && pkgExports !== undefined) {
+      const resolved = await resolveExportsImports(
+        pjsonBoundary,
+        pkgExports,
+        subpath,
+        ctx,
+        false,
+        parent,
+      )
+      if (resolved) return resolved
     }
   }
 
@@ -250,44 +261,31 @@ async function resolvePackage(
   while ((separatorIndex = packageParent.lastIndexOf(sep)) > rootSeparatorIndex) {
     packageParent = packageParent.slice(0, separatorIndex)
     const nodeModulesDir = packageParent + sep + 'node_modules'
-    const stat = await job.stat(nodeModulesDir)
-    if (!stat || !stat.isDirectory()) continue
-    const pkgCfg = await getPkgCfg(nodeModulesDir + sep + pkgName, job)
-    const {exports: pkgExports} = pkgCfg || {}
+    const stat = await ctx.fs.stat(nodeModulesDir)
+    if (stat !== 'directory') continue
+    const pkgCfg = await getPkgCfg(nodeModulesDir + sep + pkgName, ctx)
+    const pkgExports = pkgCfg?.exports
 
-    if (job.conditions && pkgExports !== undefined && pkgExports !== null && !selfResolved) {
-      const resolved = await resolveExportsImports(
-        nodeModulesDir + sep + pkgName,
-        pkgExports,
-        '.' + name.slice(pkgName.length),
-        job,
-        false,
-        parent,
-      )
-      if (resolved) return resolved
-    } else {
-      const resolved = await resolveFile(nodeModulesDir + sep + name, parent, job)
-      if (resolved) {
-        if (selfResolved) {
-          if (Array.isArray(selfResolved)) {
-            if (!selfResolved.includes(resolved)) return [resolved, ...selfResolved]
-            return selfResolved
-          } else if (selfResolved !== resolved) {
-            return [resolved, selfResolved]
-          }
-        }
-        return resolved
-      }
-    }
+    const resolved =
+      pkgExports !== undefined && pkgExports !== null
+        ? await resolveExportsImports(
+            nodeModulesDir + sep + pkgName,
+            pkgExports,
+            subpath,
+            ctx,
+            false,
+            parent,
+          )
+        : await resolveFile(nodeModulesDir + sep + name, parent, ctx)
+    if (resolved) return resolved
   }
-  if (selfResolved) return selfResolved
-  if (Object.hasOwnProperty.call(job.paths, name)) {
-    return job.paths[name]!
+  if (Object.hasOwnProperty.call(ctx.paths, name)) {
+    return ctx.paths[name]!
   }
-  for (const path of Object.keys(job.paths)) {
+  for (const path of Object.keys(ctx.paths)) {
     if (path.endsWith('/') && name.startsWith(path)) {
-      const pathTarget = job.paths[path] + name.slice(path.length)
-      const resolved = await resolveFile(pathTarget, parent, job)
+      const pathTarget = ctx.paths[path] + name.slice(path.length)
+      const resolved = await resolveFile(pathTarget, parent, ctx)
       if (!resolved) {
         throw new NotFoundError(name, parent)
       }
