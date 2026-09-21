@@ -29,6 +29,6 @@ bool mik__rmdir_recursive(const char* path);
 
 /* Create `path` and any missing parents. Returns true when `path` is a
  * directory afterwards. On failure errno is that of the first mkdir that
- * failed for a reason other than EEXIST, so a full filesystem reads as ENOSPC
- * here instead of as ENOENT from a later open. */
+ * left no directory behind, so a full filesystem reads as ENOSPC here instead
+ * of as ENOENT from a later open. */
 bool mik__mkdirs(const char* path);

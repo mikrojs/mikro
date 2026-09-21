@@ -235,7 +235,7 @@ TEST_CASE("mik__rmdir_recursive removes a tree and reports it gone" *
     std::string tmp = base + "/.deploy-tmp";
     CHECK(mik__mkdirs((tmp + "/app/node_modules/@repo/uptime").c_str()));
     make_dir(tmp + "/app/node_modules/@repo/empty");
-    /* Enough entries that a directory spans several readdir() batches. */
+    /* Entries are removed while readdir() walks the same directory. */
     for (int i = 0; i < 200; i++) {
         write_file(tmp + "/app/node_modules/@repo/uptime/f" + std::to_string(i), "x");
     }
@@ -262,7 +262,7 @@ TEST_CASE("mik__rmdir_recursive reports what it could not remove" *
     errno = 0;
     CHECK_FALSE(mik__rmdir_recursive((base + "/tree").c_str()));
     CHECK_EQ(EACCES, errno);
-    /* it stops once a pass removes nothing, and still removed the rest */
+    /* one failure does not stop it from removing the rest */
     CHECK(exists(locked + "/file"));
     CHECK_FALSE(exists(base + "/tree/other"));
 

@@ -682,11 +682,24 @@ describe('session', () => {
       ])
     })
 
-    it('passes any other device error through unchanged', async () => {
-      const {err, types} = await deployToFullDevice(CMD_DEPLOY_KEEP, 'open source failed', false)
+    it('aborts on any other staging error and passes it through unchanged', async () => {
+      // Seen on an esp32c6 with a full storage: EIO, not ENOSPC.
+      const {err, types} = await deployToFullDevice(
+        CMD_DEPLOY_KEEP,
+        'create directory failed: I/O error',
+        false,
+      )
 
-      expect((err as Error).message).to.equal("deploy keep '/app/a.js': open source failed")
-      expect(types).to.not.include(CMD_DEPLOY_ABORT)
+      expect((err as Error).message).to.equal(
+        "deploy keep '/app/a.js': create directory failed: I/O error",
+      )
+      expect(types).to.deep.equal([
+        CMD_RUNTIME_PAUSE,
+        CMD_DEPLOY_CHECKSUM,
+        CMD_DEPLOY_KEEP,
+        CMD_DEPLOY_ABORT,
+        CMD_RUNTIME_RESUME,
+      ])
     })
 
     it('deployBuild streams the tgz then stages it', async () => {

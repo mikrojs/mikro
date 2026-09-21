@@ -880,12 +880,12 @@ export function connectRepl(
         yield {type: 'env_changed', changed: envChanged, removed: envRemoved}
       }
 
-      // Erase
-      if (erase) {
-        await sendExpectOk(buildDeployEraseCommand(), 'deploy erase')
-      }
-
       try {
+        // Erase
+        if (erase) {
+          await sendExpectOk(buildDeployEraseCommand(), 'deploy erase')
+        }
+
         // KEEP unchanged files
         for (const filePath of filesToKeep) {
           await sendExpectOk(buildDeployKeepCommand(filePath), `deploy keep '${filePath}'`)
@@ -906,14 +906,19 @@ export function connectRepl(
           await streamPutFile(CHECKSUMS_PATH, manifest)
         }
       } catch (err) {
+        // Drop the staged files and end the device's deploy session: they hold
+        // the storage the running app needs, and the ERASE + DONE of a later
+        // `mikro clean` would promote them. Best-effort; the staging error is
+        // the one worth reporting. A device that stopped answering is not
+        // asked again.
+        if (!(err instanceof DeviceTimeoutError)) {
+          await sendExpectOk(buildDeployAbortCommand(), 'deploy abort').catch(() => {})
+        }
         if (!isStorageFull(err)) throw err
-        // Drop the staged files: they hold the storage the running app needs,
-        // and the ERASE + DONE of a later `mikro clean` would promote them.
-        // Best-effort; the storage-full error is the one worth reporting.
-        await sendExpectOk(buildDeployAbortCommand(), 'deploy abort').catch(() => {})
         throw new UserError(
           erase
-            ? "The device's app storage is full: the app does not fit"
+            ? "The device's app storage is full: the app does not fit. " +
+                'The device has no app installed now'
             : "The device's app storage is full. An incremental deploy needs room for a second " +
                 'copy of the app while it stages the new one. Run `mikro clean`, then deploy again',
           {cause: err},

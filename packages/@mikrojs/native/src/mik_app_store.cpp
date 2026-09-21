@@ -42,14 +42,8 @@ bool rmdir_recursive_at(char* path, size_t cap, int depth, int* first_errno) {
     const MIKPlatform* platform = MIK_GetPlatform();
     const size_t base = strlen(path);
 
-    /* Entries are removed while readdir() walks the same directory, and not
-     * every filesystem promises to still return the rest. Scan again until a
-     * pass removes nothing, so a skipped entry is picked up by the next one. */
-    for (;;) {
-        DIR* dir = opendir(path);
-        if (!dir) break;
-
-        int removed = 0;
+    DIR* dir = opendir(path);
+    if (dir) {
         struct dirent* entry;
         while ((entry = readdir(dir)) != NULL) {
             if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
@@ -63,18 +57,13 @@ bool rmdir_recursive_at(char* path, size_t cap, int depth, int* first_errno) {
 
             struct stat st;
             if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
-                if (depth < kMaxDepth && rmdir_recursive_at(path, cap, depth + 1, first_errno)) {
-                    removed++;
-                }
-            } else if (unlink(path) == 0) {
-                removed++;
-            } else if (*first_errno == 0) {
+                if (depth < kMaxDepth) rmdir_recursive_at(path, cap, depth + 1, first_errno);
+            } else if (unlink(path) != 0 && *first_errno == 0) {
                 *first_errno = errno;
             }
             path[base] = 0;
         }
         closedir(dir);
-        if (removed == 0) break;
     }
 
     if (rmdir(path) == 0) return true;
@@ -113,13 +102,16 @@ bool mik__mkdirs(const char* path) {
         if (*p != '/' && *p != '\0') continue;
         const char saved = *p;
         *p = '\0';
-        if (mkdir(tmp, 0755) != 0 && errno != EEXIST && first_errno == 0) first_errno = errno;
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+            /* A prefix that is there anyway (a mount point may not answer
+             * EEXIST) must not hide the errno of the one that is missing. */
+            const int e = errno;
+            if (first_errno == 0 && !dir_exists(tmp)) first_errno = e;
+        }
         *p = saved;
         if (saved == '\0') break;
     }
 
-    /* A prefix may answer mkdir with something other than EEXIST (a mount
-     * point, for one), so what decides is whether the directory is there. */
     if (dir_exists(path)) return true;
     errno = first_errno ? first_errno : ENOTDIR;
     return false;

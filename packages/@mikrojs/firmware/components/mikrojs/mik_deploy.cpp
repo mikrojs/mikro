@@ -244,8 +244,9 @@ static const char* copy_file(const char* src, const char* dst) {
     int saved_errno = 0;
     while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
         feed_watchdog();
+        errno = 0;
         if (fwrite(buf, 1, n, out) != n) {
-            saved_errno = errno;
+            saved_errno = errno ? errno : EIO;
             failed = "write failed";
             break;
         }
@@ -523,6 +524,8 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
                 uint32_t chunk = remaining > sizeof(buf) ? sizeof(buf) : remaining;
                 if (!mik__proto_read_exact(transport, buf, chunk)) return false;
                 feed_watchdog();
+                /* The transport read above may have left its own errno. */
+                errno = 0;
                 if (fwrite(buf, 1, chunk, s_put_file) != chunk) {
                     /* Write failure: keep the protocol in sync by draining
                      * the rest of this chunk's bytes, then abort the PUT. */
