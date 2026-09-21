@@ -1,4 +1,3 @@
-#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -185,40 +184,38 @@ static void feed_watchdog(void) {
     if (platform->feed_watchdog) platform->feed_watchdog();
 }
 
-static void mkdirs(const char* path) {
-    char tmp[512];
-    snprintf(tmp, sizeof(tmp), "%s", path);
-    for (char* p = tmp + 1; *p; p++) {
-        if (*p == '/') {
-            *p = '\0';
-            mkdir(tmp, 0755);
-            *p = '/';
-        }
-    }
-    mkdir(tmp, 0755);
+/* Create the directory that will hold `file_path`. errno is set on failure. */
+static bool make_parent_dir(const char* file_path) {
+    char dir_path[512];
+    snprintf(dir_path, sizeof(dir_path), "%s", file_path);
+    char* last_slash = strrchr(dir_path, '/');
+    if (!last_slash || last_slash == dir_path) return true;
+    *last_slash = '\0';
+    return mik__mkdirs(dir_path);
 }
 
-static void rmdir_recursive(const char* path) {
-    DIR* dir = opendir(path);
-    if (!dir) return;
+/* Drop the staging dir. What stays behind holds blocks the next deploy needs. */
+static void discard_staging(void) {
+    if (mik__rmdir_recursive(DEPLOY_TMP)) return;
+    MIK_GetPlatform()->log(MIK_LOG_WARN, "deploy", "could not remove the staging dir: %s",
+                           strerror(errno));
+}
 
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-        feed_watchdog();
+/* Buffered bytes reach flash on flush and close, so a full filesystem can
+ * first show up here. errno is set on failure. */
+static bool close_file(FILE* f) {
+    int err = 0;
+    if (fflush(f) != 0) err = errno;
+    if (fclose(f) != 0 && err == 0) err = errno;
+    if (err == 0) return true;
+    errno = err;
+    return false;
+}
 
-        char full[512];
-        snprintf(full, sizeof(full), "%s/%s", path, entry->d_name);
-
-        struct stat st;
-        if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
-            rmdir_recursive(full);
-        } else {
-            unlink(full);
-        }
-    }
-    closedir(dir);
-    rmdir(path);
+static void send_errno(MIKReplTransport* transport, const char* step, int err) {
+    char msg[128];
+    snprintf(msg, sizeof(msg), "%s: %s", step, strerror(err));
+    mik__proto_send_err(transport, msg);
 }
 
 static bool path_exists(const char* path) {
@@ -228,40 +225,44 @@ static bool path_exists(const char* path) {
 
 /* ── File copy helper ────────────────────────────────────────────── */
 
-static bool copy_file(const char* src, const char* dst) {
+/* Returns NULL on success, otherwise the step that failed, with errno set. */
+static const char* copy_file(const char* src, const char* dst) {
     FILE* in = fopen(src, "r");
-    if (!in) return false;
+    if (!in) return "open source failed";
 
     FILE* out = fopen(dst, "w");
     if (!out) {
         int saved = errno;
         fclose(in);
         errno = saved;
-        return false;
+        return "create file failed";
     }
 
     uint8_t buf[512];
     size_t n;
-    bool ok = true;
+    const char* failed = nullptr;
     int saved_errno = 0;
     while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
         feed_watchdog();
+        errno = 0;
         if (fwrite(buf, 1, n, out) != n) {
-            saved_errno = errno;
-            ok = false;
+            saved_errno = errno ? errno : EIO;
+            failed = "write failed";
             break;
         }
     }
-    if (ok && ferror(in)) {
+    if (!failed && ferror(in)) {
         saved_errno = errno;
-        ok = false;
+        failed = "read failed";
     }
 
-    fflush(out);
-    fclose(out);
+    if (!close_file(out) && !failed) {
+        saved_errno = errno;
+        failed = "write failed";
+    }
     fclose(in);
-    if (!ok) errno = saved_errno;
-    return ok;
+    if (failed) errno = saved_errno;
+    return failed;
 }
 
 /* ── Deploy recovery ─────────────────────────────────────────────── */
@@ -287,13 +288,15 @@ static uint16_t s_deploy_manifest_files = 0;
 static FILE* s_put_file = nullptr;
 static uint32_t s_put_remaining = 0;
 
-static void put_close_and_clear() {
+/* Returns false, with errno set, when the staged file could not be closed. */
+static bool put_close_and_clear() {
+    bool ok = true;
     if (s_put_file) {
-        fflush(s_put_file);
-        fclose(s_put_file);
+        ok = close_file(s_put_file);
         s_put_file = nullptr;
     }
     s_put_remaining = 0;
+    return ok;
 }
 
 static void deploy_ensure_init() {
@@ -307,7 +310,7 @@ static void deploy_ensure_init() {
      * so a manual /pause sticks across a deploy. */
     s_deploy_prev_paused = mik__repl_is_paused();
     mik__repl_set_paused(true);
-    rmdir_recursive(DEPLOY_TMP);
+    discard_staging();
     s_deploy_manifest = load_checksums_manifest();
     s_deploy_manifest_files = manifest_file_count(s_deploy_manifest);
 }
@@ -330,7 +333,8 @@ static void deploy_cleanup() {
  */
 void mik__deploy_session_reset(void) {
     if (!s_deploy_active) return;
-    rmdir_recursive(DEPLOY_TMP);
+    put_close_and_clear();
+    discard_staging();
     deploy_cleanup();
 }
 
@@ -387,7 +391,10 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
 
         case MIK_CMD_DEPLOY_ERASE:
             mik__proto_drain(transport, payload_len);
-            rmdir_recursive(APP_DIR);
+            if (!mik__rmdir_recursive(APP_DIR)) {
+                send_errno(transport, "remove app failed", errno);
+                return true;
+            }
             s_deploy_erased = true;
             mik__proto_send_ok(transport);
             return true;
@@ -411,20 +418,16 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
             snprintf(src_path, sizeof(src_path), "%s%s", FS_BASE, name);
             snprintf(dst_path, sizeof(dst_path), "%s%s", DEPLOY_TMP, name);
 
-            char dir_path[512];
-            snprintf(dir_path, sizeof(dir_path), "%s", dst_path);
-            char* last_slash = strrchr(dir_path, '/');
-            if (last_slash && last_slash != dir_path) {
-                *last_slash = '\0';
-                mkdirs(dir_path);
+            if (!make_parent_dir(dst_path)) {
+                send_errno(transport, "create directory failed", errno);
+                return true;
             }
 
-            if (copy_file(src_path, dst_path)) {
-                mik__proto_send_ok(transport);
+            const char* failed = copy_file(src_path, dst_path);
+            if (failed) {
+                send_errno(transport, failed, errno);
             } else {
-                char msg[128];
-                snprintf(msg, sizeof(msg), "keep copy failed: %s", strerror(errno));
-                mik__proto_send_err(transport, msg);
+                mik__proto_send_ok(transport);
             }
             return true;
         }
@@ -472,24 +475,23 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
             char full_path[512];
             snprintf(full_path, sizeof(full_path), "%s%s", DEPLOY_TMP, name);
 
-            char dir_path[512];
-            snprintf(dir_path, sizeof(dir_path), "%s", full_path);
-            char* last_slash = strrchr(dir_path, '/');
-            if (last_slash && last_slash != dir_path) {
-                *last_slash = '\0';
-                mkdirs(dir_path);
+            if (!make_parent_dir(full_path)) {
+                send_errno(transport, "create directory failed", errno);
+                return true;
             }
 
             FILE* f = fopen(full_path, "w");
             if (!f) {
-                mik__proto_send_err(transport, "open failed");
+                send_errno(transport, "create file failed", errno);
                 return true;
             }
 
             if (total_size == 0) {
                 /* Empty file: nothing to chunk, close now. */
-                fflush(f);
-                fclose(f);
+                if (!close_file(f)) {
+                    send_errno(transport, "write failed", errno);
+                    return true;
+                }
             } else {
                 s_put_file = f;
                 s_put_remaining = total_size;
@@ -517,31 +519,34 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
 
             uint8_t buf[512];
             uint32_t remaining = payload_len;
-            bool ok = true;
+            int write_errno = 0;
             while (remaining > 0) {
                 uint32_t chunk = remaining > sizeof(buf) ? sizeof(buf) : remaining;
                 if (!mik__proto_read_exact(transport, buf, chunk)) return false;
                 feed_watchdog();
+                /* The transport read above may have left its own errno. */
+                errno = 0;
                 if (fwrite(buf, 1, chunk, s_put_file) != chunk) {
                     /* Write failure: keep the protocol in sync by draining
                      * the rest of this chunk's bytes, then abort the PUT. */
+                    write_errno = errno ? errno : EIO;
                     remaining -= chunk;
                     if (remaining > 0) mik__proto_drain(transport, remaining);
-                    ok = false;
                     break;
                 }
                 remaining -= chunk;
                 s_put_remaining -= chunk;
             }
 
-            if (!ok) {
+            if (write_errno) {
                 put_close_and_clear();
-                mik__proto_send_err(transport, "write failed");
+                send_errno(transport, "write failed", write_errno);
                 return true;
             }
 
-            if (s_put_remaining == 0) {
-                put_close_and_clear();
+            if (s_put_remaining == 0 && !put_close_and_clear()) {
+                send_errno(transport, "write failed", errno);
+                return true;
             }
             mik__proto_send_ok(transport);
             return true;
@@ -556,7 +561,7 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
              * to the host so the caller sees a real failure. */
             if (s_put_file) {
                 put_close_and_clear();
-                rmdir_recursive(DEPLOY_TMP);
+                discard_staging();
                 mik__proto_send_err(transport, "deploy done while put in progress");
                 deploy_cleanup();
                 return true;
@@ -626,7 +631,8 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
 
         case MIK_CMD_DEPLOY_ABORT:
             mik__proto_drain(transport, payload_len);
-            rmdir_recursive(DEPLOY_TMP);
+            put_close_and_clear();
+            discard_staging();
             mik__proto_send_ok(transport);
             deploy_cleanup();
             return true;

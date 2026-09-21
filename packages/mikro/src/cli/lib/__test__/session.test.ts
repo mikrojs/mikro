@@ -597,6 +597,111 @@ describe('session', () => {
       session.close()
     })
 
+    /** Deploy one file against a device that answers `failOn` with a
+     *  storage-full error; returns the rejection and the command types sent. */
+    async function deployToFullDevice(failOn: number, message: string, force: boolean) {
+      const {transport, written, sendFrame} = createMockTransport()
+      const session = connectRepl(transport)
+      session.messages$.subscribe(() => {})
+
+      sendReady(sendFrame)
+
+      let lastSeen = 0
+      const autoRespond = setInterval(() => {
+        while (lastSeen < written.length) {
+          const type = parseWrittenType(written[lastSeen]!)
+          // match=1, file count=2: one more file than the build, so KEEP runs.
+          if (type === CMD_DEPLOY_CHECKSUM) sendFrame(MSG_CHECKSUM_RESULT, Buffer.from([1, 2, 0]))
+          else if (type === failOn) sendFrame(MSG_ERR, message)
+          else sendFrame(MSG_OK)
+          lastSeen++
+        }
+      }, 5)
+
+      const err: unknown = await lastValueFrom(
+        session.deploy({
+          files: [{path: '/app/a.js', data: Buffer.from('a')}],
+          force,
+          restart: false,
+        }),
+      ).then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+
+      clearInterval(autoRespond)
+      session.close()
+      return {err, types: written.map(parseWrittenType)}
+    }
+
+    it('explains a full app storage when KEEP cannot stage a file', async () => {
+      const {err, types} = await deployToFullDevice(
+        CMD_DEPLOY_KEEP,
+        'create directory failed: No space left on device',
+        false,
+      )
+
+      expect(err).to.be.instanceOf(UserError)
+      const {message, cause} = err as UserError
+      expect(message).to.include("The device's app storage is full")
+      expect(message).to.include('second copy of the app')
+      expect(message).to.include('`mikro clean`')
+      // The device's own words stay reachable as the cause.
+      expect(cause).to.be.instanceOf(UserError)
+      expect((cause as Error).message).to.equal(
+        "deploy keep '/app/a.js': create directory failed: No space left on device",
+      )
+      // The staged files are dropped before the app is resumed.
+      expect(types).to.deep.equal([
+        CMD_RUNTIME_PAUSE,
+        CMD_DEPLOY_CHECKSUM,
+        CMD_DEPLOY_KEEP,
+        CMD_DEPLOY_ABORT,
+        CMD_RUNTIME_RESUME,
+      ])
+    })
+
+    it('explains a full app storage when a PUT chunk cannot be written', async () => {
+      const {err, types} = await deployToFullDevice(
+        CMD_DEPLOY_PUT_CHUNK,
+        'write failed: No space left on device',
+        true,
+      )
+
+      expect(err).to.be.instanceOf(UserError)
+      expect((err as UserError).message).to.include("The device's app storage is full")
+      expect(((err as UserError).cause as Error).message).to.equal(
+        "deploy put chunk '/app/a.js' @0: write failed: No space left on device",
+      )
+      expect(types).to.deep.equal([
+        CMD_RUNTIME_PAUSE,
+        CMD_DEPLOY_PUT,
+        CMD_DEPLOY_PUT_CHUNK,
+        CMD_DEPLOY_ABORT,
+        CMD_RUNTIME_RESUME,
+      ])
+    })
+
+    it('aborts on any other staging error and passes it through unchanged', async () => {
+      // Seen on an esp32c6 with a full storage: EIO, not ENOSPC.
+      const {err, types} = await deployToFullDevice(
+        CMD_DEPLOY_KEEP,
+        'create directory failed: I/O error',
+        false,
+      )
+
+      expect((err as Error).message).to.equal(
+        "deploy keep '/app/a.js': create directory failed: I/O error",
+      )
+      expect(types).to.deep.equal([
+        CMD_RUNTIME_PAUSE,
+        CMD_DEPLOY_CHECKSUM,
+        CMD_DEPLOY_KEEP,
+        CMD_DEPLOY_ABORT,
+        CMD_RUNTIME_RESUME,
+      ])
+    })
+
     it('deployBuild streams the tgz then stages it', async () => {
       const dir = await mkdtemp(pathlib.join(tmpdir(), 'mikro-build-'))
       const tgzPath = pathlib.join(dir, 'app.tgz')

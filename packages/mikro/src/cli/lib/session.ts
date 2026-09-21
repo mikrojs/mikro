@@ -228,6 +228,11 @@ export type ReplEvent =
 /** Response events that deploy/config commands wait for */
 type ResponseEvent = OkEvent | ErrEvent | ChecksumResultEvent | ConfigEntriesEvent
 
+/** True for a device error that carries strerror(ENOSPC). */
+function isStorageFull(err: unknown): boolean {
+  return err instanceof UserError && err.message.includes('No space left on device')
+}
+
 /** Errors the stream with a UserError when the device disconnects, so a wait
  * for some later event ends there. `context` names what was waiting. */
 export function failOnDisconnect(context: string): MonoTypeOperatorFunction<ReplEvent> {
@@ -875,29 +880,49 @@ export function connectRepl(
         yield {type: 'env_changed', changed: envChanged, removed: envRemoved}
       }
 
-      // Erase
-      if (erase) {
-        await sendExpectOk(buildDeployEraseCommand(), 'deploy erase')
-      }
+      try {
+        // Erase
+        if (erase) {
+          await sendExpectOk(buildDeployEraseCommand(), 'deploy erase')
+        }
 
-      // KEEP unchanged files
-      for (const filePath of filesToKeep) {
-        await sendExpectOk(buildDeployKeepCommand(filePath), `deploy keep '${filePath}'`)
-      }
+        // KEEP unchanged files
+        for (const filePath of filesToKeep) {
+          await sendExpectOk(buildDeployKeepCommand(filePath), `deploy keep '${filePath}'`)
+        }
 
-      // PUT changed/new files
-      for (let i = 0; i < filesToPut.length; i++) {
-        const file = filesToPut[i]!
-        yield {type: 'uploading', file: file.path, index: i, total: filesToPut.length}
-        await streamPutFile(file.path, file.data)
-      }
+        // PUT changed/new files
+        for (let i = 0; i < filesToPut.length; i++) {
+          const file = filesToPut[i]!
+          yield {type: 'uploading', file: file.path, index: i, total: filesToPut.length}
+          await streamPutFile(file.path, file.data)
+        }
 
-      // PUT checksums manifest — but only if we actually have files to track.
-      // Otherwise an empty-files + erase deploy would write a stub .checksums
-      // file back into /app and defeat the erase.
-      if (filesToPut.length > 0 || filesToKeep.length > 0) {
-        const manifest = buildChecksumsManifest(localHashes)
-        await streamPutFile(CHECKSUMS_PATH, manifest)
+        // PUT checksums manifest — but only if we actually have files to track.
+        // Otherwise an empty-files + erase deploy would write a stub .checksums
+        // file back into /app and defeat the erase.
+        if (filesToPut.length > 0 || filesToKeep.length > 0) {
+          const manifest = buildChecksumsManifest(localHashes)
+          await streamPutFile(CHECKSUMS_PATH, manifest)
+        }
+      } catch (err) {
+        // Drop the staged files and end the device's deploy session: they hold
+        // the storage the running app needs, and the ERASE + DONE of a later
+        // `mikro clean` would promote them. Best-effort; the staging error is
+        // the one worth reporting. A device that stopped answering is not
+        // asked again.
+        if (!(err instanceof DeviceTimeoutError)) {
+          await sendExpectOk(buildDeployAbortCommand(), 'deploy abort').catch(() => {})
+        }
+        if (!isStorageFull(err)) throw err
+        throw new UserError(
+          erase
+            ? "The device's app storage is full: the app does not fit. " +
+                'The device has no app installed now'
+            : "The device's app storage is full. An incremental deploy needs room for a second " +
+                'copy of the app while it stages the new one. Run `mikro clean`, then deploy again',
+          {cause: err},
+        )
       }
 
       // Finalize
