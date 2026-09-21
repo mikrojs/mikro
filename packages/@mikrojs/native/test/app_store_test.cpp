@@ -1,3 +1,4 @@
+#include <cerrno>
 #include <cstdio>
 #include <string>
 #include <sys/stat.h>
@@ -226,4 +227,81 @@ TEST_CASE("recursive delete respects the depth cap and skips overlong names" *
     CHECK_EQ(std::string("keep"), read_file(base + "/app/live.txt"));
     /* no assertion on full removal: the guards deliberately leave the
      * unreachable tails in place instead of misbehaving */
+}
+
+TEST_CASE("mik__rmdir_recursive removes a tree and reports it gone" *
+          doctest::test_suite("app_store")) {
+    auto base = make_temp_dir();
+    std::string tmp = base + "/.deploy-tmp";
+    CHECK(mik__mkdirs((tmp + "/app/node_modules/@repo/uptime").c_str()));
+    make_dir(tmp + "/app/node_modules/@repo/empty");
+    /* Enough entries that a directory spans several readdir() batches. */
+    for (int i = 0; i < 200; i++) {
+        write_file(tmp + "/app/node_modules/@repo/uptime/f" + std::to_string(i), "x");
+    }
+    write_file(tmp + "/app/index.bjs", "x");
+
+    CHECK(mik__rmdir_recursive(tmp.c_str()));
+    CHECK_FALSE(exists(tmp));
+
+    /* Nothing there counts as removed. */
+    CHECK(mik__rmdir_recursive(tmp.c_str()));
+}
+
+TEST_CASE("mik__rmdir_recursive reports what it could not remove" *
+          doctest::test_suite("app_store")) {
+    auto base = make_temp_dir();
+    std::string locked = base + "/tree/locked";
+    CHECK(mik__mkdirs(locked.c_str()));
+    write_file(locked + "/file", "x");
+    write_file(base + "/tree/other", "x");
+    /* root ignores directory modes, so the failure can't be staged */
+    if (geteuid() == 0) return;
+    chmod(locked.c_str(), 0555);
+
+    errno = 0;
+    CHECK_FALSE(mik__rmdir_recursive((base + "/tree").c_str()));
+    CHECK_EQ(EACCES, errno);
+    /* it stops once a pass removes nothing, and still removed the rest */
+    CHECK(exists(locked + "/file"));
+    CHECK_FALSE(exists(base + "/tree/other"));
+
+    chmod(locked.c_str(), 0755);
+}
+
+TEST_CASE("mik__mkdirs creates missing parents and accepts existing ones" *
+          doctest::test_suite("app_store")) {
+    auto base = make_temp_dir();
+    std::string dir = base + "/.deploy-tmp/app/node_modules/@repo/uptime";
+
+    CHECK(mik__mkdirs(dir.c_str()));
+    CHECK(exists(dir));
+    CHECK(mik__mkdirs(dir.c_str()));
+}
+
+TEST_CASE("mik__mkdirs keeps the errno of the first mkdir that failed" *
+          doctest::test_suite("app_store")) {
+    auto base = make_temp_dir();
+
+    /* A file where a parent should be. The old helper ignored this, and the
+     * caller then reported the ENOENT of the open that followed. */
+    write_file(base + "/blocker", "x");
+    errno = 0;
+    CHECK_FALSE(mik__mkdirs((base + "/blocker/a/b").c_str()));
+    CHECK_EQ(ENOTDIR, errno);
+
+    /* The last component exists but is a file: mkdir says EEXIST, which is
+     * not a success here. */
+    errno = 0;
+    CHECK_FALSE(mik__mkdirs((base + "/blocker").c_str()));
+    CHECK_EQ(ENOTDIR, errno);
+
+    if (geteuid() == 0) return;
+    make_dir(base + "/readonly");
+    chmod((base + "/readonly").c_str(), 0555);
+    errno = 0;
+    CHECK_FALSE(mik__mkdirs((base + "/readonly/a/b").c_str()));
+    /* EACCES from creating `a`, not ENOENT from creating `a/b` after it */
+    CHECK_EQ(EACCES, errno);
+    chmod((base + "/readonly").c_str(), 0755);
 }

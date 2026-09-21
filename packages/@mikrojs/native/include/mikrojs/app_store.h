@@ -21,3 +21,14 @@ MIKAppCommitResult mik__app_commit(const char* base, bool erased);
 /* Recover from an interrupted commit: restore the rollback copy if the live
  * app is missing, otherwise drop leftover staging/rollback dirs. */
 void mik__app_recover(const char* base);
+
+/* Remove a directory tree. Returns true when nothing is left at `path` (also
+ * when nothing was there). On failure errno is that of the first entry that
+ * could not be removed. Descends at most 32 levels and feeds the watchdog. */
+bool mik__rmdir_recursive(const char* path);
+
+/* Create `path` and any missing parents. Returns true when `path` is a
+ * directory afterwards. On failure errno is that of the first mkdir that
+ * failed for a reason other than EEXIST, so a full filesystem reads as ENOSPC
+ * here instead of as ENOENT from a later open. */
+bool mik__mkdirs(const char* path);

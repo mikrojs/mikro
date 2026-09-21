@@ -1,10 +1,13 @@
 #include "mikrojs/app_store.h"
 
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#include "mikrojs/platform.h"
 
 namespace {
 
@@ -33,43 +36,94 @@ constexpr int kMaxDepth = 32;
 
 /* `path` is a mutable buffer of `cap` bytes holding the directory to remove;
  * each level appends into it and truncates on the way out, so a frame costs a
- * few dozen bytes rather than a 512-byte path of its own. */
-void rmdir_recursive_at(char* path, size_t cap, int depth) {
-    DIR* dir = opendir(path);
-    if (!dir) return;
-
+ * few dozen bytes rather than a 512-byte path of its own. Returns true when
+ * the directory is gone; `first_errno` keeps the first failure. */
+bool rmdir_recursive_at(char* path, size_t cap, int depth, int* first_errno) {
+    const MIKPlatform* platform = MIK_GetPlatform();
     const size_t base = strlen(path);
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
 
-        const int n = snprintf(path + base, cap - base, "/%s", entry->d_name);
-        if (n < 0 || (size_t)n >= cap - base) {
-            path[base] = 0;  /* would truncate to a different path; skip it */
-            continue;
-        }
+    /* Entries are removed while readdir() walks the same directory, and not
+     * every filesystem promises to still return the rest. Scan again until a
+     * pass removes nothing, so a skipped entry is picked up by the next one. */
+    for (;;) {
+        DIR* dir = opendir(path);
+        if (!dir) break;
 
-        struct stat st;
-        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
-            if (depth < kMaxDepth) rmdir_recursive_at(path, cap, depth + 1);
-        } else {
-            unlink(path);
+        int removed = 0;
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != NULL) {
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+            if (platform->feed_watchdog) platform->feed_watchdog();
+
+            const int n = snprintf(path + base, cap - base, "/%s", entry->d_name);
+            if (n < 0 || (size_t)n >= cap - base) {
+                path[base] = 0;  /* would truncate to a different path; skip it */
+                continue;
+            }
+
+            struct stat st;
+            if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                if (depth < kMaxDepth && rmdir_recursive_at(path, cap, depth + 1, first_errno)) {
+                    removed++;
+                }
+            } else if (unlink(path) == 0) {
+                removed++;
+            } else if (*first_errno == 0) {
+                *first_errno = errno;
+            }
+            path[base] = 0;
         }
-        path[base] = 0;
+        closedir(dir);
+        if (removed == 0) break;
     }
-    closedir(dir);
-    rmdir(path);
-}
 
-void rmdir_recursive(const char* path) {
-    char buf[512];
-    const size_t n = strlen(path);
-    if (n >= sizeof(buf)) return;
-    memcpy(buf, path, n + 1);
-    rmdir_recursive_at(buf, sizeof(buf), 0);
+    if (rmdir(path) == 0) return true;
+    if (*first_errno == 0) *first_errno = errno;
+    return false;
 }
 
 }  // namespace
+
+bool mik__rmdir_recursive(const char* path) {
+    char buf[512];
+    const size_t n = strlen(path);
+    if (n >= sizeof(buf)) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
+    if (!path_exists(path)) return true;
+    memcpy(buf, path, n + 1);
+    int first_errno = 0;
+    if (rmdir_recursive_at(buf, sizeof(buf), 0, &first_errno)) return true;
+    errno = first_errno;
+    return false;
+}
+
+bool mik__mkdirs(const char* path) {
+    char tmp[512];
+    const size_t n = strlen(path);
+    if (n == 0 || n >= sizeof(tmp)) {
+        errno = n == 0 ? EINVAL : ENAMETOOLONG;
+        return false;
+    }
+    memcpy(tmp, path, n + 1);
+
+    int first_errno = 0;
+    for (char* p = tmp + 1;; p++) {
+        if (*p != '/' && *p != '\0') continue;
+        const char saved = *p;
+        *p = '\0';
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST && first_errno == 0) first_errno = errno;
+        *p = saved;
+        if (saved == '\0') break;
+    }
+
+    /* A prefix may answer mkdir with something other than EEXIST (a mount
+     * point, for one), so what decides is whether the directory is there. */
+    if (dir_exists(path)) return true;
+    errno = first_errno ? first_errno : ENOTDIR;
+    return false;
+}
 
 MIKAppCommitResult mik__app_commit(const char* base, bool erased) {
     char app[512];
@@ -85,14 +139,14 @@ MIKAppCommitResult mik__app_commit(const char* base, bool erased) {
      * leave the live app untouched and just clean up. The original logic
      * would have deleted the live app in this degenerate case. */
     if (!dir_exists(staged_app)) {
-        rmdir_recursive(old);
-        rmdir_recursive(tmp);
+        mik__rmdir_recursive(old);
+        mik__rmdir_recursive(tmp);
         return MIK_APP_COMMIT_OK;
     }
 
     /* Atomic swap: staging dir → app dir */
     if (path_exists(app) && !erased) {
-        rmdir_recursive(old);
+        mik__rmdir_recursive(old);
         if (rename(app, old) != 0) {
             return MIK_APP_COMMIT_STASH_FAILED;
         }
@@ -105,8 +159,8 @@ MIKAppCommitResult mik__app_commit(const char* base, bool erased) {
         return MIK_APP_COMMIT_SWAP_FAILED;
     }
 
-    rmdir_recursive(old);
-    rmdir_recursive(tmp);
+    mik__rmdir_recursive(old);
+    mik__rmdir_recursive(tmp);
     return MIK_APP_COMMIT_OK;
 }
 
@@ -125,10 +179,10 @@ void mik__app_recover(const char* base) {
     if (!has_app && has_old) {
         rename(old, app);
     } else if (has_old) {
-        rmdir_recursive(old);
+        mik__rmdir_recursive(old);
     }
 
     if (has_tmp) {
-        rmdir_recursive(tmp);
+        mik__rmdir_recursive(tmp);
     }
 }
