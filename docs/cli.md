@@ -106,6 +106,7 @@ mikro flash
 | `--from REF`      | Firmware source: a release tag (`v0.2.0`), branch, commit SHA, GitHub repo (`user/repo` or `user/repo@ref`), or URL to a `.tar.gz` archive |
 | `--baud BAUD`     | Baud rate for flashing (default: `460800`)                                                                                                 |
 | `-y, --yes`       | Skip confirmation prompt                                                                                                                   |
+| `--force`         | Flash even if the device reports custom firmware, or the new partition table would shrink the app filesystem and erase its files           |
 
 ::: tip
 `--build-dir` and `--from` are mutually exclusive. Use `--build-dir` if you built firmware from source; use `--from` to pin a specific version.

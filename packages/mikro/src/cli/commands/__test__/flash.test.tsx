@@ -9,15 +9,16 @@ import Flash from '../flash.js'
 
 const PORT = '/dev/tty.fixture'
 
-const {resolveFlashPlan, openSession} = vi.hoisted(() => ({
+const {resolveFlashPlan, assertFilesystemKept, openSession} = vi.hoisted(() => ({
   resolveFlashPlan: vi.fn(),
+  assertFilesystemKept: vi.fn(),
   openSession: vi.fn(),
 }))
 
 vi.mock('../../hooks/useDevices.js', () => ({
   useDevices: () => ({status: 'success', value: [{path: '/dev/tty.fixture'}]}),
 }))
-vi.mock('../../lib/flashFirmware.js', () => ({resolveFlashPlan}))
+vi.mock('../../lib/flashFirmware.js', () => ({resolveFlashPlan, assertFilesystemKept}))
 // The device probe: a device running custom firmware.
 vi.mock('../../lib/serial/openSession.js', () => ({openSession}))
 function customFirmwareDevice() {
@@ -38,6 +39,7 @@ describe('mikro flash confirmation', () => {
     cleanup()
     vi.restoreAllMocks()
     resolveFlashPlan.mockReset()
+    assertFilesystemKept.mockReset()
     openSession.mockReset()
   })
 
@@ -150,5 +152,41 @@ describe('mikro flash confirmation', () => {
     await vi.waitFor(() => expect(openSession).toHaveBeenCalled())
     expect(stripVTControlCharacters(lastFrame() ?? '')).toContain('Checking device firmware…')
     expect(resolveFlashPlan).not.toHaveBeenCalled()
+  })
+
+  it('refuses a shrinking app filesystem without having asked first', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    resolveFlashPlan.mockResolvedValue({
+      esptoolPath: '/fixture/esptool',
+      flasherArgs: {chip: 'esp32c6'},
+      image: 'from',
+      warnings: [],
+    } as unknown as FlashPlan)
+    assertFilesystemKept.mockRejectedValue(new Error('This firmware shrinks the app filesystem'))
+
+    // --from skips the firmware identity probe without --force, which would
+    // also skip the filesystem check.
+    const {frames} = render(<Flash args={{port: PORT, from: 'v0.1.0'} as never} />)
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1))
+
+    const seen = frames.map((frame) => stripVTControlCharacters(frame))
+    expect(seen.at(-1)).toContain('This firmware shrinks the app filesystem')
+    expect(seen.some((frame) => frame.includes('Continue?'))).toBe(false)
+  })
+
+  it('skips the filesystem check with --force', async () => {
+    resolveFlashPlan.mockResolvedValue({
+      esptoolPath: '/fixture/esptool',
+      flasherArgs: {chip: 'esp32c6'},
+      image: 'bundled',
+      warnings: [],
+    } as unknown as FlashPlan)
+
+    const {lastFrame} = render(screen())
+
+    await vi.waitFor(() =>
+      expect(stripVTControlCharacters(lastFrame() ?? '')).toContain('Continue? (y/N)'),
+    )
+    expect(assertFilesystemKept).not.toHaveBeenCalled()
   })
 })

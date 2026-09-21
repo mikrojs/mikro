@@ -1,4 +1,6 @@
 import {existsSync} from 'node:fs'
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
 import * as path from 'node:path'
 
 import {getEsptoolPath} from '@mikrojs/esptool'
@@ -10,7 +12,9 @@ import {didYouMean} from './didYouMean.js'
 import {UserError} from './errorMessage.js'
 import {type FlasherArgs, getWriteFlashMultiArgs, readFlasherArgs} from './esptool.js'
 import {type Chip, resolveFrom} from './firmware.js'
+import {formatSize} from './formatSize.js'
 import {ospawn} from './ospawn.js'
+import {filesystemLoss, PARTITION_TABLE_OFFSET, PARTITION_TABLE_SIZE} from './partitionTable.js'
 
 export const DEFAULT_FLASH_BAUD = 460800
 
@@ -50,6 +54,8 @@ export interface FlashPlan {
   /** Shown before the go-ahead; none stops the flash: the board's image is
    *  older than its build, or a dependency's `firmware` export was skipped. */
   warnings: string[]
+  /** The device's partition table, when chip detection has read it. */
+  devicePartitionTable?: Uint8Array
 }
 
 /** Several installed boards for the device's chip, and nothing choosing
@@ -76,24 +82,51 @@ function chooseMessage(boards: BoardInfo[], chip?: string): string {
   )
 }
 
-/** Detect the chip type of the device on `port` via `esptool chip-id`. */
-export async function detectChip(esptoolPath: string, port: string): Promise<Chip> {
+interface DeviceFlash {
+  chip: Chip
+  partitionTable: Uint8Array
+}
+
+/** Read the partition table of the device on `port` with `esptool read-flash`,
+ *  which also reports the chip type. Undefined when esptool fails. */
+async function readDeviceFlash(
+  esptoolPath: string,
+  port: string,
+): Promise<DeviceFlash | undefined> {
   const {execFile} = await import('node:child_process')
   const {promisify} = await import('node:util')
   const execFileAsync = promisify(execFile)
 
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mikro-flash-'))
+  const file = path.join(dir, 'partition-table.bin')
   try {
-    const {stdout} = await execFileAsync(esptoolPath, ['--port', port, 'chip-id'])
-
-    // esptool chip_id output contains "Detecting chip type... ESP32-C6" or similar
+    const {stdout} = await execFileAsync(esptoolPath, [
+      '--port',
+      port,
+      'read-flash',
+      String(PARTITION_TABLE_OFFSET),
+      String(PARTITION_TABLE_SIZE),
+      file,
+    ])
+    // esptool's connect output contains "Detecting chip type... ESP32-C6" or similar
     const match = stdout.match(/Detecting chip type\.\.\.\s*(\S+)/i)
-    if (match) {
-      return match[1]!.toLowerCase().replace(/-/g, '')
+    if (!match) return undefined
+    return {
+      chip: match[1]!.toLowerCase().replace(/-/g, ''),
+      partitionTable: await fs.readFile(file),
     }
   } catch {
-    // Detection failed, fall through
+    return undefined
+  } finally {
+    await fs.rm(dir, {recursive: true, force: true})
   }
+}
 
+/** Detect the chip type of the device on `port`, reading its partition table
+ *  in the same esptool session. */
+async function detectChip(esptoolPath: string, port: string): Promise<DeviceFlash> {
+  const device = await readDeviceFlash(esptoolPath, port)
+  if (device) return device
   throw new UserError(
     `Could not detect chip type. Use --target to specify the chip (e.g. --target esp32c6).`,
   )
@@ -173,7 +206,7 @@ async function boardForChip(
   if (chip === undefined) {
     try {
       onProgress?.('Detecting chip…')
-      chip = await detectChip(esptoolPath, port)
+      chip = (await detectChip(esptoolPath, port)).chip
     } catch {
       if (pickBoard) return {choose: boards}
       throw new UserError(chooseMessage(boards))
@@ -204,7 +237,7 @@ async function verifyBoardChip(
   let detected: Chip
   try {
     onProgress?.('Detecting chip…')
-    detected = await detectChip(esptoolPath, port)
+    detected = (await detectChip(esptoolPath, port)).chip
   } catch {
     return
   }
@@ -274,9 +307,12 @@ export async function resolveFlashPlan(
   }
 
   let resolvedChip: Chip | undefined = target ?? resolved?.board.chip
+  let devicePartitionTable: Uint8Array | undefined
   if (!resolvedChip) {
     onProgress?.('Detecting chip…')
-    resolvedChip = await detectChip(esptoolPath, port)
+    const device = await detectChip(esptoolPath, port)
+    resolvedChip = device.chip
+    devicePartitionTable = device.partitionTable
   }
 
   if (from) {
@@ -305,9 +341,10 @@ export async function resolveFlashPlan(
         image: 'from',
         board: {name: archived.value.name, source: 'detected'},
         warnings,
+        devicePartitionTable,
       }
     }
-    return {esptoolPath, flasherArgs, image: 'from', board, warnings}
+    return {esptoolPath, flasherArgs, image: 'from', board, warnings, devicePartitionTable}
   }
 
   // No board selected: the detected (or --target) chip's bundled board.
@@ -344,7 +381,39 @@ export async function resolveFlashPlan(
     image: resolved.board.bundled ? 'bundled' : 'board',
     board: boardInfo,
     warnings,
+    devicePartitionTable,
   }
+}
+
+/**
+ * Refuse a flash whose partition table drops, moves or shrinks the app
+ * filesystem: the firmware then reformats it and the app's files are lost.
+ * A device esptool cannot read passes: recovering such devices is what
+ * `mikro flash` is for.
+ */
+export async function assertFilesystemKept(
+  plan: FlashPlan,
+  port: string,
+  override = 'Re-run with --force to flash anyway.',
+): Promise<void> {
+  const next = plan.flasherArgs.files.find((f) => f.address === PARTITION_TABLE_OFFSET)
+  if (!next) return
+  const current =
+    plan.devicePartitionTable ?? (await readDeviceFlash(plan.esptoolPath, port))?.partitionTable
+  if (!current) return
+  const loss = filesystemLoss(current, await fs.readFile(next.filename))
+  if (!loss) return
+  const {from, to} = loss
+  const change = !to
+    ? `This firmware's partition table has no app filesystem (the device has ${formatSize(from.size)}).`
+    : to.offset !== from.offset
+      ? `This firmware moves the app filesystem from 0x${from.offset.toString(16)} to ` +
+        `0x${to.offset.toString(16)}.`
+      : `This firmware shrinks the app filesystem from ${formatSize(from.size)} to ` +
+        `${formatSize(to.size)}, ${formatSize(from.size - to.size)} less.`
+  throw new UserError(
+    `${change} The filesystem would be reformatted and the app's files on it lost. ${override}`,
+  )
 }
 
 /**
@@ -372,6 +441,7 @@ export async function flashFirmware(
         `Flash it with:\n  mikro flash --board ${board!.name}`,
     )
   }
+  await assertFilesystemKept(plan, port, 'Run `mikro flash --force` to flash anyway.')
 
   onProgress?.(`Flashing ${flasherArgs.chip} firmware…`)
   const esptoolArgs = getWriteFlashMultiArgs({
