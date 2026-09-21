@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto'
 import {existsSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -9,12 +10,24 @@ import {lastValueFrom} from 'rxjs'
 
 import {type BoardInfo, bundledBoards, discoverBoards, staleImage} from './boards.js'
 import {didYouMean} from './didYouMean.js'
+import {paths} from './envPaths.js'
 import {UserError} from './errorMessage.js'
-import {type FlasherArgs, getWriteFlashMultiArgs, readFlasherArgs} from './esptool.js'
+import {
+  type FlasherArgs,
+  type FlashSize,
+  getWriteFlashMultiArgs,
+  readFlasherArgs,
+} from './esptool.js'
 import {type Chip, resolveFrom} from './firmware.js'
 import {formatSize} from './formatSize.js'
 import {ospawn} from './ospawn.js'
-import {filesystemLoss, PARTITION_TABLE_OFFSET, PARTITION_TABLE_SIZE} from './partitionTable.js'
+import {
+  filesystemLoss,
+  growFilesystemToFlash,
+  PARTITION_TABLE_OFFSET,
+  PARTITION_TABLE_SIZE,
+  userSize,
+} from './partitionTable.js'
 
 export const DEFAULT_FLASH_BAUD = 460800
 
@@ -54,8 +67,10 @@ export interface FlashPlan {
   /** Shown before the go-ahead; none stops the flash: the board's image is
    *  older than its build, or a dependency's `firmware` export was skipped. */
   warnings: string[]
-  /** The device's partition table, when chip detection has read it. */
+  /** The device's partition table, when the plan has read it. */
   devicePartitionTable?: Uint8Array
+  /** Size of the app filesystem (`user` partition) the firmware will have. */
+  filesystemSize?: number
 }
 
 /** Several installed boards for the device's chip, and nothing choosing
@@ -85,10 +100,12 @@ function chooseMessage(boards: BoardInfo[], chip?: string): string {
 interface DeviceFlash {
   chip: Chip
   partitionTable: Uint8Array
+  /** Physical flash size in bytes, when esptool recognised the flash chip. */
+  flashSize?: number
 }
 
 /** Read the partition table of the device on `port` with `esptool read-flash`,
- *  which also reports the chip type. Undefined when esptool fails. */
+ *  which also reports the chip type and flash size. Undefined when esptool fails. */
 async function readDeviceFlash(
   esptoolPath: string,
   port: string,
@@ -104,6 +121,8 @@ async function readDeviceFlash(
       '--port',
       port,
       'read-flash',
+      '--flash-size',
+      'detect',
       String(PARTITION_TABLE_OFFSET),
       String(PARTITION_TABLE_SIZE),
       file,
@@ -111,25 +130,18 @@ async function readDeviceFlash(
     // esptool's connect output contains "Detecting chip type... ESP32-C6" or similar
     const match = stdout.match(/Detecting chip type\.\.\.\s*(\S+)/i)
     if (!match) return undefined
+    // Absent when esptool falls back to 4MB ("Could not auto-detect flash size")
+    const size = stdout.match(/Auto-detected flash size:\s*(\S+)/i)
     return {
       chip: match[1]!.toLowerCase().replace(/-/g, ''),
       partitionTable: await fs.readFile(file),
+      flashSize: size ? flashSizeBytes(size[1]!) : undefined,
     }
   } catch {
     return undefined
   } finally {
     await fs.rm(dir, {recursive: true, force: true})
   }
-}
-
-/** Detect the chip type of the device on `port`, reading its partition table
- *  in the same esptool session. */
-async function detectChip(esptoolPath: string, port: string): Promise<DeviceFlash> {
-  const device = await readDeviceFlash(esptoolPath, port)
-  if (device) return device
-  throw new UserError(
-    `Could not detect chip type. Use --target to specify the chip (e.g. --target esp32c6).`,
-  )
 }
 
 /** Look for the board to flash. Precedence: `--board` flag > `config.board` >
@@ -196,21 +208,15 @@ function unknownBoardError(found: Extract<BoardDiscovery, {kind: 'unknown'}>): U
  *  when there is no picker; none is an error rather than the generic firmware,
  *  since the project depends on boards. A device too stuck to report its chip
  *  leaves every board to choose from. */
-async function boardForChip(
+function boardForChip(
   boards: BoardInfo[],
-  esptoolPath: string,
+  chip: Chip | undefined,
   opts: FlashPlanOptions,
-): Promise<{board: BoardInfo; source: BoardSource} | BoardChoice> {
-  const {port, target, pickBoard, onProgress} = opts
-  let chip = target
+): {board: BoardInfo; source: BoardSource} | BoardChoice {
+  const {port, pickBoard} = opts
   if (chip === undefined) {
-    try {
-      onProgress?.('Detecting chip…')
-      chip = (await detectChip(esptoolPath, port)).chip
-    } catch {
-      if (pickBoard) return {choose: boards}
-      throw new UserError(chooseMessage(boards))
-    }
+    if (pickBoard) return {choose: boards}
+    throw new UserError(chooseMessage(boards))
   }
   const matches = boards.filter((b) => b.chip === chip)
   if (matches.length === 1) return {board: matches[0]!, source: 'chip'}
@@ -228,20 +234,8 @@ async function boardForChip(
 /** Hard-stop when the selected board doesn't match the connected chip.
  *  Detection failure is not an error here: a stuck device is exactly what
  *  `mikro flash` recovers, so the check only fires on a positive mismatch. */
-async function verifyBoardChip(
-  esptoolPath: string,
-  port: string,
-  board: BoardInfo,
-  onProgress?: (message: string) => void,
-): Promise<void> {
-  let detected: Chip
-  try {
-    onProgress?.('Detecting chip…')
-    detected = (await detectChip(esptoolPath, port)).chip
-  } catch {
-    return
-  }
-  if (detected !== board.chip) {
+function verifyBoardChip(port: string, board: BoardInfo, detected: Chip | undefined): void {
+  if (detected !== undefined && detected !== board.chip) {
     throw new UserError(
       `${board.name} is an ${board.chip} board; the device on ${port} is an ${detected}. ` +
         `Pass --board ${detected}-generic, or change \`board\` in mikro.config.ts.`,
@@ -271,13 +265,18 @@ export async function resolveFlashPlan(
       readFlasherArgs(buildDir),
       getEsptoolPath(),
     ])
-    return {esptoolPath, flasherArgs, image: 'build-dir', warnings: []}
+    return withFilesystemSize({esptoolPath, flasherArgs, image: 'build-dir', warnings: []})
   }
 
   onProgress?.('Resolving esptool…')
   const esptoolPath = await getEsptoolPath()
   const found = await discoverBoard(boardFlag, configBoard, opts.boardSource ?? 'flag')
   const warnings = [...found.warnings]
+  if (found.kind === 'unknown' && !from) throw unknownBoardError(found)
+  // One esptool session gives the chip, the partition table for
+  // assertFilesystemKept, and the flash size for fitToDeviceFlash.
+  onProgress?.(target ? 'Reading device flash…' : 'Detecting chip…')
+  const device = await readDeviceFlash(esptoolPath, port)
   let resolved: {board: BoardInfo; source: BoardSource} | undefined
   // With --from, --board only picks an archive of the release or build, so it
   // needs no installed board of that name (custom firmware has none).
@@ -285,11 +284,10 @@ export async function resolveFlashPlan(
   if (found.kind === 'board') {
     resolved = {board: found.board, source: found.source}
   } else if (found.kind === 'choose') {
-    const chosen = await boardForChip(found.boards, esptoolPath, opts)
+    const chosen = boardForChip(found.boards, target ?? device?.chip, opts)
     if ('choose' in chosen) return chosen
     resolved = chosen
   } else if (found.kind === 'unknown') {
-    if (!from) throw unknownBoardError(found)
     archiveBoard = {name: found.name, source: found.source}
   }
 
@@ -301,19 +299,16 @@ export async function resolveFlashPlan(
   }
   // esptool refuses firmware for another chip by itself, but only after the
   // firmware is resolved (and perhaps downloaded), and with its own message.
-  // Checking first costs one chip-id run and names the board that is wrong.
-  if (resolved && resolved.source !== 'chip') {
-    await verifyBoardChip(esptoolPath, port, resolved.board, onProgress)
-  }
+  // Checking first names the board that is wrong.
+  if (resolved && resolved.source !== 'chip') verifyBoardChip(port, resolved.board, device?.chip)
 
-  let resolvedChip: Chip | undefined = target ?? resolved?.board.chip
-  let devicePartitionTable: Uint8Array | undefined
+  const resolvedChip = target ?? resolved?.board.chip ?? device?.chip
   if (!resolvedChip) {
-    onProgress?.('Detecting chip…')
-    const device = await detectChip(esptoolPath, port)
-    resolvedChip = device.chip
-    devicePartitionTable = device.partitionTable
+    throw new UserError(
+      `Could not detect chip type. Use --target to specify the chip (e.g. --target esp32c6).`,
+    )
   }
+  const devicePartitionTable = device?.partitionTable
 
   if (from) {
     // No board named or found: the chip's bundled board, whose archive a release carries.
@@ -327,7 +322,7 @@ export async function resolveFlashPlan(
       board: board.name,
       onProgress: (message) => onProgress?.(message),
     })
-    const flasherArgs = await readFlasherArgs(firmwareDir)
+    const flasherArgs = await fitToDeviceFlash(await readFlasherArgs(firmwareDir), device)
     // A release without the board's archive falls back to the chip's: report
     // what was downloaded, not what was asked for.
     const archived = readFirmwareJson(path.join(firmwareDir, 'firmware.json'))
@@ -335,16 +330,23 @@ export async function resolveFlashPlan(
       warnings.push(
         `${from} has no firmware for ${board.name}; this flashes ${archived.value.name}`,
       )
-      return {
+      return withFilesystemSize({
         esptoolPath,
         flasherArgs,
         image: 'from',
         board: {name: archived.value.name, source: 'detected'},
         warnings,
         devicePartitionTable,
-      }
+      })
     }
-    return {esptoolPath, flasherArgs, image: 'from', board, warnings, devicePartitionTable}
+    return withFilesystemSize({
+      esptoolPath,
+      flasherArgs,
+      image: 'from',
+      board,
+      warnings,
+      devicePartitionTable,
+    })
   }
 
   // No board selected: the detected (or --target) chip's bundled board.
@@ -372,17 +374,60 @@ export async function resolveFlashPlan(
         'Run `mikro fw prepack` in its firmware project.',
     )
   }
-  const flasherArgs = await readFlasherArgs(dir)
+  const flasherArgs = await fitToDeviceFlash(await readFlasherArgs(dir), device)
   const stale = staleImage(resolved.board)
   if (stale) warnings.push(stale)
-  return {
+  return withFilesystemSize({
     esptoolPath,
     flasherArgs,
     image: resolved.board.bundled ? 'bundled' : 'board',
     board: boardInfo,
     warnings,
     devicePartitionTable,
+  })
+}
+
+/** ESP-IDF needs 32-bit flash addressing above 16 MB, which the generic
+ *  firmware isn't built with. */
+const MAX_FLASH_SIZE = 16 * 1024 * 1024
+
+/** Stretch a last `user` partition to the end of the device's flash, and write
+ *  the bootloader with that size: its header caps what ESP-IDF will access. */
+async function fitToDeviceFlash(
+  flasherArgs: FlasherArgs,
+  device: DeviceFlash | undefined,
+): Promise<FlasherArgs> {
+  const table = flasherArgs.files.find((f) => f.address === PARTITION_TABLE_OFFSET)
+  if (!device?.flashSize || !table) return flasherArgs
+  const flashSize = Math.min(device.flashSize, MAX_FLASH_SIZE)
+  const grown = growFilesystemToFlash(await fs.readFile(table.filename), flashSize)
+  if (!grown) return flasherArgs
+
+  // Named by content in the user's own cache, so repeated flashes reuse one file.
+  const hash = createHash('sha256').update(grown).digest('hex').slice(0, 16)
+  const dir = path.join(paths.cache, 'partition-tables')
+  await fs.mkdir(dir, {recursive: true})
+  const filename = path.join(dir, `${hash}.bin`)
+  await fs.writeFile(filename, grown)
+  return {
+    ...flasherArgs,
+    flashSize: `${flashSize / (1024 * 1024)}MB` as FlashSize,
+    files: flasherArgs.files.map((f) => (f === table ? {...f, filename} : f)),
   }
+}
+
+async function withFilesystemSize(plan: FlashPlan): Promise<FlashPlan> {
+  const table = plan.flasherArgs.files.find((f) => f.address === PARTITION_TABLE_OFFSET)
+  if (!table) return plan
+  return {...plan, filesystemSize: userSize(await fs.readFile(table.filename))}
+}
+
+/** Bytes in an esptool flash size such as "4MB" or "512KB"; undefined for
+ *  "keep", "detect" and anything else. */
+function flashSizeBytes(size: string): number | undefined {
+  const match = size.match(/^(\d+)(KB|MB)$/)
+  if (!match) return undefined
+  return Number(match[1]) * (match[2] === 'MB' ? 1024 * 1024 : 1024)
 }
 
 /**

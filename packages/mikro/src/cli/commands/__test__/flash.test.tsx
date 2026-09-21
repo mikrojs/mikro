@@ -154,6 +154,24 @@ describe('mikro flash confirmation', () => {
     expect(resolveFlashPlan).not.toHaveBeenCalled()
   })
 
+  it('shows the app filesystem size the firmware will have', async () => {
+    resolveFlashPlan.mockResolvedValue({
+      esptoolPath: '/fixture/esptool',
+      flasherArgs: {chip: 'esp32c6', flashSize: '8MB'},
+      image: 'bundled',
+      warnings: [],
+      filesystemSize: 0x570000,
+    } as unknown as FlashPlan)
+
+    const {lastFrame} = render(screen())
+
+    await vi.waitFor(() =>
+      expect(stripVTControlCharacters(lastFrame() ?? '')).toContain(
+        'App filesystem: 5.4 MB (8MB flash)',
+      ),
+    )
+  })
+
   it('refuses a shrinking app filesystem without having asked first', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
     resolveFlashPlan.mockResolvedValue({

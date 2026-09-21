@@ -21,6 +21,7 @@ import {
   type FlashPlan,
   resolveFlashPlan,
 } from '../lib/flashFirmware.js'
+import {formatSize} from '../lib/formatSize.js'
 import {loadMikroConfig} from '../lib/loadMikroConfig.js'
 import {INITIAL_SPAWN_STATE, ospawn, spawnErrorMessage, type SpawnState} from '../lib/ospawn.js'
 import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
@@ -103,6 +104,7 @@ type InitState =
       image: FlashPlan['image']
       board?: FlashPlan['board']
       warnings: string[]
+      filesystemSize?: number
     }
   | {status: 'error'; error: Error}
 
@@ -408,6 +410,8 @@ export default function FlashCmd(props: Props) {
     return (
       <ConfirmFlash
         port={device.path}
+        flashSize={initState.flasherArgs.flashSize}
+        filesystemSize={initState.filesystemSize}
         warnings={warnings}
         onConfirm={() => setConfirmed(true)}
         onCancel={() => process.exit(0)}
@@ -445,11 +449,13 @@ function Warnings(props: {warnings: string[]}) {
 
 function ConfirmFlash(props: {
   port: string
+  flashSize: string
+  filesystemSize: number | undefined
   warnings: string[]
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const {port, warnings, onConfirm, onCancel} = props
+  const {port, flashSize, filesystemSize, warnings, onConfirm, onCancel} = props
 
   useInput((input) => {
     if (input.toLowerCase() === 'y') {
@@ -466,6 +472,11 @@ function ConfirmFlash(props: {
         {figures.warning} This will flash new firmware to the device on {port}, overwriting the
         existing firmware.
       </Text>
+      {filesystemSize === undefined ? null : (
+        <Text>
+          App filesystem: {formatSize(filesystemSize)} ({flashSize} flash)
+        </Text>
+      )}
       <Text>
         {'\n'}Continue? <Text bold>(y/N)</Text>
       </Text>

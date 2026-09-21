@@ -543,7 +543,8 @@ other values, deliver a document the same way production does, through a registr
 - OTA replaces your app build, not the firmware binary.
 - The new build, the previous build kept for rollback, and the unpacked app share the
   storage of the device, which limits the app size for OTA. The generic firmware's
-  [filesystem](/developing-for-microcontrollers#filesystem) is 1472 KB; a larger app needs a
+  [filesystem](/developing-for-microcontrollers#filesystem) is 1472 KB on a 4 MB module;
+  a larger app needs more flash or a
   [larger partition](/develop/custom-firmware#use-a-bigger-flash-chip). `mikro ota pack` prints
   the size of the build it produced, and the device reports its free staging space on every
   check-in, so a registry can withhold a build that does not fit.

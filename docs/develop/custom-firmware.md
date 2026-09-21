@@ -90,7 +90,7 @@ CONFIG_MIKROJS_WIFI=n
 
 ## Use a bigger flash chip
 
-The official firmware's partition table is for 4 MB of flash. For a bigger chip, set its size in `sdkconfig.defaults`, and add a `partitions.csv` that gives the extra space to `user`, the partition that holds the app and its files. For 8 MB:
+The official firmware's partition table is for 4 MB of flash. `mikro flash` stretches `user`, the partition that holds the app and its files, to the end of a bigger chip for prebuilt images: the generic firmware, a [board package](./creating-boards)'s image and `--from` firmware. A build flashed with `--build-dir` or `pn mikro idf flash` uses the flash size in its `sdkconfig` and the table as you wrote it. For a bigger chip, set its size in `sdkconfig.defaults`, and add a `partitions.csv` that gives the extra space to `user`. For 8 MB:
 
 ```ini
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
@@ -108,7 +108,7 @@ user,     data, littlefs,      ,  0x570000,
 For 16 MB, use `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`, `CONFIG_ESPTOOLPY_FLASHSIZE="16MB"` and a `user` size of `0xD70000`. Keep the names and types of `user` and `factory`: the firmware looks the filesystem up by the name `user`.
 
 ::: warning Shrinking the user partition reformats it
-If the new `user` partition is smaller than the one on the device, the device reformats it on the next boot, and you need to deploy the app again. `storageUsage().total` shows the size on the device.
+If the new `user` partition is smaller than the one on the device, the device reformats it on the next boot, and you need to deploy the app again. `storageUsage().total` shows the size on the device. A build laid out for 4 MB is smaller on an 8 MB or 16 MB module that has run the generic firmware, which uses all of its flash. `mikro flash --build-dir` refuses such a flash unless you pass `--force`.
 :::
 
 Flash the new table over USB with `pn mikro idf flash`. On its first boot, the device grows the filesystem to fill the new `user` partition and keeps any existing files.

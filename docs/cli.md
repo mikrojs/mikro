@@ -108,6 +108,8 @@ mikro flash
 | `-y, --yes`       | Skip confirmation prompt                                                                                                                   |
 | `--force`         | Flash even if the device reports custom firmware, or the new partition table would shrink the app filesystem and erase its files           |
 
+On a module with more flash than the firmware was built for, the generic firmware, a board package's image and `--from` firmware give the [app filesystem](/developing-for-microcontrollers#filesystem) the rest of the flash, up to 16 MB. This applies when `user` is the last partition, as in the default partition table.
+
 ::: tip
 `--build-dir` and `--from` are mutually exclusive. Use `--build-dir` if you built firmware from source; use `--from` to pin a specific version.
 :::

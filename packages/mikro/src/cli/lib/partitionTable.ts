@@ -1,9 +1,12 @@
+import {createHash} from 'node:crypto'
+
 /** Where ESP-IDF keeps the partition table in flash, and its maximum length. */
 export const PARTITION_TABLE_OFFSET = 0x8000
 export const PARTITION_TABLE_SIZE = 0xc00
 
 const ENTRY_SIZE = 32
 const ENTRY_MAGIC = 0x50aa
+const MD5_MAGIC = 0xebeb
 
 interface Partition {
   label: string
@@ -45,8 +48,39 @@ export function filesystemLoss(
   return {from, to}
 }
 
+/**
+ * A copy of `table` with the `user` partition stretched to end at `flashSize`,
+ * and the MD5 entry recomputed. Undefined unless `user` is the last partition
+ * and ends before `flashSize`.
+ */
+export function growFilesystemToFlash(
+  table: Uint8Array,
+  flashSize: number,
+): Uint8Array | undefined {
+  const partitions = parsePartitionTable(table)
+  const count = partitions.length
+  const last = count - 1
+  const user = partitions[last]
+  if (user?.label !== 'user' || user.offset + user.size >= flashSize) return undefined
+
+  const grown = Uint8Array.from(table)
+  const view = new DataView(grown.buffer)
+  view.setUint32(last * ENTRY_SIZE + 8, flashSize - user.offset, true)
+
+  // The bootloader rejects the table if its MD5 entry no longer matches.
+  const md5 = count * ENTRY_SIZE
+  if (md5 + ENTRY_SIZE <= grown.length && view.getUint16(md5, true) === MD5_MAGIC) {
+    grown.set(createHash('md5').update(grown.subarray(0, md5)).digest(), md5 + 16)
+  }
+  return grown
+}
+
 function userPartition(table: Uint8Array): Partition | undefined {
   return parsePartitionTable(table).find((p) => p.label === 'user')
+}
+
+export function userSize(table: Uint8Array): number | undefined {
+  return userPartition(table)?.size
 }
 
 const textDecoder = new TextDecoder()

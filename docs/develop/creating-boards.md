@@ -79,7 +79,7 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 ```
 
-A `partitions.csv` next to `sdkconfig.defaults` replaces the default partition table (see [Use a bigger flash chip](./custom-firmware#use-a-bigger-flash-chip)).
+A `partitions.csv` next to `sdkconfig.defaults` replaces the default partition table (see [Use a bigger flash chip](./custom-firmware#use-a-bigger-flash-chip)). When `user` is the last partition, `mikro flash` stretches it to the end of the chip's flash, so one image serves variants of the board with more flash.
 
 The firmware takes the package's name and description. The device reports the name as `sys.board.name`, and `mikro flash --board`, `mikro.config.ts` and a registry use the same name.
 
