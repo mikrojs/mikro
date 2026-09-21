@@ -92,6 +92,26 @@ describe('MikroRuntime', () => {
     expect(runtime.evalScript('globalThis.__panicCause')).toBe('bad')
   })
 
+  // QuickJS finds a loaded module by name and import attributes, so the stub
+  // registered for an external has to match an import that carries attributes.
+  // TypeScript requires `with {type: 'json'}` on a JSON import.
+  it('compiles and runs a JSON import that has a type attribute', () => {
+    mkdirSync(join(TEST_DIR, 'app'), {recursive: true})
+    writeFileSync(join(TEST_DIR, 'app', 'data.json'), '{"version":"1.2.3"}')
+    const source = [
+      "import data from './data.json' with {type: 'json'}",
+      'globalThis.__jsonVersion = data.version',
+    ].join('\n')
+    const bytecode = compileBytecode(source, '/app/json_attr.js', ['/app/data.json'])
+    writeFileSync(join(TEST_DIR, 'app', 'json_attr.bjs'), bytecode)
+
+    runtime = new MikroRuntime({fsBasePath: TEST_DIR})
+    runtime.evalModule('/app/json_attr.bjs')
+    runtime.loopOnce()
+
+    expect(runtime.evalScript('globalThis.__jsonVersion')).toBe('1.2.3')
+  })
+
   it('dynamic import() works from bytecode-compiled module', () => {
     mkdirSync(join(TEST_DIR, 'app'), {recursive: true})
 

@@ -74,6 +74,17 @@ static int dummy_module_init(JSContext* ctx, JSModuleDef* m) {
 }
 
 /**
+ * Loader for the compile-only runtime: every import gets a stub. QuickJS looks
+ * a loaded module up by name and import attributes, so a stub registered up
+ * front by name does not match `import x from './x.json' with {type: 'json'}`.
+ * A module that comes from the loader gets the attributes it was asked with.
+ */
+static JSModuleDef* dummy_module_loader(JSContext* ctx, const char* module_name, void* opaque) {
+    (void)opaque;
+    return JS_NewCModule(ctx, module_name, dummy_module_init);
+}
+
+/**
  * compileBytecode(source: string, moduleName: string, externals?: string[]): Buffer
  *
  * Compile a JS module to QuickJS bytecode, stripping source and debug info.
@@ -116,6 +127,8 @@ static Napi::Value CompileBytecode(const Napi::CallbackInfo& info) {
         Napi::Error::New(env, "Failed to create QuickJS context").ThrowAsJavaScriptException();
         return env.Undefined();
     }
+
+    JS_SetModuleLoaderFunc(rt, nullptr, dummy_module_loader, nullptr);
 
     /* Register external modules as dummy C modules so the compiler
        doesn't try to load them from the filesystem */
