@@ -205,8 +205,9 @@ describe('build', () => {
       expect(listFiles(buildDir)).to.include.members([
         'app/main.bjs',
         'app/node_modules/a/index.bjs',
+        // The app imports c@2.0.1 itself, so that copy keeps the plain name.
+        'app/node_modules/c/index.bjs',
         'app/node_modules/c@1.2.0/index.bjs',
-        'app/node_modules/c@2.0.1/index.bjs',
       ])
     })
 
@@ -290,6 +291,51 @@ describe('build', () => {
     const buildDir = pathlib.join(tempDir, 'out')
     await expect(runBuild('app/main.ts', buildDir)).rejects.toThrow(
       /^Failed to resolve dependency "lalala"/,
+    )
+  })
+
+  it('deploys a package.json that code imports as it is on disk', async () => {
+    const dir = pathlib.join(tempDir, 'node_modules', 'lib')
+    const pjson = JSON.stringify({
+      name: 'lib',
+      version: '1.2.3',
+      type: 'module',
+      description: 'kept',
+      exports: './index.js',
+    })
+    mkdirSync(dir, {recursive: true})
+    writeFileSync(pathlib.join(dir, 'package.json'), pjson)
+    writeFileSync(
+      pathlib.join(dir, 'index.js'),
+      "import meta from './package.json' with {type: 'json'}\nexport default meta\n",
+    )
+    writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), "import 'lib'\n")
+    const buildDir = pathlib.join(tempDir, 'out')
+    await runBuild('app/main.ts', buildDir)
+
+    const deployed = pathlib.join(buildDir, 'app/node_modules/lib')
+    expect(readFileSync(pathlib.join(deployed, '_package.json'), 'utf-8')).to.equal(pjson)
+    expect(readFileSync(pathlib.join(deployed, 'package.json'), 'utf-8')).to.equal(
+      '{"exports":{".":"./index.js"}}',
+    )
+  })
+
+  it('reports trace problems as a UserError, so the CLI prints them without a stack', async () => {
+    writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), "import 'lalala'\n")
+    await expect(runBuild('app/main.ts', pathlib.join(tempDir, 'out'))).rejects.toBeInstanceOf(
+      UserError,
+    )
+  })
+
+  // The build rewrites imports in .ts, .js and .mjs only. A .tsx file would
+  // deploy with its imports as written, and fail on the device.
+  it('refuses a file whose imports it cannot rewrite', async () => {
+    writeFileSync(pathlib.join(tempDir, 'app', 'main.ts'), "import './view.tsx'\n")
+    writeFileSync(pathlib.join(tempDir, 'app', 'view.tsx'), "import './dep.ts'\n")
+    writeFileSync(pathlib.join(tempDir, 'app', 'dep.ts'), 'export {}\n')
+    await expect(runBuild('app/main.ts', pathlib.join(tempDir, 'out'))).rejects.toThrow(
+      'Cannot deploy "app/view.tsx": its imports have to be rewritten, and the build rewrites ' +
+        'only .ts, .js, .mjs files',
     )
   })
 

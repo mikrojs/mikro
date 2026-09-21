@@ -14,6 +14,8 @@ it('reports every import with its kind and the range of its specifier', async ()
     "const h = await import(override || 'h')",
     "const f = await import('./f/' + 'g.js')",
     'const unknown = await import(name)',
+    "const partlyKnown = await import('./lang/' + code + '.js')",
+    'const template = await import(`./lang/${code}.js`)',
   ].join('\n')
 
   const {imports, parseError} = await analyze('/app/input.ts', code)

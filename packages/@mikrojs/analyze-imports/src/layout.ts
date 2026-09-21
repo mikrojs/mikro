@@ -58,16 +58,32 @@ function outputName(path: string) {
 export function layout(graph: Graph, root: string, deployDir = '.'): Layout {
   const problems = [...graph.problems]
 
-  const isAppFile = (path: string) => inDir(path, root) && !path.includes(NODE_MODULES)
+  // Only what follows `root` counts: the app may itself sit under a node_modules.
+  const isAppFile = (path: string) =>
+    inDir(path, root) && !path.slice(root.length).includes(NODE_MODULES)
   const inDeployDir = (path: string) =>
     deployDir === '.' || path.startsWith(deployDir + '/') ? path : deployDir + '/' + path
 
   // One directory per package in use. A name used by one package directory is
-  // the directory name. Several get `name@version`, in real path order, with
-  // a counter when that is taken too.
+  // the directory name. When several use it, the copy that the app's own files
+  // import keeps the name, and the others get `name@version`, in real path order,
+  // with a counter when that is taken too.
   const usedPackages = new Set<string>()
+  const importedByApp = new Map<string, Set<string>>()
   for (const module of graph.modules.values()) {
-    if (!isAppFile(module.path) && module.package !== undefined) usedPackages.add(module.package)
+    if (!isAppFile(module.path)) {
+      if (module.package !== undefined) usedPackages.add(module.package)
+      continue
+    }
+    for (const ref of module.imports) {
+      if (ref.target.type !== 'file') continue
+      const dir = graph.modules.get(ref.target.path)?.package
+      if (dir === undefined) continue
+      const {name} = graph.packages.get(dir)!
+      // By its own name only: an alias is not a name the package can be found by.
+      if (ref.specifier !== name && !ref.specifier.startsWith(name + '/')) continue
+      importedByApp.set(name, (importedByApp.get(name) ?? new Set()).add(dir))
+    }
   }
   const dirsByName = new Map<string, string[]>()
   for (const dir of [...usedPackages].sort()) {
@@ -75,23 +91,30 @@ export function layout(graph: Graph, root: string, deployDir = '.'): Layout {
     dirsByName.set(name, [...(dirsByName.get(name) ?? []), dir])
   }
   const deployDirs = new Map<string, string>()
-  // Packages whose name only they use. Those stay importable by name.
+  // Packages that deploy under their plain name. Those stay importable by name.
   const namedPackages = new Map<string, string>()
   const duplicatePackages: DuplicatePackage[] = []
   for (const [name, dirs] of [...dirsByName].sort(([a], [b]) => (a < b ? -1 : 1))) {
-    const taken = new Set<string>()
+    // App files in different directories can resolve one name to two copies.
+    // Then no copy is "the app's".
+    const byApp = importedByApp.get(name)
+    const named = dirs.length === 1 ? dirs[0] : byApp?.size === 1 ? [...byApp][0] : undefined
+    if (named !== undefined) namedPackages.set(named, name)
+    const taken = new Set(named === undefined ? [] : [name])
     const copies = dirs.map((dir) => {
       const {version} = graph.packages.get(dir)!
-      const base = dirs.length === 1 || version === undefined ? name : `${name}@${version}`
-      let deployName = base
-      for (let n = 2; taken.has(deployName); n++) deployName = `${base}_${n}`
-      taken.add(deployName)
+      let deployName = name
+      if (dir !== named) {
+        const base = version === undefined ? name : `${name}@${version}`
+        deployName = base
+        for (let n = 2; taken.has(deployName); n++) deployName = `${base}_${n}`
+        taken.add(deployName)
+      }
       const path = inDeployDir('node_modules/' + deployName)
       deployDirs.set(dir, path)
       return version === undefined ? {path} : {path, version}
     })
     if (copies.length > 1) duplicatePackages.push({name, copies})
-    else namedPackages.set(dirs[0]!, name)
   }
 
   function deployPath(module: TracedModule): string | undefined {

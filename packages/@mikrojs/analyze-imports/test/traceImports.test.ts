@@ -105,13 +105,14 @@ describe.each(['app', 'workspace'] as const)('a pnpm store in the %s', (storeIn)
     expect(paths).toEqual([
       'input.js',
       'node_modules/a/index.js',
-      // `a` is the only package with its name; neither `b` is.
       'node_modules/a/package.json',
-      'node_modules/b@1.0.0/index.js',
+      // The copy the app imports keeps the name, so the REPL can import it too.
+      'node_modules/b/index.js',
+      'node_modules/b/package.json',
       'node_modules/b@2.0.0/index.js',
     ])
     expect(await code('input.js')).toBe(
-      "import './node_modules/a/index.js'\nimport './node_modules/b@1.0.0/index.js'\n",
+      "import './node_modules/a/index.js'\nimport './node_modules/b/index.js'\n",
     )
     expect(await code('node_modules/a/index.js')).toBe("import '../b@2.0.0/index.js'\n")
     expect(await code('node_modules/b@2.0.0/index.js')).toBe('export const v = 2\n')
@@ -119,7 +120,7 @@ describe.each(['app', 'workspace'] as const)('a pnpm store in the %s', (storeIn)
       {
         name: 'b',
         copies: [
-          {path: 'node_modules/b@1.0.0', version: '1.0.0'},
+          {path: 'node_modules/b', version: '1.0.0'},
           {path: 'node_modules/b@2.0.0', version: '2.0.0'},
         ],
       },
@@ -166,13 +167,15 @@ describe.each(['app', 'workspace'] as const)('a pnpm store in the %s', (storeIn)
     expect(problems).toEqual([])
     expect(paths).toEqual([
       'input.js',
-      'node_modules/b@1.0.0/index.js',
+      // The app imports b@1, so that copy keeps the name. It imports neither x.
+      'node_modules/b/index.js',
+      'node_modules/b/package.json',
       'node_modules/b@2.0.0/index.js',
       'node_modules/x@1.0.0/index.js',
       'node_modules/x@2.0.0/index.js',
     ])
     expect(await code('node_modules/x@1.0.0/index.js')).toBe("import '../b@2.0.0/index.js'\n")
-    expect(await code('node_modules/x@2.0.0/index.js')).toBe("import '../b@1.0.0/index.js'\n")
+    expect(await code('node_modules/x@2.0.0/index.js')).toBe("import '../b/index.js'\n")
   })
 
   it('follows a package that pnpm hoisted into the store, not the version the app has', async () => {
@@ -268,7 +271,7 @@ describe('packages with one name', () => {
     expect(await code('node_modules/p/index.js')).toBe(
       "import '../b@2.0.0/index.js'\nimport '../q/index.js'\n",
     )
-    expect(await code('node_modules/q/index.js')).toBe("import '../b@1.0.0/index.js'\n")
+    expect(await code('node_modules/q/index.js')).toBe("import '../b/index.js'\n")
   })
 
   it('numbers two copies on disk that have the same version', async () => {
@@ -300,6 +303,29 @@ describe('packages with one name', () => {
     ])
     expect(await code('node_modules/a/index.js')).toBe("import '../c@1.0.0/index.js'\n")
     expect(await code('node_modules/b/index.js')).toBe("import '../c@1.0.0_2/index.js'\n")
+  })
+
+  it('gives no copy the plain name when app files import two of them', async () => {
+    const copy = (version: string) =>
+      JSON.stringify({name: 'c', version, type: 'module', exports: './index.js'})
+    const fs = memoryFs({
+      '/ws/app/package.json': pkg('app'),
+      '/ws/app/input.js': "import 'c'\nimport './sub/x.js'\n",
+      '/ws/app/sub/x.js': "import 'c'\n",
+      '/ws/app/node_modules/c/package.json': copy('1.0.0'),
+      '/ws/app/node_modules/c/index.js': 'export {}\n',
+      '/ws/app/sub/node_modules/c/package.json': copy('2.0.0'),
+      '/ws/app/sub/node_modules/c/index.js': 'export {}\n',
+    })
+    const {paths, problems} = await trace(fs, '/ws/app')
+
+    expect(problems).toEqual([])
+    expect(paths).toEqual([
+      'input.js',
+      'node_modules/c@1.0.0/index.js',
+      'node_modules/c@2.0.0/index.js',
+      'sub/x.js',
+    ])
   })
 
   it('deploys a package under its own name when the app imports it by an alias', async () => {
@@ -352,8 +378,9 @@ describe('a linked workspace package', () => {
   })
 
   it('finds a package that only the path it was reached at can see', async () => {
-    // `board` imports `util` without depending on it. Node can't find it from
-    // pkgs/board, but does from the app's node_modules/board.
+    // `board` imports `util` without depending on it. Node resolves from the real
+    // path, pkgs/board, and fails. The trace also tries the path the file was
+    // reached at, the app's node_modules/board, as the device used to.
     const fs = memoryFs(
       {
         '/ws/app/package.json': pkg('app'),
@@ -381,6 +408,28 @@ describe('a linked workspace package', () => {
     expect(await code('node_modules/board/index.js')).toBe("import '../util/index.js'\n")
   })
 
+  it('finds it from every file of the linked package, not only the one imported', async () => {
+    const fs = memoryFs(
+      {
+        '/ws/app/package.json': pkg('app'),
+        '/ws/app/input.js': "import 'board/index.js'\n",
+        '/ws/pkgs/board/package.json': pkg('board'),
+        '/ws/pkgs/board/index.js': "import './lib/sub.js'\n",
+        '/ws/pkgs/board/lib/sub.js': "import 'util/index.js'\n",
+        '/ws/pkgs/util/package.json': pkg('util'),
+        '/ws/pkgs/util/index.js': 'export const util = 1\n',
+      },
+      {
+        '/ws/app/node_modules/board': '../../pkgs/board',
+        '/ws/app/node_modules/util': '../../pkgs/util',
+      },
+    )
+    const {problems, code} = await trace(fs, '/ws/app')
+
+    expect(problems).toEqual([])
+    expect(await code('node_modules/board/lib/sub.js')).toBe("import '../../util/index.js'\n")
+  })
+
   it('gives two packages with one name and no version a directory each', async () => {
     const nameOnly = JSON.stringify({name: 'b', type: 'module', exports: {'./*': './*'}})
     const fs = memoryFs(
@@ -400,11 +449,11 @@ describe('a linked workspace package', () => {
 
     expect(problems).toEqual([])
     expect(duplicatePackages).toEqual([
-      {name: 'b', copies: [{path: 'node_modules/b'}, {path: 'node_modules/b_2'}]},
+      {name: 'b', copies: [{path: 'node_modules/b_2'}, {path: 'node_modules/b'}]},
     ])
-    expect(await code('node_modules/a/index.js')).toBe("import '../b/index.js'\n")
+    expect(await code('node_modules/a/index.js')).toBe("import '../b_2/index.js'\n")
     expect(await code('input.js')).toBe(
-      "import './node_modules/a/index.js'\nimport './node_modules/b_2/index.js'\n",
+      "import './node_modules/a/index.js'\nimport './node_modules/b/index.js'\n",
     )
   })
 })
@@ -538,6 +587,11 @@ describe('an app', () => {
     })
     const {problems} = await trace(fs, '/ws/app')
 
+    // The specifier as written, not the `.ts` one the trace also tried.
+    expect(problems[0]).toBe(
+      'Failed to resolve dependency "./missing.js":\n' +
+        "Cannot find module '/ws/app/missing.js' loaded from /ws/app/input.js",
+    )
     expect(problems.map((problem) => problem.split('\n')[0])).toEqual([
       'Failed to resolve dependency "./missing.js":',
       'Failed to parse /ws/app/broken.js as module:',

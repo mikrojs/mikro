@@ -66,3 +66,14 @@ it('reports two sources that deploy to one path', () => {
     'Cannot deploy "/ws/app/a.js" and "/ws/app/a.ts": both deploy to "a.js"',
   ])
 })
+
+it('treats an app that sits under a node_modules as an app', () => {
+  const root = '/ws/node_modules/app'
+  const graph: Graph = {
+    modules: new Map([[`${root}/main.js`, {path: `${root}/main.js`, package: root, imports: []}]]),
+    packages: new Map([[root, {dir: root, name: 'app'}]]),
+    problems: [],
+  }
+
+  expect([...layout(graph, root).files.keys()]).toEqual(['main.js'])
+})

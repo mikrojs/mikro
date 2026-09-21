@@ -23,7 +23,8 @@ export interface TraceImportsOptions {
 export type TraceImportsResult = Layout
 
 /**
- * Follows the imports of `entries` and says which files deploy, where, and with
+ * Follows the imports of `entries` (a relative entry is relative to the working
+ * directory, not to `root`) and says which files deploy, where, and with
  * which import specifiers replaced. Reads the file system and changes nothing;
  * what the build cannot deploy is listed in `problems`, not thrown.
  */

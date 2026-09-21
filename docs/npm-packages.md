@@ -34,12 +34,19 @@ By default, Mikro.js does **not** bundle your code into a single file. The CLI t
 
 1. Trace the import graph starting from `app/main.ts`
 2. Discover every imported file, including those inside `node_modules`
-3. Strip TypeScript types and minify each file
-4. Precompile JavaScript modules to QuickJS bytecode for faster startup
-5. Write the result to the deploy tree, preserving relative paths
-6. Deploy the tree to the device's filesystem
+3. Rewrite every package import to a relative path
+4. Strip TypeScript types and minify each file
+5. Precompile JavaScript modules to QuickJS bytecode for faster startup
+6. Write the result to the deploy tree. Your own files keep their paths, and each package gets one directory under `node_modules/`
+7. Deploy the tree to the device's filesystem
 
-The device's ES module loader resolves imports at runtime the same way Node.js does, using `package.json` `exports`.
+The CLI resolves package imports on your computer, the same way Node.js does: `package.json` `exports`, conditions, wildcard patterns and `imports` all work. The device never has to find a package. In the deployed files, `import prettyMs from 'pretty-ms'` reads `import prettyMs from './node_modules/pretty-ms/index.js'`.
+
+A package deploys at `node_modules/<name>/`. When your dependencies pull in a second version of a package, the version your app imports keeps that directory, and the other one deploys at `node_modules/<name>@<version>/`. The build prints a notice, because each copy takes its own memory.
+
+From the REPL you can still `import('pretty-ms')` by name, as long as the app imports it. Only the subpaths the app imports are available that way.
+
+Write the package name in an `import()` as a string literal. The build can only rewrite a literal, so `import('pretty-' + 'ms')` is a build error. An argument with a variable in it, such as `import('./lang/' + code + '.js')`, is left as written: the build cannot tell which files it means, and it deploys none for it. If the app needs those files, also import each one somewhere with a literal path.
 
 Set [`build.bundle: true`](/config#buildbundle) to ship a single bundle instead. Smaller deploy and tree-shaking, at the cost of full reuploads on every change.
 

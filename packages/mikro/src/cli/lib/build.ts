@@ -263,14 +263,46 @@ export async function trace(entries: string[], rootDir: string) {
   const builtinImports = new Map<string, BuiltinImportKind>(
     names.map((name) => [name, externals.get(`mikro/${name}`)!]),
   )
-  return {files, problems, duplicatePackages, builtinImports}
+  // `transform` applies rewrites to these only. Any other file would deploy with
+  // its imports as written, which the device cannot load.
+  for (const [path, file] of files) {
+    if ('contents' in file || file.rewrites.length === 0) continue
+    if (REWRITABLE.includes(pathlib.extname(file.source))) continue
+    problems.push(
+      `Cannot deploy "${path}": its imports have to be rewritten, and the build rewrites ` +
+        `only ${REWRITABLE.join(', ')} files`,
+    )
+  }
+  if (problems.length > 0) throw new UserError(problems.join('\n'))
+  return {files, duplicatePackages, builtinImports}
 }
+
+const REWRITABLE = ['.ts', '.js', '.mjs']
 
 type TransformOptions = {
   minify: boolean
   minifier: Minifier
   minifyLevel: MinifyLevel
   pureFuncs?: string[]
+}
+
+/** Traces `entries` and writes every file that deploys into `buildDir`. */
+function writeTraced(
+  entries: string[],
+  rootDir: string,
+  buildDir: string,
+  options: TransformOptions,
+  onBuiltinImports: (imports: Map<string, BuiltinImportKind>) => void,
+): Observable<BuildEvent> {
+  return defer(() => trace(entries, rootDir)).pipe(
+    mergeMap(({files, duplicatePackages, builtinImports}) => {
+      onBuiltinImports(builtinImports)
+      return concat(
+        duplicatePackagesEvent(duplicatePackages),
+        writeTracedFiles(files, buildDir, options),
+      )
+    }),
+  )
 }
 
 function writeTracedFiles(
@@ -400,20 +432,12 @@ export function build(
       // emitted after it.
       let builtinImports: Map<string, BuiltinImportKind> | undefined
 
-      const writeFilesUnbundled = defer(() => trace([entry], rootDir)).pipe(
-        mergeMap(({problems, files, duplicatePackages, builtinImports: traced}) => {
-          builtinImports = traced
-          if (problems.length > 0) {
-            return throwError(() => new Error(problems.join('\n')))
-          }
-          const writes = writeTracedFiles(files, buildDir, {
-            minify: options.minify,
-            minifier,
-            minifyLevel,
-            pureFuncs,
-          })
-          return concat(duplicatePackagesEvent(duplicatePackages), writes)
-        }),
+      const writeFilesUnbundled = writeTraced(
+        [entry],
+        rootDir,
+        buildDir,
+        {minify: options.minify, minifier, minifyLevel, pureFuncs},
+        (traced) => (builtinImports = traced),
       )
 
       const writeFilesBundled = defer(async () => {
@@ -652,20 +676,12 @@ export function buildTests(
       // emitted after it.
       let builtinImports: Map<string, BuiltinImportKind> | undefined
 
-      const writeFiles = defer(() => trace(entries, rootDir)).pipe(
-        mergeMap(({problems, files, duplicatePackages, builtinImports: traced}) => {
-          builtinImports = traced
-          if (problems.length > 0) {
-            return throwError(() => new Error(problems.join('\n')))
-          }
-          const writes = writeTracedFiles(files, buildDir, {
-            minify: options.minify,
-            minifier,
-            minifyLevel,
-            pureFuncs,
-          })
-          return concat(duplicatePackagesEvent(duplicatePackages), writes)
-        }),
+      const writeFiles = writeTraced(
+        entries,
+        rootDir,
+        buildDir,
+        {minify: options.minify, minifier, minifyLevel, pureFuncs},
+        (traced) => (builtinImports = traced),
       )
 
       const writePackageJson = defer(async () => {
@@ -856,7 +872,7 @@ async function transform(
   options: TransformOptions,
 ): Promise<string | Buffer> {
   const parsedPath = pathlib.parse(source)
-  if (parsedPath.ext === '.ts' || parsedPath.ext === '.js' || parsedPath.ext === '.mjs') {
+  if (REWRITABLE.includes(parsedPath.ext)) {
     let code = contents.toString()
     if (parsedPath.ext === '.ts') code = stripTypeScriptTypes(code, {mode: 'strip'})
     code = applyRewrites(code, rewrites)
@@ -864,9 +880,6 @@ async function transform(
       code = await minifyJs(code, options.minifier, options.minifyLevel, options.pureFuncs)
     }
     return code
-  }
-  if (parsedPath.base === 'package.json') {
-    return JSON.stringify(trimPackageJson(JSON.parse(contents.toString())))
   }
   return contents
 }
@@ -876,28 +889,4 @@ async function output(outputPath: string, filePath: string, contents: Buffer | s
   const dirname = pathlib.dirname(dest)
   await mkdir(dirname, {recursive: true})
   return writeFile(dest, contents)
-}
-
-type PackageJson = {
-  name: string
-  version: string
-  exports?: Exports
-  publishConfig?: {
-    exports?: Exports
-  }
-}
-
-type ExportConditions = {
-  [condition: string]: Exports
-}
-
-type Exports = null | string | Array<string | ExportConditions> | ExportConditions
-
-function trimPackageJson(pkgJson: PackageJson) {
-  return {
-    name: pkgJson.name,
-    version: pkgJson.version,
-    type: 'module',
-    exports: pkgJson.publishConfig?.exports || pkgJson.exports,
-  }
 }

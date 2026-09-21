@@ -295,14 +295,16 @@ TEST_CASE_FIXTURE(ModFixture, "deployed packages load by path; by name needs a p
     write("/app/node_modules/font@2.0.0/glyphs.js", "export const size = 8\n");
     write("/app/node_modules/display/index.js",
           "export {id} from '../font@2.0.0/index.js'\n");
-    write("/app/node_modules/display/package.json", "{\"exports\":{\".\":\"./index.js\"}}");
+    write("/app/node_modules/display/package.json",
+          "{\"exports\":{\".\":\"./index.js\"}}");
 
     CHECK(eval_main(ctx,
                     "import {id} from './node_modules/display/index.js'\n"
                     "globalThis.__id = id\n") == "ok");
     CHECK(read_global_string(ctx, "__id") == "font2:8");
 
-    CHECK(eval_main(ctx, "import 'font@2.0.0/index.js'\n", "/app/main2.js").find("Failed to resolve module specifier") != std::string::npos);
+    std::string by_version = eval_main(ctx, "import 'font@2.0.0/index.js'\n", "/app/main2.js");
+    CHECK(by_version.find("Failed to resolve module specifier") != std::string::npos);
     CHECK(eval_main(ctx, "import 'display'\n", "/app/main3.js") == "ok");
 }
 

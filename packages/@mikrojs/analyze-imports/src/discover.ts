@@ -1,8 +1,8 @@
-import {dirname, resolve, sep} from 'node:path'
+import {dirname, join, relative, resolve} from 'node:path'
 
 import analyze, {type ImportRef} from './analyze.js'
 import {type FileSystem, realpath} from './fs.js'
-import resolveDependency, {NotFoundError, type ResolveContext} from './resolve.js'
+import resolveDependency, {NotFoundError, readPackageJson, type ResolveContext} from './resolve.js'
 
 /** A directory with a package.json that has a name. */
 export interface TracedPackage {
@@ -32,6 +32,11 @@ export interface TracedModule {
   imports: TracedImport[]
 }
 
+// A specifier that names a package, not a path or a `#` import of the importer's own.
+function isBare(specifier: string) {
+  return !specifier.startsWith('.') && !specifier.startsWith('#') && !specifier.startsWith('/')
+}
+
 /** Every file the entries reach, keyed by real path, in the order found. */
 export interface Graph {
   modules: Map<string, TracedModule>
@@ -50,12 +55,6 @@ export interface DiscoverOptions {
   assetExtensions: string[]
 }
 
-interface Pjson {
-  name?: unknown
-  version?: unknown
-  type?: unknown
-}
-
 export async function discover(entries: string[], options: DiscoverOptions): Promise<Graph> {
   const {fs, isExternal, assetExtensions} = options
   const ctx: ResolveContext = {
@@ -63,25 +62,9 @@ export async function discover(entries: string[], options: DiscoverOptions): Pro
     conditions: options.conditions,
     ts: true,
     base: options.root,
+    packageJsons: new Map(),
   }
   const graph: Graph = {modules: new Map(), packages: new Map(), problems: []}
-
-  const pjsons = new Map<string, Promise<Pjson | undefined>>()
-  function readPjson(dir: string) {
-    let pjson = pjsons.get(dir)
-    if (pjson === undefined) {
-      pjson = fs.readFile(dir + sep + 'package.json').then((source) => {
-        if (source === undefined) return undefined
-        try {
-          return JSON.parse(source) as Pjson
-        } catch {
-          return {}
-        }
-      })
-      pjsons.set(dir, pjson)
-    }
-    return pjson
-  }
 
   // The nearest package.json decides the module type. The nearest one with a
   // name is the package: a nameless one only marks a directory as ESM.
@@ -89,7 +72,7 @@ export async function discover(entries: string[], options: DiscoverOptions): Pro
     let type: unknown
     let hasPjson = false
     for (let dir = dirname(file); ; dir = dirname(dir)) {
-      const pjson = await readPjson(dir)
+      const pjson = await readPackageJson(dir, ctx)
       if (pjson !== undefined) {
         if (!hasPjson) type = pjson.type
         hasPjson = true
@@ -110,10 +93,13 @@ export async function discover(entries: string[], options: DiscoverOptions): Pro
       return await resolveDependency(specifier, parent, ctx)
     } catch (error) {
       // TypeScript sources import `./x.js` for a file that is `./x.ts` on disk.
-      if (specifier.endsWith('.js') && error instanceof NotFoundError) {
-        return resolveDependency(specifier.slice(0, -3) + '.ts', parent, ctx)
+      if (!specifier.endsWith('.js') || !(error instanceof NotFoundError)) throw error
+      try {
+        return await resolveDependency(specifier.slice(0, -3) + '.ts', parent, ctx)
+      } catch {
+        // Report the specifier the file has, not the one tried here.
+        throw error
       }
-      throw error
     }
   }
 
@@ -155,27 +141,42 @@ export async function discover(entries: string[], options: DiscoverOptions): Pro
         module.imports.push({...ref, target: {type: 'external'}})
         continue
       }
-      let resolved: string
+      // Node resolves from the real path. A linked package can also import what
+      // only the app depends on: that fails from the package's real path, and
+      // resolves from the path the file was reached at, through the app's
+      // node_modules. The device resolved from there before imports were rewritten.
+      let resolved: string | undefined
+      let from = path
+      let failure: unknown
       try {
-        // Node resolves from the real path.
         resolved = await resolveFrom(ref.specifier, path)
       } catch (error) {
-        // A linked package can import what only the app depends on. Node does
-        // not find it from the package's real path, but does from the path the
-        // package was reached at.
+        failure = error
+      }
+      if (resolved === undefined && reachedAt !== path) {
         try {
-          if (reachedAt === path) throw error
           resolved = await resolveFrom(ref.specifier, reachedAt)
+          from = reachedAt
         } catch {
-          const message = error instanceof Error ? error.message : String(error)
-          graph.problems.push(`Failed to resolve dependency "${ref.specifier}":\n${message}`)
-          module.imports.push({...ref, target: {type: 'unresolved'}})
-          continue
+          // Reported below, with the error from the real path.
         }
+      }
+      if (resolved === undefined) {
+        const message = failure instanceof Error ? failure.message : String(failure)
+        graph.problems.push(`Failed to resolve dependency "${ref.specifier}":\n${message}`)
+        module.imports.push({...ref, target: {type: 'unresolved'}})
+        continue
       }
       const target = await realpath(fs, resolved)
       module.imports.push({...ref, target: {type: 'file', path: target}})
-      queue.push({path: target, reachedAt: resolved})
+      // A file found next to its importer was reached next to where the importer was.
+      const inReachedTree = from === path && reachedAt !== path && !isBare(ref.specifier)
+      queue.push({
+        path: target,
+        reachedAt: inReachedTree
+          ? join(dirname(reachedAt), relative(dirname(path), resolved))
+          : resolved,
+      })
     }
   }
 

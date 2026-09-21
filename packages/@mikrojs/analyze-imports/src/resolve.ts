@@ -8,6 +8,8 @@ export interface ResolveContext {
   /** Try `.ts` and `.tsx` for an extensionless path under `base`, outside node_modules. */
   ts: boolean
   base: string
+  /** Parsed package.json files by directory. Start with an empty map. */
+  packageJsons: Map<string, Promise<PackageJson | undefined>>
 }
 
 // ESM-only node resolver.
@@ -105,23 +107,33 @@ function getPkgName(name: string) {
 
 type PackageTarget = string | PackageTarget[] | {[key: string]: PackageTarget} | null
 
-interface PkgCfg {
-  name: string | undefined
-  main: string | undefined
-  exports: PackageTarget
-  imports: {[key: string]: PackageTarget}
+export interface PackageJson {
+  name?: unknown
+  version?: unknown
+  type?: unknown
+  exports?: PackageTarget
+  imports?: {[key: string]: PackageTarget}
 }
 
-async function getPkgCfg(pkgPath: string, ctx: ResolveContext): Promise<PkgCfg | undefined> {
-  const pjsonSource = await ctx.fs.readFile(pkgPath + sep + 'package.json')
-  if (pjsonSource) {
-    try {
-      return JSON.parse(pjsonSource)
-    } catch {
-      // invalid JSON → treat as missing config
-    }
+/** The package.json of `dir`, read and parsed once. A file that is missing or
+ *  is not valid JSON is undefined. */
+export function readPackageJson(
+  dir: string,
+  ctx: ResolveContext,
+): Promise<PackageJson | undefined> {
+  let pjson = ctx.packageJsons.get(dir)
+  if (pjson === undefined) {
+    pjson = ctx.fs.readFile(dir + sep + 'package.json').then((source) => {
+      if (source === undefined) return undefined
+      try {
+        return JSON.parse(source) as PackageJson
+      } catch {
+        return undefined
+      }
+    })
+    ctx.packageJsons.set(dir, pjson)
   }
-  return undefined
+  return pjson
 }
 
 function getExportsTarget(exports: PackageTarget, conditions: string[]): string | null | undefined {
@@ -210,7 +222,7 @@ async function packageImportsResolve(
   if (name !== '#' && !name.startsWith('#/')) {
     const pjsonBoundary = await getPjsonBoundary(ctx.fs, parent)
     if (pjsonBoundary) {
-      const pkgCfg = await getPkgCfg(pjsonBoundary, ctx)
+      const pkgCfg = await readPackageJson(pjsonBoundary, ctx)
       const {imports: pkgImports} = pkgCfg || {}
       if (pkgCfg && pkgImports !== null && pkgImports !== undefined) {
         const importsResolved = await resolveExportsImports(
@@ -240,7 +252,7 @@ async function resolvePackage(name: string, parent: string, ctx: ResolveContext)
   // A package's own name resolves through its own exports first, as in Node.
   const pjsonBoundary = await getPjsonBoundary(ctx.fs, parent)
   if (pjsonBoundary) {
-    const pkgCfg = await getPkgCfg(pjsonBoundary, ctx)
+    const pkgCfg = await readPackageJson(pjsonBoundary, ctx)
     const pkgExports = pkgCfg?.exports
     if (pkgCfg?.name === pkgName && pkgExports !== null && pkgExports !== undefined) {
       const resolved = await resolveExportsImports(
@@ -262,7 +274,7 @@ async function resolvePackage(name: string, parent: string, ctx: ResolveContext)
     const nodeModulesDir = packageParent + sep + 'node_modules'
     const stat = await ctx.fs.stat(nodeModulesDir)
     if (stat !== 'directory') continue
-    const pkgCfg = await getPkgCfg(nodeModulesDir + sep + pkgName, ctx)
+    const pkgCfg = await readPackageJson(nodeModulesDir + sep + pkgName, ctx)
     const pkgExports = pkgCfg?.exports
 
     const resolved =

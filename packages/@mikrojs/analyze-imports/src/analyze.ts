@@ -113,6 +113,9 @@ export default async function analyze(id: string, code: string): Promise<Analyze
     if (!computed) return
 
     if ('value' in computed) {
+      // A value with an unknown part, as in `'./lang/' + code + '.js'`, names no
+      // file. Like `import(name)`, it is left to the device.
+      if (computed.wildcards !== undefined && computed.wildcards.length > 0) return
       addComputed(computed.value)
     } else if ('ifTrue' in computed) {
       addComputed(computed.ifTrue)
