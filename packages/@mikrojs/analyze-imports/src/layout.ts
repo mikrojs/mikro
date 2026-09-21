@@ -10,12 +10,19 @@ export interface Rewrite {
   text: string
 }
 
-export interface DeployedFile {
+export interface SourceFile {
   /** Real path to read the file from. */
   source: string
   /** Import specifiers to replace so the device loads them by relative path. */
   rewrites: Rewrite[]
 }
+
+/** A file the layout writes itself: a package's deployed package.json. */
+export interface GeneratedFile {
+  contents: string
+}
+
+export type DeployedFile = SourceFile | GeneratedFile
 
 export interface Layout {
   /** Keyed by the path the file deploys to: relative to the app, `/` separated. */
@@ -42,11 +49,18 @@ function outputName(path: string) {
  * relative path written into the importer, so nothing has to be found by a walk
  * up node_modules: an app file keeps its path, and a package gets one directory
  * under node_modules, however many paths it was reached at.
+ *
+ * `deployDir` is the directory, relative to `root`, that becomes the root of the
+ * device's file system. A file outside it deploys inside it, at its path
+ * relative to `root`: with `app`, `node_modules/a/x.js` deploys at
+ * `app/node_modules/a/x.js`.
  */
-export function layout(graph: Graph, root: string): Layout {
+export function layout(graph: Graph, root: string, deployDir = '.'): Layout {
   const problems = [...graph.problems]
 
   const isAppFile = (path: string) => inDir(path, root) && !path.includes(NODE_MODULES)
+  const inDeployDir = (path: string) =>
+    deployDir === '.' || path.startsWith(deployDir + '/') ? path : deployDir + '/' + path
 
   // One directory per package in use. A name used by one package directory is
   // the directory name. Several get `name@version`, in real path order, with
@@ -61,6 +75,8 @@ export function layout(graph: Graph, root: string): Layout {
     dirsByName.set(name, [...(dirsByName.get(name) ?? []), dir])
   }
   const deployDirs = new Map<string, string>()
+  // Packages whose name only they use. Those stay importable by name.
+  const namedPackages = new Map<string, string>()
   const duplicatePackages: DuplicatePackage[] = []
   for (const [name, dirs] of [...dirsByName].sort(([a], [b]) => (a < b ? -1 : 1))) {
     const taken = new Set<string>()
@@ -70,28 +86,29 @@ export function layout(graph: Graph, root: string): Layout {
       let deployName = base
       for (let n = 2; taken.has(deployName); n++) deployName = `${base}_${n}`
       taken.add(deployName)
-      const path = 'node_modules/' + deployName
+      const path = inDeployDir('node_modules/' + deployName)
       deployDirs.set(dir, path)
       return version === undefined ? {path} : {path, version}
     })
     if (copies.length > 1) duplicatePackages.push({name, copies})
+    else namedPackages.set(dirs[0]!, name)
   }
 
   function deployPath(module: TracedModule): string | undefined {
     if (isAppFile(module.path)) {
-      return outputName(relative(root, module.path).split(sep).join('/'))
+      return inDeployDir(outputName(relative(root, module.path).split(sep).join('/')))
     }
     if (module.package === undefined) return undefined
     const inPackage = relative(module.package, module.path).split(sep).join('/')
     // The device finds a package by name through node_modules/<dir>/package.json.
-    // A deployed package must not be importable that way, so its own
-    // package.json deploys under another name.
+    // That path is for the package.json the layout writes (or leaves out), so
+    // the package's own deploys under another name.
     const name = inPackage === 'package.json' ? '_package.json' : outputName(inPackage)
     return deployDirs.get(module.package) + '/' + name
   }
 
   const paths = new Map<string, string>()
-  const files = new Map<string, DeployedFile>()
+  const files = new Map<string, SourceFile>()
   for (const module of graph.modules.values()) {
     const path = deployPath(module)
     if (path === undefined) continue
@@ -106,6 +123,9 @@ export function layout(graph: Graph, root: string): Layout {
     files.set(path, {source: module.path, rewrites: []})
   }
 
+  // Per named package, the subpaths the app imports it by and the file each
+  // one resolved to.
+  const exportsOf = new Map<string, Map<string, string>>()
   const externals = new Map<string, 'static' | 'dynamic'>()
   for (const module of graph.modules.values()) {
     const from = paths.get(module.path)
@@ -133,6 +153,14 @@ export function layout(graph: Graph, root: string): Layout {
         continue
       }
 
+      const name = target.package === undefined ? undefined : namedPackages.get(target.package)
+      if (name !== undefined && (ref.specifier === name || ref.specifier.startsWith(name + '/'))) {
+        const exports = exportsOf.get(target.package!) ?? new Map<string, string>()
+        exportsOf.set(target.package!, exports)
+        const dir = deployDirs.get(target.package!)!
+        exports.set('.' + ref.specifier.slice(name.length), './' + posix.relative(dir, to))
+      }
+
       let text = posix.relative(posix.dirname(from), to)
       if (!text.startsWith('.')) text = './' + text
       if (text === ref.specifier) continue
@@ -147,5 +175,17 @@ export function layout(graph: Graph, root: string): Layout {
     }
   }
 
-  return {files, externals, duplicatePackages, problems}
+  // Rewritten imports never look a package up, but the REPL and files written
+  // on the device do. A package that is the only one with its name gets a
+  // package.json that maps the imported subpaths to the deployed files. A
+  // `name@version` directory gets none, so it cannot be imported by name.
+  const deployed = new Map<string, DeployedFile>(files)
+  for (const [dir, exports] of exportsOf) {
+    const sorted = Object.fromEntries([...exports].sort(([a], [b]) => (a < b ? -1 : 1)))
+    deployed.set(deployDirs.get(dir) + '/package.json', {
+      contents: JSON.stringify({exports: sorted}),
+    })
+  }
+
+  return {files: deployed, externals, duplicatePackages, problems}
 }

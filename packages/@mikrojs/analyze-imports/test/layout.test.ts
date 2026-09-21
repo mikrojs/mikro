@@ -44,6 +44,7 @@ it('lays out a graph without reading anything', () => {
         },
       ],
       ['node_modules/font/index.js', {source: '/store/font@2/index.js', rewrites: []}],
+      ['node_modules/font/package.json', {contents: '{"exports":{".":"./index.js"}}'}],
     ]),
     externals: new Map([['mikro/wifi', 'dynamic']]),
     duplicatePackages: [],

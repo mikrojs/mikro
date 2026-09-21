@@ -8,7 +8,6 @@ export interface ResolveContext {
   /** Try `.ts` and `.tsx` for an extensionless path under `base`, outside node_modules. */
   ts: boolean
   base: string
-  paths: Record<string, string>
 }
 
 // ESM-only node resolver.
@@ -278,19 +277,6 @@ async function resolvePackage(name: string, parent: string, ctx: ResolveContext)
           )
         : await resolveFile(nodeModulesDir + sep + name, parent, ctx)
     if (resolved) return resolved
-  }
-  if (Object.hasOwnProperty.call(ctx.paths, name)) {
-    return ctx.paths[name]!
-  }
-  for (const path of Object.keys(ctx.paths)) {
-    if (path.endsWith('/') && name.startsWith(path)) {
-      const pathTarget = ctx.paths[path] + name.slice(path.length)
-      const resolved = await resolveFile(pathTarget, parent, ctx)
-      if (!resolved) {
-        throw new NotFoundError(name, parent)
-      }
-      return resolved
-    }
   }
   throw new NotFoundError(name, parent)
 }

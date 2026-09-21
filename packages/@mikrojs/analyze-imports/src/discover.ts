@@ -63,7 +63,6 @@ export async function discover(entries: string[], options: DiscoverOptions): Pro
     conditions: options.conditions,
     ts: true,
     base: options.root,
-    paths: {},
   }
   const graph: Graph = {modules: new Map(), packages: new Map(), problems: []}
 
@@ -88,21 +87,21 @@ export async function discover(entries: string[], options: DiscoverOptions): Pro
   // name is the package: a nameless one only marks a directory as ESM.
   async function packageOf(file: string) {
     let type: unknown
-    let nearest = true
+    let hasPjson = false
     for (let dir = dirname(file); ; dir = dirname(dir)) {
       const pjson = await readPjson(dir)
       if (pjson !== undefined) {
-        if (nearest) type = pjson.type
-        nearest = false
+        if (!hasPjson) type = pjson.type
+        hasPjson = true
         if (typeof pjson.name === 'string') {
           if (!graph.packages.has(dir)) {
             const version = typeof pjson.version === 'string' ? {version: pjson.version} : {}
             graph.packages.set(dir, {dir, name: pjson.name, ...version})
           }
-          return {dir, name: pjson.name, type, found: true}
+          return {dir, name: pjson.name, type, hasPjson}
         }
       }
-      if (dir === dirname(dir)) return {dir: undefined, name: undefined, type, found: !nearest}
+      if (dir === dirname(dir)) return {type, hasPjson}
     }
   }
 
@@ -141,7 +140,7 @@ export async function discover(entries: string[], options: DiscoverOptions): Pro
     graph.modules.set(path, module)
 
     if (path.endsWith('.json') || assetExtensions.some((ext) => path.endsWith(ext))) continue
-    if (pkg.found && pkg.type !== 'module') {
+    if (pkg.hasPjson && pkg.type !== 'module') {
       graph.problems.push(`Non-ESM dependency detected: ${pkg.name ?? path}`)
       continue
     }

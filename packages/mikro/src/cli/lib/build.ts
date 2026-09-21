@@ -4,9 +4,11 @@ import * as pathlib from 'node:path'
 import {fileURLToPath} from 'node:url'
 
 import {
+  applyRewrites,
+  type DeployedFile,
   type DuplicatePackage,
-  nodeFileTrace,
-  resolve as traceResolve,
+  type Rewrite,
+  traceImports,
 } from '@mikrojs/analyze-imports'
 import {mkdir, readdir, readFile, rm, stat, unlink, writeFile} from 'fs/promises'
 import {
@@ -232,66 +234,60 @@ async function collectOutputFiles(buildDir: string): Promise<BuildEvent[]> {
   return events
 }
 
-const SKIP = Promise.resolve([])
-
-// Same placement as the traced files: paths outside rootDir land under it.
-function duplicatePackagesEvent(
-  duplicates: DuplicatePackage[],
-  rootDir: string,
-): Observable<BuildEvent> {
+function duplicatePackagesEvent(duplicates: DuplicatePackage[]): Observable<BuildEvent> {
   if (duplicates.length === 0) return EMPTY
-  const packages = duplicates.map(({name, copies}) => ({
-    name,
-    copies: copies.map((copy) => ({
-      ...copy,
-      path:
-        rootDir === '.' || copy.path.startsWith(rootDir + '/')
-          ? copy.path
-          : pathlib.join(rootDir, copy.path),
-    })),
-  }))
-  return of({type: 'duplicatePackages' as const, packages})
+  return of({type: 'duplicatePackages' as const, packages: duplicates})
 }
 
-export async function trace(entries: string[]) {
-  const mikroSpecifiers = new Set<string>()
-  const {fileList, warnings, sourcePathMap, duplicatePackages, dynamicOnlyImports} =
-    await nodeFileTrace(entries, {
-      analysis: {evaluatePureExpressions: true},
-      conditions: ['import'],
-      assetExtensions: ['.txt'],
-      ts: true,
-      resolve: (id, parent, job) => {
-        if (id.startsWith('mikro/')) {
-          mikroSpecifiers.add(id)
-        }
-        if (isBuiltinModule(id)) {
-          return SKIP
-        }
-        // Skip firmware builtin packages (any scope) — they have native code and
-        // a ./cmake export, and resolve to the firmware builtin. Pure JS packages
-        // are traced and bundled normally.
-        if (isFirmwareBuiltin(id)) {
-          return SKIP
-        }
-        return traceResolve(id, parent, job)
-      },
-    })
-  const names = [...mikroSpecifiers].map((id) => id.slice('mikro/'.length))
+/** `rootDir` becomes the root of the deploy tree: traced files outside it (e.g.
+ *  node_modules/ when rootDir is a subdirectory) are placed inside it, and the
+ *  rewritten import specifiers point there. */
+export async function trace(entries: string[], rootDir: string) {
+  const {files, problems, duplicatePackages, externals} = await traceImports(entries, {
+    deployDir: rootDir,
+    conditions: ['import'],
+    assetExtensions: ['.txt'],
+    // Every mikro/* name is the firmware's; unknown ones are rejected below.
+    // Firmware builtin packages (any scope) have native code and a ./cmake
+    // export, and resolve to the firmware builtin. Pure JS packages are traced
+    // and deployed normally.
+    isExternal: (id) => id.startsWith('mikro/') || isBuiltinModule(id) || isFirmwareBuiltin(id),
+  })
+  const names = [...externals.keys()]
+    .filter((id) => id.startsWith('mikro/'))
+    .map((id) => id.slice('mikro/'.length))
   const unknown = names.filter((name) => !isTableModule(name))
   if (unknown.length > 0) {
     throw new UserError(unknown.map(unknownModuleError).join('\n'))
   }
   const builtinImports = new Map<string, BuiltinImportKind>(
-    names.map((name) => [name, dynamicOnlyImports.has(`mikro/${name}`) ? 'dynamic' : 'static']),
+    names.map((name) => [name, externals.get(`mikro/${name}`)!]),
   )
-  return {
-    fileList: [...fileList],
-    warnings: [...warnings],
-    sourcePathMap,
-    duplicatePackages,
-    builtinImports,
-  }
+  return {files, problems, duplicatePackages, builtinImports}
+}
+
+type TransformOptions = {
+  minify: boolean
+  minifier: Minifier
+  minifyLevel: MinifyLevel
+  pureFuncs?: string[]
+}
+
+function writeTracedFiles(
+  files: Map<string, DeployedFile>,
+  buildDir: string,
+  options: TransformOptions,
+) {
+  return from(files).pipe(
+    mergeMap(async ([path, file]) => {
+      // A package.json the trace wrote, so the package is importable by name.
+      if ('contents' in file) return output(buildDir, path, file.contents)
+      const {source, rewrites} = file
+      const contents = await transform(source, await readFile(source), rewrites, options)
+      return output(buildDir, path, contents)
+    }),
+    ignoreElements(),
+  )
 }
 
 export function loadConfig(entry: string, env?: MikroEnv): Promise<MikroJSConfig | null> {
@@ -404,40 +400,20 @@ export function build(
       // emitted after it.
       let builtinImports: Map<string, BuiltinImportKind> | undefined
 
-      const writeFilesUnbundled = defer(() => trace([entry])).pipe(
-        mergeMap(
-          ({warnings, fileList, sourcePathMap, duplicatePackages, builtinImports: traced}) => {
-            builtinImports = traced
-            if (warnings?.length > 0) {
-              return throwError(() => new Error([...warnings].map((w) => w.message).join('\n')))
-            }
-            const writes = from(fileList).pipe(
-              mergeMap(async (file) => {
-                // Use sourcePathMap to read from the real path on disk when the
-                // output path is a virtual path (e.g. pnpm transitive dependencies)
-                const sourcePath = sourcePathMap.get(file) ?? file
-                return transform(file, await readFile(sourcePath), {
-                  minify: options.minify,
-                  minifier,
-                  minifyLevel,
-                  pureFuncs,
-                })
-              }),
-              mergeMap(({path: filePath, contents}) => {
-                // Place files outside rootDir (e.g. node_modules/ when rootDir
-                // is a subdirectory) inside rootDir so the on-device module
-                // resolver can find them when walking up from the entry.
-                const outputPath =
-                  rootDir === '.' || filePath.startsWith(rootDir + '/')
-                    ? filePath
-                    : pathlib.join(rootDir, filePath)
-                return output(buildDir, outputPath, contents)
-              }),
-              ignoreElements(),
-            )
-            return concat(duplicatePackagesEvent(duplicatePackages, rootDir), writes)
-          },
-        ),
+      const writeFilesUnbundled = defer(() => trace([entry], rootDir)).pipe(
+        mergeMap(({problems, files, duplicatePackages, builtinImports: traced}) => {
+          builtinImports = traced
+          if (problems.length > 0) {
+            return throwError(() => new Error(problems.join('\n')))
+          }
+          const writes = writeTracedFiles(files, buildDir, {
+            minify: options.minify,
+            minifier,
+            minifyLevel,
+            pureFuncs,
+          })
+          return concat(duplicatePackagesEvent(duplicatePackages), writes)
+        }),
       )
 
       const writeFilesBundled = defer(async () => {
@@ -676,35 +652,20 @@ export function buildTests(
       // emitted after it.
       let builtinImports: Map<string, BuiltinImportKind> | undefined
 
-      const writeFiles = defer(() => trace(entries)).pipe(
-        mergeMap(
-          ({warnings, fileList, sourcePathMap, duplicatePackages, builtinImports: traced}) => {
-            builtinImports = traced
-            if (warnings?.length > 0) {
-              return throwError(() => new Error([...warnings].map((w) => w.message).join('\n')))
-            }
-            const writes = from(fileList).pipe(
-              mergeMap(async (file) => {
-                const sourcePath = sourcePathMap.get(file) ?? file
-                return transform(file, await readFile(sourcePath), {
-                  minify: options.minify,
-                  minifier,
-                  minifyLevel,
-                  pureFuncs,
-                })
-              }),
-              mergeMap(({path: filePath, contents}) => {
-                const outputPath =
-                  rootDir === '.' || filePath.startsWith(rootDir + '/')
-                    ? filePath
-                    : pathlib.join(rootDir, filePath)
-                return output(buildDir, outputPath, contents)
-              }),
-              ignoreElements(),
-            )
-            return concat(duplicatePackagesEvent(duplicatePackages, rootDir), writes)
-          },
-        ),
+      const writeFiles = defer(() => trace(entries, rootDir)).pipe(
+        mergeMap(({problems, files, duplicatePackages, builtinImports: traced}) => {
+          builtinImports = traced
+          if (problems.length > 0) {
+            return throwError(() => new Error(problems.join('\n')))
+          }
+          const writes = writeTracedFiles(files, buildDir, {
+            minify: options.minify,
+            minifier,
+            minifyLevel,
+            pureFuncs,
+          })
+          return concat(duplicatePackagesEvent(duplicatePackages), writes)
+        }),
       )
 
       const writePackageJson = defer(async () => {
@@ -885,46 +846,29 @@ async function copyStaticDir(
   return copied
 }
 
+/** The contents a traced source file deploys with. `rewrites` are offsets into
+ *  the source: stripping types keeps every offset, minifying does not, so the
+ *  order below matters. */
 async function transform(
-  path: string,
-  contents: string | Buffer,
-  options: {minify: boolean; minifier: Minifier; minifyLevel: MinifyLevel; pureFuncs?: string[]},
-) {
-  const parsedPath = pathlib.parse(path)
-  if (parsedPath.ext === '.ts') {
-    let code = stripTypeScriptTypes(contents.toString(), {mode: 'strip'})
+  source: string,
+  contents: Buffer,
+  rewrites: Rewrite[],
+  options: TransformOptions,
+): Promise<string | Buffer> {
+  const parsedPath = pathlib.parse(source)
+  if (parsedPath.ext === '.ts' || parsedPath.ext === '.js' || parsedPath.ext === '.mjs') {
+    let code = contents.toString()
+    if (parsedPath.ext === '.ts') code = stripTypeScriptTypes(code, {mode: 'strip'})
+    code = applyRewrites(code, rewrites)
     if (options.minify) {
       code = await minifyJs(code, options.minifier, options.minifyLevel, options.pureFuncs)
     }
-    return {
-      path: pathlib.format({
-        ...parsedPath,
-        base: pathlib.basename(parsedPath.base, parsedPath.ext) + '.js',
-      }),
-      contents: code,
-    }
-  }
-  if (parsedPath.ext === '.js' || parsedPath.ext === '.mjs') {
-    if (options.minify) {
-      return {
-        path,
-        contents: await minifyJs(
-          contents.toString(),
-          options.minifier,
-          options.minifyLevel,
-          options.pureFuncs,
-        ),
-      }
-    }
-    return {path, contents}
+    return code
   }
   if (parsedPath.base === 'package.json') {
-    return {
-      path,
-      contents: JSON.stringify(trimPackageJson(JSON.parse(contents.toString()))),
-    }
+    return JSON.stringify(trimPackageJson(JSON.parse(contents.toString())))
   }
-  return {path, contents}
+  return contents
 }
 
 async function output(outputPath: string, filePath: string, contents: Buffer | string) {

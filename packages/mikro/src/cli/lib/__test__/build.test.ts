@@ -167,15 +167,47 @@ describe('build', () => {
             {
               name: 'c',
               copies: [
-                {path: 'app/node_modules/a/node_modules/c', version: '1.2.0'},
-                {path: 'app/node_modules/b/node_modules/c', version: '2.0.1'},
+                {path: 'app/node_modules/c@1.2.0', version: '1.2.0'},
+                {path: 'app/node_modules/c@2.0.1', version: '2.0.1'},
               ],
             },
           ],
         },
       ])
-      expect(listFiles(buildDir)).to.include('app/node_modules/a/node_modules/c/index.js')
-      expect(listFiles(buildDir)).to.include('app/node_modules/b/node_modules/c/index.js')
+      expect(listFiles(buildDir)).to.include('app/node_modules/c@1.2.0/index.js')
+      expect(listFiles(buildDir)).to.include('app/node_modules/c@2.0.1/index.js')
+      // Importable by name (from the REPL) only where one package has the name.
+      expect(
+        readFileSync(pathlib.join(buildDir, 'app/node_modules/a/package.json'), 'utf-8'),
+      ).to.equal('{"exports":{"./index.js":"./index.js"}}')
+      expect(listFiles(buildDir)).to.not.include('app/node_modules/c@1.2.0/package.json')
+      expect(listFiles(buildDir)).to.not.include('app/node_modules/c@2.0.1/package.json')
+      expect(readFileSync(pathlib.join(buildDir, 'app/node_modules/a/index.js'), 'utf-8')).to.equal(
+        "import '../c@1.2.0/index.js'\n",
+      )
+      expect(readFileSync(pathlib.join(buildDir, 'app/main.js'), 'utf-8')).to.equal(
+        "import './node_modules/a/index.js'\nimport './node_modules/b/index.js'\n",
+      )
+    })
+
+    it('compiles the rewritten imports to bytecode', async () => {
+      addPackage('node_modules/a', 'a', '1.0.0', "import 'c/index.js'\n")
+      addPackage('node_modules/a/node_modules/c', 'c', '1.2.0', 'export const c = 1\n')
+      addPackage('node_modules/c', 'c', '2.0.1', 'export const c = 2\n')
+      writeFileSync(
+        pathlib.join(tempDir, 'app', 'main.ts'),
+        "import 'a/index.js'\nimport 'c/index.js'\n",
+      )
+      const buildDir = pathlib.join(tempDir, 'out')
+
+      await lastValueFrom(build('app/main.ts', buildDir, {minify: true, bytecode: true}))
+
+      expect(listFiles(buildDir)).to.include.members([
+        'app/main.bjs',
+        'app/node_modules/a/index.bjs',
+        'app/node_modules/c@1.2.0/index.bjs',
+        'app/node_modules/c@2.0.1/index.bjs',
+      ])
     })
 
     // Bundled builds go through esbuild, not the tracer: no duplicate report.

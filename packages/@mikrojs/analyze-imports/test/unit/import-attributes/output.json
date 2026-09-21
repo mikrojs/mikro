@@ -1,1 +1,5 @@
-["package.json", "test/unit/import-attributes/foo.js", "test/unit/import-attributes/info.json", "test/unit/import-attributes/input.js"]
+[
+  "foo.js",
+  "info.json",
+  "input.js"
+]

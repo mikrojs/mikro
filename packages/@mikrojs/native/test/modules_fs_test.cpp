@@ -285,6 +285,27 @@ TEST_CASE_FIXTURE(ModFixture, "node_modules resolution covers entry styles" *
           "exports-subpath|scoped");
 }
 
+/* The build rewrites every package import to a relative path. It writes a
+ * package.json only for a package that is the only one with its name, so a
+ * `name@version` directory loads by path and never by name. */
+TEST_CASE_FIXTURE(ModFixture, "deployed packages load by path; by name needs a package.json" *
+                                  doctest::test_suite("modules-fs")) {
+    write("/app/node_modules/font@2.0.0/index.js",
+          "import {size} from './glyphs.js'\nexport const id = 'font2:' + size\n");
+    write("/app/node_modules/font@2.0.0/glyphs.js", "export const size = 8\n");
+    write("/app/node_modules/display/index.js",
+          "export {id} from '../font@2.0.0/index.js'\n");
+    write("/app/node_modules/display/package.json", "{\"exports\":{\".\":\"./index.js\"}}");
+
+    CHECK(eval_main(ctx,
+                    "import {id} from './node_modules/display/index.js'\n"
+                    "globalThis.__id = id\n") == "ok");
+    CHECK(read_global_string(ctx, "__id") == "font2:8");
+
+    CHECK(eval_main(ctx, "import 'font@2.0.0/index.js'\n", "/app/main2.js").find("Failed to resolve module specifier") != std::string::npos);
+    CHECK(eval_main(ctx, "import 'display'\n", "/app/main3.js") == "ok");
+}
+
 TEST_CASE_FIXTURE(ModFixture, "package resolution rejects unusable specifiers and exports" *
                                   doctest::test_suite("modules-fs")) {
     /* exports with neither "import" nor "default" condition */

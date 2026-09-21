@@ -22,6 +22,7 @@ async function trace(
     // The file as it deploys: its source with the import specifiers replaced.
     code: async (path: string) => {
       const file = result.files.get(path)!
+      if ('contents' in file) return file.contents
       return applyRewrites((await fs.readFile(file.source))!, file.rewrites)
     },
   }
@@ -46,8 +47,10 @@ describe.each(['app', 'workspace'] as const)('a pnpm store in the %s', (storeIn)
     expect(paths).toEqual([
       'input.js',
       'node_modules/a/index.js',
+      'node_modules/a/package.json',
       'node_modules/b/index.js',
       'node_modules/b/lib.js',
+      'node_modules/b/package.json',
     ])
     expect(await code('input.js')).toBe("import './node_modules/a/index.js'\n")
     expect(await code('node_modules/a/index.js')).toBe("import '../b/index.js'\n")
@@ -72,9 +75,13 @@ describe.each(['app', 'workspace'] as const)('a pnpm store in the %s', (storeIn)
     expect(paths).toEqual([
       'input.js',
       'node_modules/a/index.js',
+      'node_modules/a/package.json',
       'node_modules/b/index.js',
+      'node_modules/b/package.json',
       'node_modules/c/index.js',
+      'node_modules/c/package.json',
       'node_modules/x/index.js',
+      'node_modules/x/package.json',
     ])
   })
 
@@ -94,6 +101,8 @@ describe.each(['app', 'workspace'] as const)('a pnpm store in the %s', (storeIn)
     expect(paths).toEqual([
       'input.js',
       'node_modules/a/index.js',
+      // `a` is the only package with its name; neither `b` is.
+      'node_modules/a/package.json',
       'node_modules/b@1.0.0/index.js',
       'node_modules/b@2.0.0/index.js',
     ])
@@ -129,8 +138,11 @@ describe.each(['app', 'workspace'] as const)('a pnpm store in the %s', (storeIn)
     expect(paths).toEqual([
       'input.js',
       'node_modules/a/index.js',
+      'node_modules/a/package.json',
       'node_modules/b/index.js',
+      'node_modules/b/package.json',
       'node_modules/x/index.js',
+      'node_modules/x/package.json',
     ])
   })
 
@@ -211,10 +223,17 @@ describe.each(['app', 'workspace'] as const)('a pnpm store in the %s', (storeIn)
     expect(paths).toEqual([
       'input.js',
       'node_modules/@acme/a/index.js',
+      'node_modules/@acme/a/package.json',
       'node_modules/@acme/a/util.js',
       'node_modules/@acme/b/dist/fonts/mono.js',
       'node_modules/@acme/b/dist/index.js',
+      'node_modules/@acme/b/package.json',
     ])
+    // What the device's resolver cannot read (conditions, wildcards) is flattened
+    // to the subpaths the app imports.
+    expect(JSON.parse(await code('node_modules/@acme/b/package.json'))).toEqual({
+      exports: {'.': './dist/index.js', './fonts/mono': './dist/fonts/mono.js'},
+    })
     expect(await code('input.js')).toBe("import './node_modules/@acme/a/index.js'\n")
     expect(await code('node_modules/@acme/a/index.js')).toBe(
       "import './util.js'\nimport '../b/dist/index.js'\nimport '../b/dist/fonts/mono.js'\n",
@@ -243,7 +262,13 @@ describe('a linked workspace package', () => {
 
     expect(problems).toEqual([])
     expect(duplicatePackages).toEqual([])
-    expect(paths).toEqual(['input.js', 'node_modules/board/index.js', 'node_modules/util/index.js'])
+    expect(paths).toEqual([
+      'input.js',
+      'node_modules/board/index.js',
+      'node_modules/board/package.json',
+      'node_modules/util/index.js',
+      'node_modules/util/package.json',
+    ])
   })
 
   it('finds a package that only the path it was reached at can see', async () => {
@@ -266,7 +291,13 @@ describe('a linked workspace package', () => {
     const {paths, problems, code} = await trace(fs, '/ws/app')
 
     expect(problems).toEqual([])
-    expect(paths).toEqual(['input.js', 'node_modules/board/index.js', 'node_modules/util/index.js'])
+    expect(paths).toEqual([
+      'input.js',
+      'node_modules/board/index.js',
+      'node_modules/board/package.json',
+      'node_modules/util/index.js',
+      'node_modules/util/package.json',
+    ])
     expect(await code('node_modules/board/index.js')).toBe("import '../util/index.js'\n")
   })
 
@@ -410,8 +441,39 @@ describe('an app', () => {
   })
 })
 
+describe('a deploy directory below the app directory', () => {
+  it('holds the files outside it, and the specifiers follow', async () => {
+    const {app, files, fs} = pnpmInstall(
+      'app',
+      {'a@1.0.0': {files: {'index.js': 'export {}\n'}}},
+      {a: '1.0.0'},
+      '',
+    )
+    files[`${app}/src/main.js`] = "import 'a/index.js'\nimport '../test/helper.js'\n"
+    files[`${app}/test/helper.js`] = 'export {}\n'
+    const result = await traceImports([`${app}/src/main.js`], {
+      root: app,
+      deployDir: 'src',
+      fs: fs(),
+    })
+
+    expect(result.problems).toEqual([])
+    expect([...result.files.keys()].sort()).toEqual([
+      'src/main.js',
+      'src/node_modules/a/index.js',
+      'src/node_modules/a/package.json',
+      'src/test/helper.js',
+    ])
+    const main = result.files.get('src/main.js')!
+    expect('rewrites' in main && main.rewrites.map(({text}) => text)).toEqual([
+      './node_modules/a/index.js',
+      './test/helper.js',
+    ])
+  })
+})
+
 describe('a deployed package', () => {
-  it('cannot be imported by name: no package.json deploys into its directory', async () => {
+  it('gets a package.json for the REPL that maps what the app imports, not its own', async () => {
     const {app, fs} = pnpmInstall(
       'app',
       {
@@ -425,7 +487,15 @@ describe('a deployed package', () => {
     const {paths, problems, code} = await trace(fs(), app)
 
     expect(problems).toEqual([])
-    expect(paths).toEqual(['input.js', 'node_modules/a/_package.json', 'node_modules/a/index.js'])
+    expect(paths).toEqual([
+      'input.js',
+      'node_modules/a/_package.json',
+      'node_modules/a/index.js',
+      'node_modules/a/package.json',
+    ])
+    expect(await code('node_modules/a/package.json')).toBe(
+      '{"exports":{"./index.js":"./index.js"}}',
+    )
     expect(await code('node_modules/a/index.js')).toBe(
       "import meta from './_package.json' with {type: 'json'}\n",
     )
