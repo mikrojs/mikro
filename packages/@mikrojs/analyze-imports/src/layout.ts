@@ -75,6 +75,9 @@ export function layout(graph: Graph, root: string, deployDir = '.'): Layout {
       if (module.package !== undefined) usedPackages.add(module.package)
       continue
     }
+    // A package inside the app directory (a monorepo's packages/lib) deploys as
+    // app files, but what it imports is its own choice, not the app's.
+    if (module.package !== undefined && inDir(module.package, root)) continue
     for (const ref of module.imports) {
       if (ref.target.type !== 'file') continue
       const dir = graph.modules.get(ref.target.path)?.package

@@ -328,6 +328,33 @@ describe('packages with one name', () => {
     ])
   })
 
+  it('keeps the plain name for the copy the app imports, not one a package inside the app imports', async () => {
+    const copy = (version: string) =>
+      JSON.stringify({name: 'c', version, type: 'module', exports: './index.js'})
+    const fs = memoryFs(
+      {
+        '/ws/app/package.json': pkg('app'),
+        '/ws/app/input.js': "import 'c'\nimport 'lib/index.js'\n",
+        '/ws/app/node_modules/c/package.json': copy('2.0.0'),
+        '/ws/app/node_modules/c/index.js': 'export {}\n',
+        '/ws/app/packages/lib/package.json': pkg('lib'),
+        '/ws/app/packages/lib/index.js': "import 'c'\n",
+        '/ws/app/packages/lib/node_modules/c/package.json': copy('1.0.0'),
+        '/ws/app/packages/lib/node_modules/c/index.js': 'export {}\n',
+      },
+      {'/ws/app/node_modules/lib': '../packages/lib'},
+    )
+    const {problems, code} = await trace(fs, '/ws/app')
+
+    expect(problems).toEqual([])
+    expect(await code('input.js')).toBe(
+      "import './node_modules/c/index.js'\nimport './packages/lib/index.js'\n",
+    )
+    expect(await code('packages/lib/index.js')).toBe(
+      "import '../../node_modules/c@1.0.0/index.js'\n",
+    )
+  })
+
   it('deploys a package under its own name when the app imports it by an alias', async () => {
     const fs = memoryFs(
       {
