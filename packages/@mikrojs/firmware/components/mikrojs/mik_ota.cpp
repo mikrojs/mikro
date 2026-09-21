@@ -288,7 +288,7 @@ void mkdir_parents(const char* path) {
 // ── Streaming ustar extraction ───────────────────────────────────────────────
 // Fed arbitrary byte chunks (the gunzip output), it reassembles 512-byte tar
 // blocks across chunk boundaries and writes members to disk as they arrive, so
-// no intermediate `.tar` ever lands on the 1 MB filesystem. Members are expected
+// no intermediate `.tar` ever lands on the app filesystem. Members are expected
 // to be prefixed `app/...` (the build is `tar -C build app`), so dest_dir
 // receives `app/...` and mik__app_commit renames dest_dir/app -> /app.
 struct Untar {

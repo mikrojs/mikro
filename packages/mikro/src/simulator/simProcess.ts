@@ -81,7 +81,7 @@ import {
   MSG_WARN,
   parseFrame,
 } from '../cli/lib/protocol.js'
-import {createDevRunner, type DevRunner} from './devRunner.js'
+import {createDevRunner, DEFAULT_FS_LIMIT, type DevRunner} from './devRunner.js'
 import {loadSimStubs} from './loadSimStubs.js'
 
 // ── Args ────────────────────────────────────────────────────────────
@@ -1007,7 +1007,7 @@ function handleDirective(payload: Buffer): void {
     case '/df': {
       try {
         const used = fsDiskUsage(appDir)
-        const limit = fsLimit ?? 1024 * 1024
+        const limit = fsLimit ?? DEFAULT_FS_LIMIT
         const free = limit > used ? limit - used : 0
         send(
           MSG_INFO,

@@ -10,7 +10,7 @@ import type {BuiltinName} from './builtins/types.js'
 
 const DEFAULT_MEM_LIMIT = 300 * 1024 // 300 KB
 const DEFAULT_FS_ROOT = '.mikro/sim-fs'
-const DEFAULT_FS_LIMIT = 1024 * 1024 // 1 MB
+export const DEFAULT_FS_LIMIT = 1472 * 1024 // matches the device's 'user' partition
 
 // Node-side handler for the http stub's host.call('http.fetch'). Uses Node's
 // global fetch so the simulator can hit real URLs without a device. Body is

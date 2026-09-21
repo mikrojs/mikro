@@ -542,10 +542,17 @@ other values, deliver a document the same way production does, through a registr
 
 - OTA replaces your app build, not the firmware binary.
 - The new build, the previous build kept for rollback, and the unpacked app share the
-  storage of the device. On a board with the default 1 MB app filesystem, this limits the
-  app size for OTA. A larger app needs a larger filesystem partition. `mikro ota pack` prints
+  storage of the device, which limits the app size for OTA. The generic firmware's
+  [filesystem](/developing-for-microcontrollers#filesystem) is 1472 KB; a larger app needs a
+  [larger partition](/develop/custom-firmware#partition-table). `mikro ota pack` prints
   the size of the build it produced, and the device reports its free staging space on every
   check-in, so a registry can withhold a build that does not fit.
+- An update carries the app build, never the partition table, so it cannot resize the
+  filesystem. A device keeps the table it was last flashed with until you flash it over a
+  cable with `mikro flash`, which writes the partition table along with the bootloader and
+  the app. On the next boot the device grows the filesystem to fill a larger partition and
+  keeps the files on it. A smaller partition deletes them; see
+  [Partition table](/develop/custom-firmware#partition-table).
 - The first OTA update of a device has no rollback target. Neither `mikro dev` nor
   `mikro deploy` sets one (a cable deploy clears it). If that first update fails its trial,
   the device keeps the new build and reports the failure at its next check-in. The recovery
