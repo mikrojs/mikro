@@ -329,3 +329,74 @@ TEST_CASE("native:mikro/rtc set returns an error Result when storage is full", "
     TEST_ASSERT_FALSE_MESSAGE(resultOk, "set should return ok=false when over capacity");
     TEST_ASSERT_EQUAL_INT32_MESSAGE(0x80D3, errorCode, "error code should be KV_STORAGE_FULL");
 }
+
+/* ── failed overwrite leaves the store untouched ──────────────────── */
+
+TEST_CASE("native:mikro/rtc set keeps the old value when an overwrite does not fit", "[modules]") {
+    setup();
+
+    /* get() re-validates the header CRC and clears the whole store on a
+     * mismatch, so a failed set that had already dropped the old entry
+     * would also lose "keep". */
+    JSValue ret = eval_module(R"(
+        import { set, get, info, clear } from "native:mikro/rtc";
+        clear();
+        set("keep", "a");
+        set("key", "old");
+        const result = set("key", "x".repeat(2100));
+        globalThis.__ok = result.ok;
+        globalThis.__errorCode = result.ok ? 0 : result.error.code;
+        globalThis.__intact =
+            get("key") === "old" && get("keep") === "a" && info().entries === 2;
+    )");
+    bool evalOk = !JS_IsException(ret);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue okVal = JS_GetPropertyStr(ctx, global, "__ok");
+    bool resultOk = JS_ToBool(ctx, okVal);
+    JS_FreeValue(ctx, okVal);
+    JSValue codeVal = JS_GetPropertyStr(ctx, global, "__errorCode");
+    int32_t errorCode = 0;
+    JS_ToInt32(ctx, &errorCode, codeVal);
+    JS_FreeValue(ctx, codeVal);
+    JSValue intactVal = JS_GetPropertyStr(ctx, global, "__intact");
+    bool intact = JS_ToBool(ctx, intactVal);
+    JS_FreeValue(ctx, intactVal);
+    JS_FreeValue(ctx, global);
+    teardown();
+
+    TEST_ASSERT_TRUE_MESSAGE(evalOk, "Module eval should not throw");
+    TEST_ASSERT_FALSE_MESSAGE(resultOk, "set should return ok=false when over capacity");
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(0x80D3, errorCode, "error code should be KV_STORAGE_FULL");
+    TEST_ASSERT_TRUE_MESSAGE(intact, "failed set should keep the old value and other keys");
+}
+
+/* ── overwrite may reuse the old entry's space ────────────────────── */
+
+TEST_CASE("native:mikro/rtc set overwrite counts the space the old entry frees", "[modules]") {
+    setup();
+
+    /* One 2000-char entry fits the 2036-byte store, two do not */
+    JSValue ret = eval_module(R"(
+        import { set, get, clear } from "native:mikro/rtc";
+        clear();
+        set("key", "x".repeat(2000));
+        globalThis.__ok = set("key", "y".repeat(2000)).ok;
+        globalThis.__isNew = get("key") === "y".repeat(2000);
+    )");
+    bool evalOk = !JS_IsException(ret);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue okVal = JS_GetPropertyStr(ctx, global, "__ok");
+    bool resultOk = JS_ToBool(ctx, okVal);
+    JS_FreeValue(ctx, okVal);
+    JSValue isNewVal = JS_GetPropertyStr(ctx, global, "__isNew");
+    bool isNew = JS_ToBool(ctx, isNewVal);
+    JS_FreeValue(ctx, isNewVal);
+    JS_FreeValue(ctx, global);
+    teardown();
+
+    TEST_ASSERT_TRUE_MESSAGE(evalOk, "Module eval should not throw");
+    TEST_ASSERT_TRUE_MESSAGE(resultOk, "overwrite should fit in the space the old entry frees");
+    TEST_ASSERT_TRUE_MESSAGE(isNew, "get should return the new value");
+}

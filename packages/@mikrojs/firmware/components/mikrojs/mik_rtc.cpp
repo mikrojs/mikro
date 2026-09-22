@@ -157,24 +157,27 @@ static JSValue mik__rtc_set(JSContext* ctx, JSValue this_val, int argc, JSValue*
     auto* hdr = reinterpret_cast<RtcHeader*>(s_rtc_store);
     uint8_t* data = mik__rtc_data();
 
-    /* Remove existing entry if present */
+    /* Check space before changing anything, counting the bytes an existing entry would free, so
+     * a failed set keeps the old value and a valid CRC */
     uint8_t* next = nullptr;
     uint8_t* found = mik__rtc_find(key, static_cast<uint8_t>(key_len), &next);
+    size_t old_size = (found && next) ? static_cast<size_t>(next - found) : 0;
+    size_t used = hdr->data_len - old_size;
+    size_t needed = mik__rtc_entry_size(static_cast<uint8_t>(key_len), static_cast<uint16_t>(val_len));
+    if (used + needed > MIK_RTC_DATA_CAPACITY) {
+        JS_FreeCString(ctx, key);
+        return mik__result_err(ctx, MIK_ERR_KV_STORAGE_FULL, 0,
+                               "RTC memory full (need %zu bytes, %zu available)", needed,
+                               MIK_RTC_DATA_CAPACITY - used);
+    }
+
+    /* Remove existing entry if present */
     if (found && next) {
         uint8_t* end = data + hdr->data_len;
         size_t tail = end - next;
         memmove(found, next, tail);
-        hdr->data_len -= static_cast<uint16_t>(next - found);
+        hdr->data_len -= static_cast<uint16_t>(old_size);
         hdr->entry_count--;
-    }
-
-    /* Check space */
-    size_t needed = mik__rtc_entry_size(static_cast<uint8_t>(key_len), static_cast<uint16_t>(val_len));
-    if (hdr->data_len + needed > MIK_RTC_DATA_CAPACITY) {
-        JS_FreeCString(ctx, key);
-        return mik__result_err(ctx, MIK_ERR_KV_STORAGE_FULL, 0,
-                               "RTC memory full (need %zu bytes, %zu available)", needed,
-                               MIK_RTC_DATA_CAPACITY - hdr->data_len);
     }
 
     /* Append new entry: encode CBOR directly into the RTC store */
