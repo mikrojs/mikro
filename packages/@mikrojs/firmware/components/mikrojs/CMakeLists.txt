@@ -28,7 +28,7 @@ set(MIK_NANOCBOR_DIR "${MIK_SRC_DIR}/../deps/nanocbor")
 # their sdkconfig.defaults, so this component has to skip BLE there.
 set(_MIK_BLE_SRCS "")
 if(CONFIG_BT_ENABLED)
-    list(APPEND _MIK_BLE_SRCS "mik_ble.cpp" "mik_ble_c_shim.c")
+    list(APPEND _MIK_BLE_SRCS "${MIK_SRC_DIR}/mik_ble.cpp" "mik_ble_esp32.cpp" "mik_ble_c_shim.c")
 endif()
 
 # The WiFi driver and the `wifi` native module only compile under

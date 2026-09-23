@@ -73,6 +73,8 @@ set(MIKROJS_CORE_SOURCES
 # - src/mik_ota.cpp, src/mik_ota_env.cpp and src/mik_ota_client_module.cpp
 #   need it or the HTTP module's native path. The host tests compile them
 #   against stand-ins for both (test/ota_stubs.cpp).
+# - src/mik_ble.cpp needs NimBLE and FreeRTOS; the device builds list it with
+#   their mikrojs/ble_port.h hooks.
 
 add_library(mikrojs STATIC
     ${MIKROJS_CORE_SOURCES}
