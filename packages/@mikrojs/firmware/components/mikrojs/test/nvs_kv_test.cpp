@@ -144,6 +144,27 @@ TEST_CASE("native:mikro/nvs_kv kv and sys namespaces are isolated", "[kv]") {
     teardown();
 }
 
+/* ── Remove on a missing key ──────────────────────────────────────── */
+
+/* sysRemove shares mik__nvs_kv_remove (selected by magic), so this covers both. */
+TEST_CASE("native:mikro/nvs_kv remove returns true for missing key", "[kv]") {
+    setup();
+
+    JSValue ret = eval_module(R"(
+        import { remove, clear } from "native:mikro/nvs_kv";
+        clear();
+        globalThis.__result = remove("nonexistent");
+    )");
+    TEST_ASSERT_FALSE_MESSAGE(JS_IsException(ret), "Module eval should not throw");
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue result = JS_GetPropertyStr(ctx, global, "__result");
+    TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, result), "remove should return true for missing key");
+    JS_FreeValue(ctx, result);
+    JS_FreeValue(ctx, global);
+    teardown();
+}
+
 /* ── Clear scopes ─────────────────────────────────────────────────── */
 
 TEST_CASE("native:mikro/nvs_kv clear() leaves sys, sysClear() leaves kv", "[kv]") {

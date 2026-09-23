@@ -87,11 +87,12 @@ export function makeCreateValue(native: NativeKvFns) {
       return v
     }
 
+    function doDelete() {
+      return native.remove(key) ? ok() : err(KVError.WriteFailed(`failed to delete key "${key}"`))
+    }
+
     function doSet(value: unknown) {
-      if (value === undefined) {
-        native.remove(key)
-        return ok(undefined)
-      }
+      if (value === undefined) return doDelete()
       if (schema) {
         const result = parse(schema, value)
         if (!result.ok) {
@@ -109,10 +110,7 @@ export function makeCreateValue(native: NativeKvFns) {
       update(updater: (value: any) => any) {
         return doSet(updater(doGet()))
       },
-      delete() {
-        const removed = native.remove(key)
-        return removed ? ok() : err(KVError.WriteFailed(`failed to delete key "${key}"`))
-      },
+      delete: doDelete,
     }
   }
 }

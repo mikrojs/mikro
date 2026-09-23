@@ -253,7 +253,8 @@ static JSValue mik__rtc_remove(JSContext* ctx, JSValue this_val, int argc, JSVal
     uint8_t* found = mik__rtc_find(key, static_cast<uint8_t>(key_len), &next);
     JS_FreeCString(ctx, key);
 
-    if (!found || !next) return JS_NewBool(ctx, false);
+    /* A missing key is already removed, not a failure. */
+    if (!found || !next) return JS_NewBool(ctx, true);
 
     uint8_t* end = data + hdr->data_len;
     size_t tail = end - next;

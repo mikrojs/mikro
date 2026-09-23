@@ -58,10 +58,10 @@ function doGet(map, key) {
   return result.ok ? result.value : undefined
 }
 
+// A missing key counts as removed, as on firmware.
 function doRemove(map, ns, key) {
-  const existed = map.delete(key)
-  if (existed) call('nvs_kv.remove', JSON.stringify({key, ns}))
-  return existed
+  if (map.delete(key)) call('nvs_kv.remove', JSON.stringify({key, ns}))
+  return true
 }
 
 function doClear(map, ns) {

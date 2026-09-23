@@ -177,7 +177,7 @@ counter.update((n) => (n ?? 0) + 1)
 
 ### value.delete()
 
-Remove the key from storage.
+Remove the key from storage. Deleting a key that doesn't exist succeeds.
 
 ## onReadError
 

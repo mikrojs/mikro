@@ -186,14 +186,14 @@ static JSValue mik__nvs_kv_remove(JSContext* ctx, JSValue this_val, int argc, JS
     esp_err_t err = nvs_erase_key(handle, key);
     JS_FreeCString(ctx, key);
 
-    if (err != ESP_OK) {
+    /* A missing key is already removed, not a failure. */
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
         nvs_close(handle);
-        return JS_NewBool(ctx, false);
+        return JS_NewBool(ctx, true);
     }
-
-    nvs_commit(handle);
+    if (err == ESP_OK) err = nvs_commit(handle);
     nvs_close(handle);
-    return JS_NewBool(ctx, true);
+    return JS_NewBool(ctx, err == ESP_OK);
 }
 
 static JSValue mik__nvs_kv_clear(JSContext* ctx, JSValue this_val, int argc, JSValue* argv,

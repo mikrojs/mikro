@@ -21,8 +21,10 @@ export function get(key) {
   return result.ok ? result.value : undefined
 }
 
+// A missing key counts as removed, as on firmware.
 export function remove(key) {
-  return store.delete(key)
+  store.delete(key)
+  return true
 }
 
 export function clear() {
