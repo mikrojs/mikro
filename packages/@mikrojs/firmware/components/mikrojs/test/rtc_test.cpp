@@ -145,9 +145,9 @@ TEST_CASE("native:mikro/rtc remove deletes entry", "[modules]") {
     teardown();
 }
 
-/* ── remove returns false for missing key ─────────────────────────── */
+/* ── remove succeeds for missing key ──────────────────────────────── */
 
-TEST_CASE("native:mikro/rtc remove returns false for missing key", "[modules]") {
+TEST_CASE("native:mikro/rtc remove returns true for missing key", "[modules]") {
     setup();
 
     JSValue ret = eval_module(R"(
@@ -159,7 +159,7 @@ TEST_CASE("native:mikro/rtc remove returns false for missing key", "[modules]") 
 
     JSValue global = JS_GetGlobalObject(ctx);
     JSValue result = JS_GetPropertyStr(ctx, global, "__result");
-    TEST_ASSERT_FALSE_MESSAGE(JS_ToBool(ctx, result), "remove should return false for missing key");
+    TEST_ASSERT_TRUE_MESSAGE(JS_ToBool(ctx, result), "remove should return true for missing key");
     JS_FreeValue(ctx, result);
     JS_FreeValue(ctx, global);
     teardown();

@@ -33,6 +33,12 @@ describe('kv: rtcStorage', () => {
     assert.equal(val.get(), undefined)
   })
 
+  test('delete on missing key is ok', () => {
+    const val = rtcStorage.createValue('rtc-missing')
+    assert.ok(val.delete())
+    assert.ok(val.set(undefined))
+  })
+
   test('update modifies value', () => {
     const val = rtcStorage.createValue('test-upd')
     assert.ok(val.set(10))
@@ -95,6 +101,12 @@ describe('kv: nvsStorage', () => {
     assert.ok(val.set('bye'))
     assert.ok(val.delete())
     assert.equal(val.get(), undefined)
+  })
+
+  test('delete on missing key is ok', () => {
+    const val = nvsStorage.createValue('nvs-missing')
+    assert.ok(val.delete())
+    assert.ok(val.set(undefined))
   })
 
   test('info returns storage stats', () => {

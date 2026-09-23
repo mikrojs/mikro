@@ -88,6 +88,32 @@ describe('read failures', () => {
   })
 })
 
+describe('delete', () => {
+  type Deletable = {
+    delete: () => {ok: boolean; error?: unknown}
+    set: (x: unknown) => {ok: boolean; error?: unknown}
+  }
+  function valueWithRemove(removed: boolean) {
+    const native = {...fakeNative({ok: true}), remove: () => removed}
+    return makeCreateValue(native)('k') as Deletable
+  }
+
+  it('returns ok when the native remove succeeds', () => {
+    expect(valueWithRemove(true).delete().ok).toBe(true)
+  })
+
+  it('returns WriteFailed when the native remove fails', () => {
+    const result = valueWithRemove(false).delete()
+    expect(result.ok).toBe(false)
+    expect(result.error).toEqual({name: 'WriteFailed', message: 'failed to delete key "k"'})
+  })
+
+  it('set(undefined) returns the same failure as delete()', () => {
+    const v = valueWithRemove(false)
+    expect(v.set(undefined)).toEqual(v.delete())
+  })
+})
+
 describe('mapKvError', () => {
   // mapKvError is internal; exercise it via the set() path on a createValue.
   it('maps unknown native error codes to KVError.Unknown', () => {
