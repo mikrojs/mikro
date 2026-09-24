@@ -474,10 +474,7 @@ static bool handle_directive_impl(JSContext* ctx, const char* line, std::string&
         if (repl_transport && repl_transport->chip_name) {
             dir_printf(out, "Chip: %s\n", repl_transport->chip_name);
         }
-        const char* dev_id = MIK_GetPlatform()->get_device_id();
-        if (dev_id) {
-            dir_printf(out, "Device ID: %s\n", dev_id);
-        }
+        dir_printf(out, "Device ID: %s\n", MIK_GetPlatform()->get_device_id());
 
         /* Runtime uptime */
         int64_t uptime_us = platform->get_boot_us();
@@ -991,7 +988,6 @@ static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const cha
 static void refresh_ready(MIKReplTransport* transport) {
     const char* chip = transport->chip_name ? transport->chip_name : "unknown";
     const char* id = MIK_GetPlatform()->get_device_id();
-    if (!id) id = "";
     const char* version =
 #ifdef MIK_FW_VERSION
         MIK_FW_VERSION;

@@ -339,9 +339,8 @@ bool env_read_app_version(void* opaque, char* out, size_t out_len) {
 const MIKOtaEnv* mik__ota_env_for(MIKRuntime* rt, int bytecode_version) {
     g_state.rt = rt;
     g_state.bytecode_version = bytecode_version;
-    const MIKPlatform* platform = MIK_GetPlatform();
-    const char* id = platform->get_device_id ? platform->get_device_id() : nullptr;
-    snprintf(g_state.device_id, sizeof(g_state.device_id), "%s", id ? id : "");
+    snprintf(g_state.device_id, sizeof(g_state.device_id), "%s",
+             MIK_GetPlatform()->get_device_id());
 
     MIKOtaEnv& env = g_state.env;
     env = {};

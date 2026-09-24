@@ -300,9 +300,7 @@ static bool mik__wifi_apply_hostname(JSContext* ctx) {
         hostname = buf;
     }
     if (!hostname) {
-        const char* dev_id = MIK_GetPlatform()->get_device_id();
-        if (!dev_id || !dev_id[0]) return false;
-        snprintf(buf, sizeof(buf), "mikrojs-%s", dev_id);
+        snprintf(buf, sizeof(buf), "mikrojs-%s", MIK_GetPlatform()->get_device_id());
         hostname = buf;
     }
     return esp_netif_set_hostname(s_sta_netif, hostname) == ESP_OK;

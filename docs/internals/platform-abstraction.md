@@ -39,7 +39,7 @@ typedef struct MIKPlatform {
     int (*stdin_read)(void* buf, size_t len);
 
     // Identity
-    const char* (*get_device_id)(void);   // Unique device ID (or NULL)
+    const char* (*get_device_id)(void);   // Unique device ID (required)
 } MIKPlatform;
 ```
 
@@ -116,7 +116,7 @@ These functions feed `sys.info()` in JavaScript, which reports free heap, total 
 
 ### Identity
 
-`get_device_id()` returns a unique, stable identifier for the device, or NULL if unavailable. The returned string is exposed as `sys.deviceId` in JavaScript and included in the REPL protocol's `MSG_READY` handshake.
+`get_device_id()` is required. It returns a unique, stable, non-empty identifier for the device. The returned string is exposed as `sys.deviceId` in JavaScript and included in the REPL protocol's `MSG_READY` handshake.
 
 On ESP32, the 6-byte base MAC address is encoded as [Crockford's Base32](https://www.crockford.com/base32.html) (10 lowercase characters, no special symbols). The encoding is lossless: decoding the 10 characters recovers the original MAC bytes. On POSIX/Node, an FNV-1a hash of the hostname produces a stable ID that persists across restarts.
 
