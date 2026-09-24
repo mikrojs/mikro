@@ -167,4 +167,6 @@ That runs JavaScript. Deploys, `mikro env`, `mikro test` and OTA are portable to
 5. Set `MIK_OtaTrialErrorHandler` as the app runtime's error handler, and set the store's `stage_build` to `MIK_OtaStageAdopt`.
 6. For OTA downloads, implement the HTTP module's native request path (`include/mikrojs/http_native.h`), and compile `mik_build_install.cpp` with miniz.
 
+A port that restarts the app in place, where the ESP32 resets the chip, calls `MIK_CaptureBootMemory()` for each run, after the previous session's `MIK_ProtocolClose()` and before the next `MIK_ProtocolOpen()`, so `MSG_READY` reports that run's memory figures.
+
 The ESP32 port's store is `mik_device_store.cpp`, and `mik_main.cpp` shows the calls in order.
