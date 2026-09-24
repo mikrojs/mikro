@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "mikro test",
-    "test:sim": "mikro sim test"
+    "test:sim": "mikro sim test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "mikro": "workspace:*"
