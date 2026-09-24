@@ -45,7 +45,7 @@ runs:
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         git submodule update --init packages/@mikrojs/quickjs/deps/quickjs packages/@mikrojs/native/deps/nanocbor
 
-    - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2
+    - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3
       with:
         runtime: node@24
         require-lockfile: true
