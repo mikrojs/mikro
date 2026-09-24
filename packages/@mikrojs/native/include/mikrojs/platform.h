@@ -69,8 +69,8 @@ typedef struct MIKPlatform {
     int (*stdout_write)(const void* buf, size_t len);
     int (*stderr_write)(const void* buf, size_t len);
     int (*stdin_read)(void* buf, size_t len);
-    /** Return a unique device identifier string, or NULL if unavailable.
-     *  On ESP32 this is the base MAC address encoded as Crockford's Base32
+    /** Required. Return the device's unique identifier: a non-empty string,
+     *  never NULL. On ESP32 this is the base MAC address encoded as Crockford's Base32
      *  (10 lowercase chars). The encoding is lossless: decoding yields the
      *  original 6 MAC bytes. The returned pointer must remain valid for the
      *  lifetime of the platform. */
