@@ -79,6 +79,13 @@ declare interface ImportMetaEnv {
 }
 
 declare interface ImportMeta {
+  /** The module's URL, e.g. `file:///app/main.js`. */
+  readonly url: string
+  /** True for the entry module. */
+  readonly main: boolean
+  readonly dirname: string
+  readonly basename: string
+  readonly path: string
   readonly env: Readonly<ImportMetaEnv>
 }
 

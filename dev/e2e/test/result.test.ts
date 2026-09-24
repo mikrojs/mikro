@@ -86,14 +86,14 @@ describe('result', () => {
 
   test('matchError dispatches on name with exhaustive handlers', () => {
     type E = {name: 'NotFound'; id: string} | {name: 'Invalid'; reason: string}
-    const e1: E = {name: 'NotFound', id: 'abc'}
+    const e1 = {name: 'NotFound', id: 'abc'} as E
     const out1 = matchError(e1, {
       NotFound: (e) => `missing:${e.id}`,
       Invalid: (e) => `bad:${e.reason}`,
     })
     assert.equal(out1, 'missing:abc')
 
-    const e2: E = {name: 'Invalid', reason: 'too short'}
+    const e2 = {name: 'Invalid', reason: 'too short'} as E
     const out2 = matchError(e2, {
       NotFound: (e) => `missing:${e.id}`,
       Invalid: (e) => `bad:${e.reason}`,

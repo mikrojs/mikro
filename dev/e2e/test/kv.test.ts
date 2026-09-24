@@ -88,6 +88,8 @@ describe('kv: nvsStorage', () => {
   test('schema validation on set', () => {
     const val = nvsStorage.createValue('nvs-schema', {
       schema: object({name: string(), count: number()}),
+      initialValue: {name: '', count: 0},
+      onReadError: () => ({name: '', count: 0}),
     })
     assert.ok(val.set({name: 'test', count: 1}))
     assert.equal((val.get() as any).name, 'test')
