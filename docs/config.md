@@ -155,7 +155,7 @@ Build-time options that control how your code is compiled and bundled. These are
 
 ### `build.bundle` {#buildbundle}
 
-Bundle user code into a single module via esbuild, with tree-shaking. Firmware builtins (`mikro/*` and `@mikrojs/*` packages with native code) stay external.
+Bundle user code into a single module via esbuild, with tree-shaking. Firmware builtins (`mikro/*`) and native modules stay external.
 
 Bundling reduces QuickJS per-module overhead and strips unused code paths, at the cost of less informative stack traces.
 

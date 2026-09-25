@@ -113,8 +113,6 @@ include(cmake/mikrojs_bytecode.cmake)
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/runtime"
     MODULES ${_MIK_HOST_MODULES}
-    MODULE_PREFIX "mikro"
-    SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode
 )
 add_dependencies(mikrojs gen_bytecode)
@@ -206,7 +204,7 @@ if(BUILD_TESTING)
         test/runtime_test.cpp
         test/modules_test.cpp
         test/virtual_modules_test.cpp
-        test/ext_builtin_test.cpp
+        test/public_module_test.cpp
         test/package_name_test.cpp
         test/app_module_name_test.cpp
         test/text_encoding_test.cpp

@@ -297,20 +297,6 @@ static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_n
         }
     }
 
-    /* Check external builtins for board/driver packages (e.g. "@mikrojs/your-driver").
-     * These are registered via MIK_REGISTER_BUILTIN() and resolved by package name
-     * before falling through to filesystem resolution. */
-    {
-        JSModuleDef* ext_m = mik__load_builtin(ctx, module_name);
-        if (ext_m) return ext_m;
-        /* NULL with an exception pending means the builtin was found but
-         * failed to load (deserialization or import resolution). Don't fall
-         * through to filesystem resolution — it would replace the real error
-         * with a generic "failed to resolve" one. Same probe as the mikro/
-         * branch above (JS_HasException, not JS_GetException + JS_IsNull). */
-        if (JS_HasException(ctx)) return NULL;
-    }
-
     return mik_module_load_from_fs(ctx, module_name);
 }
 
@@ -717,18 +703,6 @@ static bool mik__is_anchored_name(const char* name) {
            strncmp(name, "@mikrojs/", 9) == 0;
 }
 
-/* A name registered via MIK_REGISTER_BUILTIN() is bytecode compiled into the
- * firmware — the same trust level as @mikrojs builtins, regardless of the
- * package's npm scope. */
-static bool mik__is_ext_builtin_name(const char* name) {
-    for (mik_ext_builtin_t* p = mik__ext_builtin_head; p != nullptr; p = p->next) {
-        if (strcmp(p->name, name) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
 /* A name registered via MIK_REGISTER_PUBLIC_MODULE(): a package's C module,
  * imported by its bare specifier. */
 static bool mik__is_public_module_name(const char* name) {
@@ -766,13 +740,9 @@ static char* mik__module_normalizer_impl(JSContext* ctx, const char* base_name,
 
     static const char internal_prefix[] = "native:";
     if (strncmp(name, internal_prefix, strlen(internal_prefix)) == 0) {
-        // Only firmware-embedded modules (native:, mikro/, @mikrojs/, registered
-        // external builtins) may import native: internals. A builtin may import
-        // any native: module, including another package's — native-level
-        // composition (e.g. an audio driver reusing a codec package's bindings)
-        // is intentionally allowed.
-        if (strncmp(base_name, "native:", 7) != 0 && strncmp(base_name, "mikro/", 6) != 0 &&
-            strncmp(base_name, "@mikrojs/", 9) != 0 && !mik__is_ext_builtin_name(base_name)) {
+        // Only firmware-embedded modules (native:, mikro/) may import native:
+        // internals.
+        if (strncmp(base_name, "native:", 7) != 0 && strncmp(base_name, "mikro/", 6) != 0) {
             JS_ThrowTypeError(
                 ctx, "Cannot import '%s': native modules can only be imported by firmware builtins",
                 name);
@@ -785,13 +755,8 @@ static char* mik__module_normalizer_impl(JSContext* ctx, const char* base_name,
         if (strncmp(name, "mikro/", 6) == 0 || strncmp(name, "native:", 7) == 0) {
             return js_strdup(ctx, name);
         }
-        /* Check if this bare specifier matches an external builtin (board/driver
-         * package). If so, pass through unchanged to avoid filesystem resolution. */
-        if (mik__is_ext_builtin_name(name)) {
-            return js_strdup(ctx, name);
-        }
-        /* Same for a package's C module: the firmware provides it, so it is
-         * never looked up in node_modules. */
+        /* A package's C module passes through too: the firmware provides it,
+         * so it is never looked up in node_modules. */
         if (mik__is_public_module_name(name)) {
             return js_strdup(ctx, name);
         }

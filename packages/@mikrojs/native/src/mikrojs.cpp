@@ -611,14 +611,6 @@ static void mik__check_module_collisions(void) {
             }
         }
     }
-    for (mik_ext_builtin_t* a = mik__ext_builtin_head; a != nullptr; a = a->next) {
-        for (mik_ext_builtin_t* b = a->next; b != nullptr; b = b->next) {
-            if (strcmp(a->name, b->name) == 0) {
-                fprintf(stderr, "FATAL: builtin module name collision: \"%s\"\n", a->name);
-                abort();
-            }
-        }
-    }
 }
 
 /* A chain of already-settled promises drains as one uninterrupted storm of

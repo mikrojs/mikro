@@ -290,10 +290,10 @@ extern mik_module_desc_t* mik__module_registry_head;
 /* Namespace governance. Each component's CMakeLists.txt defines MIK_PACKAGE_NAME:
  * "mikro" for the core runtime, the owning npm package name for a driver or
  * board package. A native module must then be named "native:<MIK_PACKAGE_NAME>/…",
- * and a public module or registered builtin "<MIK_PACKAGE_NAME>" (the package's
- * root export) or "<MIK_PACKAGE_NAME>/…". This keeps the native:
- * namespace to mikro and catches a module named for the wrong package; the name
- * is self-declared, so it does not stop a package that declares another's.
+ * and a public module "<MIK_PACKAGE_NAME>" (the package's root export) or
+ * "<MIK_PACKAGE_NAME>/…". This keeps the native: namespace to mikro and catches
+ * a module named for the wrong package; the name is self-declared, so it does
+ * not stop a package that declares another's.
  * An app's own module, which the app imports with a "#" specifier from its
  * package.json "imports", belongs to no package: its component defines no
  * MIK_PACKAGE_NAME, and its public module name must start with "#".
@@ -353,26 +353,6 @@ extern mik_module_desc_t* mik__module_registry_head;
     static void __attribute__((constructor)) mik__register_mod_##id(void) {    \
         mik__mod_desc_##id.next = mik__module_registry_head;                   \
         mik__module_registry_head = &mik__mod_desc_##id;                       \
-    }
-/* Self-registration for bytecode builtins compiled into the firmware under a
- * package name (e.g. "@my-scope/codec"), resolved before node_modules. */
-typedef struct mik_ext_builtin_t {
-    const char* name;         /* module name, e.g. "@my-scope/codec" */
-    const uint8_t* data;      /* compiled bytecode */
-    uint32_t data_size;
-    struct mik_ext_builtin_t* next;
-} mik_ext_builtin_t;
-
-extern mik_ext_builtin_t* mik__ext_builtin_head;
-
-/* The descriptor has external linkage so the linker can keep it via -u flags. */
-#define MIK_REGISTER_BUILTIN(id, name_, data_, size_)                              \
-    MIK__REQUIRE_BUILTIN_NS(name_);                                                \
-    mik_ext_builtin_t mik__builtin_##id = {                                        \
-        name_, data_, size_, NULL};                                                \
-    static void __attribute__((constructor)) mik__register_builtin_##id(void) {    \
-        mik__builtin_##id.next = mik__ext_builtin_head;                            \
-        mik__ext_builtin_head = &mik__builtin_##id;                                \
     }
 /* NOLINTEND(bugprone-macro-parentheses,cppcoreguidelines-avoid-non-const-global-variables) */
 
