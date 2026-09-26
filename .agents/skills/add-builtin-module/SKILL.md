@@ -93,7 +93,7 @@ Create type declarations so TypeScript users get autocomplete.
 
 ```bash
 pnpm run build:lib     # standalone library (generates bytecode + compiles)
-cd esp32 && idf.py build  # ESP-IDF firmware
+cd esp32 && pn mikro idf build  # ESP-IDF firmware
 ```
 
 ---

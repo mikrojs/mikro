@@ -416,6 +416,59 @@ test.skipIf(!hasCmake())(
 )
 
 test.skipIf(!hasCmake())(
+  'sdkconfig pointing at the partition table of another build dir in the project is repointed',
+  () => {
+    // Plain idf.py builds in build/, `mikro idf` in .mikro/build-fw
+    const dir = makeProject('heal-other-build')
+    const setting = (path: string) => `CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="${path}"`
+    configure(dir)
+    writeFileSync(join(dir, 'sdkconfig'), `${setting('build/partitions.csv')}\n`)
+
+    configure(dir, {buildDir: join(dir, '.mikro', 'build-fw')})
+    expect(readFileSync(join(dir, 'sdkconfig'), 'utf8')).toContain(
+      setting('.mikro/build-fw/partitions.csv'),
+    )
+
+    configure(dir)
+    expect(readFileSync(join(dir, 'sdkconfig'), 'utf8')).toContain(setting('build/partitions.csv'))
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  'sdkconfig pointing at the partition table of a deleted build dir is repointed',
+  () => {
+    const dir = makeProject('heal-deleted-build')
+    writeFileSync(
+      join(dir, 'sdkconfig'),
+      'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="old/partitions.csv"\n',
+    )
+
+    configure(dir)
+
+    expect(readFileSync(join(dir, 'sdkconfig'), 'utf8')).toContain(
+      'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="build/partitions.csv"',
+    )
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  'sdkconfig pointing at a partitions.csv kept in the project is left alone',
+  () => {
+    const dir = makeProject('heal-kept-csv')
+    write(join(dir, 'tables', 'partitions.csv'), '# Name, Type, SubType, Offset, Size\n')
+    const before = 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="tables/partitions.csv"\n'
+    writeFileSync(join(dir, 'sdkconfig'), before)
+
+    configure(dir)
+
+    expect(readFileSync(join(dir, 'sdkconfig'), 'utf8')).toBe(before)
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
   'a build dir outside the project gets an absolute path and no stray build/ in the source tree',
   () => {
     const dir = makeProject('external-build-src')

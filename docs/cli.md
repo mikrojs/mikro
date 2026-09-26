@@ -111,6 +111,33 @@ mikro flash
 `--build-dir` and `--from` are mutually exclusive. Use `--build-dir` if you built firmware from source; use `--from` to pin a specific version.
 :::
 
+## mikro idf
+
+Run ESP-IDF's `idf.py` to build and flash [custom firmware](/develop/custom-firmware). The arguments go to `idf.py` unchanged:
+
+```sh
+pn mikro idf set-target esp32c6
+pn mikro idf build flash monitor
+```
+
+When `idf.py` is not on `PATH`, the command runs it through [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/) with `eim run`, which activates ESP-IDF first. It exits with `idf.py`'s exit code.
+
+Use `mikro idf` for every step, including `flash` and `monitor`: it keeps its build apart from the one plain `idf.py` makes. Plain `idf.py` works too, in a shell where ESP-IDF is active.
+
+## mikro fw
+
+### mikro fw pack
+
+Build a [custom firmware](/develop/custom-firmware) project and pack it into an archive that [`mikro flash --from`](#mikro-flash) can flash: `flasher_args.json` and the files it lists. Run it in the project folder.
+
+```sh
+pn mikro fw pack
+```
+
+| Option       | Description                                                               |
+| ------------ | ------------------------------------------------------------------------- |
+| `--out FILE` | Output path for the archive (default: `./mikrojs-firmware-<chip>.tar.gz`) |
+
 ## mikro ls
 
 List connected devices. Each line shows the device's name, its serial port path, and details:

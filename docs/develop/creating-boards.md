@@ -119,10 +119,10 @@ After adding the board package to `esp32/package.json`:
 
 ```sh
 cd esp32
-pnpm install
+pn install
 rm sdkconfig
-idf.py set-target esp32c6
-MIKROJS_BOARD=acme-devboard idf.py build flash monitor
+pn mikro idf set-target esp32c6
+MIKROJS_BOARD=acme-devboard pn mikro idf build flash monitor
 ```
 
 ## User code with a board

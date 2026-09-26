@@ -118,15 +118,25 @@ list(APPEND _SDKCONFIG_LIST "${_PARTITION_FRAGMENT}")
 # resolved package path, or a build dir that moved. Must fire even when the
 # frozen file still exists — an older package version often is still in the
 # store, and its old partition table would be built silently. Paths inside
-# the project are deliberate menuconfig overrides and are left alone.
+# the project are deliberate menuconfig overrides and are left alone, except a
+# partitions.csv in another build dir (next to a CMakeCache.txt, or gone).
 if(EXISTS "${CMAKE_SOURCE_DIR}/sdkconfig")
     file(READ "${CMAKE_SOURCE_DIR}/sdkconfig" _SDKCONFIG_CONTENT)
     string(REGEX MATCH "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"([^\"]*)\"" _PARTITION_MATCH "${_SDKCONFIG_CONTENT}")
     if(_PARTITION_MATCH AND NOT CMAKE_MATCH_1 STREQUAL "${_PARTITION_CSV}")
         set(_PARTITION_FROZEN "${CMAKE_MATCH_1}")
         get_filename_component(_PARTITION_FROZEN_ABS "${_PARTITION_FROZEN}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+        get_filename_component(_PARTITION_FROZEN_DIR "${_PARTITION_FROZEN_ABS}" DIRECTORY)
+        get_filename_component(_PARTITION_FROZEN_NAME "${_PARTITION_FROZEN_ABS}" NAME)
         string(FIND "${_PARTITION_FROZEN_ABS}" "${CMAKE_SOURCE_DIR}/" _PARTITION_INSIDE)
+        unset(_PARTITION_STALE)
         if(NOT _PARTITION_INSIDE EQUAL 0)
+            set(_PARTITION_STALE "outside the project")
+        elseif(_PARTITION_FROZEN_NAME STREQUAL "partitions.csv" AND
+               (EXISTS "${_PARTITION_FROZEN_DIR}/CMakeCache.txt" OR NOT EXISTS "${_PARTITION_FROZEN_ABS}"))
+            set(_PARTITION_STALE "at another build directory")
+        endif()
+        if(_PARTITION_STALE)
             string(REGEX REPLACE "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"[^\"]*\""
                    "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"${_PARTITION_CSV}\""
                    _SDKCONFIG_CONTENT "${_SDKCONFIG_CONTENT}")
@@ -137,8 +147,8 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/sdkconfig")
                    _SDKCONFIG_CONTENT "${_SDKCONFIG_CONTENT}")
             file(WRITE "${CMAKE_SOURCE_DIR}/sdkconfig" "${_SDKCONFIG_CONTENT}")
             message(WARNING
-                "mikrojs: sdkconfig CONFIG_PARTITION_TABLE_CUSTOM_FILENAME pointed outside "
-                "the project (\"${_PARTITION_FROZEN}\"); repointed at \"${_PARTITION_CSV}\"")
+                "mikrojs: sdkconfig CONFIG_PARTITION_TABLE_CUSTOM_FILENAME pointed "
+                "${_PARTITION_STALE} (\"${_PARTITION_FROZEN}\"); repointed at \"${_PARTITION_CSV}\"")
         endif()
     endif()
 endif()

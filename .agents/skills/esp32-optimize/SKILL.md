@@ -21,9 +21,9 @@ Always check: Does firmware still boot? Do tests pass? Is there sufficient heap 
 ### Static sizes
 
 ```bash
-idf.py size              # overview: .text, .data, .bss, .rodata
-idf.py size-components   # per-component breakdown
-idf.py size-files        # per-file breakdown
+pn mikro idf size              # overview: .text, .data, .bss, .rodata
+pn mikro idf size-components   # per-component breakdown
+pn mikro idf size-files        # per-file breakdown
 ```
 
 ### Dynamic / runtime
@@ -76,7 +76,7 @@ uint32_t cycles = esp_cpu_get_cycle_count();  // cpu_hal_get_cycle_count() is re
 | Disable `CONFIG_SPI_MASTER_ISR_IN_IRAM`        | SPI master ISR          | ISR paused during flash writes                      |
 | `CONFIG_HAL_DEFAULT_ASSERTION_LEVEL=0`         | Remove HAL asserts      | Less debug info                                     |
 
-IRAM overflow linker errors look like: `section '.iram0.text' will not fit in region 'iram0_0_seg'`. Use `idf.py size-components` to find the biggest IRAM consumers.
+IRAM overflow linker errors look like: `section '.iram0.text' will not fit in region 'iram0_0_seg'`. Use `pn mikro idf size-components` to find the biggest IRAM consumers.
 
 ### Stack optimization
 
@@ -240,8 +240,8 @@ CONFIG_COMPILER_CXX_RTTI=n
 
 ## Checklist After Optimization
 
-1. `idf.py build` succeeds (no IRAM overflow)
-2. `idf.py flash monitor` — firmware boots
+1. `pn mikro idf build` succeeds (no IRAM overflow)
+2. `pn mikro idf flash monitor` — firmware boots
 3. Tests pass
 4. Heap headroom is sufficient at runtime
 5. Task stacks have adequate high water marks

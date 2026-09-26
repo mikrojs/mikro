@@ -2,11 +2,11 @@ import {existsSync, mkdirSync} from 'node:fs'
 import * as pathlib from 'node:path'
 
 /**
- * Walk up from cwd looking for package.json or mikro.config.ts.
- * Returns the directory containing the first match, or cwd as fallback.
+ * Walk up from `from` (default cwd) looking for package.json or mikro.config.ts.
+ * Returns the directory containing the first match, or `from` as fallback.
  */
-export function resolveProjectRoot(): string {
-  let dir = process.cwd()
+export function resolveProjectRoot(from = process.cwd()): string {
+  let dir = from
   const root = pathlib.parse(dir).root
 
   while (dir !== root) {
@@ -15,7 +15,7 @@ export function resolveProjectRoot(): string {
     dir = pathlib.dirname(dir)
   }
 
-  return process.cwd()
+  return from
 }
 
 /**

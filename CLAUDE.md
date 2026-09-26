@@ -94,7 +94,7 @@ The project is a pnpm workspace (pnpm 10.30.1, Node >= 24). Key areas:
   - `cmake.js` — Exports `cmakePath`, `includePath`, `srcPath`, `scriptsPath`, `runtimePath`, `bytecodeCmakePath`
 - **`packages/@mikrojs/firmware/`** — ESP-IDF firmware package (`@mikrojs/firmware`)
   - `components/mikrojs/` — ESP-IDF adapter (compiles standalone lib + ESP-specific modules)
-- **`esp32/`** — Thin consumer of `@mikrojs/firmware`; contains `CMakeLists.txt`, `package.json`, `.envrc`, `.gitignore`, `main/main.cpp`, and `test/`
+- **`esp32/`** — Thin consumer of `@mikrojs/firmware`; contains `CMakeLists.txt`, `package.json`, `.gitignore`, `main/main.cpp`, and `test/`
 - **`packages/mikrojs/`** — CLI tool (`mikro`/`mikrojs` commands) built with Ink/React for terminal UI
 - **`packages/@mikrojs/`** — Shared packages: `analyze-imports`, `eslint-plugin`, `esptool`. Board and driver packages can be added here as workspace members.
 - **`scripts/`** — Workspace package (`@repo/scripts`) for repo tooling (agent detection, etc.)
@@ -103,7 +103,7 @@ The project is a pnpm workspace (pnpm 10.30.1, Node >= 24). Key areas:
 
 Git submodule: `packages/@mikrojs/quickjs/deps/quickjs` (QuickJS-NG). Clone with `--recurse-submodules` or run `git submodule update --init --recursive`.
 
-ESP-IDF (>= 6.1) is a prerequisite for firmware builds. Install via [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/): `eim install -i v6.1 -t all -n true`. The `idf.py` wrapper is provided by the monorepo-internal `@repo/idf.py` package (added to PATH via direnv in `esp32/`) and runs through `eim run` (no manual activation needed).
+ESP-IDF (>= 6.1) is a prerequisite for firmware builds. Install via [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/): `eim install -i v6.1 -t all -n true`. `pn mikro idf <args>` runs `idf.py` through `eim run` when ESP-IDF is not active in the shell (no manual activation needed).
 
 ## Build & Development Commands
 
@@ -153,20 +153,19 @@ Requires ESP-IDF >= 6.1 via [EIM](https://docs.espressif.com/projects/idf-im-ui/
 eim install -i v6.1 -t all -n true
 ```
 
-The `idf.py` wrapper (from the monorepo-internal `@repo/idf.py` package, added to PATH via direnv) runs `idf.py` through `eim run`. From `esp32/`:
+`mikro idf` (the CLI command) runs `idf.py` with its arguments, through `eim run` when ESP-IDF is not active, and builds into `.mikro/build-fw` unless `-B` is given. From `esp32/`:
 
 ```sh
-direnv allow
-idf.py set-target esp32c6  # or esp32, esp32s3, etc.
-idf.py build flash monitor
-pnpm test                   # on-device test suite
+pn mikro idf set-target esp32c6  # or esp32, esp32s3, etc.
+pn mikro idf build flash monitor
+pn test                           # on-device test suite (builds in esp32/test/build)
 ```
 
-If tests error, try `cd test && idf.py fullclean` first.
+If tests error, try `cd test && pn mikro idf -B build fullclean` first.
 
-**Important:** `sdkconfig.defaults` is only applied when `sdkconfig` does not exist. To apply changes from `sdkconfig.defaults`, delete `sdkconfig` and re-run `idf.py set-target <target>` (the target must be re-set since it's stored in `sdkconfig`).
+**Important:** `sdkconfig.defaults` is only applied when `sdkconfig` does not exist. To apply changes from `sdkconfig.defaults`, delete `sdkconfig` and re-run `pn mikro idf set-target <target>` (the target must be re-set since it's stored in `sdkconfig`).
 
-Tests use doctest (Catch2-style `TEST_CASE` macros) and run on-device via serial monitor. Test files live in `packages/@mikrojs/firmware/components/mikrojs/test/` with tags: `[runtime]`, `[modules]`, `[timers]`, `[fs]`, `[gpio]`, `[pwm]`, `[wifi]`, `[http]`, `[stdio]`, `[repl]`, `[abort]`. You can build tests for a specific component with `idf.py -T xxxxx build`.
+Tests use doctest (Catch2-style `TEST_CASE` macros) and run on-device via serial monitor. Test files live in `packages/@mikrojs/firmware/components/mikrojs/test/` with tags: `[runtime]`, `[modules]`, `[timers]`, `[fs]`, `[gpio]`, `[pwm]`, `[wifi]`, `[http]`, `[stdio]`, `[repl]`, `[abort]`. You can build tests for a specific component with `pn mikro idf -B build -T xxxxx build` in `esp32/test`.
 
 ## Architecture
 

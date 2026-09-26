@@ -85,4 +85,4 @@ In the C++ (see the full example in `docs/develop/native-modules.md`):
 ## Testing
 
 - **JavaScript driver:** build it (`pn build`), import it from an app, and deploy with `pn mikro dev`.
-- **Native driver:** build custom firmware that lists the module. An app can be its own firmware project, as in `examples/chip-temperature`: a `CMakeLists.txt` next to its `package.json` with `set(MIKROJS_NATIVE_MODULES "{scope}/{name}/{module}")`. Build and flash it with `idf.py set-target <chip>` and `idf.py build flash`, then deploy the app with `pn mikro dev`.
+- **Native driver:** build custom firmware that lists the module. An app can be its own firmware project, as in `examples/chip-temperature`: a `CMakeLists.txt` next to its `package.json` with `set(MIKROJS_NATIVE_MODULES "{scope}/{name}/{module}")`. Build and flash it with `pn mikro idf set-target <chip>` and `pn mikro idf build flash`, then deploy the app with `pn mikro dev`.

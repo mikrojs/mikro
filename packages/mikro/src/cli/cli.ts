@@ -23,7 +23,9 @@ import {
   devCommand,
   docsCommand,
   envCommand,
+  fwCommand,
   homeCommand,
+  idfCommand,
   listCommand,
   logsCommand,
   nameCommand,
@@ -182,6 +184,14 @@ switch (config.command.action) {
   }
   case 'profile': {
     runCommand(profileCommand.run(config.command))
+    break
+  }
+  case 'idf': {
+    idfCommand.run(config.command)
+    break
+  }
+  case 'fw': {
+    runCommand(fwCommand.run(config.command))
     break
   }
   case 'sim': {

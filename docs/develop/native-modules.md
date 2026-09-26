@@ -274,8 +274,8 @@ Code that only reads or writes a pin doesn't claim it; it takes a handle to it i
 2. Build and flash it:
 
    ```sh
-   idf.py set-target esp32c6
-   idf.py build flash
+   pn mikro idf set-target esp32c6
+   pn mikro idf build flash
    ```
 
 3. With `mikro dev`, deploy a small app that imports the module.

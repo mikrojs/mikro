@@ -113,4 +113,4 @@ For custom firmware builds, add this to your project's `sdkconfig.defaults`:
 CONFIG_SPIRAM_MODE_OCT=y
 ```
 
-Then delete the generated `sdkconfig` and re-run `idf.py set-target esp32s3`. `sdkconfig.defaults` is only read when `sdkconfig` does not exist, so editing the defaults alone has no effect on an already configured build.
+Then delete the generated `sdkconfig` and re-run `pn mikro idf set-target esp32s3`. `sdkconfig.defaults` is only read when `sdkconfig` does not exist, so editing the defaults alone has no effect on an already configured build.

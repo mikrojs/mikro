@@ -136,8 +136,8 @@ export const display = createDisplay({
    ```sh
    cd esp32
    rm sdkconfig
-   idf.py set-target {chip}
-   MIKROJS_BOARD={board-name} idf.py build flash monitor
+   pn mikro idf set-target {chip}
+   MIKROJS_BOARD={board-name} pn mikro idf build flash monitor
    ```
 4. Deploy a test app that imports from the board package
 

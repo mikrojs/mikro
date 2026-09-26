@@ -6,13 +6,13 @@
   "license": "MIT",
   "description": "Mikro.js firmware dev project",
   "scripts": {
-    "build": "idf.py build",
-    "flash": "idf.py build flash monitor",
-    "test": "cd test && idf.py build partition-table partition-table-flash flash monitor",
+    "build": "mikro idf build",
+    "flash": "mikro idf build flash monitor",
+    "test": "cd test && mikro idf -B build build partition-table partition-table-flash flash monitor",
     "test:protocol": "npx tsx test-protocol.ts"
   },
   "dependencies": {
     "@mikrojs/firmware": "workspace:*",
-    "@repo/idf.py": "workspace:*"
+    "mikro": "workspace:*"
   }
 }

@@ -451,9 +451,9 @@ importers:
       '@mikrojs/firmware':
         specifier: workspace:*
         version: link:../packages/@mikrojs/firmware
-      '@repo/idf.py':
+      mikro:
         specifier: workspace:*
-        version: link:../packages/@repo/idf.py
+        version: link:../packages/mikro
 
   examples/blank:
     dependencies:
@@ -777,8 +777,6 @@ importers:
         version: 7.8.0
 
   packages/@mikrojs/schema: {}
-
-  packages/@repo/idf.py: {}
 
   packages/@repo/releaser:
     dependencies:

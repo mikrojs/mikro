@@ -18,7 +18,7 @@ This section covers building Mikro.js firmware from source, writing drivers for 
 
 - [Node.js](https://nodejs.org/) >= 24
 - [pnpm](https://pnpm.io/) >= 10.30
-- [direnv](https://direnv.net/) (for ESP-IDF environment management)
+- [direnv](https://direnv.net/) (loads the repo's `.envrc`, so the `mikro` CLI runs from source)
 - ESP-IDF prerequisites for your platform: see [Espressif's setup guide](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/linux-macos-setup.html)
 - A USB cable and an ESP32 development board (for on-device testing)
 

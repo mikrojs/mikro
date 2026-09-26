@@ -142,7 +142,8 @@ const config = {
   // zizmor and gcovr are installed system-wide (brew/uv/pipx), not via npm.
   // xdg-open is OS-provided, used by coverage:lib:open. strip and cc are
   // toolchain binaries shelled out to from backfill.ts and quickjs postinstall.
-  ignoreBinaries: ['cmake', 'ctest', 'zizmor', 'gcovr', 'xdg-open', 'strip', 'cc'],
+  // idf.py and eim come with ESP-IDF and EIM; `mikro idf` runs them.
+  ignoreBinaries: ['cmake', 'ctest', 'zizmor', 'gcovr', 'xdg-open', 'strip', 'cc', 'idf.py', 'eim'],
   // backfill.ts runs the memory_bench binary it just built by path; knip reports
   // the path prefix as an unresolved import.
   ignoreUnresolved: ['packages/'],
