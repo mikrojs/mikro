@@ -26,7 +26,7 @@ This page explains how the parts of Mikro.js fit together, for people who build 
 
 **Drivers** are of two kinds:
 
-- **Native drivers** are [native modules](./native-modules): C or C++ in an ESP-IDF component, compiled into the firmware. Apps import them by package name. Nothing of them is deployed with the app.
+- **Native drivers** are [native modules](./native-modules): C or C++ in an ESP-IDF component, compiled into the firmware. Apps import them by package name. None of their code is deployed with the app.
 - **Pure JS drivers** are normal modules that use core APIs like `mikro/spi`. They are bundled and deployed with the app.
 
 **Board packages** are thin layers that depend on drivers and provide board-specific pin assignments and sdkconfig defaults. C or C++ that a board needs is a native module, which the firmware project lists. See [Creating Boards](./creating-boards) and [Creating Drivers](./creating-drivers).
@@ -43,7 +43,7 @@ The macro has five arguments: a unique C identifier, the module name, an init fu
 
 The runtime's internal modules register with `MIK_REGISTER_MODULE`, under `native:mikro/*` names. Apps cannot import these names.
 
-Each component's `CMakeLists.txt` sets `MIK_PACKAGE_NAME` (`mikro` for the runtime). At compile time, the macros make sure that each module name starts with it. This catches a module that has the name of the wrong package by mistake. It does not stop a package that sets the name of another package.
+Each component's `CMakeLists.txt` sets `MIK_PACKAGE_NAME` (`mikro` for the runtime). At compile time, the macros make sure that each module name starts with it. This catches a module name copied from another package by mistake. It doesn't stop a package that sets another package's name on purpose.
 
 NVS namespaces that start with `mik.` also belong to the runtime (`mik.env`, `mik.sec`, `mik.kv`, `mik.sys`). In `mik.sys`, runtime subsystems start their keys with `<subsystem>.`, within the 15-character NVS limit.
 
@@ -88,7 +88,7 @@ When JavaScript runs an `import`, the loader tries these sources in order:
 
 1. **Runtime internals**: A `native:` name is looked up in the list that `MIK_REGISTER_MODULE` fills.
 2. **Bytecode builtins**: A builtin name, for example `mikro/result`, loads from bytecode in the firmware.
-3. **Native modules of packages**: A package name that a native module registered, for example `@acme/drivers/sh8601`, runs that module's init function.
+3. **Native modules**: A name that a native module registered, for example `@acme/drivers/sh8601` or an app's own `#sensor`, runs that module's init function.
 4. **Filesystem**: A relative path (starting with `.` or `/`) loads from the device filesystem (LittleFS). JSON files load as modules, and `.bjs` files load as bytecode. Other package names resolve through `node_modules`. See [Module System](/internals/module-system).
 
 The loader does not change `native:` names, `mikro/` names, or the names of registered native modules. It resolves relative paths against the folder of the importing module.
@@ -97,9 +97,9 @@ The loader does not change `native:` names, `mikro/` names, or the names of regi
 
 Installing a package puts nothing in the firmware. The project lists what goes in:
 
-1. **The project lists its native modules** with `set(MIKROJS_NATIVE_MODULES "@acme/drivers/sh8601")` in its `CMakeLists.txt`, or with the same variable in the environment or `-D`.
-2. **The build resolves them.** `project.cmake` runs `inputs.js`, which resolves each entry with the `native` condition to C or C++ source. The source's folder becomes an ESP-IDF component.
-3. **ESP-IDF does the rest.** The `REQUIRES` in each component's `CMakeLists.txt` set the include paths and the link order.
+1. The project lists its native modules with `set(MIKROJS_NATIVE_MODULES "@acme/drivers/sh8601")` in its `CMakeLists.txt`, or with the same variable in the environment or `-D`.
+2. `project.cmake` runs `mikro-fw inputs`, which resolves each entry with the `native` condition to C or C++ source: a package export, or for a `#` entry, the app's `imports`. The source's folder becomes an ESP-IDF component.
+3. ESP-IDF builds each component; the `REQUIRES` in its `CMakeLists.txt` set the include paths and the link order.
 
 `mikro deploy` follows the app's imports to make sure that the device's firmware has every native module that the app needs.
 

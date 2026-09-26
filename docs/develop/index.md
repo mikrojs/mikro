@@ -9,7 +9,7 @@ This section covers building Mikro.js firmware from source, writing drivers for 
 
 ## What you can contribute
 
-- **Drivers**: code for a sensor, display, motor controller or other peripheral. Most are plain JavaScript on the core APIs; one that needs C/C++ is a native module.
+- **Drivers**: code for a sensor, display, motor controller or other peripheral. A driver is JavaScript on the core APIs, or a native module when it needs C or C++.
 - **Native modules**: C/C++ that a package ships, compiled into the firmware and imported by its package specifier.
 - **Board packages**: Pin maps, sdkconfig defaults, and pre-configured driver re-exports for specific development boards.
 - **Core runtime**: Bug fixes, performance improvements, and new platform APIs in `packages/@mikrojs/native/`.
@@ -43,7 +43,7 @@ This installs all workspace dependencies and builds the `qjsc` bytecode compiler
 
 - [Custom Firmware](./custom-firmware): build and distribute custom firmware from npm packages
 - [Building from Source](./building-firmware): set up ESP-IDF and build firmware from the monorepo
-- [Creating Drivers](./creating-drivers): build a driver package for a peripheral, in pure JS or native
+- [Creating Drivers](./creating-drivers): write a driver for a peripheral in JavaScript
 - [Native Modules](./native-modules): ship C/C++ with a package, compiled into the firmware
 - [Creating Boards](./creating-boards): define a board package with pin maps and sdkconfig
 - [Architecture](./architecture): how the build system, module registration, and bytecode pipeline work

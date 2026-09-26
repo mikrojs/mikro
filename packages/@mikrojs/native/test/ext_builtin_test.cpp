@@ -142,6 +142,44 @@ TEST_CASE("app code imports a package's public C module by its specifier" *
     mik__module_registry_head = desc.next;
 }
 
+/* An app's own C module, which the app imports with a "#" specifier from its
+ * package.json "imports": registered under that name as it is. */
+static JSModuleDef* mik__test_app_init(JSContext* ctx) {
+    JSModuleDef* m = JS_NewCModule(ctx, "#native/fx", mik__test_public_module_init);
+    if (!m) return nullptr;
+    JS_AddModuleExport(ctx, m, "answer");
+    return m;
+}
+
+TEST_CASE("app code imports its own C module by its # specifier" *
+          doctest::test_suite("modules")) {
+    mik_module_desc_t desc = {"#native/fx", mik__test_app_init, nullptr, nullptr,
+                              mik__module_registry_head};
+    mik__module_registry_head = &desc;
+
+    auto* rt = MIK_NewRuntime();
+    auto* ctx = MIK_GetJSContext(rt);
+
+    const char* code = "import {answer} from '#native/fx'\n"
+                       "globalThis.__answer = answer\n";
+    JSValue ret = MIK_EvalModuleContent(ctx, "/app/main.js", code, strlen(code));
+    if (JS_IsException(ret)) {
+        FAIL_CHECK("eval threw: " << pending_exception_message(ctx));
+    }
+    JS_FreeValue(ctx, ret);
+    MIK_Loop(rt);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue answer = JS_GetPropertyStr(ctx, global, "__answer");
+    int32_t value = 0;
+    JS_ToInt32(ctx, &value, answer);
+    CHECK_EQ(42, value);
+    JS_FreeValue(ctx, answer);
+    JS_FreeValue(ctx, global);
+    MIK_FreeRuntime(rt);
+    mik__module_registry_head = desc.next;
+}
+
 static int s_destroy_only_calls = 0;
 static void mik__test_destroy_only(JSContext* ctx) { s_destroy_only_calls++; }
 

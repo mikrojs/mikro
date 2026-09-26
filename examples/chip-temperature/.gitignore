@@ -4,8 +4,7 @@
 node_modules
 build
 .mikro
-firmware/build
-firmware/managed_components/
-firmware/dependencies.lock
-firmware/sdkconfig
-firmware/sdkconfig.old
+managed_components/
+dependencies.lock
+sdkconfig
+sdkconfig.old

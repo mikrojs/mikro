@@ -7,7 +7,7 @@ description: Define a board package with pin maps, drivers, and sdkconfig
 
 A board package bundles driver dependencies with board-specific pin assignments and configuration. Users select a board by name and get a working setup without wiring knowledge.
 
-A board package is JavaScript: it is bundled and deployed with the user's app. Drivers that need C or C++ are [native modules](./native-modules), and a firmware for the board lists them in `MIKROJS_NATIVE_MODULES` (see [Custom Firmware](./custom-firmware)).
+A board package is JavaScript: it is bundled and deployed with the user's app. Drivers that need C or C++ are [native modules](./native-modules), and firmware for the board lists them in `MIKROJS_NATIVE_MODULES` (see [Custom Firmware](./custom-firmware)).
 
 ## What a board package provides
 

@@ -1,34 +1,25 @@
 ---
 title: Custom Firmware
-description: Build custom mikrojs firmware without cloning the monorepo
+description: Build Mikro.js firmware with native modules, different settings or custom startup code
 ---
 
 # Custom Firmware
 
-You can build custom firmware projects by depending on `@mikrojs/firmware` from npm, without forking or cloning the Mikro.js repository. This is the recommended way to create firmware with custom native modules, board-specific drivers, or modified initialization.
+Build custom firmware when the official Mikro.js firmware lacks something an app needs: a native module, different ESP-IDF settings, a bigger flash chip, or custom startup code. A firmware project is a small npm package, and you don't need the Mikro.js repository.
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) >= 24
-- [pnpm](https://pnpm.io/) or npm
-- [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/) with ESP-IDF >= 6.1
+- [pnpm](https://pnpm.io/installation) or npm
+- ESP-IDF >= 6.1, installed with [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/):
 
-```sh
-eim install -i v6.1 -t all -n true
-```
+  ```sh
+  eim install -i v6.1 -t all -n true
+  ```
 
-## Project structure
+## Create a project
 
-```
-my-firmware/
-├── package.json
-├── CMakeLists.txt
-└── main/              # optional, see Step 3
-    ├── CMakeLists.txt
-    └── main.cpp
-```
-
-## Step 1: package.json
+`package.json` depends on `@mikrojs/firmware`, and on the packages whose native modules you want. `@mikrojs/firmware` has to be a direct dependency: the build runs its `mikro-fw` command through `npx`, which finds only the commands of the project's own dependencies.
 
 ```json
 {
@@ -37,23 +28,13 @@ my-firmware/
   "private": true,
   "type": "module",
   "dependencies": {
-    "@mikrojs/firmware": "^0.1.0"
-  }
-}
-```
-
-Add the packages that the firmware uses:
-
-```json
-{
-  "dependencies": {
     "@mikrojs/firmware": "^0.1.0",
     "@my-scope/epaper": "^0.1.0"
   }
 }
 ```
 
-## Step 2: CMakeLists.txt
+`CMakeLists.txt`:
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
@@ -67,7 +48,7 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
     COMMAND_ERROR_IS_FATAL ANY
 )
-# Optional. Set it before including project.cmake.
+# The native modules to compile in, by the names that apps import
 set(MIKROJS_NATIVE_MODULES "@my-scope/epaper/panel")
 
 include(${_MIK_CMAKE_PATH})
@@ -75,128 +56,38 @@ include(${_MIK_CMAKE_PATH})
 project(my-firmware)
 ```
 
-The `project.cmake` from `@mikrojs/firmware` handles the rest: ESP-IDF version validation, native modules, sdkconfig defaults, and partition table setup.
+Separate several native modules with `;`. The build stops if an entry is not an installed [native module](./native-modules). Without `MIKROJS_NATIVE_MODULES`, the build is the official Mikro.js firmware with the project's settings.
 
-`MIKROJS_NATIVE_MODULES` lists the [native modules](./native-modules) to compile in: the names that apps import, separated by `;`. The build stops if an entry is not an installed native module.
+An app can be its own firmware project: add `@mikrojs/firmware` to the app's dependencies, and put `CMakeLists.txt` next to its `package.json`. [`examples/chip-temperature`](https://github.com/mikrojs/mikro/tree/main/examples/chip-temperature) is set up this way. ESP-IDF writes `build/`, `sdkconfig`, `managed_components/` and `dependencies.lock` into the project folder, so add them to `.gitignore`.
 
-You can also set it in the environment or with `-D`. `-D` has priority over the environment, and the environment has priority over `set()`:
+## Build and flash
 
-```sh
-MIKROJS_NATIVE_MODULES="@my-scope/epaper/panel" idf.py reconfigure build
-idf.py -DMIKROJS_NATIVE_MODULES="@my-scope/epaper/panel" build
-```
-
-CMake reads the environment only when it configures, so add `reconfigure` after you change the variable. A value passed with `-D` is stored in the build folder and applies to every later build until you run `idf.py fullclean`.
-
-## Step 3: main.cpp (optional)
-
-This step is optional. If your project has no `main/` directory, `project.cmake` adds the firmware package's default one, which calls `MIK_Main()`. A firmware that just composes existing board and driver packages needs no `main/` at all. Write your own to customize initialization.
-
-For standard firmware (REPL, deploy, config protocols):
-
-```cpp
-#include "mikrojs_esp32.h"
-
-extern "C" void app_main(void) {
-    MIK_Main();
-}
-```
-
-`MIK_Main()` sets up NVS, LittleFS, the JS runtime, and enters the event loop with full REPL and deploy support.
-
-For custom initialization, see the [full main.cpp source](https://github.com/mikrojs/mikro/blob/main/packages/%40mikrojs/firmware/components/mikrojs/mik_main.cpp) as a starting point.
-
-`main/CMakeLists.txt`:
-
-```cmake
-idf_component_register(SRCS "main.cpp"
-    PRIV_REQUIRES spi_flash mikrojs littlefs esp_driver_uart esp_driver_usb_serial_jtag
-    INCLUDE_DIRS "")
-```
-
-## Step 4: Install and build
-
-First activate ESP-IDF in your shell. With [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/), run `eim select` and source the activation script it prints:
+In the project folder, activate ESP-IDF (`eim select` prints the script to source), install the dependencies, and build:
 
 ```sh
-eim select
-# To activate this environment, run the following command in your terminal:
-# source ~/.espressif/tools/activate_idf_v6.1.sh
 source ~/.espressif/tools/activate_idf_v6.1.sh
-```
-
-Then install and build:
-
-```sh
 pnpm install
 idf.py set-target esp32c6
 idf.py build flash monitor
 ```
 
-Run `idf.py` from the firmware project directory (the one containing `CMakeLists.txt`). Running it from a parent directory, such as a workspace root, fails with "CMakeLists.txt not found in project directory".
-
-## Version mismatches and the bundled firmware
-
-No configuration is needed to protect a custom build. Firmware built through `project.cmake` reports your firmware project's package.json `name` as its identity when the CLI connects. On a version mismatch between the CLI and the device, the CLI only flashes the firmware bundled with it over a device whose identity matches that bundled build. A device reporting anything else gets an error pointing at rebuilding your own firmware (`idf.py flash`, or `mikro flash --build-dir <your-firmware-build>`) instead of silently reverting your sdkconfig overrides, native modules, and boards.
-
-Plain `mikro flash` refuses for the same reason: it probes the device first, and errors when the device reports custom firmware. To deliberately replace a custom build with the bundled firmware (for example, to hand the device back to a plain app project), run `mikro flash --force`. Flashing a chosen artifact with `--build-dir` or `--from` never probes, and a device too broken to answer the probe is flashed as before, so recovery keeps working.
-
-One caveat: devices running custom firmware built with an older `@mikrojs/firmware` (before identity reporting) report no identity and are treated as running the bundled firmware. Rebuild and reflash once with a current version to get the protection.
-
-::: warning Approve the qjsc build script (pnpm)
-The firmware build needs `qjsc`, the QuickJS bytecode compiler, which is built by the postinstall script of `@mikrojs/quickjs`. pnpm does not run dependency build scripts unless they are approved, and the skipped script surfaces later as "qjsc not found" during `idf.py build`. Run `pnpm approve-builds`, select `@mikrojs/quickjs`, and install again. Note that `pnpm rebuild @mikrojs/quickjs` does not fix this when the package is only a transitive dependency.
+::: tip The build says "qjsc not found"
+pnpm skipped the build script of `@mikrojs/quickjs`, which builds the QuickJS bytecode compiler. Run `pnpm approve-builds`, select `@mikrojs/quickjs`, and install again.
 :::
 
-## How it works
+## Change ESP-IDF settings
 
-When you run `idf.py build`, the `project.cmake` included in your `CMakeLists.txt`:
+Put the settings in a `sdkconfig.defaults` file in the project. They override the firmware package's defaults. ESP-IDF reads the file only when it creates `sdkconfig`, so after you change it, delete `sdkconfig` and run `idf.py set-target` again.
 
-1. Validates ESP-IDF >= 6.1
-2. Resolves the `mikrojs` component from `@mikrojs/firmware`
-3. Resolves each `MIKROJS_NATIVE_MODULES` entry to its C/C++ source, and adds the source's folder to `EXTRA_COMPONENT_DIRS`
-4. Configures sdkconfig defaults and partition table from the firmware package (overridable with local files)
-5. Embeds your project's `package.json` name as the firmware identity the device reports to the CLI
+For example, an app that does all its networking over a cellular modem can leave WiFi out, which frees about 20 KB of internal RAM:
 
-A native module uses flash and RAM, so the build includes it only when the project lists it.
-
-If your project has no `main/` directory, the firmware package provides a default one that calls `MIK_Main()`.
-
-## Flashing from external sources
-
-If you publish firmware for others to use, they can flash it without building:
-
-```sh
-# From a GitHub repo's latest release
-mikro flash --firmware user/my-firmware
-
-# From a specific tag
-mikro flash --firmware user/my-firmware@v1.0.0
-
-# From a direct URL
-mikro flash --firmware https://example.com/my-firmware.tar.gz
+```ini
+CONFIG_MIKROJS_WIFI=n
 ```
 
-The firmware archive must be a `.tar.gz` containing `flasher_args.json` and the binary files (the same format that `idf.py build` produces in the `build/` directory).
+## Use a bigger flash chip
 
-## Overriding defaults
-
-- **sdkconfig**: Add a local `sdkconfig.defaults` file. It takes priority over the firmware package defaults.
-- **WiFi**: Set `CONFIG_MIKROJS_WIFI=n` in that file to leave the WiFi driver and the `mikro/wifi` module out. This frees about 20 KB of internal RAM for apps that do all their networking over another link, such as a cellular modem. IDF's own `CONFIG_ESP_WIFI_ENABLED` cannot be turned off on WiFi-capable chips.
-- **Partition table**: Add a local `partitions.csv` file. See [Partition table](#partition-table).
-- **main.cpp**: Provide your own `main/` directory with custom initialization.
-
-## Partition table
-
-A local `partitions.csv` replaces the one in `@mikrojs/firmware`. Start from a copy of `node_modules/@mikrojs/firmware/partitions.csv`, which is laid out for 4 MB of flash. The firmware expects:
-
-- A `data, littlefs` partition named `user`. The firmware finds it by that name, both to mount the app filesystem and to read its free space for OTA.
-- An app partition large enough for the firmware binary. The stock table's `factory` partition is 2560 KB.
-
-::: warning Do not make the user partition smaller
-Before you flash a new table, compare its `user` size with `storageUsage().total` on the device. If the new partition is smaller, the device reformats the filesystem on the next boot, which deletes the app and all its files. Firmware built for a smaller flash chip usually has a smaller `user` partition.
-:::
-
-To use a larger flash chip, set its size in your `sdkconfig.defaults` and give the extra space to `user`. For 8 MB:
+The official firmware's partition table is for 4 MB of flash. For a bigger chip, set its size in `sdkconfig.defaults`, and add a `partitions.csv` that gives the extra space to `user`, the partition that holds the app and its files. For 8 MB:
 
 ```ini
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
@@ -211,6 +102,55 @@ factory,  app,  factory, 0x10000, 0x280000,
 user,     data, littlefs,      ,  0x570000,
 ```
 
-That gives the filesystem 5568 KB. For 16 MB, set `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y` and `CONFIG_ESPTOOLPY_FLASHSIZE="16MB"`, and give `user` a size of `0xD70000` (13760 KB). A changed `sdkconfig.defaults` takes effect only after you delete `sdkconfig` and run `idf.py set-target` again; see [sdkconfig notes](/develop/building-firmware#sdkconfig-notes).
+For 16 MB, use `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`, `CONFIG_ESPTOOLPY_FLASHSIZE="16MB"` and a `user` size of `0xD70000`. Keep the names and types of `user` and `factory`: the firmware looks the filesystem up by the name `user`.
 
-`mikro flash` writes the partition table along with the firmware. An over-the-air update does not, so a new table reaches a device only when you flash it over a cable. On the first boot after that, the device grows the filesystem to fill a larger `user` partition and keeps the files on it.
+::: warning Shrinking the user partition reformats it
+If the new `user` partition is smaller than the one on the device, the device reformats it on the next boot, and you need to deploy the app again. `storageUsage().total` shows the size on the device.
+:::
+
+Flash the new table over USB, with `idf.py flash` or `mikro flash --build-dir build`. On its first boot, the device grows the filesystem to fill the new `user` partition and keeps any existing files.
+
+## Custom startup code
+
+The firmware starts with `MIK_Main()`, which sets up NVS, the filesystem and the JavaScript runtime, and runs the REPL and the deploy protocol. To run code before it, add a `main/` folder:
+
+```cpp
+// main/main.cpp
+#include "mikrojs_esp32.h"
+
+extern "C" void app_main(void) {
+    // Setup code here
+    MIK_Main();
+}
+```
+
+```cmake
+# main/CMakeLists.txt
+idf_component_register(SRCS "main.cpp"
+    PRIV_REQUIRES spi_flash mikrojs littlefs esp_driver_uart esp_driver_usb_serial_jtag
+    INCLUDE_DIRS "")
+```
+
+To change what `MIK_Main()` itself does, start from [its source](https://github.com/mikrojs/mikro/blob/main/packages/%40mikrojs/firmware/components/mikrojs/mik_main.cpp).
+
+## Custom firmware and the CLI
+
+The CLI comes with the official Mikro.js firmware, but it never flashes that over custom firmware unless you ask it to. After a CLI upgrade, it asks you to rebuild and flash the custom firmware instead. To switch a device back to the official Mikro.js firmware, run `mikro flash --force`.
+
+## Share a build
+
+Others can flash the firmware without building it. Pack the build output and attach it to a GitHub release:
+
+```sh
+cd build
+tar czf mikrojs-firmware-esp32c6.tar.gz flasher_args.json \
+  bootloader/bootloader.bin partition_table/partition-table.bin my-firmware.bin
+```
+
+Name the archive `mikrojs-firmware-<chip>.tar.gz`, so the CLI picks the right one from a release with builds for several chips. To flash it:
+
+```sh
+mikro flash --from my-org/my-firmware          # the latest release
+mikro flash --from my-org/my-firmware@v1.0.0   # a given release
+mikro flash --from https://example.com/mikrojs-firmware-esp32c6.tar.gz
+```

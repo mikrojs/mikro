@@ -1,6 +1,0 @@
-{
-  "name": "mikrojs-chip-temperature-firmware",
-  "private": true,
-  "description": "The firmware's identity, which the device reports to the CLI",
-  "type": "module"
-}

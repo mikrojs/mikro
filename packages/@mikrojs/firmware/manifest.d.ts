@@ -12,6 +12,8 @@ export interface NativeModule {
 
 export function packageNameOf(specifier: string): string
 export function findPackageDir(name: string, fromDir: string): string | undefined
+export function findPackageRoot(fromDir: string): string | undefined
+export function findImportsPackage(specifier: string, fromDir: string): string | undefined
 export function isNativeSource(file: string): boolean
 export function nativeModuleOf(file: string): NativeModule
 export function resolveNativeModule(specifier: string, fromDir: string): NativeModule | undefined

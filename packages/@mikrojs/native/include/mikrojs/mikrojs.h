@@ -294,6 +294,9 @@ extern mik_module_desc_t* mik__module_registry_head;
  * root export) or "<MIK_PACKAGE_NAME>/…". This keeps the native:
  * namespace to mikro and catches a module named for the wrong package; the name
  * is self-declared, so it does not stop a package that declares another's.
+ * An app's own module, which the app imports with a "#" specifier from its
+ * package.json "imports", belongs to no package: its component defines no
+ * MIK_PACKAGE_NAME, and its public module name must start with "#".
  * Enforced at compile time; the static_assert needs string-literal args
  * (always the case here). */
 #ifdef MIK_PACKAGE_NAME
@@ -316,10 +319,13 @@ extern mik_module_desc_t* mik__module_registry_head;
 #define MIK__REQUIRE_NATIVE_NS(name_) static_assert(true, "")
 #define MIK__REQUIRE_BUILTIN_NS(name_) static_assert(true, "")
 /* Core may build without MIK_PACKAGE_NAME (host builds); a package's module
- * never does, or it could take any name, a core one included. */
-#define MIK__REQUIRE_PACKAGE_NS(name_)                                              \
-    static_assert(0, "mikrojs: MIK_REGISTER_PUBLIC_MODULE needs MIK_PACKAGE_NAME; " \
-                     "define it in the component's CMakeLists.txt")
+ * never does, or it could take any name, a core one included. Without it, a
+ * public module is an app's own, named "#…". */
+#define MIK__REQUIRE_PACKAGE_NS(name_)                                                \
+    static_assert(__builtin_strncmp((name_), "#", 1) == 0,                           \
+                  "mikrojs: MIK_REGISTER_PUBLIC_MODULE needs MIK_PACKAGE_NAME, or a " \
+                  "\"#\" name for an app's own module; define MIK_PACKAGE_NAME in "   \
+                  "the component's CMakeLists.txt")
 #endif
 
 /* The descriptor has external linkage so the linker can be told to keep it
@@ -329,8 +335,9 @@ extern mik_module_desc_t* mik__module_registry_head;
     MIK__MODULE_DESC(id, name_, init_, consume_, destroy_)
 /* A package's C module under its public import specifier
  * ("@mikrojs/drivers/sh8601"): what app code imports, with no JS layer and no
- * native: name. The specifier must start with the owning package's name, and
- * the module must validate its arguments: app code calls it directly. */
+ * native: name. The specifier must start with the owning package's name, or
+ * with "#" for an app's own module, and the module must validate its
+ * arguments: app code calls it directly. */
 #define MIK_REGISTER_PUBLIC_MODULE(id, name_, init_, consume_, destroy_)       \
     MIK__REQUIRE_PACKAGE_NS(name_);                                            \
     MIK__MODULE_DESC(id, name_, init_, consume_, destroy_)

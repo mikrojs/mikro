@@ -523,6 +523,65 @@ describe('build', () => {
         expect(files).toContain('app/node_modules/ring/glue/glue.js')
       }
     })
+
+    it(`leaves the app's own # native modules to the firmware (${mode})`, async () => {
+      writeFileSync(
+        pathlib.join(tempDir, 'package.json'),
+        JSON.stringify({
+          name: 'fixture',
+          version: '0.0.0',
+          type: 'module',
+          imports: {'#native/*': {types: './native/*/*.d.ts', native: './native/*/*.cpp'}},
+        }),
+      )
+      const fx = pathlib.join(tempDir, 'native', 'fx')
+      mkdirSync(fx, {recursive: true})
+      writeFileSync(pathlib.join(fx, 'fx.cpp'), '// registers the module\n')
+      writeFileSync(pathlib.join(fx, 'fx.d.ts'), 'export declare const fx: number\n')
+      writeFileSync(pathlib.join(fx, 'CMakeLists.txt'), 'idf_component_register()\n')
+      writeFileSync(
+        pathlib.join(tempDir, 'app', 'main.ts'),
+        `import {fx} from '#native/fx'\nexport const out = fx\n`,
+      )
+      const buildDir = pathlib.join(tempDir, `out-app-native-${mode}`)
+      const events = await runBuildEvents('app/main.ts', buildDir, bundle)
+      expect(featuresEvent(events)?.natives).toEqual({
+        imported: ['#native/fx'],
+        optional: [],
+        owners: {'#native/fx': 'fixture/native/fx'},
+      })
+      expect(listFiles(buildDir).some((f) => f.includes('native'))).toBe(false)
+      expect(readFileSync(pathlib.join(buildDir, 'app', 'main.js'), 'utf-8')).toContain(
+        '#native/fx',
+      )
+    })
+
+    it(`refuses a # native module of a package other than the app (${mode})`, async () => {
+      const dep = pathlib.join(tempDir, 'node_modules', 'dep')
+      mkdirSync(pathlib.join(dep, 'fx'), {recursive: true})
+      writeFileSync(pathlib.join(dep, 'fx', 'fx.cpp'), '// registers the module\n')
+      writeFileSync(pathlib.join(dep, 'fx', 'CMakeLists.txt'), 'idf_component_register()\n')
+      writeFileSync(pathlib.join(dep, 'index.js'), "export {fx} from '#fx'\n")
+      writeFileSync(
+        pathlib.join(dep, 'package.json'),
+        JSON.stringify({
+          name: 'dep',
+          type: 'module',
+          exports: './index.js',
+          imports: {'#fx': {native: './fx/fx.cpp'}},
+        }),
+      )
+      writeFileSync(
+        pathlib.join(tempDir, 'app', 'main.ts'),
+        `import {fx} from 'dep'\nexport const out = fx\n`,
+      )
+      await expect(
+        runBuildEvents('app/main.ts', pathlib.join(tempDir, `out-dep-native-${mode}`), bundle),
+      ).rejects.toThrow(
+        `Cannot import "#fx" in ${pathlib.join(dep, 'package.json')}: only the app can map ` +
+          'a # import to a native module',
+      )
+    })
   }
 
   it('derives required features from static imports and optional from dynamic-only', async () => {

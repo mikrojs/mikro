@@ -1,91 +1,51 @@
 ---
 title: Creating Drivers
-description: Build a driver for a sensor, display or other peripheral, in pure JavaScript or with native code
+description: Write a driver for a sensor, display or other peripheral in JavaScript
 ---
 
 # Creating Drivers
 
-A driver is code for a peripheral, such as a sensor, a display or a motor controller, and apps import it like any other module. There are two kinds:
+A driver is code for a peripheral, such as a sensor, a display or a motor controller, and apps import it like any other module. This page is about drivers written in JavaScript on the core APIs (`mikro/spi`, `mikro/i2c`, `mikro/gpio`), which work well for most sensors and SPI displays.
 
-1. **Pure JS drivers** use the core APIs (`mikro/spi`, `mikro/i2c`, `mikro/gpio`). They are bundled with the app and run on any firmware. This works well for most sensors and SPI displays.
-2. **Native drivers** are [native modules](./native-modules): C or C++ that is compiled into the firmware. Use one when the core APIs are not sufficient: QSPI, DMA transfers, precise timing, or a vendor C library.
+::: tip Need C or C++?
+When the core APIs are not sufficient, for example for QSPI, DMA transfers, precise timing or a vendor C library, write the driver as a [native module](./native-modules). Refer to [`examples/drivers/chip-temperature`](https://github.com/mikrojs/mikro/tree/main/examples/drivers/chip-temperature) for a complete example.
+:::
 
-To the app, both kinds look the same: a PascalCase factory that returns a `Result`.
+## The driver package
 
-```ts
-import {Bme280} from '@my-scope/bme280'
+A JavaScript driver needs nothing from the firmware: it is bundled with the app and runs on any firmware. It is a regular npm package, written in TypeScript and published as JavaScript with type declarations. Refer to [`examples/drivers/bme280`](https://github.com/mikrojs/mikro/tree/main/examples/drivers/bme280) for a complete example.
 
-const sensor = Bme280({bus: 0, sda: 6, scl: 7}).orPanic()
-```
-
-## Pure JS driver
-
-A pure JS driver needs nothing from the firmware. It is a normal TypeScript package, built to JavaScript with type declarations:
-
-```
-@my-scope/bme280/
-├── package.json
-├── tsconfig.json    builds bme280.ts into dist/
-├── bme280.ts
-└── dist/            bme280.js and bme280.d.ts
-```
-
-```json
-{
-  "name": "@my-scope/bme280",
-  "version": "0.1.0",
-  "type": "module",
-  "keywords": ["mikro-driver"],
-  "exports": {
-    ".": "./dist/bme280.js"
-  },
-  "files": ["dist"],
-  "scripts": {
-    "build": "tsc",
-    "prepublishOnly": "npm run build"
-  },
-  "peerDependencies": {
-    "mikro": "^0.1.0"
-  },
-  "peerDependenciesMeta": {
-    "mikro": {"optional": true}
-  }
-}
-```
+A driver for the TMP102, an I2C temperature sensor, shows the pattern:
 
 ```ts
 import {I2c, type I2cError} from 'mikro/i2c'
 import {ok, type Result} from 'mikro/result'
 
-export interface Bme280Options {
-  bus: number
-  sda: number
-  scl: number
-  address?: number
-}
+const ADDRESS = 0x48
 
-export interface Reading {
-  temperature: number
-  humidity: number
-  pressure: number
-}
-
-export interface Bme280 {
-  read(): Result<Reading, I2cError>
+export interface Tmp102 {
+  /** The temperature in degrees Celsius. */
+  read(): Result<number, I2cError>
   end(): void
 }
 
-// Not exported: apps create a Bme280 with the factory below. The factory's
-// return type makes sure that the class matches the Bme280 interface.
-class Bme280Sensor {
+// Not exported: apps create a Tmp102 with the factory below. The factory's
+// return type makes sure that the class matches the Tmp102 interface.
+class Tmp102Sensor {
   #i2c: I2c
 
   constructor(i2c: I2c) {
     this.#i2c = i2c
   }
 
-  read(): Result<Reading, I2cError> {
-    // ... read the registers and convert them
+  read(): Result<number, I2cError> {
+    // Register 0x00 holds the temperature: 12 bits, in steps of 1/16 °C.
+    const written = this.#i2c.write(ADDRESS, Uint8Array.of(0x00), false)
+    if (!written.ok) return written
+    const read = this.#i2c.read(ADDRESS, 2)
+    if (!read.ok) return read
+    const raw = (read.value[0]! << 4) | (read.value[1]! >> 4)
+    return ok((raw & 0x800 ? raw - 0x1000 : raw) / 16)
   }
 
   end(): void {
@@ -93,34 +53,30 @@ class Bme280Sensor {
   }
 }
 
-export function Bme280(options: Bme280Options): Result<Bme280, I2cError> {
+export function Tmp102(options: {bus: number; sda: number; scl: number}): Result<Tmp102, I2cError> {
   const i2c = I2c(options.bus, {sda: options.sda, scl: options.scl})
   if (!i2c.ok) return i2c
-  // ... probe the chip, read calibration data
-  return ok(new Bme280Sensor(i2c.value))
+  return ok(new Tmp102Sensor(i2c.value))
 }
 ```
 
-Follow the conventions of the core modules: the factory has the same name as the handle type, anything that can fail returns a `Result`, and `end()` returns nothing and is safe to call twice. Return errors from the core APIs unchanged (see [Error handling](/error-handling)).
+Follow the conventions of the core modules: a factory named after the handle type, a `Result` for anything that can fail, errors from the core APIs passed on unchanged (see [Error handling](/error-handling)), and an `end()` that is safe to call twice. Use a class even though it isn't exported: its methods are shared between instances, which uses less memory than an object literal with its own functions.
 
-Keep the class private and export only the factory and the interface. A class shares its methods between instances, which uses less memory than an object literal that creates them again for each instance.
+Apps use the driver like a core module:
 
-[`examples/drivers/bme280`](https://github.com/mikrojs/mikro/tree/main/examples/drivers/bme280) is the complete driver, with the calibration and compensation code left out above.
+```ts
+import {Tmp102} from '@my-scope/tmp102'
 
-## Native driver
-
-Write a native driver as a [native module](./native-modules). Follow the conventions above, and claim every pin that the driver configures. See [Claiming GPIO pins](./native-modules#claiming-gpio-pins).
-
-[`examples/drivers/chip-temperature`](https://github.com/mikrojs/mikro/tree/main/examples/drivers/chip-temperature) is a complete native driver for the chip's internal temperature sensor.
+const sensor = Tmp102({bus: 0, sda: 6, scl: 7}).orPanic()
+console.log(sensor.read().orPanic())
+```
 
 ## Sharing pins
 
-Only code that configures a pin claims it. A pure JS driver that only reads or writes a pin takes a handle instead, for example `Encoder({a: DigitalIn(4), b: DigitalIn(5)})`, and doesn't call `end()` on it.
+Only code that configures a pin claims it. A driver that only reads or writes a pin takes a handle instead, for example `Encoder({a: DigitalIn(4), b: DigitalIn(5)})`, and doesn't call `end()` on it.
 
-Don't give a handle to code that configures the pin again: the owner of the handle keeps using the pin, so two objects drive it, and JavaScript can't detect that. To share a pin, share its handle.
+Don't give a handle to code that configures the pin again: the owner of the handle keeps using the pin, so two objects drive it, and JavaScript can't detect that. To share a pin, share its handle. Native code claims the pins it configures in C; see [Claiming GPIO pins](./native-modules#claiming-gpio-pins).
 
 ## Notes
 
-- If your driver stores data in NVS, use your own namespace. Names that start with `mik.` belong to the runtime.
-- Add the `mikro-driver` keyword so that people can find the package on npm.
-- Mark `mikro` as an optional peer dependency, as in the example. The driver needs it only for its types; on the device, the firmware provides `mikro/*`. A required peer also breaks preview installs: a range like `^0.1.0` never matches a prerelease version, so with `autoInstallPeers` a stable copy of `mikro` is installed next to the preview.
+- Declare `mikro` as a peer dependency, with the versions the driver is tested against, for example `"mikro": "^0.21.0"`.

@@ -4,8 +4,9 @@
  * Nothing is inferred from what is installed: the project's CMakeLists.txt
  * lists the native modules to compile in (MIKROJS_NATIVE_MODULES), by the
  * import specifier apps use. Each resolves to a package export whose `native`
- * condition points at C/C++ source, and the source's directory is added as an
- * ESP-IDF component.
+ * condition points at C/C++ source, or, for a `#` specifier, to such an entry
+ * in the `imports` field of the app that contains the project. The source's
+ * directory is added as an ESP-IDF component.
  *
  * The files read on the way are returned too, so CMake re-runs this when one
  * of them changes.
@@ -15,7 +16,13 @@
 import {existsSync, readFileSync} from 'node:fs'
 import {basename, join, resolve} from 'node:path'
 
-import {findPackageDir, ManifestError, packageNameOf, resolveNativeModule} from './manifest.js'
+import {
+  findImportsPackage,
+  findPackageDir,
+  ManifestError,
+  packageNameOf,
+  resolveNativeModule,
+} from './manifest.js'
 
 /** Components every firmware already has (see project.cmake). */
 const RESERVED_COMPONENTS = ['main', 'mikrojs']
@@ -48,6 +55,53 @@ function boardSdkconfigs(projectDir) {
   return sdkconfigs
 }
 
+/** A package's native module, which must be installed where the project can import it. */
+function packageNativeModule(specifier, projectDir, configureDepends) {
+  const pkg = packageNameOf(specifier)
+  const packageDir = findPackageDir(pkg, projectDir)
+  if (!packageDir) {
+    throw new ManifestError(
+      `MIKROJS_NATIVE_MODULES names "${specifier}", but no package "${pkg}" is ` +
+        `installed (searched from ${projectDir})`,
+    )
+  }
+  configureDepends.add(join(packageDir, 'package.json'))
+  const nativeModule = resolveNativeModule(specifier, projectDir)
+  if (!nativeModule) {
+    throw new ManifestError(
+      `MIKROJS_NATIVE_MODULES names "${specifier}", which is not a native module: ` +
+        `${pkg} has no export for it whose "native" condition points at C/C++ source`,
+    )
+  }
+  return nativeModule
+}
+
+/**
+ * An app's own native module, a `#` import: the entry for it in the `imports`
+ * field of the nearest package at or above the project that has one. That is
+ * the app when the project is its firmware/ folder.
+ */
+function appNativeModule(specifier, projectDir, configureDepends) {
+  const appDir = findImportsPackage(specifier, projectDir)
+  if (!appDir) {
+    throw new ManifestError(
+      `MIKROJS_NATIVE_MODULES names "${specifier}", but no package.json at or above ` +
+        `${projectDir} has an "imports" entry for it`,
+    )
+  }
+  const packageJson = join(appDir, 'package.json')
+  configureDepends.add(packageJson)
+  const nativeModule = resolveNativeModule(specifier, appDir)
+  if (!nativeModule) {
+    throw new ManifestError(
+      `MIKROJS_NATIVE_MODULES names "${specifier}", which is not a native module: ` +
+        `its "imports" entry in ${packageJson} has no "native" condition that points at ` +
+        'C/C++ source',
+    )
+  }
+  return nativeModule
+}
+
 /**
  * @param {string} projectDir - Directory containing the firmware project
  * @param {{nativeModules?: string[]}} declared - MIKROJS_NATIVE_MODULES
@@ -62,22 +116,9 @@ export async function resolveFirmwareInputs(projectDir, {nativeModules: declared
   const specifiers = new Set()
 
   for (const specifier of declared) {
-    const pkg = packageNameOf(specifier)
-    const packageDir = findPackageDir(pkg, projectDir)
-    if (!packageDir) {
-      throw new ManifestError(
-        `MIKROJS_NATIVE_MODULES names "${specifier}", but no package "${pkg}" is ` +
-          `installed (searched from ${projectDir})`,
-      )
-    }
-    configureDepends.add(join(packageDir, 'package.json'))
-    const nativeModule = resolveNativeModule(specifier, projectDir)
-    if (!nativeModule) {
-      throw new ManifestError(
-        `MIKROJS_NATIVE_MODULES names "${specifier}", which is not a native module: ` +
-          `${pkg} has no export for it whose "native" condition points at C/C++ source`,
-      )
-    }
+    const nativeModule = specifier.startsWith('#')
+      ? appNativeModule(specifier, projectDir, configureDepends)
+      : packageNativeModule(specifier, projectDir, configureDepends)
     specifiers.add(specifier)
     const name = basename(nativeModule.dir)
     // Two exports whose sources share a directory are one component.

@@ -110,7 +110,8 @@ function installFakeNativePackage(dir, name = 'fake-native', module = 'fx') {
 
 test('resolution is empty for projects without a package.json', async () => {
   // On-device test apps (esp32/test, the firmware package's test/) configure
-  // through project.cmake but have no package.json
+  // through project.cmake without a package.json of their own (their firmware
+  // name comes from the package.json above them)
   const emptyDir = join(fixtureDir, 'no-package-json')
   mkdirSync(emptyDir)
   expect(await resolveFirmwareInputs(emptyDir)).toEqual({
@@ -180,9 +181,20 @@ test.skipIf(!hasCmake())(
 )
 
 test.skipIf(!hasCmake())(
+  "a firmware folder without a package.json takes the name of the app it's in",
+  () => {
+    const app = join(fixtureDir, 'component-app')
+    write(join(app, 'package.json'), JSON.stringify({name: 'acme-app'}))
+    const vars = configureComponent(join(app, 'firmware'))
+    expect(vars.DEFINITIONS).toContain('MIK_FW_NAME="acme-app"')
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
   'without a package.json, or a name in it, the firmware has no name',
   () => {
-    // On-device test apps have no package.json: the device omits the fw identity
+    // No package.json at or above the project: the device omits the fw identity
     const bare = configureComponent(join(fixtureDir, 'component-bare'))
     expect(bare.DEFINITIONS).toContain('MIK_FW_VERSION=')
     expect(bare.DEFINITIONS).not.toContain('MIK_FW_NAME')

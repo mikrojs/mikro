@@ -7,6 +7,9 @@
  * TypeScript and, optionally, a `default` that host tools (tests, the
  * simulator) load instead:
  *   "./sh8601": {"types": "./sh8601/sh8601.d.ts", "native": "./sh8601/sh8601.cpp"}
+ * An app can also keep a native module of its own, private to it, as an entry
+ * of its `imports` field (a `#` specifier), in the same form:
+ *   "#sensor": {"types": "./native/sensor/sensor.d.ts", "native": "./native/sensor/sensor.cpp"}
  * The source file's directory is the ESP-IDF component (see inputs.js).
  */
 import {existsSync, readFileSync} from 'node:fs'
@@ -38,9 +41,9 @@ export function findPackageDir(name, fromDir) {
   }
 }
 
-/** Root of the package containing `file` (nearest package.json upwards). */
-function findPackageRoot(file) {
-  let dir = dirname(file)
+/** Root of the package that `fromDir` is in (nearest package.json upwards). */
+export function findPackageRoot(fromDir) {
+  let dir = resolve(fromDir)
   for (;;) {
     if (existsSync(join(dir, 'package.json'))) return dir
     const parent = dirname(dir)
@@ -73,7 +76,7 @@ export function isNativeSource(file) {
  */
 export function nativeModuleOf(file) {
   const dir = dirname(file)
-  const packageDir = findPackageRoot(file)
+  const packageDir = findPackageRoot(dir)
   check(packageDir, `native module ${file}: no package.json above it`)
   const packageName = readPackageJson(packageDir).name
   const inPackage = relative(packageDir, dir)
@@ -86,15 +89,64 @@ export function nativeModuleOf(file) {
 }
 
 /**
- * The native module a bare import specifier names, resolved from `fromDir`:
- * the package's export for that subpath targets C/C++ source. Undefined for
- * anything else (JS modules, packages that are not installed).
+ * The entry of an `imports` field for a `#` specifier, by Node's rules: the
+ * exact key, or else the pattern key (one `*`) with the longest prefix. For a
+ * pattern, `match` is the part of the specifier that `*` stands for.
+ */
+function importsEntry(imports, specifier) {
+  if (typeof imports !== 'object' || imports === null) return undefined
+  if (Object.hasOwn(imports, specifier) && !specifier.includes('*')) {
+    return {value: imports[specifier]}
+  }
+  const patterns = Object.keys(imports)
+    .filter((key) => key.split('*').length === 2)
+    .sort((a, b) => b.indexOf('*') - a.indexOf('*') || b.length - a.length)
+  for (const pattern of patterns) {
+    const [base, trailer] = pattern.split('*')
+    if (specifier.length < pattern.length) continue
+    if (!specifier.startsWith(base) || !specifier.endsWith(trailer)) continue
+    const match = specifier.slice(base.length, specifier.length - trailer.length)
+    // Node refuses a match that leaves the package, and so does this.
+    if (match.split('/').some((segment) => segment === '.' || segment === '..')) return undefined
+    return {value: imports[pattern], match}
+  }
+  return undefined
+}
+
+/**
+ * The nearest package at or above `fromDir` whose `imports` field has an entry
+ * for the `#` specifier, or undefined.
+ */
+export function findImportsPackage(specifier, fromDir) {
+  let dir = findPackageRoot(fromDir)
+  while (dir !== undefined) {
+    if (importsEntry(readPackageJson(dir).imports, specifier)) return dir
+    const parent = dirname(dir)
+    dir = parent === dir ? undefined : findPackageRoot(parent)
+  }
+  return undefined
+}
+
+/**
+ * The native module a bare or `#` import specifier names, resolved from
+ * `fromDir`: the package's export for that subpath, or the importing package's
+ * `imports` entry, targets C/C++ source. Undefined for anything else (JS
+ * modules, packages that are not installed).
  */
 export function resolveNativeModule(specifier, fromDir) {
+  if (specifier.startsWith('#')) {
+    const packageDir = findPackageRoot(fromDir)
+    if (!packageDir) return undefined
+    const entry = importsEntry(readPackageJson(packageDir).imports, specifier)
+    const target = nativeTarget(entry?.value)
+    if (target === undefined) return undefined
+    const file = entry.match === undefined ? target : target.replaceAll('*', entry.match)
+    return isNativeSource(file) ? nativeModuleOf(join(packageDir, file)) : undefined
+  }
   if (!/^(@[^/]+\/)?[^./@][^/]*(\/|$)/.test(specifier)) return undefined
   const packageName = packageNameOf(specifier)
   // A package may import itself by name (Node's self-reference).
-  const ownDir = findPackageRoot(join(fromDir, 'x'))
+  const ownDir = findPackageRoot(fromDir)
   const packageDir =
     ownDir && readPackageJson(ownDir).name === packageName
       ? ownDir

@@ -3,9 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "description": "Example native driver: the chip's internal temperature sensor",
-  "keywords": [
-    "mikro-driver"
-  ],
   "license": "MIT",
   "author": "Bjørge Næss <bjoerge@gmail.com>",
   "files": [
@@ -28,13 +25,5 @@
   "peerDependencies": {
     "@mikrojs/firmware": "workspace:*",
     "mikro": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@mikrojs/firmware": {
-      "optional": true
-    },
-    "mikro": {
-      "optional": true
-    }
   }
 }

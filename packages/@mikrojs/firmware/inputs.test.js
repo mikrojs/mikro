@@ -141,6 +141,71 @@ test('a listed specifier that is not an installed native module fails the build'
   }
 })
 
+/** An app with its own native modules in its `imports`, and its firmware
+ *  project in firmware/, with a package.json of its own. */
+function appWithFirmware(name, imports) {
+  const app = join(root, name)
+  write(join(app, 'package.json'), json({name, private: true, type: 'module', imports}))
+  const firmware = join(app, 'firmware')
+  write(join(firmware, 'package.json'), json({name: `${name}-firmware`, private: true}))
+  return {app, firmware}
+}
+
+test("an app's own # native modules are compiled in, by exact and pattern keys", () => {
+  const {app, firmware} = appWithFirmware('own-modules', {
+    '#sensor': nativeExport('./native/sensor/sensor'),
+    '#native/*': {types: './native/*/*.d.ts', native: './native/*/*.cpp'},
+  })
+  moduleDir(join(app, 'native/sensor'))
+  moduleDir(join(app, 'native/display'))
+
+  const out = run(firmware, {nativeModules: '#sensor;#native/display'})
+  expect(out.components).toBe(components(join(app, 'native/sensor'), join(app, 'native/display')))
+  expect(out.nativeModules).toBe('#native/display;#sensor')
+  expect(out.configureDepends.split(';')).toContain(join(app, 'package.json'))
+})
+
+test('of two matching pattern keys, the one with the longer prefix wins, as in Node', () => {
+  const {app, firmware} = appWithFirmware('two-patterns', {
+    '#native/*': {types: './native/*/*.d.ts', native: './native/*/*.cpp'},
+    '#native/vendor/*': {types: './vendor/*/*.d.ts', native: './vendor/*/*.cpp'},
+  })
+  moduleDir(join(app, 'native/sensor'))
+  moduleDir(join(app, 'vendor/panel'))
+
+  // #native/vendor/panel matches both keys; #native/* alone would point at
+  // ./native/vendor/panel/vendor/panel.cpp, which does not exist
+  const out = run(firmware, {nativeModules: '#native/vendor/panel;#native/sensor'})
+  expect(out.components).toBe(components(join(app, 'vendor/panel'), join(app, 'native/sensor')))
+})
+
+test('a firmware project can hold # native modules in its own imports', () => {
+  const dir = project('own-imports')
+  write(
+    join(dir, 'package.json'),
+    json({name: 'own-imports', private: true, imports: {'#fx': nativeExport('./fx/fx')}}),
+  )
+  moduleDir(join(dir, 'fx'))
+  expect(resolveInputs(dir, {nativeModules: '#fx'}).components).toBe(join(dir, 'fx'))
+})
+
+test('a listed # specifier that is not an app native module fails the build', () => {
+  const {app, firmware} = appWithFirmware('bad-imports', {
+    '#js': './js.js',
+    '#native/*': {types: './native/*/*.d.ts', native: './native/*/*.cpp'},
+  })
+  expect(resolveError(firmware, {nativeModules: '#nope'})).toContain(
+    `MIKROJS_NATIVE_MODULES names "#nope", but no package.json at or above ${firmware} has an "imports" entry for it`,
+  )
+  expect(resolveError(firmware, {nativeModules: '#js'})).toContain(
+    `MIKROJS_NATIVE_MODULES names "#js", which is not a native module: its "imports" entry in ${join(app, 'package.json')}`,
+  )
+  // A pattern match that would leave the package matches nothing, as in Node
+  expect(resolveError(firmware, {nativeModules: '#native/../../x'})).toContain(
+    'has an "imports" entry for it',
+  )
+})
+
 test("a dependency's package.json that cannot be read fails the build, naming the file", () => {
   const dir = project('broken-dependency')
   write(join(dir, 'package.json'), json({name: 'broken-dependency', dependencies: {bad: '*'}}))

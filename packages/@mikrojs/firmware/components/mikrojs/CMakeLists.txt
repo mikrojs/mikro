@@ -158,22 +158,30 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"mikro\""
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_LIST_DIR}/../../package.json")
 
-# Firmware identity: the consuming project's package.json name, reported in
+# Firmware identity: the name in the nearest package.json at or above the
+# project (the app's, for a firmware folder inside an app), reported in
 # MSG_READY as `fw`. The CLI only auto-flashes its bundled prebuilt over a
 # device whose identity matches the prebuilt's own recorded name, so custom
 # firmware is protected from the auto-reflash without any project marker.
-# Absent (no package.json, e.g. on-device test apps, or no name in it) the
-# field is omitted.
+# Absent (no package.json, or no name in the nearest one) the field is omitted.
 set(_MIK_FW_NAME "")
-if(EXISTS "${CMAKE_SOURCE_DIR}/package.json")
-    file(READ "${CMAKE_SOURCE_DIR}/package.json" _MIK_PROJECT_PACKAGE)
+set(_MIK_FW_DIR "${CMAKE_SOURCE_DIR}")
+while(NOT EXISTS "${_MIK_FW_DIR}/package.json")
+    get_filename_component(_MIK_FW_PARENT "${_MIK_FW_DIR}" DIRECTORY)
+    if(_MIK_FW_PARENT STREQUAL _MIK_FW_DIR)
+        break()
+    endif()
+    set(_MIK_FW_DIR "${_MIK_FW_PARENT}")
+endwhile()
+if(EXISTS "${_MIK_FW_DIR}/package.json")
+    file(READ "${_MIK_FW_DIR}/package.json" _MIK_PROJECT_PACKAGE)
     string(JSON _MIK_FW_NAME ERROR_VARIABLE _MIK_FW_NAME_ERROR
         GET "${_MIK_PROJECT_PACKAGE}" name)
     if(_MIK_FW_NAME_ERROR)
         set(_MIK_FW_NAME "")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        "${CMAKE_SOURCE_DIR}/package.json")
+        "${_MIK_FW_DIR}/package.json")
 endif()
 # STREQUAL, not if(_MIK_FW_NAME): a project named "0", "off", or "false"
 # would read as a false constant and silently lose its identity.

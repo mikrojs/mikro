@@ -3,9 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "description": "Example pure JS driver: Bosch BME280 temperature, humidity and pressure sensor over I2C",
-  "keywords": [
-    "mikro-driver"
-  ],
   "license": "MIT",
   "author": "Bjørge Næss <bjoerge@gmail.com>",
   "files": [
@@ -26,10 +23,5 @@
   },
   "peerDependencies": {
     "mikro": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "mikro": {
-      "optional": true
-    }
   }
 }
