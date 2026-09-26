@@ -10,6 +10,7 @@ import {
 import {editorconfig} from './templates/_common/editorconfig.js'
 import {envExample} from './templates/_common/env-example.js'
 import {eslintConfig} from './templates/_common/eslint-config.js'
+import {firmwareCmakeLists, firmwareGitignore} from './templates/_common/firmware.js'
 import {gitignore} from './templates/_common/gitignore.js'
 import {mikroConfig} from './templates/_common/mikro-config.js'
 import {packageJson} from './templates/_common/package-json.js'
@@ -180,11 +181,14 @@ export interface ScaffoldOptions {
   pkgManager: PkgManager
   /** Target chip; it selects the tsconfig preset. Default: 'esp32c6'. */
   chip?: string
+  /** Make the app its own firmware project, for native modules or custom settings. */
+  firmware?: boolean
 }
 
 export function scaffold(options: ScaffoldOptions) {
   const {targetDir, template, projectName, mikroVersion, templatesDir, pkgManager} = options
   const chip = options.chip ?? 'esp32c6'
+  const firmware = options.firmware ?? false
 
   // Create project directory
   fs.mkdirSync(targetDir, {recursive: true})
@@ -198,7 +202,12 @@ export function scaffold(options: ScaffoldOptions) {
     path.join(targetDir, 'package.json'),
     JSON.stringify(
       packageJson(projectName, {
-        dependencies: {...dependencies, mikro: `^${mikroVersion}`},
+        dependencies: {
+          ...dependencies,
+          mikro: `^${mikroVersion}`,
+          // A direct dependency: the firmware build runs its bin through npx.
+          ...(firmware && {'@mikrojs/firmware': `^${mikroVersion}`}),
+        },
         devDependencies: {
           ...devDependencies,
           ...eslintDevDependencies,
@@ -222,7 +231,14 @@ export function scaffold(options: ScaffoldOptions) {
     fs.writeFileSync(mikroConfigPath, mikroConfig)
   }
   fs.writeFileSync(path.join(targetDir, '.editorconfig'), editorconfig)
-  fs.writeFileSync(path.join(targetDir, '.gitignore'), gitignore)
+  fs.writeFileSync(
+    path.join(targetDir, '.gitignore'),
+    gitignore + (firmware ? firmwareGitignore : ''),
+  )
+  // Next to package.json: npx resolves bins from the nearest package.json.
+  if (firmware) {
+    fs.writeFileSync(path.join(targetDir, 'CMakeLists.txt'), firmwareCmakeLists(projectName))
+  }
   const templateMeta = TEMPLATES.find((t) => t.name === template)
   const envFileContent = envExample(templateMeta?.envVars)
   fs.writeFileSync(path.join(targetDir, '.env.example'), envFileContent)
@@ -242,6 +258,7 @@ export function scaffold(options: ScaffoldOptions) {
       hardware: templateMeta?.hardware,
       wiring: templateMeta?.wiring,
       setup,
+      firmware: firmware ? {chip} : undefined,
     }),
   )
 }

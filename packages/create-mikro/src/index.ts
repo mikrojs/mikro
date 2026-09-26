@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url'
 import * as p from '@clack/prompts'
 import {message, object, optional} from '@optique/core'
 import type {InferValue} from '@optique/core/parser'
-import {argument, option} from '@optique/core/primitives'
+import {argument, flag, option} from '@optique/core/primitives'
 import {defineProgram} from '@optique/core/program'
 import {string} from '@optique/core/valueparser'
 import {run} from '@optique/run'
@@ -32,6 +32,11 @@ const args = object({
   chip: optional(
     option('--chip', string({metavar: 'CHIP'}), {
       description: message`Target chip (default: esp32c6)`,
+    }),
+  ),
+  firmware: optional(
+    flag('--firmware', {
+      description: message`Make the app its own firmware project, for native modules or custom settings`,
     }),
   ),
 })
@@ -184,6 +189,7 @@ async function main(config: InferValue<typeof args>): Promise<void> {
     templatesDir,
     pkgManager: pm,
     chip,
+    firmware: config.firmware ?? false,
   })
 
   const templateMeta = TEMPLATES.find((t) => t.name === template)
@@ -191,7 +197,12 @@ async function main(config: InferValue<typeof args>): Promise<void> {
   if (!isCwd) steps.push(`cd ${pkgName}`)
   steps.push(installCommand(pm))
   steps.push('# connect your ESP32 via USB')
-  steps.push(mikroCommand(pm, 'flash'))
+  if (config.firmware) {
+    steps.push(mikroCommand(pm, `idf set-target ${chip}`))
+    steps.push(mikroCommand(pm, 'idf build flash'))
+  } else {
+    steps.push(mikroCommand(pm, 'flash'))
+  }
   if (templateMeta?.wifiSetup) {
     steps.push('# set WIFI_SSID and WIFI_PASSPHRASE — see README.md')
   }

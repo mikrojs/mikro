@@ -30,4 +30,7 @@ npm create mikro -- --template blinky
 
 # With pnpm
 pnpm create mikro --template blinky
+
+# As its own firmware project, for native modules or custom settings
+pnpm create mikro --firmware
 ```
