@@ -27,3 +27,9 @@ export function getMikroDir(): string {
   mkdirSync(dir, {recursive: true})
   return dir
 }
+
+/** Scratch build directory for `mikro dev`, `mikro test` and the `sim` commands,
+ *  apart from `mikro build`'s `.mikro/build`. */
+export function getDevBuildDir(): string {
+  return pathlib.join(getMikroDir(), 'build-dev')
+}

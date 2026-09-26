@@ -18,7 +18,7 @@ import {collectFiles, loadEnvFiles} from '../../lib/deploy.js'
 import {describeError, UserError} from '../../lib/errorMessage.js'
 import {parseMinifier, parseMinifyLevel} from '../../lib/parseMinifier.js'
 import {parseSize} from '../../lib/parseSize.js'
-import {getMikroDir, resolveProjectRoot} from '../../lib/projectRoot.js'
+import {getDevBuildDir, getMikroDir, resolveProjectRoot} from '../../lib/projectRoot.js'
 import {resolveEntry} from '../../lib/resolveEntry.js'
 import {loadSimConfig} from '../../lib/simConfig.js'
 import {checkPid, SimAlreadyRunningError} from '../../lib/simPid.js'
@@ -173,7 +173,7 @@ async function runImpl(config: RunConfig): Promise<void> {
   checkPid(mikroDir)
 
   const entry = resolveEntry(config.entry)
-  const buildDir = pathlib.join(getMikroDir(), 'build')
+  const buildDir = getDevBuildDir()
   const log = (msg: string) => console.error(msg)
 
   const minify = !config.noMinify

@@ -1,8 +1,7 @@
-import {readdir, stat} from 'node:fs/promises'
 import * as pathlib from 'node:path'
 
 import type {DuplicatePackage} from '@mikrojs/analyze-imports'
-import {command, constant, message, object, optional, withDefault} from '@optique/core'
+import {command, constant, message, object, optional} from '@optique/core'
 import type {InferValue} from '@optique/core/parser'
 import {argument, flag, option} from '@optique/core/primitives'
 import {string} from '@optique/core/valueparser'
@@ -17,10 +16,12 @@ import type {LogLevel, Minifier, MinifyLevel} from '../../_exports/index.js'
 import {EntryGate} from '../components/EntryGate.js'
 import {agentError, agentResult, isAgentMode} from '../lib/agent.js'
 import {build, type BuildEvent, type BuildFeatures} from '../lib/build.js'
+import {displayPath} from '../lib/displayPath.js'
 import {formatDuplicatePackagesNotice} from '../lib/duplicatePackages.js'
 import {agentFeatures, formatFeaturesLine} from '../lib/featureGate.js'
 import {formatSize} from '../lib/formatSize.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
+import {resolveProjectRoot} from '../lib/projectRoot.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {resolveEntry} from '../lib/resolveEntry.js'
 import {Spinner} from '../lib/Spinner.js'
@@ -30,9 +31,10 @@ export const args = command(
   object({
     action: constant('build'),
     entry: optional(argument(path({metavar: 'ENTRY', mustExist: true, type: 'file'}))),
-    outDir: withDefault(
-      argument(path({metavar: 'OUTDIR', allowCreate: true, type: 'directory'})),
-      'build',
+    outDir: optional(
+      option('-o', '--out-dir', path({metavar: 'DIR', allowCreate: true, type: 'directory'}), {
+        description: message`Output directory (default: .mikro/build in the project root)`,
+      }),
     ),
     noMinify: optional(flag('--no-minify', {description: message`Skip minification`})),
     minifier: optional(
@@ -56,9 +58,16 @@ export const args = command(
   }),
 )
 
+/** The default lives in the project's `.mikro/`, leaving `./build` to ESP-IDF
+ *  when the app root also holds a firmware project. */
+function resolveOutDir(outDir: string | undefined): string {
+  return outDir ?? pathlib.join(resolveProjectRoot(), '.mikro', 'build')
+}
+
 export async function run(config: InferValue<typeof args>) {
   const entry = resolveEntry(config.entry)
-  const {outDir, noMinify, noBytecode} = config
+  const outDir = resolveOutDir(config.outDir)
+  const {noMinify, noBytecode} = config
   const minifier = parseMinifier(config.minifier)
   const minifyLevel = parseMinifyLevel(config.minifyLevel)
   const logLevel = parseLogLevel(config.logLevel)
@@ -66,6 +75,7 @@ export async function run(config: InferValue<typeof args>) {
   try {
     let duplicatePackages: DuplicatePackage[] | undefined
     let features: BuildFeatures | undefined
+    const files: {path: string; size: number}[] = []
     await lastValueFrom(
       build(entry, outDir, {
         minify: !noMinify,
@@ -74,26 +84,27 @@ export async function run(config: InferValue<typeof args>) {
         minifyLevel,
         logLevel,
         env: 'production',
+        markOutDir: config.outDir !== undefined,
       }).pipe(
         tap((event) => {
           if (event.type === 'duplicatePackages') duplicatePackages = event.packages
           if (event.type === 'features') features = event
+          if (event.type === 'file') files.push({path: event.path, size: event.size})
         }),
       ),
       {defaultValue: undefined},
     )
-    const entries = await readdir(outDir, {recursive: true})
-    const files: {path: string; size: number}[] = []
-    for (const e of entries) {
-      const full = pathlib.join(outDir, e)
-      const s = await stat(full)
-      if (s.isFile()) files.push({path: '/' + e, size: s.size})
-    }
     if (jsonOutput) {
       // duplicatePackages and features are omitted when empty (undefined drops out of the JSON).
       agentResult(
         'build',
-        {entry, outDir, files, duplicatePackages, features: agentFeatures(features)},
+        {
+          entry,
+          outDir: pathlib.resolve(outDir),
+          files,
+          duplicatePackages,
+          features: agentFeatures(features),
+        },
         [
           {command: 'mikro deploy', description: 'Deploy build to device'},
           {command: `mikro build ${entry} --no-bytecode`, description: 'Rebuild without bytecode'},
@@ -102,7 +113,9 @@ export async function run(config: InferValue<typeof args>) {
     } else {
       const totalSize = files.reduce((sum, f) => sum + f.size, 0)
       // eslint-disable-next-line no-console
-      console.log(`Built ${files.length} file(s) to ${outDir}, ${formatSize(totalSize)} total`)
+      console.log(
+        `Built ${files.length} file(s) to ${displayPath(outDir)}, ${formatSize(totalSize)} total`,
+      )
       for (const file of files) {
         // eslint-disable-next-line no-console
         console.log(`  ${file.path} ${formatSize(file.size)}`)
@@ -128,10 +141,11 @@ type Props = {
 }
 
 export default function Build(props: Props) {
-  const {outDir, noMinify, noBytecode} = props.args
+  const {noMinify, noBytecode} = props.args
   const minifier = parseMinifier(props.args.minifier)
   const minifyLevel = parseMinifyLevel(props.args.minifyLevel)
   const logLevel = parseLogLevel(props.args.logLevel)
+  const outDir = resolveOutDir(props.args.outDir)
 
   return (
     <EntryGate entry={props.args.entry}>
@@ -139,6 +153,7 @@ export default function Build(props: Props) {
         <Run
           entry={entry}
           outDir={outDir}
+          markOutDir={props.args.outDir !== undefined}
           minify={!noMinify}
           bytecode={!noBytecode}
           minifier={minifier}
@@ -192,19 +207,28 @@ const initialState: BuildState = {
 function Run(props: {
   entry: string
   outDir: string
+  markOutDir: boolean
   minify: boolean
   bytecode: boolean
   minifier?: Minifier
   minifyLevel?: MinifyLevel
   logLevel?: LogLevel
 }) {
-  const {entry, outDir, minify, bytecode, minifier, minifyLevel, logLevel} = props
+  const {entry, outDir, markOutDir, minify, bytecode, minifier, minifyLevel, logLevel} = props
   const [state, dispatch] = useReducer(buildReducer, initialState)
 
   const _build = useMemo(
     () =>
-      build(entry, outDir, {minify, bytecode, minifier, minifyLevel, logLevel, env: 'production'}),
-    [entry, outDir, minify, bytecode, minifier, minifyLevel, logLevel],
+      build(entry, outDir, {
+        minify,
+        bytecode,
+        minifier,
+        minifyLevel,
+        logLevel,
+        env: 'production',
+        markOutDir,
+      }),
+    [entry, outDir, markOutDir, minify, bytecode, minifier, minifyLevel, logLevel],
   )
 
   useEffect(() => {
@@ -234,8 +258,8 @@ function Run(props: {
       <RenderAndExit exitCode={0}>
         <Box flexDirection="column">
           <Text color="green">
-            {figures.tick} Built {state.files.length} file(s) to <Text color="cyan">{outDir}</Text>,{' '}
-            {formatSize(totalSize)} total
+            {figures.tick} Built {state.files.length} file(s) to{' '}
+            <Text color="cyan">{displayPath(outDir)}</Text>, {formatSize(totalSize)} total
           </Text>
           {featuresLine !== undefined ? (
             <Text dimColor>

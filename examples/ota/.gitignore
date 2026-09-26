@@ -3,7 +3,6 @@
 !.env.example
 .DS_Store
 node_modules
-build
 .mikro
 *.tgz
 registry/data

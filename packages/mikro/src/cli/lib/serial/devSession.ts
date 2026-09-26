@@ -1,5 +1,3 @@
-import * as pathlib from 'node:path'
-
 import {
   catchError,
   concat,
@@ -31,7 +29,7 @@ import {formatDuplicatePackagesNotice} from '../duplicatePackages.js'
 import {UserError} from '../errorMessage.js'
 import {missingFeaturesError} from '../featureGate.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
-import {getMikroDir, resolveProjectRoot} from '../projectRoot.js'
+import {getDevBuildDir, resolveProjectRoot} from '../projectRoot.js'
 import {getPredeployCommands, runHooks} from '../runHooks.js'
 import {type DeployEvent, DeviceTimeoutError, type ReplSession} from '../session.js'
 import {createWatcher} from '../watcher.js'
@@ -110,7 +108,7 @@ export function createDevSession(options: {
     noAutoEnv,
     mode = 'development',
   } = options
-  const buildDir = pathlib.join(getMikroDir(), 'build')
+  const buildDir = getDevBuildDir()
   const watchDir = process.cwd()
   const projectRoot = resolveProjectRoot()
 

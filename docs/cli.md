@@ -71,17 +71,21 @@ See [Build options](#build-options) for details on `--no-minify`, `--loglevel`, 
 Build your app without deploying. Produces a build directory with bundled and optionally bytecode-compiled output.
 
 ```sh
-mikro build [ENTRY] [OUTDIR]
+mikro build [ENTRY] [-o DIR]
 ```
 
-| Option             | Description                                                          |
-| ------------------ | -------------------------------------------------------------------- |
-| `ENTRY`            | Entry file (default: `main` field in package.json)                   |
-| `OUTDIR`           | Output directory (default: `build`)                                  |
-| `--no-minify`      | Skip minification                                                    |
-| `--no-bytecode`    | Skip bytecode compilation                                            |
-| `--loglevel LEVEL` | Log level: `none`, `error`, `warn`, `info`, `debug`. Default: `warn` |
-| `--json`           | Output as JSON                                                       |
+| Option              | Description                                                          |
+| ------------------- | -------------------------------------------------------------------- |
+| `ENTRY`             | Entry file (default: `main` field in package.json)                   |
+| `-o, --out-dir DIR` | Output directory (default: `.mikro/build` in the project root)       |
+| `--no-minify`       | Skip minification                                                    |
+| `--no-bytecode`     | Skip bytecode compilation                                            |
+| `--loglevel LEVEL`  | Log level: `none`, `error`, `warn`, `info`, `debug`. Default: `warn` |
+| `--json`            | Output as JSON                                                       |
+
+The output directory is deleted and recreated on every build. The default is inside the hidden `.mikro/` directory; to write somewhere you can browse, pass `-o`, for example `mikro build -o out`.
+
+A directory passed with `-o` gets a `.mikro-build` marker file. The build deletes an existing directory only if it is empty or has this marker, so `mikro build -o .` or `-o src` fails instead of deleting your files.
 
 See [Build options](#build-options) for details on `--no-minify`, `--loglevel`, and other build flags.
 
