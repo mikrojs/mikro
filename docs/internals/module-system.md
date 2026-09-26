@@ -24,7 +24,7 @@ When JavaScript executes an `import` statement, the module loader checks four so
           │ miss
           ▼
  ┌──────────────────┐
- │ 3. Bytecode       │  Pre-compiled TS, mikro/* and @mikrojs/*
+ │ 3. Bytecode       │  Pre-compiled TS, mikro/*
  │    builtin        │
  └────────┬─────────┘
           │ miss
@@ -87,14 +87,9 @@ The `native:` prefix marks internal C/C++ modules. User code imports public APIs
 
 Bytecode builtins are TypeScript modules pre-compiled to QuickJS bytecode and embedded in the binary.
 
-Core builtins (the `mikro/*` public API) are compiled during the CMake build and stored in a static table in `builtins.cpp`. External builtins from driver/board packages register via constructors, similar to native modules:
+They are the core runtime's `mikro/*` modules, compiled during the CMake build and stored in a static table in `builtins.cpp`. Packages do not add builtins: their JavaScript deploys with the app.
 
-```c
-MIK_REGISTER_BUILTIN(sntp, "mikro/sntp", qjsc_sntp, qjsc_sntp_size);
-//                   ^id   ^name          ^data     ^size
-```
-
-On import, `mik__load_builtin()` first checks the core builtin table, then walks the external builtin linked list. When found, it deserializes the bytecode with `JS_ReadObject()` and evaluates the module. No parsing or compilation happens at runtime, which saves both time and memory on the microcontroller.
+On import, `mik__load_builtin()` looks the name up in the table. When found, it deserializes the bytecode with `JS_ReadObject()` and evaluates the module. No parsing or compilation happens at runtime, which saves both time and memory on the microcontroller.
 
 ### 4. Filesystem modules
 

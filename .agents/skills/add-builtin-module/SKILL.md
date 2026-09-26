@@ -62,8 +62,6 @@ Follow the `add-native-module` skill to create the `native:xxx` native module wi
 mikrojs_generate_bytecode(
     RUNTIME_DIR "${MIK_RUNTIME_DIR}"
     MODULES result fetch i2c neopixel pin pwm rtc sleep spi sntp stdio sys wifi example
-    MODULE_PREFIX "mikro"
-    SYMBOL_PREFIX "mikro"
     TARGET gen_bytecode
 )
 ```
@@ -102,13 +100,13 @@ cd esp32 && idf.py build  # ESP-IDF firmware
 
 ## Key Files
 
-| Path                                                    | Role                                         |
-| ------------------------------------------------------- | -------------------------------------------- |
-| `packages/@mikrojs/native/runtime/*/`                   | Core builtin TypeScript sources              |
-| `packages/@mikrojs/native/src/builtins.cpp`             | Core builtin table + external builtin loader |
-| `packages/@mikrojs/native/cmake/mikrojs_bytecode.cmake` | Shared bytecode generation function          |
-| `packages/@mikrojs/native/scripts/bundle-runtime.js`    | esbuild bundler                              |
-| `packages/@mikrojs/native/scripts/compile-bytecode.sh`  | qjsc compiler wrapper                        |
+| Path                                                    | Role                            |
+| ------------------------------------------------------- | ------------------------------- |
+| `packages/@mikrojs/native/runtime/*/`                   | Core builtin TypeScript sources |
+| `packages/@mikrojs/native/src/builtins.cpp`             | Core builtin table and loader   |
+| `packages/@mikrojs/native/cmake/mikrojs_bytecode.cmake` | Bytecode generation function    |
+| `packages/@mikrojs/native/scripts/bundle-runtime.js`    | esbuild bundler                 |
+| `packages/@mikrojs/native/scripts/compile-bytecode.sh`  | qjsc compiler wrapper           |
 
 ---
 

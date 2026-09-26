@@ -59,7 +59,7 @@ mikrojs_force_include_modules(epaper)
 
 ## Bytecode builtins
 
-The core runtime's own TypeScript modules (`mikro/fs`, `mikro/result` and so on) are pre-compiled to QuickJS bytecode and embedded in the firmware binary. They register with `MIK_REGISTER_BUILTIN`, which uses the same constructor and linked-list pattern as native modules. When JavaScript imports `mikro/fs`, the loader finds the matching builtin, deserializes the bytecode with `JS_ReadObject`, and returns the module, with no filesystem lookup.
+The core runtime's own TypeScript modules (`mikro/fs`, `mikro/result` and so on) are pre-compiled to QuickJS bytecode and embedded in the firmware binary, in a table in `builtins.cpp`. When JavaScript imports `mikro/fs`, the loader finds the matching builtin, deserializes the bytecode with `JS_ReadObject`, and returns the module, with no filesystem lookup.
 
 Driver and board modules do not use this path. They are normal modules, deployed with the app. Only native modules are in the firmware.
 
@@ -105,10 +105,9 @@ Installing a package puts nothing in the firmware. The project lists what goes i
 
 ## Key CMake functions
 
-| Function                           | Purpose                                                                               |
-| ---------------------------------- | ------------------------------------------------------------------------------------- |
-| `mikrojs_force_include_modules()`  | Add `-u` linker flags so self-registered native modules survive dead-code elimination |
-| `mikrojs_generate_bytecode()`      | Run the TS -> esbuild -> qjsc pipeline (core runtime modules)                         |
-| `mikrojs_force_include_builtins()` | Same as `mikrojs_force_include_modules()`, for bytecode builtins                      |
+| Function                          | Purpose                                                                               |
+| --------------------------------- | ------------------------------------------------------------------------------------- |
+| `mikrojs_force_include_modules()` | Add `-u` linker flags so self-registered native modules survive dead-code elimination |
+| `mikrojs_generate_bytecode()`     | Run the TS -> esbuild -> qjsc pipeline (core runtime modules)                         |
 
-All three are defined in the CMake module exported by `@mikrojs/native` (accessed via `require('@mikrojs/native/cmake').cmakePath`).
+Both are defined in the CMake module exported by `@mikrojs/native` (`bytecodeCmakePath` from `@mikrojs/native/cmake`).
