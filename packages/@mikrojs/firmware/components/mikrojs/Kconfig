@@ -141,7 +141,8 @@ menu "mikrojs runtime memory"
 
             Defaults on for chips with PSRAM. Disable if your workload
             is JS-execution-bound and you can fit the JS heap in
-            internal SRAM. No effect on chips without PSRAM.
+            internal SRAM. No effect on chips without PSRAM, or when no
+            PSRAM chip is found at boot.
 
 endmenu
 

@@ -143,8 +143,8 @@ void* mik__realloc(void* ptr, size_t size) {
  * platform's malloc_psram first; if the platform can't satisfy the request
  * (no PSRAM, or PSRAM exhausted), fall back to libc malloc so the runtime
  * keeps working. The fallback only matters on host builds and in PSRAM-OOM
- * edge cases. Under normal ESP32 operation with CONFIG_SPIRAM=y, every
- * allocation lands in PSRAM. */
+ * edge cases: the ESP32 firmware sets the flag only when PSRAM was found
+ * at boot, so every allocation lands in PSRAM. */
 
 static bool g_quickjs_heap_psram = false;
 
