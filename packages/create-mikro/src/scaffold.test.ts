@@ -1,5 +1,5 @@
 import {execFileSync} from 'node:child_process'
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync} from 'node:fs'
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
@@ -194,5 +194,66 @@ describe('chip option', () => {
     })
     const tsconfig = JSON.parse(readFileSync(path.join(targetDir, 'tsconfig.json'), 'utf-8'))
     expect(tsconfig.extends).toBe('mikro/tsconfig/esp32s3-generic')
+  })
+})
+
+describe('firmware option', () => {
+  let tempDir: string
+  let targetDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(path.join(tmpdir(), 'create-mikro-test-firmware-'))
+    targetDir = path.join(tempDir, 'test-project')
+    scaffold({
+      targetDir,
+      template: 'blank',
+      projectName: 'test-project',
+      mikroVersion: '0.0.0',
+      templatesDir,
+      pkgManager: 'pnpm',
+      chip: 'esp32s3',
+      firmware: true,
+    })
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, {recursive: true, force: true})
+  })
+
+  it('makes the app its own firmware project, finding project.cmake through @mikrojs/firmware', () => {
+    const cmake = readFileSync(path.join(targetDir, 'CMakeLists.txt'), 'utf-8')
+    expect(cmake).toContain('npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32')
+    expect(cmake).toContain('include(${_MIK_CMAKE_PATH})')
+    expect(cmake).toContain('project(test-project)')
+    // A direct dependency, or npx cannot find the bin under pnpm
+    const pkg = JSON.parse(readFileSync(path.join(targetDir, 'package.json'), 'utf-8'))
+    expect(pkg.dependencies['@mikrojs/firmware']).toBe('^0.0.0')
+  })
+
+  it('ignores what ESP-IDF writes and explains the build in the README', () => {
+    const gitignore = readFileSync(path.join(targetDir, '.gitignore'), 'utf-8')
+    for (const entry of ['managed_components/', 'dependencies.lock', 'sdkconfig']) {
+      expect(gitignore).toContain(`\n${entry}\n`)
+    }
+    const readme = readFileSync(path.join(targetDir, 'README.md'), 'utf-8')
+    expect(readme).toContain('pnpm mikro idf set-target esp32s3')
+    expect(readme).toContain('pnpm mikro idf build flash')
+    expect(readme).toContain('MIKROJS_NATIVE_MODULES')
+  })
+
+  it('leaves projects without the option alone', () => {
+    const plain = path.join(tempDir, 'plain')
+    scaffold({
+      targetDir: plain,
+      template: 'blank',
+      projectName: 'plain',
+      mikroVersion: '0.0.0',
+      templatesDir,
+      pkgManager: 'pnpm',
+    })
+    const pkg = JSON.parse(readFileSync(path.join(plain, 'package.json'), 'utf-8'))
+    expect(pkg.dependencies['@mikrojs/firmware']).toBeUndefined()
+    expect(existsSync(path.join(plain, 'CMakeLists.txt'))).toBe(false)
+    expect(readFileSync(path.join(plain, '.gitignore'), 'utf-8')).not.toContain('sdkconfig')
   })
 })

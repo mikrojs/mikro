@@ -59,7 +59,7 @@ project(my-firmware)
 
 Separate several native modules with `;`. The build stops if an entry is not an installed [native module](./native-modules). Without `MIKROJS_NATIVE_MODULES`, the build is the official Mikro.js firmware with the project's settings.
 
-An app can be its own firmware project: add `@mikrojs/firmware` to the app's dependencies, and put `CMakeLists.txt` next to its `package.json`. [`examples/chip-temperature`](https://github.com/mikrojs/mikro/tree/main/examples/chip-temperature) is set up this way. ESP-IDF writes `sdkconfig`, `managed_components/` and `dependencies.lock` into the project folder, and the build into `.mikro/` (`build/` with plain `idf.py`), so add them to `.gitignore`.
+An app can be its own firmware project: add `@mikrojs/firmware` to the app's dependencies, and put `CMakeLists.txt` next to its `package.json`. [`examples/chip-temperature`](https://github.com/mikrojs/mikro/tree/main/examples/chip-temperature) is set up this way; `pn create mikro --firmware` scaffolds one. ESP-IDF writes `sdkconfig`, `managed_components/` and `dependencies.lock` into the project folder, and the build into `.mikro/` (`build/` with plain `idf.py`), so add them to `.gitignore`.
 
 ## Build and flash
 

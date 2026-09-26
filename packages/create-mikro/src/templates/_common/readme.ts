@@ -7,10 +7,12 @@ export interface ReadmeOptions {
   hardware?: string
   wiring?: string
   setup?: string
+  /** The app is its own firmware project, for this chip. */
+  firmware?: {chip: string}
 }
 
 export function readme(options: ReadmeOptions) {
-  const {projectName, description, pm, hardware, wiring, setup} = options
+  const {projectName, description, pm, hardware, wiring, setup, firmware} = options
 
   const sections: string[] = []
 
@@ -28,7 +30,35 @@ export function readme(options: ReadmeOptions) {
     sections.push(`## Setup\n\n${setup}`)
   }
 
-  sections.push(`## Getting started
+  if (firmware) {
+    sections.push(`## Getting started
+
+Install dependencies:
+
+\`\`\`sh
+${pm} install
+\`\`\`
+
+Build the firmware and flash it:
+
+\`\`\`sh
+${mikro(pm, `idf set-target ${firmware.chip}`)}
+${mikro(pm, 'idf build flash')}
+\`\`\`
+
+\`mikro idf\` runs ESP-IDF's \`idf.py\` with these arguments, through EIM when ESP-IDF is not active in the shell.
+
+Start developing:
+
+\`\`\`sh
+${mikro(pm, 'dev')}
+\`\`\``)
+
+    sections.push(`## Firmware
+
+\`CMakeLists.txt\` builds this project's own firmware. To compile in a native module, add its package to \`package.json\` and list it in \`MIKROJS_NATIVE_MODULES\` in \`CMakeLists.txt\`. See [Custom Firmware](https://mikrojs.dev/develop/custom-firmware).`)
+  } else {
+    sections.push(`## Getting started
 
 Install dependencies:
 
@@ -41,6 +71,7 @@ Flash firmware and start developing:
 \`\`\`sh
 ${mikro(pm, 'dev')}
 \`\`\``)
+  }
 
   sections.push(`## Commands
 
