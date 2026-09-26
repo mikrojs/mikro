@@ -96,6 +96,12 @@ CONFIG_MIKROJS_AUTO_LIGHT_SLEEP=y
 
 The option also turns on ESP-IDF power management, which lowers the CPU clock while the app waits. The device stays awake while a USB host is connected, so development over USB works as before. It also stays awake while the app has a `Pwm`, `Uart`, `NeoPixel` or `I2s` handle open. A `main.cpp` that doesn't call `MIK_Main()` gets no light sleep unless it calls `esp_pm_configure()` itself. Light sleep has two limits. The device can miss a GPIO edge that happens while it sleeps. If you connect a USB host while the device sleeps, the host may not detect the device until you reset it.
 
+At the start of every boot, the firmware waits 500 ms for the recovery trigger (`mikro deploy --recover` or a double reset, see [Recovering a crash-looping device](/troubleshooting#recovering-a-crash-looping-device)). A wake from deep sleep is a boot too, so an app that wakes often can skip the window. The double reset needs a window long enough to press reset twice, and `--recover` needs it to outlast the host's reconnect after the reset, so a short window is in practice the same as none. Without the window, `--recover` and the double reset do not work, and a crash-looping app has to be erased from the ROM bootloader.
+
+```ini
+CONFIG_MIKROJS_RECOVERY_WINDOW_MS=0
+```
+
 ## Use a bigger flash chip
 
 The official firmware's partition table is for 4 MB of flash. `mikro flash` stretches `user`, the partition that holds the app and its files, to the end of a bigger chip for prebuilt images: the generic firmware, a [board package](./creating-boards)'s image and `--from` firmware. A build flashed with `--build-dir` or `pn mikro idf flash` uses the flash size in its `sdkconfig` and the table as you wrote it. For a bigger chip, set its size in `sdkconfig.defaults`, and add a `partitions.csv` that gives the extra space to `user`. For 8 MB:

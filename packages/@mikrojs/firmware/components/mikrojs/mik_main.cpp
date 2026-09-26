@@ -412,11 +412,14 @@ void MIK_Main(void) {
         heap_total_at_boot = info.total_free_bytes + info.total_allocated_bytes;
     }
 
-    /* Recovery window: gives the host (or a double-reset) a chance to
-     * skip the autorun if the deployed app is crash-looping.  Costs ~500ms
-     * on every cold boot but is the only window we have before user code
-     * runs and may panic. */
-    bool safe_mode = mik__check_recovery(500);
+    /* Recovery window: lets the host (or a double reset) skip the autorun when
+     * the app crash-loops. Costs CONFIG_MIKROJS_RECOVERY_WINDOW_MS on every boot,
+     * deep-sleep wakes included; at 0 the call is skipped and a second reset has
+     * no window to land in. */
+    bool safe_mode = false;
+#if CONFIG_MIKROJS_RECOVERY_WINDOW_MS > 0
+    safe_mode = mik__check_recovery(CONFIG_MIKROJS_RECOVERY_WINDOW_MS);
+#endif
     if (safe_mode) {
         printf("\n*** SAFE MODE: autorun skipped, dropping to REPL ***\n\n");
     }

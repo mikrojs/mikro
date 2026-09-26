@@ -1,3 +1,31 @@
+menu "mikrojs boot"
+
+    config MIKROJS_RECOVERY_WINDOW_MS
+        int "Recovery window at boot (ms)"
+        default 500
+        range 0 5000
+        help
+            How long the firmware listens on the console at the start of
+            every boot, before it runs the app, for the recovery trigger:
+            the sync sequence that `mikro deploy --recover`, `mikro clean
+            --recover` and `mikro console --recover` send after resetting
+            the chip, or a second press of the reset button inside the
+            window. Either one skips the app and drops to the REPL, which
+            is how you replace a crash-looping app.
+
+            Every boot pays the whole window at full power, including
+            every wake from deep sleep, since a wake is a reboot. The
+            double reset needs a window long enough to press reset twice,
+            and --recover needs it to outlast the host's reconnect after
+            the reset, so a short value is in practice the same as 0. At
+            0 the device boots straight into the app, and --recover and
+            the double reset stop working. A crash-looping app then has
+            to be erased over USB from the ROM bootloader (`mikro erase`,
+            then `mikro flash`). Keep the default unless you have another
+            way back into a broken device.
+
+endmenu
+
 menu "mikrojs console"
 
     config MIKROJS_CONSOLE_FALLBACK_UART
