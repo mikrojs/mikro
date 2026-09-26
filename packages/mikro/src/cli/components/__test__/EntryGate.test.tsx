@@ -54,8 +54,11 @@ describe('EntryGate', () => {
     const {lastFrame} = render(<EntryGate entry={undefined}>{() => <Text>built</Text>}</EntryGate>)
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1))
 
+    // The message holds the full temp path and Ink wraps at 100 columns, so a line break can
+    // land anywhere in it, even mid-word. Compare with all whitespace removed.
+    const squash = (text: string) => text.replace(/\s/g, '')
     const frame = stripVTControlCharacters(lastFrame() ?? '')
-    expect(frame).toContain('package.json is not valid JSON')
+    expect(squash(frame)).toContain(squash('package.json is not valid JSON'))
     expect(frame).toContain('JSON')
     expect(frame).not.toContain(' at ')
   })
