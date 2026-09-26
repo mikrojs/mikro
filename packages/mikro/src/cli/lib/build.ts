@@ -463,6 +463,9 @@ export function build(
     /** buildDir was chosen by the user: only delete it if a previous build
      *  marked it (or it is empty), and mark it for the next one. */
     markOutDir?: boolean
+    /** Version for the deployed package.json, over the project's. The device
+     *  reports that version, so `ota pack --snapshot` passes its derived one. */
+    version?: string
   },
 ): Observable<BuildEvent> {
   // Resolve the entry to a cwd-relative path so absolute paths (drag-and-drop,
@@ -614,7 +617,7 @@ export function build(
           pathlib.join(rootDir, 'package.json'),
           JSON.stringify({
             name: pkg.name,
-            version: pkg.version,
+            version: options.version ?? pkg.version,
             type: pkg.type,
             main: `./${mainPath}`,
           }),

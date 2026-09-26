@@ -1067,6 +1067,23 @@ CheckinResponse ConfigResponse(const std::string& rev, const std::vector<uint8_t
 
 }  // namespace
 
+TEST_CASE("config: a snapshot version is reported and stamps the stored document") {
+    // `ota pack --snapshot` adds 26 characters, so a six-character base
+    // already needs more than 32 bytes.
+    const char* kSnapshot = "0.10.0-snapshot.20260926T120000Z";
+    Harness h;
+    h.env.running_build.version[0] = '\0';
+    h.env.app_version = kSnapshot;
+    CheckinResponse response = ConfigResponse("r1", DocInterval(45));
+    response.config_version = kSnapshot;
+    h.env.ReplyWith(response);
+    MIKOtaCheckResult result = h.CheckAndRun();
+
+    CHECK(CborStr(h.SentBody(), "running.version") == kSnapshot);
+    CHECK(result.config_updated == true);
+    CHECK(CborStr(h.env.Blob("ota.cfg"), "version") == kSnapshot);
+}
+
 TEST_CASE("config: reports the held token, omitted when nothing is held") {
     Harness held;
     SeedHeld(held);
