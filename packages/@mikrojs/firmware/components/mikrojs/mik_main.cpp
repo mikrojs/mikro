@@ -20,6 +20,9 @@
 #endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#if CONFIG_IDF_TARGET_ESP32 && CONFIG_BT_ENABLED
+#include "mik_ble_c_shim.h"
+#endif
 #include "mikrojs.h"
 #include "mikrojs/platform.h"
 #include "mikrojs/private.h"
@@ -401,6 +404,20 @@ void MIK_Main(void) {
 #else
     bool has_bt = false;
     bool has_ble = false;
+#endif
+
+#if CONFIG_IDF_TARGET_ESP32 && CONFIG_BT_ENABLED
+    /* The BT controller reserves its DRAM at boot whether or not BLE is ever
+     * started. Classic BT is never used (NimBLE is BLE-only), so hand its
+     * 15 KB with the default config (0x3ffb2730-0x3ffb6388) to the heap now.
+     * nimble_port_init makes the same call later and treats the repeat as
+     * already released. */
+    {
+        int err = mik_ble_release_classic_bt_mem();
+        if (err != 0) {
+            ESP_LOGI(TAG, "Classic BT memory not released: %s", esp_err_to_name(err));
+        }
+    }
 #endif
 
     /* Capture starting heap for the later runtime-cost INFO log. */
