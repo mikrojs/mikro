@@ -91,13 +91,9 @@ runs:
         . $IDF_PATH/export.sh
         idf.py size
 
-    # Record the firmware identity (the project the binary was built from) so
-    # the CLI can tell its bundled prebuilt from a custom build when deciding
-    # whether an auto-reflash is safe. Must match the MIK_FW_NAME the binary
-    # reports in MSG_READY, so both come from the same package.json.
-    - shell: bash
-      run: |
-        node -e "const {name} = require('./esp32/package.json'); require('node:fs').writeFileSync('esp32/build/firmware.json', JSON.stringify({name}) + '\n')"
+    # esp32/build/firmware.json comes from the build (the mikrojs component
+    # writes it): the image's name (<chip>-generic), chip and version. The CLI
+    # compares the name with a device's before an auto-reflash.
 
     - if: inputs.pack-format == 'unpacked'
       shell: bash

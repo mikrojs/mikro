@@ -28,7 +28,7 @@ export const args = command(
     ),
     firmwareDir: optional(
       option('--firmware-dir', string({metavar: 'PATH'}), {
-        description: message`Directory whose <board>/ subdirs (e.g. esp32c6-generic/) are tarballed and uploaded as mikrojs-firmware-<board>.tar.gz assets.`,
+        description: message`Directory whose <board>/ subdirs (e.g. esp32c6-generic/) are tarballed and uploaded as mikro-fw-<board>.tar.gz assets, and under their older mikrojs-firmware- names.`,
       }),
     ),
   }),
@@ -103,11 +103,14 @@ function composeBody(version: string): string {
   )
 }
 
-/** Asset names one firmware dir is uploaded under. A generic build also gets
- *  its old chip name (mikrojs-firmware-esp32c6.tar.gz), the only one that
+/** Asset names one firmware dir is uploaded under: `mikro-fw-<board>`, the
+ *  name `mikro flash --from` looks for (the dirs are generic images, whose
+ *  names already hold the chip; see archiveName in @mikrojs/firmware), then
+ *  the `mikrojs-firmware-` names of older CLIs. A generic build also gets its
+ *  old chip name (mikrojs-firmware-esp32c6.tar.gz), the only one that
  *  `mikro flash --from` in CLI versions up to 0.20 looks for. */
 export function firmwareAssetNames(board: string): string[] {
-  const names = [`mikrojs-firmware-${board}.tar.gz`]
+  const names = [`mikro-fw-${board}.tar.gz`, `mikrojs-firmware-${board}.tar.gz`]
   const generic = /^(.+)-generic$/.exec(board)
   if (generic) names.push(`mikrojs-firmware-${generic[1]}.tar.gz`)
   return names

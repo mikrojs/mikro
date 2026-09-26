@@ -108,8 +108,10 @@ export function missingFeaturesError(
             return owner === undefined || owner === id ? `  ${id}` : `  ${id} (${owner})`
           }),
           // Not plain `mikro flash`: that installs the generic firmware.
-          `List ${it} in your firmware project's MIKROJS_NATIVE_MODULES, build the firmware, ` +
-            'and flash that build:',
+          `Flash firmware that includes ${it}: the image of a board package whose firmware ` +
+            `lists ${it},`,
+          '  mikro flash --board <board>',
+          `or a build of your firmware project, with ${it} in its MIKROJS_NATIVE_MODULES:`,
           '  mikro flash --build-dir <your-firmware-build>',
           // Stock firmware: the user may have no firmware project yet.
           ...(customFirmwareOf(ready) === undefined

@@ -168,7 +168,7 @@ Nothing checks that this file agrees with the C++, so keep the two side by side 
 
 ## Adding the module to firmware
 
-Adding the package to the app's dependencies doesn't change the firmware. A firmware build includes a native module when the [custom firmware](./custom-firmware) project lists it in `MIKROJS_NATIVE_MODULES`. Separate several names with `;`.
+Adding the package to the app's dependencies doesn't change the firmware. A firmware build includes a native module when the [custom firmware](./custom-firmware) project lists it in `MIKROJS_NATIVE_MODULES`, and so does the firmware project of a [board package](./creating-boards). Separate several names with `;`.
 
 ```cmake
 set(MIKROJS_NATIVE_MODULES "@my-scope/epaper/panel")
@@ -180,8 +180,10 @@ Before `mikro deploy` uploads an app, it makes sure that the device's firmware i
 This app imports a native module that the device's firmware (esp32c6-generic)
 was not built with:
   @my-scope/epaper/panel
-List it in your firmware project's MIKROJS_NATIVE_MODULES, build the firmware,
-and flash that build:
+Flash firmware that includes it: the image of a board package whose firmware
+lists it,
+  mikro flash --board <board>
+or a build of your firmware project, with it in its MIKROJS_NATIVE_MODULES:
   mikro flash --build-dir <your-firmware-build>
 To create a firmware project, see https://mikrojs.dev/develop/custom-firmware
 ```

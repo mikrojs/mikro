@@ -18,7 +18,7 @@ export const args = command(
     args: passThrough({format: 'greedy', description: message`Arguments for idf.py`}),
   }),
   {
-    description: message`Run ESP-IDF's idf.py to build custom firmware, with the build in .mikro/build-fw`,
+    description: message`Run ESP-IDF's idf.py to build custom firmware, with the build in .mikro/build-fw (.mikro/build-fw-<folder> for a project in a folder of the package)`,
   },
 )
 
@@ -38,9 +38,15 @@ function optionValue(args: readonly string[], short: string, long: string): stri
   return undefined
 }
 
-/** Where `mikro idf` builds: `.mikro/build-fw` in the package around the idf.py project. */
+/** Where `mikro idf` builds: `.mikro/build-fw` in the package around the idf.py
+ *  project, or `.mikro/build-fw-<folder>` for a project in a folder of the
+ *  package (`t-display/` builds in `.mikro/build-fw-t-display`), so the boards
+ *  of a multi-board package each keep a build of their own. */
 export function firmwareBuildDir(projectDir: string): string {
-  return pathlib.join(resolveProjectRoot(projectDir), '.mikro', 'build-fw')
+  const root = resolveProjectRoot(projectDir)
+  const folder = pathlib.relative(root, pathlib.resolve(projectDir))
+  const name = folder === '' ? 'build-fw' : `build-fw-${folder.split(pathlib.sep).join('-')}`
+  return pathlib.join(root, '.mikro', name)
 }
 
 /** `args` with `-B <firmwareBuildDir>` in front, unless they name a build directory. */

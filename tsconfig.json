@@ -16,6 +16,9 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
+    // @mikrojs/firmware's src/ names its .ts files in relative imports (see its
+    // tsconfig); packages that import it under the development condition see them.
+    "rewriteRelativeImportExtensions": true,
     "customConditions": ["development"]
   }
 }

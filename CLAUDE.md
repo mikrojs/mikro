@@ -153,7 +153,7 @@ Requires ESP-IDF >= 6.1 via [EIM](https://docs.espressif.com/projects/idf-im-ui/
 eim install -i v6.1 -t all -n true
 ```
 
-`mikro idf` (the CLI command) runs `idf.py` with its arguments, through `eim run` when ESP-IDF is not active, and builds into `.mikro/build-fw` unless `-B` is given. From `esp32/`:
+`mikro idf` (the CLI command) runs `idf.py` with its arguments, through `eim run` when ESP-IDF is not active, and builds into `.mikro/build-fw` (`.mikro/build-fw-<folder>` for a project in a folder of the package) unless `-B` is given. From `esp32/`:
 
 ```sh
 pn mikro idf set-target esp32c6  # or esp32, esp32s3, etc.
@@ -245,7 +245,14 @@ A **native module** is a module written in C/C++ and compiled into the firmware.
 - **Build and deploy**: it is compiled in only when the project lists it. The CLI leaves the import external, deploys nothing of it, and gates the deploy on the device reporting the module.
 - **Component names**: ESP-IDF names a component after its directory, so the directory names must be unique within one firmware.
 - **App modules**: an app can map a `#` import in its own `imports` field to C/C++ in the same form (exact or `*` pattern keys). The firmware project lists it as `#name`; `src/inputs.ts` resolves it in the nearest package at or above the project with a matching `imports` entry. Its component defines no `MIK_PACKAGE_NAME`, which makes the compile-time check accept only `#` names. The CLI refuses a `#` native import from any package other than the app (the cwd's package), since `#` names are per package but the firmware's registry is global.
-- **App as firmware project** (`examples/chip-temperature`): the firmware's `CMakeLists.txt` sits next to the app's `package.json`, which depends on `@mikrojs/firmware`. A firmware folder inside an app also works, with no `package.json` of its own. npm takes the nearest `package.json` as the project, so with one `npx --no --package=@mikrojs/firmware` fails to find the app's `@mikrojs/firmware`. The firmware name (`MIK_FW_NAME`, which guards custom firmware from the CLI's auto-reflash) comes from the nearest `package.json` at or above the project: the app's.
+- **App as firmware project** (`examples/chip-temperature`): the firmware's `CMakeLists.txt` sits next to the app's `package.json`, which depends on `@mikrojs/firmware`. A firmware folder inside an app also works, with no `package.json` of its own. npm takes the nearest `package.json` as the project, so with one `npx --no --package=@mikrojs/firmware` fails to find the app's `@mikrojs/firmware`. The firmware's name (`MIK_BOARD_NAME`: `sys.board.name`, and the `fw` identity that guards custom firmware from the CLI's auto-reflash) is `MIKROJS_BOARD_NAME`, else the name in the nearest `package.json` at or above the project: the app's. The component writes it, the description, the chip and the version to `firmware.json` in the build folder.
+
+A **board package** is prebuilt firmware plus an optional JS library (pins, pre-wired peripherals, a tsconfig preset). See `docs/develop/creating-boards.md`.
+
+- **Declaration**: an export with a `firmware` condition pointing at the image's `firmware.json`, e.g. `".": {"firmware": "./dist-fw/firmware.json"}`. The image folder holds what `mikro fw prepack` copies from a build: `firmware.json`, `flasher_args.json` and the files it flashes. It is gitignored and published through `files`. The export's key names the firmware project that builds the image (`.` the package root, `./t-display` the `t-display/` folder); the image folder is the package's choice, by convention `dist-fw/` or `dist-fw/<board>/`.
+- **Name**: the board names itself; the name in `firmware.json` is what the firmware reports. `@mikrojs/firmware/src/boards.ts` reads and checks board packages (`loadBoards`, `checkBoardPackage`, schema from `@mikrojs/schema`); `mikro flash` finds boards among the project's dependencies, and `mikro fw check` / `fw prepack` check them.
+- **Building**: the package is a firmware project listing its native modules in `MIKROJS_NATIVE_MODULES`; there is no building firmware on top of a board from an app.
+- **Generic images**: `@mikrojs/firmware` ships its images the same way, `dist-fw/<chip>-generic/`, exported as `./<chip>-generic`; `esp32/` names them with `MIKROJS_BOARD_NAME`.
 
 A **driver** is code for a peripheral, in one of two flavors:
 

@@ -5,6 +5,8 @@ import * as path from 'node:path'
 import {pipeline} from 'node:stream/promises'
 import {promisify} from 'node:util'
 
+import {archiveName, boardFileName, isArchiveForChip} from '@mikrojs/firmware/boards'
+
 import {paths} from './envPaths.js'
 import {UserError} from './errorMessage.js'
 
@@ -25,12 +27,18 @@ export type ResolveFromOptions = {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getAssetName(chip: Chip): string {
-  return `mikrojs-firmware-${chip}.tar.gz`
-}
-
-function getBoardAssetName(boardName: string): string {
-  return `mikrojs-firmware-${boardName}.tar.gz`
+/**
+ * The archive names to look for, best first, without `.tar.gz`: the
+ * `mikro-fw-` names `mikro fw pack` and releases use (see archiveName), then
+ * the `mikrojs-firmware-<board>` and `mikrojs-firmware-<chip>` names of older
+ * releases and builds.
+ */
+function archiveCandidates(chip: Chip | undefined, board: string | undefined): string[] {
+  const names: string[] = []
+  if (board !== undefined && chip !== undefined) names.push(archiveName(board, chip))
+  if (board !== undefined) names.push(`mikrojs-firmware-${boardFileName(board)}`)
+  if (chip !== undefined) names.push(archiveName(undefined, chip), `mikrojs-firmware-${chip}`)
+  return names
 }
 
 /** Returns true if the version string looks like a release tag (starts with "v" followed by a digit). */
@@ -99,7 +107,7 @@ async function resolveRefToSha(token: string, repo: string, ref: string): Promis
   return commit.sha
 }
 
-type ReleaseAsset = {name: string; url: string}
+export type ReleaseAsset = {name: string; url: string}
 
 async function fetchRelease(
   token: string,
@@ -130,30 +138,29 @@ async function fetchRelease(
   return (await res.json()) as {assets: ReleaseAsset[]}
 }
 
-function selectReleaseAsset(
+export function selectReleaseAsset(
   assets: ReleaseAsset[],
   chip: Chip | undefined,
   board: string | undefined,
   repo: string,
 ): ReleaseAsset {
-  // Try board-specific. For generic boards this is
-  // mikrojs-firmware-<chip>-generic.tar.gz; releases predating generic
-  // naming only ship the chip asset, which the chip fallback covers.
-  if (board) {
-    const boardAsset = assets.find((a) => a.name === getBoardAssetName(board))
-    if (boardAsset) return boardAsset
+  for (const name of archiveCandidates(chip, board)) {
+    const asset = assets.find((a) => a.name === `${name}.tar.gz`)
+    if (asset) return asset
   }
-
-  // Try chip-specific
-  if (chip) {
-    const chipAsset = assets.find((a) => a.name === getAssetName(chip))
-    if (chipAsset) return chipAsset
+  const archives = assets.filter(
+    (a) =>
+      a.name.endsWith('.tar.gz') && (a.name.startsWith('mikro-fw-') || a.name.includes('firmware')),
+  )
+  if (chip !== undefined) {
+    const forChip = archives.filter((a) =>
+      isArchiveForChip(a.name.slice(0, -'.tar.gz'.length), chip),
+    )
+    if (forChip.length === 1) return forChip[0]!
   }
 
   // Auto: single firmware archive
-  const firmwareAssets = assets.filter(
-    (a) => a.name.endsWith('.tar.gz') && a.name.includes('firmware'),
-  )
+  const firmwareAssets = archives
   if (firmwareAssets.length === 1) return firmwareAssets[0]!
 
   if (firmwareAssets.length === 0) {
@@ -169,7 +176,7 @@ function selectReleaseAsset(
   )
 }
 
-type WorkflowArtifact = {id: number; name: string; expired: boolean}
+export type WorkflowArtifact = {id: number; name: string; expired: boolean}
 
 async function fetchWorkflowArtifacts(
   token: string,
@@ -225,36 +232,27 @@ async function fetchWorkflowArtifacts(
   return artifactArrays.flat()
 }
 
-// Artifact names produced by firmware-build.yml: `mikrojs-firmware-<x>` (tarball
-// pack, used by firmware.yml) or `firmware-<x>` (unpacked pack, used by
-// release.yml). We accept either.
-function artifactNameCandidates(suffix: string): string[] {
-  return [`mikrojs-firmware-${suffix}`, `firmware-${suffix}`]
-}
-
+// Artifact names produced by firmware-build.yml: the archive name (tarball
+// pack, used by firmware.yml; `mikrojs-firmware-<x>` in older builds) or
+// `firmware-<x>` (unpacked pack, used by release.yml). We accept each.
 function isFirmwareArtifact(name: string): boolean {
-  return /^(mikrojs-)?firmware(-|$)/.test(name)
+  return /^(mikro-fw-|(mikrojs-)?firmware(-|$))/.test(name)
 }
 
-function selectWorkflowArtifact(
+export function selectWorkflowArtifact(
   artifacts: WorkflowArtifact[],
   chip: Chip | undefined,
   board: string | undefined,
   repo: string,
 ): WorkflowArtifact {
-  // Try board-specific (generic boards: firmware-<chip>-generic, with the
-  // chip candidates below as the legacy fallback)
-  if (board) {
-    const names = artifactNameCandidates(board)
-    const boardArtifact = artifacts.find((a) => names.includes(a.name))
-    if (boardArtifact) return boardArtifact
+  for (const name of archiveCandidates(chip, board)) {
+    const unpacked = name.replace(/^mikrojs-firmware-/, 'firmware-')
+    const artifact = artifacts.find((a) => a.name === name || a.name === unpacked)
+    if (artifact) return artifact
   }
-
-  // Try chip-specific
-  if (chip) {
-    const names = artifactNameCandidates(chip)
-    const chipArtifact = artifacts.find((a) => names.includes(a.name))
-    if (chipArtifact) return chipArtifact
+  if (chip !== undefined) {
+    const forChip = artifacts.filter((a) => isArchiveForChip(a.name, chip))
+    if (forChip.length === 1) return forChip[0]!
   }
 
   // Auto: single firmware artifact
@@ -396,7 +394,7 @@ async function resolveViaRelease(
   board: string | undefined,
   report: (msg: string) => void,
 ): Promise<string> {
-  const cacheId = board ?? chip ?? 'firmware'
+  const cacheId = board === undefined ? (chip ?? 'firmware') : boardFileName(board)
   const cacheTag = tag ?? 'latest'
   const extractedDir = path.join(CACHE_DIR, `${cacheId}-${cacheTag}`)
   const flasherArgsPath = path.join(extractedDir, 'flasher_args.json')
@@ -423,7 +421,7 @@ async function resolveViaActions(
   board: string | undefined,
   report: (msg: string) => void,
 ): Promise<string> {
-  const cacheId = board ?? chip ?? 'firmware'
+  const cacheId = board === undefined ? (chip ?? 'firmware') : boardFileName(board)
   const extractedDir = path.join(CACHE_DIR, `${cacheId}-${sha}`)
   const flasherArgsPath = path.join(extractedDir, 'flasher_args.json')
 

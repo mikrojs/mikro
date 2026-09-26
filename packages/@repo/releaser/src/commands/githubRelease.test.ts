@@ -78,14 +78,18 @@ describe('extractChangelogSection', () => {
 })
 
 describe('firmwareAssetNames', () => {
-  test('a generic build is also uploaded under its old chip name', () => {
+  test('a generic build is also uploaded under its older names', () => {
     expect(firmwareAssetNames('esp32c6-generic')).toEqual([
+      'mikro-fw-esp32c6-generic.tar.gz',
       'mikrojs-firmware-esp32c6-generic.tar.gz',
       'mikrojs-firmware-esp32c6.tar.gz',
     ])
   })
 
-  test('a board build has one name', () => {
-    expect(firmwareAssetNames('xiao-esp32c6')).toEqual(['mikrojs-firmware-xiao-esp32c6.tar.gz'])
+  test('a board build has its name and its older name', () => {
+    expect(firmwareAssetNames('xiao-esp32c6')).toEqual([
+      'mikro-fw-xiao-esp32c6.tar.gz',
+      'mikrojs-firmware-xiao-esp32c6.tar.gz',
+    ])
   })
 })

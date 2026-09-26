@@ -117,9 +117,10 @@ const MAX_CHANNEL_LENGTH = 64
 const CHANNEL_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/
 const MAX_VERSION_LENGTH = 64
 const MAX_BOARD_LENGTH = 64
-/** Board names are lowercase with inner `.` and `-` (docs/registry-spec.md,
- *  "Board names"), e.g. `esp32c6-generic`. */
-const BOARD_RE = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/
+/** A board name is `<chip>-generic` or a board package's specifier
+ *  (docs/registry-spec.md, "Board names"), e.g. `@acme/devboard`. */
+const BOARD_RE =
+  /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?)?$/
 const MAX_REASON_LENGTH = 64
 const MAX_DETAIL_LENGTH = 256
 const MAX_NOTE_LENGTH = 512

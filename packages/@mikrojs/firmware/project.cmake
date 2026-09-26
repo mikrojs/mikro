@@ -42,6 +42,20 @@ else()
     set(_MIK_NATIVE_MODULES "${MIKROJS_NATIVE_MODULES}")
 endif()
 
+# ── Board name and description ───────────────────────────────────────
+# MIKROJS_BOARD_NAME and MIKROJS_BOARD_DESCRIPTION name the board the image is
+# for; unset, the mikrojs component takes the nearest package.json's name and
+# description. Same precedence as above.
+foreach(_var IN ITEMS BOARD_NAME BOARD_DESCRIPTION)
+    if(DEFINED CACHE{MIKROJS_${_var}})
+        set(_MIK_${_var} "$CACHE{MIKROJS_${_var}}")
+    elseif(DEFINED ENV{MIKROJS_${_var}})
+        set(_MIK_${_var} "$ENV{MIKROJS_${_var}}")
+    else()
+        set(_MIK_${_var} "${MIKROJS_${_var}}")
+    endif()
+endforeach()
+
 # The package paths for the mikrojs component, and the native modules
 # resolved from _MIK_NATIVE_MODULES.
 include("${CMAKE_CURRENT_LIST_DIR}/resolve.cmake")
@@ -153,12 +167,9 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/sdkconfig")
     endif()
 endif()
 
-# Native module components, and the board's sdkconfig defaults.
+# Native module components.
 if(_BOARD_COMPONENT_DIRS)
     set(EXTRA_COMPONENT_DIRS "${EXTRA_COMPONENT_DIRS};${_BOARD_COMPONENT_DIRS}")
-endif()
-if(_BOARD_SDKCONFIG_DEFAULTS)
-    list(APPEND _SDKCONFIG_LIST "${_BOARD_SDKCONFIG_DEFAULTS}")
 endif()
 
 set(SDKCONFIG_DEFAULTS "${_SDKCONFIG_LIST}")

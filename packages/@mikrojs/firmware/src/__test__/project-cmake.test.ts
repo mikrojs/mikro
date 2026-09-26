@@ -135,17 +135,25 @@ test('resolution is empty for projects without a package.json', async () => {
   expect(await resolveFirmwareInputs(emptyDir)).toEqual({
     components: '',
     nativeModules: '',
-    sdkconfigs: '',
     configureDepends: '',
   })
 })
 
 const component = join(packageRoot, 'components', 'mikrojs')
+const {version} = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
+  version: string
+}
+
+/** The firmware.json the component wrote into the build directory. */
+function firmwareJson(dir: string): unknown {
+  return JSON.parse(readFileSync(join(dir, 'build', 'firmware.json'), 'utf8'))
+}
 
 /** Configure the mikrojs component in a project at `dir` the way ESP-IDF does
  *  after project.cmake, with ESP-IDF's commands stubbed and a stand-in for
- *  quickjs.cmake (which would patch QuickJS and build qjsc). */
-function configureComponent(dir: string) {
+ *  quickjs.cmake (which would patch QuickJS and build qjsc). `lines` go before
+ *  the include (set(MIKROJS_BOARD_NAME ...)). */
+function configureComponent(dir: string, lines: string[] = []) {
   const stub = join(dir, 'stub.c')
   write(stub, '')
   write(
@@ -161,6 +169,7 @@ function configureComponent(dir: string) {
       'set(IDF_VERSION_PATCH 0)',
       'set(IDF_TARGET esp32c6)',
       'project(fixture C)',
+      ...lines,
       `include("${projectCmake}")`,
       'message(STATUS "TEST_QUICKJS_CMAKE=${MIK_QUICKJS_CMAKE}")',
       `set(MIK_QUICKJS_CMAKE "${join(dir, 'quickjs-stub.cmake')}")`,
@@ -187,15 +196,23 @@ test.skipIf(!hasCmake())(
   'the component compiles in the firmware version, the project name and the features',
   () => {
     const dir = join(fixtureDir, 'component-named')
-    write(join(dir, 'package.json'), JSON.stringify({name: 'acme-sensor-fw'}))
+    write(
+      join(dir, 'package.json'),
+      JSON.stringify({name: 'acme-sensor-fw', description: 'ACME sensor node'}),
+    )
     const vars = configureComponent(dir)
-    const {version} = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
-      version: string
-    }
     expect(vars.DEFINITIONS).toContain(`MIK_FW_VERSION="${version}"`)
-    expect(vars.DEFINITIONS).toContain('MIK_FW_NAME="acme-sensor-fw"')
+    expect(vars.DEFINITIONS).toContain('MIK_BOARD_NAME="acme-sensor-fw"')
     expect(vars.DEFINITIONS).toContain('MIK_FW_FEATURES="wifi,i2s"')
     expect(existsSync(vars.QUICKJS_CMAKE ?? '')).toBe(true)
+    // firmware.json next to flasher_args.json: what the image is, for tools
+    // that read it without a device
+    expect(firmwareJson(dir)).toEqual({
+      name: 'acme-sensor-fw',
+      description: 'ACME sensor node',
+      chip: 'esp32c6',
+      version,
+    })
   },
   30_000,
 )
@@ -206,7 +223,7 @@ test.skipIf(!hasCmake())(
     const app = join(fixtureDir, 'component-app')
     write(join(app, 'package.json'), JSON.stringify({name: 'acme-app'}))
     const vars = configureComponent(join(app, 'firmware'))
-    expect(vars.DEFINITIONS).toContain('MIK_FW_NAME="acme-app"')
+    expect(vars.DEFINITIONS).toContain('MIK_BOARD_NAME="acme-app"')
   },
   30_000,
 )
@@ -217,11 +234,51 @@ test.skipIf(!hasCmake())(
     // No package.json at or above the project: the device omits the fw identity
     const bare = configureComponent(join(fixtureDir, 'component-bare'))
     expect(bare.DEFINITIONS).toContain('MIK_FW_VERSION=')
-    expect(bare.DEFINITIONS).not.toContain('MIK_FW_NAME')
+    expect(bare.DEFINITIONS).not.toContain('MIK_BOARD_NAME')
+    expect(firmwareJson(join(fixtureDir, 'component-bare'))).toEqual({chip: 'esp32c6', version})
 
     const unnamed = join(fixtureDir, 'component-unnamed')
     write(join(unnamed, 'package.json'), JSON.stringify({private: true}))
-    expect(configureComponent(unnamed).DEFINITIONS).not.toContain('MIK_FW_NAME')
+    expect(configureComponent(unnamed).DEFINITIONS).not.toContain('MIK_BOARD_NAME')
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  'MIKROJS_BOARD_NAME and MIKROJS_BOARD_DESCRIPTION override the package.json',
+  () => {
+    const dir = join(fixtureDir, 'component-board')
+    write(join(dir, 'package.json'), JSON.stringify({name: '@acme/boards', description: 'x'}))
+    const vars = configureComponent(dir, [
+      'set(MIKROJS_BOARD_NAME "@acme/boards/t-display")',
+      'set(MIKROJS_BOARD_DESCRIPTION "LILYGO T-Display, 1.14\\" \\\\ ST7789")',
+    ])
+    expect(vars.DEFINITIONS).toContain('MIK_BOARD_NAME="@acme/boards/t-display"')
+    // A description is free text, escaped for JSON
+    expect(firmwareJson(dir)).toEqual({
+      name: '@acme/boards/t-display',
+      description: 'LILYGO T-Display, 1.14" \\ ST7789',
+      chip: 'esp32c6',
+      version,
+    })
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  'a board name the device and a registry cannot take fails to configure',
+  () => {
+    const long = `@acme/${'x'.repeat(60)}`
+    for (const [label, name] of [
+      ['uppercase', 'Acme-Board'],
+      ['too-long', long],
+      ['nested', '@acme/boards/t-display/v2'],
+    ] as const) {
+      const dir = join(fixtureDir, `component-bad-name-${label}`)
+      expect(() => configureComponent(dir, [`set(MIKROJS_BOARD_NAME "${name}")`]), label).toThrow(
+        /the\s+board\s+name\s+is/,
+      )
+    }
   },
   30_000,
 )

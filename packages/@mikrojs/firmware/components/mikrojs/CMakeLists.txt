@@ -158,13 +158,16 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"mikro\""
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_LIST_DIR}/../../package.json")
 
-# Firmware identity: the name in the nearest package.json at or above the
-# project (the app's, for a firmware folder inside an app), reported in
-# MSG_READY as `fw`. The CLI only auto-flashes its bundled prebuilt over a
-# device whose identity matches the prebuilt's own recorded name, so custom
-# firmware is protected from the auto-reflash without any project marker.
-# Absent (no package.json, or no name in the nearest one) the field is omitted.
-set(_MIK_FW_NAME "")
+# Board name and description: MIKROJS_BOARD_NAME and MIKROJS_BOARD_DESCRIPTION
+# (resolved by project.cmake), else the name and description in the nearest
+# package.json at or above the project (the app's, for a firmware folder inside
+# an app). The name is compiled in and reported as sys.board.name, and as
+# `board` and `fw` in MSG_READY. The CLI only auto-flashes its bundled image over
+# a device whose `fw` matches that image's name, so other firmware is never
+# replaced by accident. Without a name, `fw` is omitted and the board is
+# <chip>-generic.
+set(_MIK_NAME "${_MIK_BOARD_NAME}")
+set(_MIK_DESCRIPTION "${_MIK_BOARD_DESCRIPTION}")
 set(_MIK_FW_DIR "${CMAKE_SOURCE_DIR}")
 while(NOT EXISTS "${_MIK_FW_DIR}/package.json")
     get_filename_component(_MIK_FW_PARENT "${_MIK_FW_DIR}" DIRECTORY)
@@ -175,18 +178,33 @@ while(NOT EXISTS "${_MIK_FW_DIR}/package.json")
 endwhile()
 if(EXISTS "${_MIK_FW_DIR}/package.json")
     file(READ "${_MIK_FW_DIR}/package.json" _MIK_PROJECT_PACKAGE)
-    string(JSON _MIK_FW_NAME ERROR_VARIABLE _MIK_FW_NAME_ERROR
-        GET "${_MIK_PROJECT_PACKAGE}" name)
-    if(_MIK_FW_NAME_ERROR)
-        set(_MIK_FW_NAME "")
-    endif()
+    foreach(_field IN ITEMS name description)
+        string(TOUPPER "${_field}" _FIELD)
+        if(_MIK_${_FIELD} STREQUAL "")
+            string(JSON _MIK_${_FIELD} ERROR_VARIABLE _MIK_FIELD_ERROR
+                GET "${_MIK_PROJECT_PACKAGE}" ${_field})
+            if(_MIK_FIELD_ERROR)
+                set(_MIK_${_FIELD} "")
+            endif()
+        endif()
+    endforeach()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${_MIK_FW_DIR}/package.json")
 endif()
-# STREQUAL, not if(_MIK_FW_NAME): a project named "0", "off", or "false"
-# would read as a false constant and silently lose its identity.
-if(NOT _MIK_FW_NAME STREQUAL "")
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_NAME=\"${_MIK_FW_NAME}\"")
+# STREQUAL, not if(_MIK_NAME): a project named "0", "off", or "false" would read
+# as a false constant and silently lose its name.
+if(NOT _MIK_NAME STREQUAL "")
+    # The device keeps the name in a 64-byte buffer, and a registry rejects a
+    # check-in whose board name has another form.
+    string(LENGTH "${_MIK_NAME}" _MIK_NAME_LENGTH)
+    if(_MIK_NAME_LENGTH GREATER 63 OR NOT _MIK_NAME MATCHES
+       "^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*(/[a-z0-9]([a-z0-9.-]*[a-z0-9])?)?$")
+        message(FATAL_ERROR
+            "mikrojs: the board name is \"${_MIK_NAME}\". A board name has at most 63 "
+            "characters and the form of a package name, optionally followed by /<board> "
+            "(lowercase letters, digits, '.' and '-'). Set MIKROJS_BOARD_NAME.")
+    endif()
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_BOARD_NAME=\"${_MIK_NAME}\"")
 endif()
 
 # UTC build timestamp. `string(TIMESTAMP ... UTC)` honors SOURCE_DATE_EPOCH
@@ -196,19 +214,21 @@ endif()
 string(TIMESTAMP _MIK_BUILD_DATE_UTC "%Y-%m-%dT%H:%M:%SZ" UTC)
 target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_BUILD_DATE_UTC=\"${_MIK_BUILD_DATE_UTC}\"")
 
-# Board name from MIKROJS_BOARD env var (set by CI or developer)
-if(DEFINED ENV{MIKROJS_BOARD})
-    # The registry rejects a check-in whose board name has another shape, and
-    # the device keeps it in a 48-byte buffer: a bad name means no OTA updates.
-    string(LENGTH "$ENV{MIKROJS_BOARD}" _MIK_BOARD_NAME_LEN)
-    if(NOT "$ENV{MIKROJS_BOARD}" MATCHES "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$" OR _MIK_BOARD_NAME_LEN GREATER 47)
-        message(FATAL_ERROR
-            "mikrojs: MIKROJS_BOARD is \"$ENV{MIKROJS_BOARD}\". A board name has at most 47 "
-            "characters: lowercase letters, digits, '.' and '-', and it starts and ends with a "
-            "letter or digit.")
-    endif()
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_BOARD_NAME=\"$ENV{MIKROJS_BOARD}\"")
+# firmware.json next to flasher_args.json: what the image is, for the tools
+# that read it without a device (mikro flash, mikro fw pack and prepack).
+set(_MIK_FW_JSON "{")
+if(NOT _MIK_NAME STREQUAL "")
+    string(APPEND _MIK_FW_JSON "\"name\": \"${_MIK_NAME}\", ")
 endif()
+if(NOT _MIK_DESCRIPTION STREQUAL "")
+    # Free text: escape it for JSON, on one line.
+    string(REPLACE "\\" "\\\\" _MIK_DESCRIPTION "${_MIK_DESCRIPTION}")
+    string(REPLACE "\"" "\\\"" _MIK_DESCRIPTION "${_MIK_DESCRIPTION}")
+    string(REGEX REPLACE "[\r\n\t]+" " " _MIK_DESCRIPTION "${_MIK_DESCRIPTION}")
+    string(APPEND _MIK_FW_JSON "\"description\": \"${_MIK_DESCRIPTION}\", ")
+endif()
+string(APPEND _MIK_FW_JSON "\"chip\": \"${IDF_TARGET}\", \"version\": \"${_MIK_VERSION}\"}\n")
+file(WRITE "${CMAKE_BINARY_DIR}/firmware.json" "${_MIK_FW_JSON}")
 
 # ── Module lists derived from runtime/modules.json ───────────────────
 # Feature gating for the derived lists: ble-gated modules compile only when
