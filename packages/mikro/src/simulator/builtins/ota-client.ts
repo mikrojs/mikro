@@ -113,7 +113,7 @@ function parseConfig(raw) {
   const version = raw.version
   // Bounded by the buffers the device stores them in. A truncated rev would
   // never match the one the registry issued, so it is rejected, not cut.
-  if (typeof version !== 'string' || version === '' || version.length > 31) return undefined
+  if (typeof version !== 'string' || version === '' || version.length > 64) return undefined
   const rev = raw.rev
   const hasRev = rev !== undefined && rev !== null
   if (hasRev && (typeof rev !== 'string' || rev.length > 64)) return undefined

@@ -231,7 +231,7 @@ JSValue MIKOtaConfigReader::LoadDoc(JSContext* ctx, bool* out_failed) {
         return JS_UNDEFINED;
     }
 
-    char version[32] = {};
+    char version[MIK_OTA_VERSION_MAX] = {};
     if (!env_ || !env_->read_app_version ||
         !env_->read_app_version(env_->opaque, version, sizeof(version))) {
         return JS_UNDEFINED;
@@ -398,7 +398,7 @@ MIKOtaConfigWrite mik__ota_deliver_config(const MIKOtaEnv* env, const MIKOtaStor
                                           int trial_boots) {
     if (!config) return MIKOtaConfigWrite::kUnchanged;
 
-    char running[32] = {};
+    char running[MIK_OTA_VERSION_MAX] = {};
     if (!env || !env->read_app_version ||
         !env->read_app_version(env->opaque, running, sizeof(running))) {
         // The version the document has to be matched against could not be read,

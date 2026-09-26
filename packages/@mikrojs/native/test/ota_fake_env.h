@@ -758,7 +758,8 @@ public:
     }
 
     bool ReadAppVersion(char* out, size_t len) {
-        if (app_version.empty()) return false;
+        // Like the device's reader: a version that does not fit is unreadable.
+        if (app_version.empty() || app_version.size() + 1 > len) return false;
         snprintf(out, len, "%s", app_version.c_str());
         return true;
     }

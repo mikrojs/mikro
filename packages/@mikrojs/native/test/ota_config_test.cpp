@@ -462,6 +462,17 @@ TEST_CASE("applies a document stamped for the running release") {
     CHECK(d.ReadOnce() == "{\"interval\":45}");
 }
 
+TEST_CASE("reads a document stamped for a snapshot release") {
+    const char* kSnapshot = "0.10.0-snapshot.20260926T120000Z";
+    Device d;
+    d.SetManifest(kDefaultsManifest);
+    d.env.app_version = kSnapshot;
+    Delivery delivered("r1", kSnapshot, DocInterval(45));
+
+    CHECK(mik__ota_deliver_config(d.env.env(), &delivered.cfg, 1) == MIKOtaConfigWrite::kApplied);
+    CHECK(d.ReadOnce() == "{\"interval\":45}");
+}
+
 TEST_CASE("keeps the document it replaced as the rollback baseline") {
     Device d;
     d.SetManifest(kDefaultsManifest);

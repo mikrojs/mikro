@@ -92,6 +92,10 @@ function projectName(pkg: ProjectPackageJson): string {
   return pkg.name
 }
 
+/** The registry's cap on a version, and what the device's version buffers hold
+ *  (`MIK_OTA_VERSION_MAX` in ota_env.h). */
+const MAX_VERSION_LENGTH = 64
+
 /** The build settings, as one line: what actually shaped the bytecode, so a
  *  surprising checksum or a stripped console call is traceable to a setting. */
 function describeBuildSettings(s: Extract<BuildEvent, {type: 'settings'}>): string {
@@ -128,6 +132,16 @@ export async function packProject(options: {
   const buildDir = pathlib.join(getMikroDir(), 'ota-build')
   let duplicatePackages: DuplicatePackage[] | undefined
 
+  const pkg = await readPackageJson(projectRoot)
+  const app = projectName(pkg)
+  const baseVersion = typeof pkg.version === 'string' ? pkg.version : '0.0.0'
+  const version = options.snapshot ? snapshotVersion(baseVersion, new Date()) : baseVersion
+  if (version.length > MAX_VERSION_LENGTH) {
+    throw new UserError(
+      `Version ${version} is ${version.length} characters; the registry and devices accept at most ${MAX_VERSION_LENGTH}.`,
+    )
+  }
+
   let features: BuildFeatures | undefined
   await lastValueFrom(
     build(entry, buildDir, {
@@ -137,6 +151,8 @@ export async function packProject(options: {
       minifyLevel: options.minifyLevel,
       logLevel: options.logLevel,
       env: 'production',
+      // The deployed package.json is where the device reads its app version.
+      version,
     }).pipe(
       // Report the settings the build resolved, not the flags passed in: a
       // mikro.config.ts can set the minifier or level, and only the builder
@@ -157,18 +173,13 @@ export async function packProject(options: {
     {defaultValue: undefined},
   )
 
-  const [pkg, firmwareVersion, bytecodeVersion, git, mikroConfig] = await Promise.all([
-    readPackageJson(projectRoot),
+  const [firmwareVersion, bytecodeVersion, git, mikroConfig] = await Promise.all([
     resolveFirmwareVersion(projectRoot),
     readBytecodeVersion(buildDir),
     resolveGitState(projectRoot),
     loadMikroConfig(projectRoot, 'production'),
   ])
-  const app = projectName(pkg)
-  const baseVersion = typeof pkg.version === 'string' ? pkg.version : '0.0.0'
   const configSchema = serializeConfigSchema(mikroConfig)
-
-  const version = options.snapshot ? snapshotVersion(baseVersion, new Date()) : baseVersion
 
   // Where the build came from, baked in at pack so it survives a pack here and a
   // push elsewhere: `push --tarball` reads all of this back from the manifest

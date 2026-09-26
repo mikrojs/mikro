@@ -64,10 +64,13 @@ typedef struct MIKOtaReconcileOutcome {
     MIKOtaDiagnostic diagnostic;
 } MIKOtaReconcileOutcome;
 
+/* The registry caps an app version at 64 characters; plus the NUL. */
+#define MIK_OTA_VERSION_MAX 65
+
 /* Running build info */
 typedef struct MIKOtaRunningBuild {
-    char checksum[65]; /* SHA-256 hex or empty string if none */
-    char version[32];  /* package.json version or empty string if none */
+    char checksum[65];                 /* SHA-256 hex or empty string if none */
+    char version[MIK_OTA_VERSION_MAX]; /* package.json version or empty string if none */
     bool trial;
 } MIKOtaRunningBuild;
 
@@ -114,9 +117,9 @@ typedef struct MIKOtaConfigErrorReport {
 
 /* Stored config document representation */
 typedef struct MIKOtaStoredConfig {
-    char rev[MIK_OTA_REV_MAX]; /* empty string if none */
-    char version[32];          /* required */
-    uint8_t* doc_cbor;         /* CBOR-encoded document bytes, or NULL if absent/clear */
+    char rev[MIK_OTA_REV_MAX];         /* empty string if none */
+    char version[MIK_OTA_VERSION_MAX]; /* required */
+    uint8_t* doc_cbor;                 /* CBOR-encoded document bytes, or NULL if absent/clear */
     size_t doc_cbor_len;
 } MIKOtaStoredConfig;
 

@@ -91,6 +91,22 @@ describe('build', () => {
     expect(pkg.main).to.equal('./debug/test.js')
   })
 
+  // The device reports the deployed package.json version, so an `ota pack
+  // --snapshot` build must carry the derived version there, not the project's.
+  it('writes a version override into the deployed package.json', async () => {
+    const buildDir = pathlib.join(tempDir, 'out')
+    await lastValueFrom(
+      build('app/main.ts', buildDir, {
+        minify: false,
+        bytecode: false,
+        version: '0.0.0-snapshot.20260926T120000Z',
+      }),
+    )
+
+    const pkg = JSON.parse(readFileSync(pathlib.join(buildDir, 'app', 'package.json'), 'utf-8'))
+    expect(pkg.version).to.equal('0.0.0-snapshot.20260926T120000Z')
+  })
+
   it('builds the same tree for absolute entry paths', async () => {
     const buildDir = pathlib.join(tempDir, 'out-abs')
     await runBuild(pathlib.join(tempDir, 'app', 'debug', 'test.ts'), buildDir)
