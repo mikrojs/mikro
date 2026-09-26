@@ -110,15 +110,15 @@ describe('mikro idf', () => {
     }
   })
 
-  it('builds in .mikro of the app when the firmware project is a folder in it', () => {
+  it('builds in .mikro of the app, named after the folder, when the firmware project is a folder in it', () => {
     process.chdir(firmwareFolder)
-    const buildDir = pathlib.join(appWithFolder, '.mikro', 'build-fw')
+    const buildDir = pathlib.join(appWithFolder, '.mikro', 'build-fw-firmware')
     expect(idf(['build']).args).toEqual(['-B', buildDir, 'build'])
   })
 
   it('finds the project from -C', () => {
     process.chdir(root)
-    const buildDir = pathlib.join(appWithFolder, '.mikro', 'build-fw')
+    const buildDir = pathlib.join(appWithFolder, '.mikro', 'build-fw-firmware')
     for (const args of [
       ['-C', 'app-with-folder/firmware', 'build'],
       ['--project-dir=app-with-folder/firmware', 'build'],

@@ -30,7 +30,6 @@ string(JSON MIK_RUNTIME_DIR GET "${_MIK_INPUTS}" native runtime)
 string(JSON MIK_SCRIPTS_DIR GET "${_MIK_INPUTS}" native scripts)
 string(JSON MIK_BYTECODE_CMAKE GET "${_MIK_INPUTS}" native bytecodeCmake)
 string(JSON _BOARD_COMPONENT_DIRS GET "${_MIK_INPUTS}" components)
-string(JSON _BOARD_SDKCONFIG_DEFAULTS GET "${_MIK_INPUTS}" sdkconfigs)
 string(JSON _BOARD_INPUTS GET "${_MIK_INPUTS}" configureDepends)
 # Re-run the resolution when a file it read changes: a reinstall that moved a
 # package, or an export that now points elsewhere.

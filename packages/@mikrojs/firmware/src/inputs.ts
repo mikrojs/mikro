@@ -13,15 +13,14 @@
  *
  * Run by resolve.cmake (through project.cmake) via `mikro-fw inputs <dir> --native-modules=…`.
  */
-import {existsSync, readFileSync} from 'node:fs'
-import {basename, join, resolve} from 'node:path'
+import {existsSync} from 'node:fs'
+import {basename, join} from 'node:path'
 
 import {
   findImportsPackage,
   findPackageDir,
   ManifestError,
   type NativeModule,
-  type PackageJson,
   packageNameOf,
   resolveNativeModule,
 } from './manifest.ts'
@@ -31,41 +30,12 @@ export interface FirmwareInputs {
   components: string
   /** Import specifiers of the native modules compiled in. */
   nativeModules: string
-  sdkconfigs: string
   /** Files read while resolving, for CMAKE_CONFIGURE_DEPENDS. */
   configureDepends: string
 }
 
 /** Components every firmware already has (see project.cmake). */
 const RESERVED_COMPONENTS = ['main', 'mikrojs']
-
-/** sdkconfig defaults of the MIKROJS_BOARD board from `mikrojs.boards` in the
- *  project's dependencies. */
-function boardSdkconfigs(projectDir: string): string[] {
-  const packageJson = join(projectDir, 'package.json')
-  if (!existsSync(packageJson)) return []
-  const project = JSON.parse(readFileSync(packageJson, 'utf8')) as PackageJson
-  const board = process.env.MIKROJS_BOARD ?? ''
-  const sdkconfigs: string[] = []
-  for (const dep of Object.keys(project.dependencies ?? {})) {
-    const depDir = findPackageDir(dep, projectDir)
-    if (!depDir) continue
-    const file = join(depDir, 'package.json')
-    let depPkg: PackageJson
-    try {
-      depPkg = JSON.parse(readFileSync(file, 'utf8')) as PackageJson
-    } catch (e) {
-      throw new ManifestError(`cannot read ${file}: ${(e as Error).message}`, {cause: e})
-    }
-    for (const [subpath, config] of Object.entries(depPkg.mikrojs?.boards ?? {})) {
-      const boardName = subpath.startsWith('./') ? subpath.slice(2) : subpath
-      if ((!board || board === boardName) && config.sdkconfig) {
-        sdkconfigs.push(resolve(depDir, config.sdkconfig))
-      }
-    }
-  }
-  return sdkconfigs
-}
 
 /** A package's native module, which must be installed where the project can import it. */
 function packageNativeModule(
@@ -166,7 +136,6 @@ export async function resolveFirmwareInputs(
   return {
     components: components.map((c) => c.dir).join(';'),
     nativeModules: [...specifiers].sort().join(';'),
-    sdkconfigs: boardSdkconfigs(projectDir).join(';'),
     configureDepends: [...configureDepends].filter((file) => existsSync(file)).join(';'),
   }
 }

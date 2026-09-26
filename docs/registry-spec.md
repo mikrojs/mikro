@@ -565,7 +565,7 @@ Request body:
 | `firmware`     | string (semver)                             | Firmware version                                                                                          |
 | `firmwareHash` | string                                      | Firmware build hash                                                                                       |
 | `bytecode`     | integer                                     | Bytecode version the device can load                                                                      |
-| `board`        | string, optional                            | Board name of the firmware build (e.g. `esp32c6-generic`)                                                 |
+| `board`        | string, optional                            | Board name of the firmware build (e.g. `esp32c6-generic`, `@acme/devboard`)                               |
 | `running`      | map `{checksum?, version?, trial}`          | The build executing right now                                                                             |
 | `lastInstall`  | map `{reason, detail?}`, optional           | Diagnostic from a failed install, sent once                                                               |
 | `lastDecline`  | map `{checksum, reason, detail?}`, optional | Why the last offered build was not taken, sent once (see Declined offers)                                 |
@@ -591,11 +591,13 @@ characters; and `configError` to be exactly
 unknown keys dropped. `deviceId` at enrollment is capped at 128 characters. A `400` is not
 a `401`, so the device keeps its update key and its normal cadence.
 
-**Board names.** `board` names the board the firmware was built for: lowercase, matching
-`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`. A generic per-chip build reports `<chip>-generic` (e.g.
-`esp32c6-generic`). `+` is not part of a board name: a registry answers `400` to it. A check-in
-without `board` is firmware that predates the field, and stays valid. The Mikro.js firmware build
-accepts a name of at most 47 characters, because the device keeps it in a 48-byte buffer.
+**Board names.** `board` names the board that the firmware was built for, as the firmware project
+named it. The generic firmware for a chip reports `<chip>-generic` (e.g. `esp32c6-generic`). Other
+builds report a name in the form of a package name, optionally followed by `/<board>` (e.g.
+`@acme/devboard`, `@acme/boards/t-display`). Both match
+`^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*(/[a-z0-9]([a-z0-9.-]*[a-z0-9])?)?$`. A check-in
+without `board` comes from firmware that predates the field, and stays valid. The Mikro.js firmware
+build accepts a name of at most 63 characters, because the device keeps it in a 64-byte buffer.
 
 `free` stops a registry offering a build the device has no room for. Without it, that failure
 shows up only once the download is under way and the staging write hits a full filesystem.

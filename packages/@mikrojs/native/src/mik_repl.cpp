@@ -904,7 +904,7 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
 
 /* Fills ready_buf/ready_len with CBOR device info:
  * {"chip": tstr, "id": tstr, "v": tstr, "board": tstr, "fw": tstr (when built
- * with MIK_FW_NAME), "name": tstr (only when named), "features": [tstr] (when
+ * with MIK_BOARD_NAME), "name": tstr (only when named), "features": [tstr] (when
  * built with MIK_FW_FEATURES; host builds omit it), "natives": [tstr]}.
  * `board` is mik__board_name(). `features` lists the firmware features the
  * build compiled in (from the comma-separated MIK_FW_FEATURES define), so the
@@ -912,10 +912,11 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
  * lists the registered C modules outside the core namespace (package native
  * modules compiled in, e.g. "@mikrojs/drivers/sh8601"; empty on a generic
  * build), so the host can refuse an app importing one this firmware lacks.
- * `fw` is the firmware identity (the firmware project's package name). The
- * host only auto-flashes its bundled prebuilt over a device whose identity
- * matches that prebuilt; omitting it reads as firmware predating identity
- * reporting, which the host treats as its own bundled firmware.
+ * `fw` is the firmware identity: the board name the build set (MIK_BOARD_NAME),
+ * which `board` also reports. The host only auto-flashes its bundled image over
+ * a device whose identity matches that image's name; omitting it reads as
+ * firmware predating identity reporting, which the host treats as its own
+ * bundled firmware.
  * `name` carries the raw `[rev, name]` pair from mik.sys, so the host reads the
  * name and its revision together and can never see them out of step. Omitted
  * entirely when the device has never been named, which the host reads as
@@ -1017,8 +1018,8 @@ static void refresh_ready(MIKReplTransport* transport) {
         "0.0.0-dev";
 #endif
     const char* fw =
-#ifdef MIK_FW_NAME
-        MIK_FW_NAME;
+#ifdef MIK_BOARD_NAME
+        MIK_BOARD_NAME;
 #else
         nullptr;
 #endif

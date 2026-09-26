@@ -11,7 +11,7 @@ This section covers building Mikro.js firmware from source, writing drivers for 
 
 - **Drivers**: code for a sensor, display, motor controller or other peripheral. A driver is JavaScript on the core APIs, or a native module when it needs C or C++.
 - **Native modules**: C/C++ that a package ships, compiled into the firmware and imported by its package specifier.
-- **Board packages**: Pin maps, sdkconfig defaults, and pre-configured driver re-exports for specific development boards.
+- **Board packages**: prebuilt firmware for a development board, and optionally the board's pin names and drivers wired to its pins.
 - **Core runtime**: Bug fixes, performance improvements, and new platform APIs in `packages/@mikrojs/native/`.
 
 ## Prerequisites

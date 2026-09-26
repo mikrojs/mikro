@@ -1733,6 +1733,9 @@ describe('check-in validation', () => {
       {board: 42},
       {board: 'ESP32C6-Generic'},
       {board: '-leading-dash'},
+      {board: '@acme'},
+      {board: '@acme/pi/x/y'},
+      {board: '@acme/boards/t_display'},
       {board: 'b'.repeat(65)},
       {lastInstall: 'broke'},
       {lastInstall: {reason: 'r'.repeat(65)}},
@@ -1780,6 +1783,16 @@ describe('check-in validation', () => {
     const without = await checkin(registry, credential)
     expect(without.status).toBe(200)
     expect((await storage.getDevice('dev-1'))!.lastBoard).toBe('esp32c6-generic')
+  })
+
+  it('accepts a board package specifier as the board name', async () => {
+    const storage = memoryStorage()
+    const registry = createRegistry({storage, token: TOKEN})
+    const credential = await enroll(registry)
+    for (const board of ['devboard', '@acme/devboard', '@mikrojs/boards/lilygo-t-display']) {
+      expect((await checkin(registry, credential, {board})).status, board).toBe(200)
+      expect((await storage.getDevice('dev-1'))!.lastBoard).toBe(board)
+    }
   })
 
   it('requires trial whenever running is reported', async () => {

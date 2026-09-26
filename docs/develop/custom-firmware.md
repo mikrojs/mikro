@@ -59,6 +59,8 @@ project(my-firmware)
 
 Separate several native modules with `;`. The build stops if an entry is not an installed [native module](./native-modules). Without `MIKROJS_NATIVE_MODULES`, the build is the official Mikro.js firmware with the project's settings.
 
+The firmware takes the name of the project's package. The device reports it as `sys.board.name`, `mikro fw pack` names the archive after it, and `mikro flash --board` finds a [board package](./creating-boards)'s image by it. To name it otherwise, set `MIKROJS_BOARD_NAME`, and `MIKROJS_BOARD_DESCRIPTION` for the description `mikro flash` shows. A name has at most 63 characters and the form of a package name, optionally followed by `/<board>`: `@acme/boards/t-display`. You can also set the variables in the environment or with `-D`, which take priority over `set()`.
+
 An app can be its own firmware project: add `@mikrojs/firmware` to the app's dependencies, and put `CMakeLists.txt` next to its `package.json`. [`examples/chip-temperature`](https://github.com/mikrojs/mikro/tree/main/examples/chip-temperature) is set up this way; `pn create mikro --firmware` scaffolds one. ESP-IDF writes `sdkconfig`, `managed_components/` and `dependencies.lock` into the project folder, and the build into `.mikro/` (`build/` with plain `idf.py`), so add them to `.gitignore`.
 
 ## Build and flash
@@ -147,10 +149,13 @@ Others can flash the firmware without building it. In the project folder, build 
 pn mikro fw pack
 ```
 
-This writes `mikrojs-firmware-esp32c6.tar.gz`, named after the chip, to the current folder. Attach it to a GitHub release: the name lets the CLI pick the right archive from a release with builds for several chips. To flash it:
+This writes `mikro-fw-my-firmware-esp32c6.tar.gz`, named after the firmware and the chip, to the current folder: `@` is dropped and `/` becomes `-`, so `@acme/devboard` gives `mikro-fw-acme-devboard-esp32c6.tar.gz`. Attach it to a GitHub release: the names let the CLI pick the archive for the connected chip from a release with builds for several chips. To flash it:
 
 ```sh
 mikro flash --from my-org/my-firmware          # the latest release
 mikro flash --from my-org/my-firmware@v1.0.0   # a given release
-mikro flash --from https://example.com/mikrojs-firmware-esp32c6.tar.gz
+mikro flash --board my-firmware --from my-org/my-firmware   # one firmware of several
+mikro flash --from https://example.com/mikro-fw-my-firmware-esp32c6.tar.gz
 ```
+
+To make firmware for a development board that apps can install with npm and flash with `mikro flash`, publish it as a [board package](./creating-boards).

@@ -8,6 +8,11 @@ endif ()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
+# The official generic image for the target chip; @mikrojs/firmware ships it
+# under this name.
+set(MIKROJS_BOARD_NAME "${IDF_TARGET}-generic")
+set(MIKROJS_BOARD_DESCRIPTION "Generic ${IDF_TARGET} board")
+
 # mikrojs project setup: validates ESP-IDF version, compiles in the listed native modules.
 # Ask @mikrojs/firmware for the path of its project.cmake
 execute_process(

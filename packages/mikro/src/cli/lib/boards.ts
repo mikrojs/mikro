@@ -1,128 +1,138 @@
+import {existsSync, readFileSync, statSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
 import {chips} from '@mikrojs/firmware'
+import {
+  type BoardImage,
+  type BoardProblem,
+  genericBoards,
+  loadBoards,
+} from '@mikrojs/firmware/boards'
+import {findPackageDir} from '@mikrojs/firmware/manifest'
 
-import {UserError} from './errorMessage.js'
+import {firmwareBuildDir} from '../commands/idf.js'
 import {assertNoLegacyMikroConfig} from './legacyConfig.js'
 
 export interface BoardInfo {
-  /** Board name (e.g. "xiao-esp32c6") */
+  /** The board's name, as its firmware reports it ("@acme/boards/t-display",
+   *  "esp32c6-generic"). */
   name: string
   /** Target chip (e.g. "esp32s3") */
   chip: string
-  /** Human-readable description */
   description?: string
-  /** Path to runtime TS file (absolute) */
-  runtimePath?: string
-  /** Path to sdkconfig defaults file (absolute) */
-  sdkconfigPath?: string
-  /** Package that provides this board (e.g. "@mikrojs/some-board").
-   * Absent for synthesized generic boards. */
-  packageName?: string
-  /** Import specifier (e.g. "@mikrojs/some-board/some-variant").
-   * Absent for synthesized generic boards. */
-  importSpecifier?: string
-  /** Synthesized `<chip>-generic` board, not backed by a board package. */
-  generic?: boolean
+  /** The export that declares the board ("@acme/boards/t-display"). */
+  specifier?: string
+  /** The image folder: flasher_args.json and the files it lists. Absent for a
+   *  bundled board whose image this CLI's @mikrojs/firmware lacks (in the
+   *  repository, where the release has not built them). */
+  dir?: string
+  /** One of the generic images @mikrojs/firmware ships with this CLI. */
+  bundled?: boolean
+  /** The firmware project that builds the image, when it is on disk (a
+   *  workspace, or the board author's own checkout). */
+  project?: string
 }
 
-/** The generic `<chip>-generic` boards, one per supported chip. These are
- * synthesized (no board package): plain chip firmware with no board-specific
- * runtime or sdkconfig. */
-export function genericBoards(): BoardInfo[] {
-  return chips.map((chip) => ({
-    name: `${chip}-generic`,
-    chip,
-    description: `Generic ${chip} board`,
-    generic: true,
-  }))
+function fromImage(image: BoardImage, bundled?: boolean): BoardInfo {
+  const project = bundled ? undefined : firmwareProjectOf(image.packageDir, image.key)
+  return {
+    name: image.name,
+    chip: image.chip,
+    description: image.description,
+    specifier: image.specifier,
+    dir: image.dir,
+    ...(bundled ? {bundled} : {}),
+    ...(project ? {project} : {}),
+  }
 }
 
-interface BoardManifestEntry {
-  chip: string
-  runtime?: string
-  sdkconfig?: string
-  description?: string
+/** The generic `<chip>-generic` boards, one per supported chip, with the image
+ *  @mikrojs/firmware ships for it when it has one. */
+export function bundledBoards(): BoardInfo[] {
+  const {boards} = genericBoards()
+  return chips.map((chip) => {
+    const image = boards.find((b) => b.name === `${chip}-generic` && b.chip === chip)
+    return image
+      ? fromImage(image, true)
+      : {name: `${chip}-generic`, chip, description: `Generic ${chip} board`, bundled: true}
+  })
 }
 
 interface PkgJson {
-  name?: string
   dependencies?: Record<string, string>
-  mikro?: {
-    boards?: Record<string, BoardManifestEntry>
-  }
+  devDependencies?: Record<string, string>
   /** Legacy config namespace, renamed to `mikro`. Presence is an error. */
   mikrojs?: unknown
 }
 
 /**
- * Discover boards from the current project's package.json dependencies.
- * Scans all dependencies for packages with a `mikro.boards` field.
- * Board keys are subpath exports (e.g. "./xiao-esp32c6").
+ * The boards the project's dependencies declare: every export with a
+ * `firmware` condition whose firmware.json parses, and the ones that don't (not
+ * built, or not a Mikro.js image). @mikrojs/firmware's own generic images are
+ * the bundled boards, not project boards.
  */
-export async function discoverBoards(projectDir: string): Promise<BoardInfo[]> {
-  const pkgPath = path.join(projectDir, 'package.json')
+export async function discoverBoards(
+  projectDir: string,
+): Promise<{boards: BoardInfo[]; problems: BoardProblem[]}> {
+  const boards: BoardInfo[] = []
+  const problems: BoardProblem[] = []
   let pkg: PkgJson
   try {
-    pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as PkgJson
+    pkg = JSON.parse(await fs.readFile(path.join(projectDir, 'package.json'), 'utf8')) as PkgJson
   } catch {
-    return []
+    return {boards, problems}
   }
-
   assertNoLegacyMikroConfig(pkg, 'package.json')
 
-  const deps = {...pkg.dependencies}
-  const boards: BoardInfo[] = []
-
-  for (const depName of Object.keys(deps)) {
-    let depPkgPath: string
-    let depPkg: PkgJson
-    try {
-      depPkgPath = await resolvePackageJson(depName, projectDir)
-      depPkg = JSON.parse(await fs.readFile(depPkgPath, 'utf8')) as PkgJson
-    } catch {
-      continue
-    }
-
-    assertNoLegacyMikroConfig(depPkg, `dependency "${depName}"`)
-
-    if (!depPkg.mikro?.boards) continue
-
-    const depDir = path.dirname(depPkgPath)
-
-    for (const [subpath, boardConfig] of Object.entries(depPkg.mikro.boards)) {
-      // Strip leading "./" from subpath to get the board name
-      const name = subpath.startsWith('./') ? subpath.slice(2) : subpath
-      boards.push({
-        name,
-        chip: boardConfig.chip,
-        description: boardConfig.description,
-        runtimePath: boardConfig.runtime ? path.resolve(depDir, boardConfig.runtime) : undefined,
-        sdkconfigPath: boardConfig.sdkconfig
-          ? path.resolve(depDir, boardConfig.sdkconfig)
-          : undefined,
-        packageName: depName,
-        importSpecifier: `${depName}/${name}`,
-      })
-    }
+  for (const depName of Object.keys({...pkg.dependencies, ...pkg.devDependencies})) {
+    if (depName === '@mikrojs/firmware') continue
+    const depDir = findPackageDir(depName, projectDir)
+    if (depDir === undefined) continue
+    const loaded = loadBoards(depDir)
+    boards.push(...loaded.boards.map((image) => fromImage(image)))
+    problems.push(...loaded.problems)
   }
-
-  return boards
+  return {boards, problems}
 }
 
-async function resolvePackageJson(packageName: string, fromDir: string): Promise<string> {
-  let dir = fromDir
-  while (true) {
-    const candidate = path.join(dir, 'node_modules', packageName, 'package.json')
-    try {
-      await fs.access(candidate)
-      return candidate
-    } catch {
-      const parent = path.dirname(dir)
-      if (parent === dir) break
-      dir = parent
+/** Where the docs and suggestions put a package's images: `dist-fw/` for the
+ *  firmware project at the package root, `dist-fw/<folder>/` for one in a
+ *  folder. The package decides; its exports say where they are. */
+export const IMAGE_ROOT = 'dist-fw'
+
+/** The firmware project that builds the image of a package export: the package
+ *  root for `.`, `<folder>` for `./<folder>`. Undefined when that folder has no
+ *  CMakeLists.txt, as in an installed package. */
+export function firmwareProjectOf(packageDir: string, key: string): string | undefined {
+  const project = path.join(packageDir, key)
+  return existsSync(path.join(project, 'CMakeLists.txt')) ? project : undefined
+}
+
+/** The app binary an image flashes, from its flasher_args.json: named after
+ *  the firmware project's `project()`, so not always `mikrojs.bin`. */
+function appFile(imageDir: string): string | undefined {
+  try {
+    const {app} = JSON.parse(readFileSync(path.join(imageDir, 'flasher_args.json'), 'utf8')) as {
+      app?: {file?: unknown}
     }
+    return typeof app?.file === 'string' ? app.file : undefined
+  } catch {
+    return undefined
   }
-  throw new UserError(`Cannot find package ${packageName}`)
+}
+
+/** Why a board's image is older than its firmware project's last `mikro idf`
+ *  build, or undefined. Only a board whose firmware project is on disk can
+ *  have one. */
+export function staleImage(board: BoardInfo): string | undefined {
+  const {dir, project} = board
+  if (dir === undefined || project === undefined) return undefined
+  const app = appFile(dir)
+  if (app === undefined) return undefined
+  const built = path.join(firmwareBuildDir(project), app)
+  const image = path.join(dir, app)
+  if (!existsSync(built) || !existsSync(image)) return undefined
+  if (statSync(built).mtimeMs <= statSync(image).mtimeMs) return undefined
+  return `the image of ${board.name} is older than the last build in ${project}; run \`mikro fw prepack\` there`
 }

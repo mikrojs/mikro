@@ -183,8 +183,10 @@ describe('missingFeaturesError', () => {
         "This app imports a native module that the device's firmware (esp32c6-generic) " +
           'was not built with:\n' +
           '  c6-neo/ring-fx (c6-neo/native/ring-fx)\n' +
-          "List it in your firmware project's MIKROJS_NATIVE_MODULES, build the firmware, " +
-          'and flash that build:\n' +
+          'Flash firmware that includes it: the image of a board package whose firmware ' +
+          'lists it,\n' +
+          '  mikro flash --board <board>\n' +
+          'or a build of your firmware project, with it in its MIKROJS_NATIVE_MODULES:\n' +
           '  mikro flash --build-dir <your-firmware-build>\n' +
           'To create a firmware project, see https://mikrojs.dev/develop/custom-firmware',
       )
@@ -202,8 +204,10 @@ describe('missingFeaturesError', () => {
           'was not built with:\n' +
           '  ring/extra\n' +
           '  ring/fx\n' +
-          "List them in your firmware project's MIKROJS_NATIVE_MODULES, build the firmware, " +
-          'and flash that build:\n' +
+          'Flash firmware that includes them: the image of a board package whose firmware ' +
+          'lists them,\n' +
+          '  mikro flash --board <board>\n' +
+          'or a build of your firmware project, with them in its MIKROJS_NATIVE_MODULES:\n' +
           '  mikro flash --build-dir <your-firmware-build>\n' +
           'To create a firmware project, see https://mikrojs.dev/develop/custom-firmware',
       )

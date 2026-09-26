@@ -247,13 +247,13 @@ jobs:
       - name: Download firmware
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # ratchet:actions/download-artifact@v8
         with:
-          path: packages/@mikrojs/firmware/prebuilds/
+          path: packages/@mikrojs/firmware/dist-fw/
           pattern: firmware-*
           merge-multiple: false
 
       - name: Normalize firmware layout
         run: |
-          cd packages/@mikrojs/firmware/prebuilds
+          cd packages/@mikrojs/firmware/dist-fw
           for dir in firmware-*; do
             if [ -d "$dir" ]; then
               mv "$dir" "${dir#firmware-}"
@@ -261,19 +261,10 @@ jobs:
           done
           find . -type f | sort
 
-      - name: Verify firmware completeness
-        run: |
-          cd packages/@mikrojs/firmware
-          missing=0
-          for chip in $(jq -r '.chips[]' chips.json); do
-            for f in flasher_args.json firmware.json bootloader/bootloader.bin partition_table/partition-table.bin mikrojs.bin; do
-              if [ ! -f "prebuilds/$chip-generic/$f" ]; then
-                echo "Missing: prebuilds/$chip-generic/$f"
-                missing=1
-              fi
-            done
-          done
-          [ "$missing" -eq 0 ]
+      # Every chip's image is there, complete, named <chip>-generic and built
+      # with this version; the same check as the package's prepublishOnly.
+      - name: Check firmware images
+        run: node --conditions=development packages/@mikrojs/firmware/scripts/check-images.ts
 
       # `inputs.dry_run` is null on `pull_request` triggers; the GHA expression
       # `null && X || ''` evaluates to '' there, which is the desired no-flag
@@ -317,7 +308,7 @@ jobs:
           pnpm --silent releaser github-release \
             --version ${{ needs.plan.outputs.version }} \
             --latest \
-            --firmware-dir packages/@mikrojs/firmware/prebuilds
+            --firmware-dir packages/@mikrojs/firmware/dist-fw
 
       - name: Comment on PR (preview modes only)
         if: (needs.plan.outputs.mode == 'pr-preview' || needs.plan.outputs.mode ==

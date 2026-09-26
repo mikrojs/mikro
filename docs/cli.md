@@ -101,7 +101,7 @@ mikro flash
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `-p, --port PORT` | Serial port (auto-detected if omitted)                                                                                                     |
 | `--target CHIP`   | Target chip (for example `esp32c6`). Auto-detected if omitted                                                                              |
-| `--board BOARD`   | Board name. Discovered from `package.json` if omitted                                                                                      |
+| `--board BOARD`   | Board name, for example `@acme/devboard` or `esp32c6-generic`. Discovered from `package.json` if omitted                                   |
 | `--build-dir DIR` | Path to a local ESP-IDF build directory. If omitted, downloads pre-built firmware                                                          |
 | `--from REF`      | Firmware source: a release tag (`v0.2.0`), branch, commit SHA, GitHub repo (`user/repo` or `user/repo@ref`), or URL to a `.tar.gz` archive |
 | `--baud BAUD`     | Baud rate for flashing (default: `460800`)                                                                                                 |
@@ -128,15 +128,31 @@ Use `mikro idf` for every step, including `flash` and `monitor`: it keeps its bu
 
 ### mikro fw pack
 
-Build a [custom firmware](/develop/custom-firmware) project and pack it into an archive that [`mikro flash --from`](#mikro-flash) can flash: `flasher_args.json` and the files it lists. Run it in the project folder.
+Build a [custom firmware](/develop/custom-firmware) project and pack it into an archive that [`mikro flash --from`](#mikro-flash) can flash: `flasher_args.json`, the files it lists, and `firmware.json`. Run it in the project folder. In a [board package](/develop/creating-boards), it runs `mikro fw prepack` first and packs the board's image.
 
 ```sh
 pn mikro fw pack
 ```
 
-| Option       | Description                                                               |
-| ------------ | ------------------------------------------------------------------------- |
-| `--out FILE` | Output path for the archive (default: `./mikrojs-firmware-<chip>.tar.gz`) |
+| Option       | Description                                                                                                                                                                                                     |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--out FILE` | Output path for the archive (default: `./mikro-fw-<name>-<chip>.tar.gz`, without the chip when the name already ends with it or is `<chip>-generic`, or `./mikro-fw-<chip>.tar.gz` for firmware without a name) |
+
+### mikro fw prepack
+
+Build a [board package](/develop/creating-boards)'s firmware and write its image into the folder that the package's `firmware` export points at, then check the package as `mikro fw check` does. Run it in the board's firmware project. A board package runs it from npm's `prepack` script, so `npm pack` and `npm publish` always include a fresh image.
+
+```sh
+pn mikro fw prepack
+```
+
+### mikro fw check
+
+Check a board package's `firmware` exports and their images: that each image is built, complete, named correctly, from a Mikro.js version the CLI accepts, not older than the last build of its firmware project, and included in `files`. It exits with an error if anything is wrong.
+
+```sh
+pn mikro fw check
+```
 
 ## mikro ls
 

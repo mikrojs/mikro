@@ -5,15 +5,17 @@ import {string} from '@optique/core/valueparser'
 import spinners from 'cli-spinners'
 import figures from 'figures'
 import {Box, Text, useInput} from 'ink'
+import SelectInput from 'ink-select-input'
 import React, {useEffect, useMemo, useState} from 'react'
 import {defer, EMPTY, firstValueFrom, type Observable, of} from 'rxjs'
 import {catchError, map, startWith} from 'rxjs/operators'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
+import type {BoardInfo} from '../lib/boards.js'
 import {customFirmwareOf} from '../lib/bundledFirmware.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
 import {type FlasherArgs, getWriteFlashMultiArgs} from '../lib/esptool.js'
-import {type BoardSource, resolveFlashPlan} from '../lib/flashFirmware.js'
+import {type BoardSource, type FlashPlan, resolveFlashPlan} from '../lib/flashFirmware.js'
 import {loadMikroConfig} from '../lib/loadMikroConfig.js'
 import {INITIAL_SPAWN_STATE, ospawn, spawnErrorMessage, type SpawnState} from '../lib/ospawn.js'
 import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
@@ -51,7 +53,7 @@ export const args = command(
     ),
     board: optional(
       option('--board', string({metavar: 'BOARD'}), {
-        description: message`Board name (e.g. xiao-esp32c6). Discovered from package.json if omitted.`,
+        description: message`Board name, for example @acme/devboard or esp32c6-generic. Discovered from package.json if omitted.`,
       }),
     ),
     target: optional(
@@ -88,11 +90,14 @@ type Props = {
 
 type InitState =
   | {status: 'loading'; message: string}
+  | {status: 'choose'; boards: BoardInfo[]}
   | {
       status: 'ready'
       flasherArgs: FlasherArgs
       esptoolPath: string
-      board?: {name: string; source: BoardSource}
+      image: FlashPlan['image']
+      board?: FlashPlan['board']
+      warnings: string[]
     }
   | {status: 'error'; error: Error}
 
@@ -101,6 +106,8 @@ const BOARD_SOURCE_LABELS: Record<BoardSource, string> = {
   flag: 'from --board',
   config: 'from mikro.config.ts',
   dependency: 'auto: only board dependency',
+  chip: "auto: only board for the device's chip",
+  picked: 'picked',
 }
 
 /** Probe handshake budget, mirroring FirmwareGate: a healthy device replies
@@ -108,7 +115,9 @@ const BOARD_SOURCE_LABELS: Record<BoardSource, string> = {
  *  wedged, or unflashed devices are a primary use of `mikro flash`. */
 const PROBE_TIMEOUT_MS = 4000
 
-type ProbeState = {status: 'pending'} | {status: 'ok'} | {status: 'refused'; fw: string}
+/** The device's firmware identity (`fw`), and the same when it is not the
+ *  firmware bundled with this CLI (`custom`). */
+type ProbeState = {status: 'pending'} | {status: 'done'; fw?: string; custom?: string}
 
 export default function FlashCmd(props: Props) {
   const {
@@ -131,6 +140,9 @@ export default function FlashCmd(props: Props) {
   const baudRate = baud ? Number(baud) : 460800
   const deviceDiscovery = useDevices()
   const [confirmed, setConfirmed] = useState(yes === true)
+  // A board chosen in the picker when several board packages are installed
+  // and neither --board nor mikro.config.ts decides.
+  const [pickedBoard, setPickedBoard] = useState<string | undefined>(undefined)
   const [initState, setInitState] = useState<InitState>({
     status: 'loading',
     message: buildDir ? 'Reading build configuration…' : 'Preparing firmware…',
@@ -146,13 +158,14 @@ export default function FlashCmd(props: Props) {
 
   const devicePath = device?.path
 
-  // Flashing the bundled prebuilt over custom firmware silently reverts its
-  // sdkconfig and drops its native modules, so the bundled path probes the
-  // device identity first and refuses unless --force. Explicitly chosen
-  // artifacts (--build-dir, --from) skip the probe.
+  // The device's firmware identity, read before the plan: its chip detection
+  // resets the device. Flashing the bundled image over custom firmware
+  // silently reverts its sdkconfig and drops its native modules, so that is
+  // refused unless --force; a board's image over other firmware gets a warning
+  // at the prompt. --build-dir and --from are explicit choices and skip it.
   const needsProbe = !buildDir && !from && force !== true
-  const [probeState, setProbeState] = useState<ProbeState>(
-    needsProbe ? {status: 'pending'} : {status: 'ok'},
+  const [probe, setProbe] = useState<ProbeState>(
+    needsProbe ? {status: 'pending'} : {status: 'done'},
   )
 
   useEffect(() => {
@@ -164,8 +177,7 @@ export default function FlashCmd(props: Props) {
         try {
           const ready = await firstValueFrom(h.session.awaitReady$(PROBE_TIMEOUT_MS))
           if (cancelled) return
-          const fw = customFirmwareOf(ready)
-          setProbeState(fw === undefined ? {status: 'ok'} : {status: 'refused', fw})
+          setProbe({status: 'done', fw: ready.fw, custom: customFirmwareOf(ready)})
         } finally {
           h.close()
         }
@@ -173,7 +185,7 @@ export default function FlashCmd(props: Props) {
       .catch(() => {
         // Timeout / disconnect / no reply: proceed. A device too broken to
         // identify itself is exactly what `mikro flash` recovers.
-        if (!cancelled) setProbeState({status: 'ok'})
+        if (!cancelled) setProbe({status: 'done'})
       })
     return () => {
       cancelled = true
@@ -186,9 +198,8 @@ export default function FlashCmd(props: Props) {
     if (mutuallyExclusive) return
     if (deviceDiscovery.status === 'loading') return
     if (!devicePath) return
-    // Wait for the probe to release the port: firmware resolution may open
-    // the serial port itself (chip auto-detection).
-    if (probeState.status !== 'ok') return
+    // The probe first: the plan may reset the device (chip detection).
+    if (probe.status === 'pending') return
 
     async function init() {
       // The config board only fills in without --board or --build-dir, so
@@ -199,12 +210,18 @@ export default function FlashCmd(props: Props) {
         port: devicePath!,
         buildDir,
         from,
-        board: boardFlag,
+        board: boardFlag ?? pickedBoard,
+        boardSource: boardFlag ? 'flag' : 'picked',
         configBoard: config?.board,
         target,
+        // Only an interactive run without --yes can answer the picker.
+        pickBoard: process.stdin.isTTY && yes !== true,
         onProgress: (message) => setInitState({status: 'loading', message}),
       })
-      setInitState({status: 'ready', ...plan})
+      // Several installed boards for the device's chip: the plan only returns
+      // a choice when a picker can answer it; headless runs get the list.
+      if ('choose' in plan) setInitState({status: 'choose', boards: plan.choose})
+      else setInitState({status: 'ready', ...plan})
     }
 
     init().catch((err: unknown) => {
@@ -217,10 +234,12 @@ export default function FlashCmd(props: Props) {
     buildDir,
     from,
     boardFlag,
+    pickedBoard,
     target,
+    yes,
     deviceDiscovery.status,
     devicePath,
-    probeState.status,
+    probe.status,
   ])
 
   if (deprecatedFlag) {
@@ -284,12 +303,16 @@ export default function FlashCmd(props: Props) {
     )
   }
 
-  if (probeState.status === 'refused') {
+  const refused =
+    initState.status === 'ready' && initState.image === 'bundled' && probe.status === 'done'
+      ? probe.custom
+      : undefined
+  if (refused !== undefined) {
     return (
       <RenderAndExit exitCode={1}>
         <Text color="red">
-          {figures.cross} Device is running custom firmware (&quot;{probeState.fw}&quot;). Flashing
-          the firmware bundled with this CLI would revert its sdkconfig and drop its native modules.
+          {figures.cross} Device is running custom firmware (&quot;{refused}&quot;). Flashing the
+          firmware bundled with this CLI would revert its sdkconfig and drop its native modules.
         </Text>
         <Text>
           Re-run with <Text bold>--force</Text> to overwrite it, or flash your own build with{' '}
@@ -320,10 +343,7 @@ export default function FlashCmd(props: Props) {
     )
   }
 
-  // The probe and the flash plan can both refuse the flash (custom firmware,
-  // no firmware for the chip), so they finish before the prompt: asking for a
-  // go-ahead and then refusing reads as the confirmation having failed.
-  if (probeState.status === 'pending') {
+  if (probe.status === 'pending') {
     return (
       <Text>
         <Spinner spinner={spinners.dots} /> Checking device firmware…
@@ -339,17 +359,49 @@ export default function FlashCmd(props: Props) {
     )
   }
 
+  if (initState.status === 'choose') {
+    return (
+      <Box flexDirection="column">
+        <Text>Several board packages are installed. Flash firmware for:</Text>
+        <SelectInput
+          items={initState.boards.map((b) => ({
+            label: `${b.name} (${b.chip})${b.description ? `  ${b.description}` : ''}`,
+            value: b.name,
+          }))}
+          onSelect={(item) => {
+            setInitState({status: 'loading', message: 'Preparing firmware…'})
+            setPickedBoard(item.value)
+          }}
+        />
+      </Box>
+    )
+  }
+
+  // The flash plan and the probe can both refuse the flash (no firmware for
+  // the chip, custom firmware), so they finish before the prompt: asking for
+  // a go-ahead and then refusing reads as the confirmation having failed.
+  const {board} = initState
+  const replaces =
+    initState.image === 'board' &&
+    probe.status === 'done' &&
+    probe.custom !== undefined &&
+    probe.fw !== board?.name
+      ? [`The device runs other firmware ("${probe.fw}"), which this replaces with ${board?.name}.`]
+      : []
+  const warnings = [...replaces, ...initState.warnings]
+
   if (!confirmed) {
     return (
       <ConfirmFlash
         port={device.path}
+        warnings={warnings}
         onConfirm={() => setConfirmed(true)}
         onCancel={() => process.exit(0)}
       />
     )
   }
 
-  const {flasherArgs, esptoolPath, board} = initState
+  const {flasherArgs, esptoolPath} = initState
 
   return (
     <FlashProgress
@@ -358,12 +410,32 @@ export default function FlashCmd(props: Props) {
       port={device.path}
       baudRate={baudRate}
       board={board}
+      // Warnings were shown at the prompt, unless --yes skipped it.
+      warnings={yes === true ? warnings : []}
     />
   )
 }
 
-function ConfirmFlash(props: {port: string; onConfirm: () => void; onCancel: () => void}) {
-  const {port, onConfirm, onCancel} = props
+/** What the plan and the probe noticed: shown before the go-ahead. */
+function Warnings(props: {warnings: string[]}) {
+  return (
+    <>
+      {props.warnings.map((warning) => (
+        <Text key={warning} color="yellow">
+          {figures.warning} {warning}
+        </Text>
+      ))}
+    </>
+  )
+}
+
+function ConfirmFlash(props: {
+  port: string
+  warnings: string[]
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const {port, warnings, onConfirm, onCancel} = props
 
   useInput((input) => {
     if (input.toLowerCase() === 'y') {
@@ -375,6 +447,7 @@ function ConfirmFlash(props: {port: string; onConfirm: () => void; onCancel: () 
 
   return (
     <Box flexDirection="column">
+      <Warnings warnings={warnings} />
       <Text color="yellow">
         {figures.warning} This will flash new firmware to the device on {port}, overwriting the
         existing firmware.
@@ -397,9 +470,11 @@ function FlashProgress(props: {
   flasherArgs: FlasherArgs
   port: string
   baudRate: number
-  board?: {name: string; source: BoardSource}
+  board?: FlashPlan['board']
+  /** Empty when the prompt already showed them. */
+  warnings: string[]
 }) {
-  const {esptoolPath, flasherArgs, port, baudRate, board} = props
+  const {esptoolPath, flasherArgs, port, baudRate, board, warnings} = props
 
   const observable = useMemo((): Observable<SpawnState> => {
     const esptoolArgs = getWriteFlashMultiArgs({
@@ -463,10 +538,17 @@ function FlashProgress(props: {
         {error ? <Text> failed</Text> : null}
       </Text>
       {board ? (
-        <Box paddingLeft={2}>
+        <Box paddingLeft={2} flexDirection="column">
           <Text color="gray">
             board: {board.name} ({BOARD_SOURCE_LABELS[board.source]})
           </Text>
+          {board.source === 'picked' ? (
+            <Text color="gray">
+              add board: &apos;{board.name}&apos; to mikro.config.ts, or pass --board, to skip the
+              prompt
+            </Text>
+          ) : null}
+          <Warnings warnings={warnings} />
         </Box>
       ) : null}
       {!completed && lastLine ? (

@@ -31,41 +31,16 @@ pn mikro idf build flash monitor
 
 Replace `esp32c6` with your chip. Press `Ctrl+]` to exit the serial monitor.
 
-## Building board-specific firmware
+## Building firmware for a board
 
-Board packages add drivers, pin maps, and sdkconfig defaults for a specific development board.
+A [board package](./creating-boards) builds its firmware in its own firmware project, not in `esp32/`: a `CMakeLists.txt` in the package, whose `MIKROJS_NATIVE_MODULES` and `sdkconfig.defaults` hold what the board needs. The firmware takes the package's name. In the board's folder:
 
-1. Add the board package to `esp32/package.json` dependencies:
+```sh
+pn mikro idf set-target esp32s3
+pn mikro fw prepack
+```
 
-   ```json
-   {
-     "dependencies": {
-       "@mikrojs/acme": "workspace:*"
-     }
-   }
-   ```
-
-2. Install dependencies:
-
-   ```sh
-   pnpm install
-   ```
-
-3. Delete the existing sdkconfig and re-set the target. This is required because `sdkconfig.defaults` is only applied when `sdkconfig` does not exist:
-
-   ```sh
-   cd esp32
-   rm sdkconfig
-   pn mikro idf set-target esp32c6
-   ```
-
-4. Build with the board name:
-
-   ```sh
-   MIKROJS_BOARD=acme-devboard pn mikro idf build flash monitor
-   ```
-
-The `MIKROJS_BOARD` environment variable selects the board definition from the package's `mikro.boards` manifest. The board's `sdkconfig.defaults` is automatically merged with the base config during the CMake configure step.
+`mikro fw prepack` builds the firmware and writes the image into the folder that the package's `firmware` export points at. An app that depends on the package flashes that image with `mikro flash`.
 
 ## Running on-device tests
 

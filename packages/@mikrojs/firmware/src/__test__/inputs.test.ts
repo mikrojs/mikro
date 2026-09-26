@@ -70,8 +70,8 @@ function run(dir: string, {nativeModules}: Options = {}): FirmwareInputs {
 
 /** The build inputs, without the watched files (see run) or the package paths. */
 function resolveInputs(dir: string, options?: Options) {
-  const {components, nativeModules, sdkconfigs} = run(dir, options)
-  return {components, nativeModules, sdkconfigs}
+  const {components, nativeModules} = run(dir, options)
+  return {components, nativeModules}
 }
 
 function resolveError(dir: string, options?: Options): string {
@@ -89,7 +89,7 @@ function components(...dirs: string[]) {
   return dirs.sort().join(';')
 }
 
-const empty = {components: '', nativeModules: '', sdkconfigs: ''}
+const empty = {components: '', nativeModules: ''}
 
 test('no native modules is a generic build', () => {
   const dir = project('generic')
@@ -210,13 +210,6 @@ test('a listed # specifier that is not an app native module fails the build', ()
   expect(resolveError(firmware, {nativeModules: '#native/../../x'})).toContain(
     'has an "imports" entry for it',
   )
-})
-
-test("a dependency's package.json that cannot be read fails the build, naming the file", () => {
-  const dir = project('broken-dependency')
-  write(join(dir, 'package.json'), json({name: 'broken-dependency', dependencies: {bad: '*'}}))
-  write(join(dir, 'node_modules/bad/package.json'), '{"name": "bad",')
-  expect(resolveError(dir)).toContain(`cannot read ${join(dir, 'node_modules/bad/package.json')}:`)
 })
 
 test('a native module whose directory is not an ESP-IDF component is rejected', () => {

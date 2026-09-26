@@ -34,8 +34,6 @@ export interface PackageJson {
   name?: string
   exports?: unknown
   imports?: unknown
-  dependencies?: Record<string, string>
-  mikrojs?: {boards?: Record<string, {sdkconfig?: string}>}
 }
 
 function check(condition: unknown, message: string): asserts condition {
