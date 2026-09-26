@@ -14,7 +14,7 @@ import {dirname, isAbsolute, join} from 'node:path'
 
 import {afterAll, expect, test} from 'vitest'
 
-import {resolveFirmwareInputs} from './inputs.js'
+import {resolveFirmwareInputs} from '../inputs.ts'
 
 /* Configure minimal consumer projects against project.cmake with plain CMake
  * (no ESP-IDF) and assert what reaches the build: which components land in
@@ -31,14 +31,16 @@ function hasCmake() {
   }
 }
 
-const projectCmake = join(import.meta.dirname, 'project.cmake')
+/** The package root: this file is in src/__test__/. */
+const packageRoot = join(import.meta.dirname, '..', '..')
+const projectCmake = join(packageRoot, 'project.cmake')
 const fixtureDir = mkdtempSync(join(tmpdir(), 'mik-fw-cmake-'))
 
 afterAll(() => {
   rmSync(fixtureDir, {recursive: true, force: true})
 })
 
-function write(file, content) {
+function write(file: string, content: string) {
   mkdirSync(dirname(file), {recursive: true})
   writeFileSync(file, content)
 }
@@ -57,7 +59,13 @@ const FIND_PROJECT_CMAKE = [
 ]
 
 /** A consumer project; `lines` go before the include (set(MIKROJS_NATIVE_MODULES ...)). */
-function makeProject(name, {lines = [], include = [`include("${projectCmake}")`]} = {}) {
+function makeProject(
+  name: string,
+  {
+    lines = [],
+    include = [`include("${projectCmake}")`],
+  }: {lines?: string[]; include?: string[]} = {},
+) {
   const dir = join(fixtureDir, name)
   write(
     join(dir, 'CMakeLists.txt'),
@@ -78,19 +86,29 @@ function makeProject(name, {lines = [], include = [`include("${projectCmake}")`]
   return dir
 }
 
-function configure(dir, {args = [], env = {}, buildDir = join(dir, 'build')} = {}) {
+interface ConfigureOptions {
+  args?: string[]
+  env?: Record<string, string>
+  buildDir?: string
+}
+
+/** The TEST_<name>=<value> lines the configure printed, by name. */
+function configure(
+  dir: string,
+  {args = [], env = {}, buildDir = join(dir, 'build')}: ConfigureOptions = {},
+): Record<string, string> {
   const out = execFileSync('cmake', ['-S', dir, '-B', buildDir, ...args], {
     encoding: 'utf8',
     env: {...process.env, ...env},
     stdio: 'pipe',
   })
-  const vars = {}
-  for (const match of out.matchAll(/TEST_(\w+)=(.*)/g)) vars[match[1]] = match[2]
+  const vars: Record<string, string> = {}
+  for (const [, name = '', value = ''] of out.matchAll(/TEST_(\w+)=(.*)/g)) vars[name] = value
   return vars
 }
 
 /** A package with one native module, `<name>/<module>`, installed in the project. */
-function installFakeNativePackage(dir, name = 'fake-native', module = 'fx') {
+function installFakeNativePackage(dir: string, name = 'fake-native', module = 'fx') {
   const packageDir = join(dir, 'node_modules', name)
   write(
     join(packageDir, 'package.json'),
@@ -122,12 +140,12 @@ test('resolution is empty for projects without a package.json', async () => {
   })
 })
 
-const component = join(import.meta.dirname, 'components', 'mikrojs')
+const component = join(packageRoot, 'components', 'mikrojs')
 
 /** Configure the mikrojs component in a project at `dir` the way ESP-IDF does
  *  after project.cmake, with ESP-IDF's commands stubbed and a stand-in for
  *  quickjs.cmake (which would patch QuickJS and build qjsc). */
-function configureComponent(dir) {
+function configureComponent(dir: string) {
   const stub = join(dir, 'stub.c')
   write(stub, '')
   write(
@@ -171,11 +189,13 @@ test.skipIf(!hasCmake())(
     const dir = join(fixtureDir, 'component-named')
     write(join(dir, 'package.json'), JSON.stringify({name: 'acme-sensor-fw'}))
     const vars = configureComponent(dir)
-    const {version} = JSON.parse(readFileSync(join(import.meta.dirname, 'package.json'), 'utf8'))
+    const {version} = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
+      version: string
+    }
     expect(vars.DEFINITIONS).toContain(`MIK_FW_VERSION="${version}"`)
     expect(vars.DEFINITIONS).toContain('MIK_FW_NAME="acme-sensor-fw"')
     expect(vars.DEFINITIONS).toContain('MIK_FW_FEATURES="wifi,i2s"')
-    expect(existsSync(vars.QUICKJS_CMAKE)).toBe(true)
+    expect(existsSync(vars.QUICKJS_CMAKE ?? '')).toBe(true)
   },
   30_000,
 )
@@ -245,11 +265,14 @@ test.skipIf(!hasCmake())(
     const workspace = join(fixtureDir, 'hoisted')
     mkdirSync(join(workspace, 'node_modules/@mikrojs'), {recursive: true})
     mkdirSync(join(workspace, 'node_modules/.bin'))
-    symlinkSync(import.meta.dirname, join(workspace, 'node_modules/@mikrojs/firmware'))
-    symlinkSync('../@mikrojs/firmware/cli.js', join(workspace, 'node_modules/.bin/mikro-fw'))
+    symlinkSync(packageRoot, join(workspace, 'node_modules/@mikrojs/firmware'))
+    symlinkSync(
+      '../@mikrojs/firmware/bin/mikro-fw.js',
+      join(workspace, 'node_modules/.bin/mikro-fw'),
+    )
     const dir = makeProject('hoisted/firmware', {include: FIND_PROJECT_CMAKE})
     expect(configure(dir).EXTRA_COMPONENT_DIRS).toContain(
-      join(realpathSync(import.meta.dirname), 'components'),
+      join(realpathSync(packageRoot), 'components'),
     )
   },
   30_000,
@@ -282,7 +305,7 @@ test.skipIf(!hasCmake())(
     const idf = join(fixtureDir, 'fake-idf')
     write(join(idf, 'components/fx/CMakeLists.txt'), '')
     expect(() => configure(dir, {env: {IDF_PATH: idf}})).toThrow(
-      /is named "fx", like an ESP-IDF component/,
+      /is named\s+"fx",\s+like\s+an\s+ESP-IDF\s+component/,
     )
     expect(() =>
       configure(dir, {buildDir: join(dir, 'build-no-clash'), env: {IDF_PATH: ''}}),
@@ -301,7 +324,7 @@ test.skipIf(!hasCmake())(
       installFakeNativePackage(dir)
       write(join(dir, where, 'fx/CMakeLists.txt'), '')
       expect(() => configure(dir, {env: {IDF_PATH: ''}}), where).toThrow(
-        /is named "fx", like the\s+project's component/,
+        /is named\s+"fx",\s+like\s+the\s+project's\s+component/,
       )
     }
   },
@@ -317,8 +340,8 @@ test.skipIf(!hasCmake())(
     installFakeNativePackage(dir, 'n-set', 'nset')
     installFakeNativePackage(dir, 'n-env', 'nenv')
     installFakeNativePackage(dir, 'n-cache', 'ncache')
-    const components = (options) => {
-      const dirs = configure(dir, options).EXTRA_COMPONENT_DIRS
+    const components = (options: ConfigureOptions) => {
+      const dirs = configure(dir, options).EXTRA_COMPONENT_DIRS ?? ''
       return ['nset', 'nenv', 'ncache'].filter((name) => dirs.includes(`/${name}`))
     }
     expect(components({buildDir: join(dir, 'build-set')})).toEqual(['nset'])
@@ -356,7 +379,7 @@ test.skipIf(!hasCmake())(
     const dir = makeProject('heal-stale')
     // The firmware package's own partitions.csv: a realistic frozen store
     // path that still exists on disk, like an older version kept in the store
-    const stale = join(import.meta.dirname, 'partitions.csv')
+    const stale = join(packageRoot, 'partitions.csv')
     writeFileSync(
       join(dir, 'sdkconfig'),
       [
@@ -401,8 +424,7 @@ test.skipIf(!hasCmake())(
     configure(dir, {buildDir})
 
     const fragment = readFileSync(join(buildDir, 'sdkconfig.partitions'), 'utf8')
-    const value = fragment.match(/CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="([^"]*)"/)?.[1]
-    expect(value).toBeDefined()
+    const value = fragment.match(/CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="([^"]*)"/)?.[1] ?? ''
     expect(isAbsolute(value)).toBe(true)
     expect(existsSync(value)).toBe(true)
     expect(existsSync(join(dir, 'build'))).toBe(false)

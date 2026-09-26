@@ -20,30 +20,42 @@ import {
   findImportsPackage,
   findPackageDir,
   ManifestError,
+  type NativeModule,
+  type PackageJson,
   packageNameOf,
   resolveNativeModule,
-} from './manifest.js'
+} from './manifest.ts'
+
+/** Semicolon-separated CMake lists; empty strings where nothing applies. */
+export interface FirmwareInputs {
+  components: string
+  /** Import specifiers of the native modules compiled in. */
+  nativeModules: string
+  sdkconfigs: string
+  /** Files read while resolving, for CMAKE_CONFIGURE_DEPENDS. */
+  configureDepends: string
+}
 
 /** Components every firmware already has (see project.cmake). */
 const RESERVED_COMPONENTS = ['main', 'mikrojs']
 
 /** sdkconfig defaults of the MIKROJS_BOARD board from `mikrojs.boards` in the
  *  project's dependencies. */
-function boardSdkconfigs(projectDir) {
+function boardSdkconfigs(projectDir: string): string[] {
   const packageJson = join(projectDir, 'package.json')
   if (!existsSync(packageJson)) return []
-  const project = JSON.parse(readFileSync(packageJson, 'utf8'))
+  const project = JSON.parse(readFileSync(packageJson, 'utf8')) as PackageJson
   const board = process.env.MIKROJS_BOARD ?? ''
-  const sdkconfigs = []
+  const sdkconfigs: string[] = []
   for (const dep of Object.keys(project.dependencies ?? {})) {
     const depDir = findPackageDir(dep, projectDir)
     if (!depDir) continue
     const file = join(depDir, 'package.json')
-    let depPkg
+    let depPkg: PackageJson
     try {
-      depPkg = JSON.parse(readFileSync(file, 'utf8'))
+      depPkg = JSON.parse(readFileSync(file, 'utf8')) as PackageJson
     } catch (e) {
-      throw new ManifestError(`cannot read ${file}: ${e.message}`, {cause: e})
+      throw new ManifestError(`cannot read ${file}: ${(e as Error).message}`, {cause: e})
     }
     for (const [subpath, config] of Object.entries(depPkg.mikrojs?.boards ?? {})) {
       const boardName = subpath.startsWith('./') ? subpath.slice(2) : subpath
@@ -56,7 +68,11 @@ function boardSdkconfigs(projectDir) {
 }
 
 /** A package's native module, which must be installed where the project can import it. */
-function packageNativeModule(specifier, projectDir, configureDepends) {
+function packageNativeModule(
+  specifier: string,
+  projectDir: string,
+  configureDepends: Set<string>,
+): NativeModule {
   const pkg = packageNameOf(specifier)
   const packageDir = findPackageDir(pkg, projectDir)
   if (!packageDir) {
@@ -79,9 +95,13 @@ function packageNativeModule(specifier, projectDir, configureDepends) {
 /**
  * An app's own native module, a `#` import: the entry for it in the `imports`
  * field of the nearest package at or above the project that has one. That is
- * the app when the project is its firmware/ folder.
+ * the app when the project is the app, or a folder in it.
  */
-function appNativeModule(specifier, projectDir, configureDepends) {
+function appNativeModule(
+  specifier: string,
+  projectDir: string,
+  configureDepends: Set<string>,
+): NativeModule {
   const appDir = findImportsPackage(specifier, projectDir)
   if (!appDir) {
     throw new ManifestError(
@@ -103,17 +123,17 @@ function appNativeModule(specifier, projectDir, configureDepends) {
 }
 
 /**
- * @param {string} projectDir - Directory containing the firmware project
- * @param {{nativeModules?: string[]}} declared - MIKROJS_NATIVE_MODULES
- * @returns {Promise<{components: string, nativeModules: string, sdkconfigs: string, configureDepends: string}>}
- *   Semicolon-separated CMake lists; empty strings where nothing applies
+ * @param projectDir - Directory containing the firmware project
+ * @param declared - MIKROJS_NATIVE_MODULES
  */
-export async function resolveFirmwareInputs(projectDir, {nativeModules: declared = []} = {}) {
+export async function resolveFirmwareInputs(
+  projectDir: string,
+  {nativeModules: declared = []}: {nativeModules?: string[]} = {},
+): Promise<FirmwareInputs> {
   /** Files whose change can change the result. */
   const configureDepends = new Set([join(projectDir, 'package.json')])
-  /** @type {{label: string, dir: string}[]} */
-  const components = []
-  const specifiers = new Set()
+  const components: {label: string; dir: string}[] = []
+  const specifiers = new Set<string>()
 
   for (const specifier of declared) {
     const nativeModule = specifier.startsWith('#')

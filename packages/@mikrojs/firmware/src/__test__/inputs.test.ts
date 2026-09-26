@@ -5,10 +5,12 @@ import {dirname, join} from 'node:path'
 
 import {afterAll, expect, test} from 'vitest'
 
+import type {FirmwareInputs} from '../inputs.ts'
+
 /* Native module resolution as the firmware build runs it: `mikro-fw
  * inputs <project> --native-modules=…`, a real Node process. */
 
-const cliJs = join(import.meta.dirname, 'cli.js')
+const mikroFw = join(import.meta.dirname, '../../bin/mikro-fw.js')
 // Real path: resolution reports real paths (/private/var vs /var on macOS)
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'mik-fw-resolve-')))
 
@@ -16,30 +18,30 @@ afterAll(() => {
   rmSync(root, {recursive: true, force: true})
 })
 
-function write(file, content) {
+function write(file: string, content: string) {
   mkdirSync(dirname(file), {recursive: true})
   writeFileSync(file, content)
 }
 
-function json(value) {
+function json(value: unknown) {
   return JSON.stringify(value, null, 2)
 }
 
 /* A firmware project. */
-function project(name) {
+function project(name: string) {
   const dir = join(root, name)
   write(join(dir, 'package.json'), json({name, private: true}))
   return dir
 }
 
 /** The export of a native module: C/C++ source, typed by a .d.ts next to it. */
-function nativeExport(path) {
+function nativeExport(path: string) {
   return {types: `${path}.d.ts`, native: `${path}.cpp`}
 }
 
 /** A module directory. Native: C++ source, its types and the ESP-IDF component
  *  in place. Pure JS: a module, and nothing that marks it as native. */
-function moduleDir(dir, {native = true} = {}) {
+function moduleDir(dir: string, {native = true} = {}) {
   const name = dir.split('/').at(-1)
   if (native) {
     write(join(dir, `${name}.cpp`), '// registers the module\n')
@@ -50,36 +52,40 @@ function moduleDir(dir, {native = true} = {}) {
   }
 }
 
+interface Options {
+  nativeModules?: string
+}
+
 /** The full output, `configureDepends` (the files CMake watches) included. */
-function run(dir, {nativeModules} = {}) {
-  const args = [cliJs, 'inputs', dir]
+function run(dir: string, {nativeModules}: Options = {}): FirmwareInputs {
+  const args = [mikroFw, 'inputs', dir]
   if (nativeModules !== undefined) args.push(`--native-modules=${nativeModules}`)
-  const out = JSON.parse(execFileSync('node', args, {encoding: 'utf8', stdio: 'pipe'}))
+  const out = JSON.parse(
+    execFileSync('node', args, {encoding: 'utf8', stdio: 'pipe'}),
+  ) as FirmwareInputs
   // Order is not part of the contract
   out.components = out.components.split(';').filter(Boolean).sort().join(';')
   return out
 }
 
 /** The build inputs, without the watched files (see run) or the package paths. */
-function resolveInputs(dir, options) {
-  const out = run(dir, options)
-  delete out.configureDepends
-  delete out.quickjsCmake
-  delete out.native
-  return out
+function resolveInputs(dir: string, options?: Options) {
+  const {components, nativeModules, sdkconfigs} = run(dir, options)
+  return {components, nativeModules, sdkconfigs}
 }
 
-function resolveError(dir, options) {
+function resolveError(dir: string, options?: Options): string {
   try {
     resolveInputs(dir, options)
   } catch (e) {
-    expect(e.status).toBe(1)
-    return e.stderr
+    const error = e as {status?: number; stderr?: string}
+    expect(error.status).toBe(1)
+    return error.stderr ?? ''
   }
   throw new Error('expected resolution to fail')
 }
 
-function components(...dirs) {
+function components(...dirs: string[]) {
   return dirs.sort().join(';')
 }
 
@@ -143,7 +149,7 @@ test('a listed specifier that is not an installed native module fails the build'
 
 /** An app with its own native modules in its `imports`, and its firmware
  *  project in firmware/, with a package.json of its own. */
-function appWithFirmware(name, imports) {
+function appWithFirmware(name: string, imports: Record<string, unknown>) {
   const app = join(root, name)
   write(join(app, 'package.json'), json({name, private: true, type: 'module', imports}))
   const firmware = join(app, 'firmware')

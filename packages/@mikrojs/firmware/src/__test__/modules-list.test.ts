@@ -11,9 +11,11 @@ import {expect, test} from 'vitest'
 const script = join(scriptsPath, 'modules-list.js')
 
 /** One of the lists the script prints, for the given gate flags. */
-function run(list, ...args) {
-  const lists = JSON.parse(execFileSync(process.execPath, [script, ...args], {encoding: 'utf8'}))
-  return lists[list].split(';')
+function run(list: string, ...args: string[]): string[] {
+  const lists = JSON.parse(
+    execFileSync(process.execPath, [script, ...args], {encoding: 'utf8'}),
+  ) as Record<string, string>
+  return (lists[list] ?? '').split(';')
 }
 
 const deviceBytecode = [

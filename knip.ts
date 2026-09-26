@@ -15,7 +15,7 @@ const config = {
     },
     'packages/@mikrojs/firmware': {
       // esbuild is consumed by CMake only (the runtime bundle); knip sees the
-      // others through cli.js and the tests.
+      // others through src/cli.ts and the tests.
       ignoreDependencies: ['esbuild'],
       // The ota_host .build/ tree is scratch the gunzip host test generates
       // (gitignored); knip still walks it once the test has run, so the ignore
@@ -124,6 +124,10 @@ const config = {
   ignore: [
     'taze.config.ts',
     'packages/@mikrojs/quickjs/deps/**',
+    // Types for plain JS exports: TypeScript reads each next to the .js file
+    // the export names, so nothing imports them by name
+    'packages/@mikrojs/native/cmake.d.ts',
+    'packages/@mikrojs/quickjs/index.d.ts',
     // todo: ideally we should run knip here too, but not sure how
     'packages/create-mikro/src/templates/**',
     // mikro.config.ts is discovered at runtime by the CLI, not imported

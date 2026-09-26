@@ -204,9 +204,11 @@ Wraps the QuickJS-NG engine source as a workspace package. Provides:
 
 ### ESP-IDF Component (`packages/@mikrojs/firmware/components/mikrojs/`)
 
+The firmware package's Node code (the `mikro-fw` CLI and the native module resolver) is TypeScript in `src/`. `bin/mikro-fw.js` runs `src/cli.ts` directly when `src/` exists, as it does in this repo (Node strips the types), so firmware builds need no `build:ts`; a published package has only `dist/`. Relative imports in `src/` name the `.ts` files, and `tsc` rewrites them to `.js` (`rewriteRelativeImportExtensions`).
+
 A thin adapter that:
 
-- Reads the `@mikrojs/quickjs` and `@mikrojs/native` paths from variables that `project.cmake` sets: its one Node call (`resolve.cmake` runs `cli.js inputs`, the package's `mikro-fw` bin) resolves them together with the native modules
+- Reads the `@mikrojs/quickjs` and `@mikrojs/native` paths from variables that `project.cmake` sets: its one Node call (`resolve.cmake` runs `bin/mikro-fw.js inputs`, the package's `mikro-fw` bin) resolves them together with the native modules
 - Compiles QuickJS and mikrojs sources directly (ESP-IDF requires `idf_component_register(SRCS ...)`)
 - Runs its own bytecode generation (esbuild bundle + qjsc compile) during the build
 - Provides `platform_esp32.cpp` (ESP-IDF platform implementation)
@@ -234,7 +236,7 @@ The `@mikrojs/firmware` package provides `project.cmake`, which validates the ES
 set(MIKROJS_NATIVE_MODULES "@mikrojs-examples/chip-temperature")   # native modules to compile in, by import specifier
 ```
 
-`inputs.js` resolves each entry through `manifest.js` to the package export whose `native` condition targets C/C++ source, and adds that file's directory as an ESP-IDF component.
+`src/inputs.ts` resolves each entry through `src/manifest.ts` to the package export whose `native` condition targets C/C++ source, and adds that file's directory as an ESP-IDF component.
 
 A **native module** is a module written in C/C++ and compiled into the firmware. `examples/drivers/chip-temperature` is a complete one.
 
@@ -243,7 +245,7 @@ A **native module** is a module written in C/C++ and compiled into the firmware.
 - **Validation**: apps import it directly (no `native:` name; app code cannot import `native:*`), so it must validate its arguments. The package may also export JS that imports it; that JS deploys with the app.
 - **Build and deploy**: it is compiled in only when the project lists it. The CLI leaves the import external, deploys nothing of it, and gates the deploy on the device reporting the module.
 - **Component names**: ESP-IDF names a component after its directory, so the directory names must be unique within one firmware.
-- **App modules**: an app can map a `#` import in its own `imports` field to C/C++ in the same form (exact or `*` pattern keys). The firmware project lists it as `#name`; `inputs.js` resolves it in the nearest package at or above the project with a matching `imports` entry. Its component defines no `MIK_PACKAGE_NAME`, which makes the compile-time check accept only `#` names. The CLI refuses a `#` native import from any package other than the app (the cwd's package), since `#` names are per package but the firmware's registry is global.
+- **App modules**: an app can map a `#` import in its own `imports` field to C/C++ in the same form (exact or `*` pattern keys). The firmware project lists it as `#name`; `src/inputs.ts` resolves it in the nearest package at or above the project with a matching `imports` entry. Its component defines no `MIK_PACKAGE_NAME`, which makes the compile-time check accept only `#` names. The CLI refuses a `#` native import from any package other than the app (the cwd's package), since `#` names are per package but the firmware's registry is global.
 - **App as firmware project** (`examples/chip-temperature`): the firmware's `CMakeLists.txt` sits next to the app's `package.json`, which depends on `@mikrojs/firmware`. A firmware folder inside an app also works, with no `package.json` of its own. npm takes the nearest `package.json` as the project, so with one `npx --no --package=@mikrojs/firmware` fails to find the app's `@mikrojs/firmware`. The firmware name (`MIK_FW_NAME`, which guards custom firmware from the CLI's auto-reflash) comes from the nearest `package.json` at or above the project: the app's.
 
 A **driver** is code for a peripheral, in one of two flavors:

@@ -1,8 +1,8 @@
 # resolve.cmake — the firmware configure's one Node call
 #
-# `mikro-fw inputs` (cli.js) finds @mikrojs/quickjs and @mikrojs/native
+# `mikro-fw inputs` (src/cli.ts) finds @mikrojs/quickjs and @mikrojs/native
 # with Node's package resolution and resolves the declared native modules
-# (inputs.js).
+# (src/inputs.ts).
 # project.cmake includes this file. A project that uses the mikrojs component
 # without project.cmake (the on-device test apps) includes it itself.
 #
@@ -13,7 +13,7 @@
 # directory — while include()d, CMAKE_CURRENT_LIST_DIR is the @mikrojs/firmware
 # package inside node_modules.
 execute_process(
-    COMMAND node "${CMAKE_CURRENT_LIST_DIR}/cli.js" inputs ${CMAKE_SOURCE_DIR}
+    COMMAND node "${CMAKE_CURRENT_LIST_DIR}/bin/mikro-fw.js" inputs "${CMAKE_SOURCE_DIR}"
             "--native-modules=${_MIK_NATIVE_MODULES}"
     OUTPUT_VARIABLE _MIK_INPUTS
     ERROR_VARIABLE _MIK_INPUTS_ERROR
