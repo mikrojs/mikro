@@ -15,7 +15,13 @@ import type {BoardInfo} from '../lib/boards.js'
 import {customFirmwareOf} from '../lib/bundledFirmware.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
 import {type FlasherArgs, getWriteFlashMultiArgs} from '../lib/esptool.js'
-import {type BoardSource, type FlashPlan, resolveFlashPlan} from '../lib/flashFirmware.js'
+import {
+  assertFilesystemKept,
+  type BoardSource,
+  type FlashPlan,
+  resolveFlashPlan,
+} from '../lib/flashFirmware.js'
+import {formatSize} from '../lib/formatSize.js'
 import {loadMikroConfig} from '../lib/loadMikroConfig.js'
 import {INITIAL_SPAWN_STATE, ospawn, spawnErrorMessage, type SpawnState} from '../lib/ospawn.js'
 import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
@@ -78,7 +84,7 @@ export const args = command(
     ),
     force: optional(
       flag('--force', {
-        description: message`Flash the bundled firmware even if the device reports custom firmware`,
+        description: message`Flash even if the device reports custom firmware or the new partition table shrinks the app filesystem`,
       }),
     ),
   }),
@@ -98,6 +104,7 @@ type InitState =
       image: FlashPlan['image']
       board?: FlashPlan['board']
       warnings: string[]
+      filesystemSize?: number
     }
   | {status: 'error'; error: Error}
 
@@ -220,8 +227,15 @@ export default function FlashCmd(props: Props) {
       })
       // Several installed boards for the device's chip: the plan only returns
       // a choice when a picker can answer it; headless runs get the list.
-      if ('choose' in plan) setInitState({status: 'choose', boards: plan.choose})
-      else setInitState({status: 'ready', ...plan})
+      if ('choose' in plan) {
+        setInitState({status: 'choose', boards: plan.choose})
+        return
+      }
+      if (force !== true) {
+        setInitState({status: 'loading', message: 'Checking the app filesystem…'})
+        await assertFilesystemKept(plan, devicePath!)
+      }
+      setInitState({status: 'ready', ...plan})
     }
 
     init().catch((err: unknown) => {
@@ -237,6 +251,7 @@ export default function FlashCmd(props: Props) {
     pickedBoard,
     target,
     yes,
+    force,
     deviceDiscovery.status,
     devicePath,
     probe.status,
@@ -378,8 +393,9 @@ export default function FlashCmd(props: Props) {
   }
 
   // The flash plan and the probe can both refuse the flash (no firmware for
-  // the chip, custom firmware), so they finish before the prompt: asking for
-  // a go-ahead and then refusing reads as the confirmation having failed.
+  // the chip, custom firmware, a shrinking filesystem), so they finish before
+  // the prompt: asking for a go-ahead and then refusing reads as the
+  // confirmation having failed.
   const {board} = initState
   const replaces =
     initState.image === 'board' &&
@@ -394,6 +410,8 @@ export default function FlashCmd(props: Props) {
     return (
       <ConfirmFlash
         port={device.path}
+        flashSize={initState.flasherArgs.flashSize}
+        filesystemSize={initState.filesystemSize}
         warnings={warnings}
         onConfirm={() => setConfirmed(true)}
         onCancel={() => process.exit(0)}
@@ -431,11 +449,13 @@ function Warnings(props: {warnings: string[]}) {
 
 function ConfirmFlash(props: {
   port: string
+  flashSize: string
+  filesystemSize: number | undefined
   warnings: string[]
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const {port, warnings, onConfirm, onCancel} = props
+  const {port, flashSize, filesystemSize, warnings, onConfirm, onCancel} = props
 
   useInput((input) => {
     if (input.toLowerCase() === 'y') {
@@ -452,6 +472,11 @@ function ConfirmFlash(props: {
         {figures.warning} This will flash new firmware to the device on {port}, overwriting the
         existing firmware.
       </Text>
+      {filesystemSize === undefined ? null : (
+        <Text>
+          App filesystem: {formatSize(filesystemSize)} ({flashSize} flash)
+        </Text>
+      )}
       <Text>
         {'\n'}Continue? <Text bold>(y/N)</Text>
       </Text>

@@ -19,7 +19,7 @@ type Chip =
 
 type FlashMode = 'keep' | 'qio' | 'qout' | 'dio' | 'dout'
 
-type FlashSize =
+export type FlashSize =
   | 'detect'
   | 'keep'
   | '256KB'

@@ -169,7 +169,9 @@ Mikro.js runs a single-threaded event loop, like Node.js. WiFi, timers, and ever
 
 On device, the filesystem uses [LittleFS](https://github.com/littlefs-project/littlefs) on a flash partition. Files persist across reboots and deep sleep.
 
-[`storageUsage()`](/api/sys#storageusage) reports how much space the filesystem has on your device. The size comes from the firmware's partition table. The generic firmware for each chip assumes 4 MB of flash and gives the filesystem 1472 KB, so on a module with 8 MB or 16 MB it uses only the first 4 MB. To use the rest, build [custom firmware with a larger partition table](/develop/custom-firmware#use-a-bigger-flash-chip).
+[`storageUsage()`](/api/sys#storageusage) reports how much space the filesystem has on your device. The size comes from the firmware's partition table and the module's flash. The generic firmware for each chip is built for 4 MB of flash, which gives the filesystem 1472 KB. On a module with more flash, `mikro flash` gives the filesystem the rest of it, up to 16 MB of flash: 5568 KB on an 8 MB module and 13760 KB on a 16 MB one.
+
+Flashing firmware with a smaller partition table afterwards, such as a custom build laid out for 4 MB, shrinks the filesystem and erases the files on it. `mikro flash` refuses to do that unless you pass `--force`. See [Use a bigger flash chip](/develop/custom-firmware#use-a-bigger-flash-chip).
 
 Flash memory has limited write cycles (~100,000 per sector), so avoid writing on every loop iteration. Buffer data in RAM and write periodically, or use [`rtcStorage`](/api/kv) for smaller, frequently changing values.
 
