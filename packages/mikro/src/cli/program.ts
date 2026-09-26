@@ -13,7 +13,9 @@ import * as docsCommand from './commands/docs.js'
 import * as envCommand from './commands/env.js'
 import * as eraseCommand from './commands/erase.js'
 import * as flashCommand from './commands/flash.js'
+import * as fwCommand from './commands/fw.js'
 import * as homeCommand from './commands/home.js'
+import * as idfCommand from './commands/idf.js'
 import * as logsCommand from './commands/logs.js'
 import * as listCommand from './commands/ls.js'
 import * as nameCommand from './commands/name.js'
@@ -33,7 +35,9 @@ export {
   envCommand,
   eraseCommand,
   flashCommand,
+  fwCommand,
   homeCommand,
+  idfCommand,
   listCommand,
   logsCommand,
   nameCommand,
@@ -62,6 +66,8 @@ export const commands = {
   sim: simCommand,
   ota: otaCommand,
   profile: profileCommand,
+  idf: idfCommand,
+  fw: fwCommand,
 }
 
 export const argsParser = or(
@@ -73,6 +79,7 @@ export const argsParser = or(
     object({command: commands.flash.args}),
     object({command: commands.console.args}),
     object({command: commands.name.args}),
+    object({command: commands.fw.args}),
   ),
   or(
     object({command: commands.list.args}),
@@ -86,6 +93,7 @@ export const argsParser = or(
     object({command: commands.logs.args}),
     object({command: commands.ota.args}),
     object({command: commands.profile.args}),
+    object({command: commands.idf.args}),
   ),
 )
 

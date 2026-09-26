@@ -14,7 +14,7 @@ A custom firmware project depends on this package and includes its `project.cmak
 
 ```
 my-firmware/
-├── package.json          # depends on @mikrojs/firmware
+├── package.json          # depends on @mikrojs/firmware and mikro
 ├── CMakeLists.txt        # includes project.cmake from @mikrojs/firmware
 └── main/                 # optional: omit it and the package's default main
     ├── CMakeLists.txt    # (which calls MIK_Main()) is used automatically
@@ -28,4 +28,4 @@ See the [Custom Firmware](https://mikrojs.dev/develop/custom-firmware) docs for 
 - Node.js >= 24
 - ESP-IDF >= 6.1 (installed via [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/))
 
-To build, activate ESP-IDF in your shell first: run `eim select` and source the activation script it prints, then use `idf.py` as usual.
+To build, run `pn mikro idf build` in the project. `mikro idf` passes its arguments to `idf.py`, through EIM when ESP-IDF is not active in the shell. Plain `idf.py` works too, in a shell where ESP-IDF is active.

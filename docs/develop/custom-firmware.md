@@ -19,7 +19,7 @@ Build custom firmware when the official Mikro.js firmware lacks something an app
 
 ## Create a project
 
-`package.json` depends on `@mikrojs/firmware`, and on the packages whose native modules you want. `@mikrojs/firmware` has to be a direct dependency: the build runs its `mikro-fw` command through `npx`, which finds only the commands of the project's own dependencies.
+`package.json` depends on `@mikrojs/firmware`, on `mikro` for the `mikro idf` command, and on the packages whose native modules you want. `@mikrojs/firmware` has to be a direct dependency: the build runs its `mikro-fw` command through `npx`, which finds only the commands of the project's own dependencies.
 
 ```json
 {
@@ -29,7 +29,8 @@ Build custom firmware when the official Mikro.js firmware lacks something an app
   "type": "module",
   "dependencies": {
     "@mikrojs/firmware": "^0.1.0",
-    "@my-scope/epaper": "^0.1.0"
+    "@my-scope/epaper": "^0.1.0",
+    "mikro": "^0.1.0"
   }
 }
 ```
@@ -58,18 +59,19 @@ project(my-firmware)
 
 Separate several native modules with `;`. The build stops if an entry is not an installed [native module](./native-modules). Without `MIKROJS_NATIVE_MODULES`, the build is the official Mikro.js firmware with the project's settings.
 
-An app can be its own firmware project: add `@mikrojs/firmware` to the app's dependencies, and put `CMakeLists.txt` next to its `package.json`. [`examples/chip-temperature`](https://github.com/mikrojs/mikro/tree/main/examples/chip-temperature) is set up this way. ESP-IDF writes `build/`, `sdkconfig`, `managed_components/` and `dependencies.lock` into the project folder, so add them to `.gitignore`.
+An app can be its own firmware project: add `@mikrojs/firmware` to the app's dependencies, and put `CMakeLists.txt` next to its `package.json`. [`examples/chip-temperature`](https://github.com/mikrojs/mikro/tree/main/examples/chip-temperature) is set up this way. ESP-IDF writes `sdkconfig`, `managed_components/` and `dependencies.lock` into the project folder, and the build into `.mikro/` (`build/` with plain `idf.py`), so add them to `.gitignore`.
 
 ## Build and flash
 
-In the project folder, activate ESP-IDF (`eim select` prints the script to source), install the dependencies, and build:
+In the project folder, install the dependencies, set the chip, and build:
 
 ```sh
-source ~/.espressif/tools/activate_idf_v6.1.sh
-pnpm install
-idf.py set-target esp32c6
-idf.py build flash monitor
+pn install
+pn mikro idf set-target esp32c6
+pn mikro idf build flash monitor
 ```
+
+[`mikro idf`](/cli#mikro-idf) passes its arguments to ESP-IDF's `idf.py`. When ESP-IDF is not active in the shell, it runs `idf.py` through EIM, which activates ESP-IDF first. Plain `idf.py` works too, in a shell where ESP-IDF is active (`eim select` prints the script to source).
 
 ::: tip The build says "qjsc not found"
 pnpm skipped the build script of `@mikrojs/quickjs`, which builds the QuickJS bytecode compiler. Run `pnpm approve-builds`, select `@mikrojs/quickjs`, and install again.
@@ -77,7 +79,7 @@ pnpm skipped the build script of `@mikrojs/quickjs`, which builds the QuickJS by
 
 ## Change ESP-IDF settings
 
-Put the settings in a `sdkconfig.defaults` file in the project. They override the firmware package's defaults. ESP-IDF reads the file only when it creates `sdkconfig`, so after you change it, delete `sdkconfig` and run `idf.py set-target` again.
+Put the settings in a `sdkconfig.defaults` file in the project. They override the firmware package's defaults. ESP-IDF reads the file only when it creates `sdkconfig`, so after you change it, delete `sdkconfig` and run `mikro idf set-target` again.
 
 For example, an app that does all its networking over a cellular modem can leave WiFi out, which frees about 20 KB of internal RAM:
 
@@ -108,7 +110,7 @@ For 16 MB, use `CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y`, `CONFIG_ESPTOOLPY_FLASHSIZE=
 If the new `user` partition is smaller than the one on the device, the device reformats it on the next boot, and you need to deploy the app again. `storageUsage().total` shows the size on the device.
 :::
 
-Flash the new table over USB, with `idf.py flash` or `mikro flash --build-dir build`. On its first boot, the device grows the filesystem to fill the new `user` partition and keeps any existing files.
+Flash the new table over USB with `pn mikro idf flash`. On its first boot, the device grows the filesystem to fill the new `user` partition and keeps any existing files.
 
 ## Custom startup code
 
@@ -139,15 +141,13 @@ The CLI comes with the official Mikro.js firmware, but it never flashes that ove
 
 ## Share a build
 
-Others can flash the firmware without building it. Pack the build output and attach it to a GitHub release:
+Others can flash the firmware without building it. In the project folder, build the firmware and pack it:
 
 ```sh
-cd build
-tar czf mikrojs-firmware-esp32c6.tar.gz flasher_args.json \
-  bootloader/bootloader.bin partition_table/partition-table.bin my-firmware.bin
+pn mikro fw pack
 ```
 
-Name the archive `mikrojs-firmware-<chip>.tar.gz`, so the CLI picks the right one from a release with builds for several chips. To flash it:
+This writes `mikrojs-firmware-esp32c6.tar.gz`, named after the chip, to the current folder. Attach it to a GitHub release: the name lets the CLI pick the right archive from a release with builds for several chips. To flash it:
 
 ```sh
 mikro flash --from my-org/my-firmware          # the latest release

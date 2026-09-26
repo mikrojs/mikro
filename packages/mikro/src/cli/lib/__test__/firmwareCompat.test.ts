@@ -134,6 +134,7 @@ describe('formatCustomIncompatibleError', () => {
     const msg = formatCustomIncompatibleError(result, 'acme-sensor-fw', 'pnpm')
     expect(msg).to.contain('v99.0.0')
     expect(msg).to.contain('"acme-sensor-fw"')
+    expect(msg).to.contain('pnpm mikro idf build flash')
     expect(msg).to.contain('pnpm mikro flash --build-dir')
     expect(msg).to.contain('pnpm mikro flash --force')
     expect(msg).not.to.contain('to update device')

@@ -132,7 +132,7 @@ export function formatCustomIncompatibleError(
   return [
     `Device is running mikrojs v${got}, which is not compatible with this CLI (v${result.cliVersion}).`,
     `The device reports custom firmware ("${fw}"), so the CLI will not flash its bundled firmware over it.`,
-    `Rebuild and flash your firmware instead (idf.py flash, or ${mikroCommand(pm, 'flash --build-dir <your-firmware-build>')}),`,
+    `Rebuild and flash the custom firmware instead (${mikroCommand(pm, 'idf build flash')} in its project, or ${mikroCommand(pm, 'flash --build-dir <your-firmware-build>')}),`,
     `or run ${mikroCommand(pm, 'flash --force')} to replace it with the bundled firmware.`,
   ].join(' ')
 }

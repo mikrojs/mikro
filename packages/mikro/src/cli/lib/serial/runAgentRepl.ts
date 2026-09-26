@@ -93,7 +93,7 @@ export async function runAgentRepl<T extends {port?: string; recover?: boolean; 
       // native modules. The error message already carries the rebuild hint.
       if (err.customFw !== undefined) {
         agentError(hooks.command, err.message, {
-          fix: 'Rebuild your firmware project and flash it (idf.py flash or mikro flash --build-dir)',
+          fix: 'Rebuild the firmware project and flash it (mikro idf build flash, or mikro flash --build-dir)',
         })
         process.exit(1)
       }

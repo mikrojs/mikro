@@ -69,20 +69,19 @@ Make sure ESP-IDF >= 6.1 is installed (see [Prerequisites](#prerequisites)), the
 
 ```sh
 cd esp32
-direnv allow
-idf.py set-target esp32c6  # or esp32, esp32s3, etc.
+pn mikro idf set-target esp32c6  # or esp32, esp32s3, etc.
 ```
 
-The `idf.py` command in `esp32/` is a wrapper that runs through `eim run`, so no manual ESP-IDF activation is needed.
+`mikro idf` runs ESP-IDF's `idf.py` through `eim run` when ESP-IDF is not active in the shell, so no manual activation is needed.
 
 ### Build and flash
 
 ```sh
 cd esp32
-idf.py build flash monitor
+pn mikro idf build flash monitor
 ```
 
-> **Note:** `sdkconfig.defaults` is only applied when `sdkconfig` does not exist. To apply changes from `sdkconfig.defaults`, delete `sdkconfig` and re-run `idf.py set-target <target>` (the target must be re-set since it's stored in `sdkconfig`).
+> **Note:** `sdkconfig.defaults` is only applied when `sdkconfig` does not exist. To apply changes from `sdkconfig.defaults`, delete `sdkconfig` and re-run `pn mikro idf set-target <target>` (the target must be re-set since it's stored in `sdkconfig`).
 
 ## Testing
 
@@ -118,7 +117,7 @@ cd esp32
 pnpm test
 ```
 
-If tests error, try `cd test && idf.py fullclean` first.
+If tests error, try `cd test && pn mikro idf -B build fullclean` first.
 
 Test files live in `packages/@mikrojs/firmware/components/mikrojs/test/` with categories: `[runtime]`, `[modules]`, `[timers]`, `[fs]`, `[gpio]`.
 
@@ -126,7 +125,7 @@ Test files live in `packages/@mikrojs/firmware/components/mikrojs/test/` with ca
 
 ### CLion
 
-Using direnv and opening the project from the terminal (`clion .`) should work out of the box.
+Open the project from the terminal (`clion .`), so CLion gets the environment direnv sets. CLion's CMake finds ESP-IDF only when ESP-IDF is active in that shell (`eim select` prints the script to source).
 
 ## Code style
 
