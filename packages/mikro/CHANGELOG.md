@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.21.1 (2026-09-26)
+
+### Features
+
+- **firmware:** board packages w/prebuilt firmware images ([#453](https://github.com/mikrojs/mikro/pull/453))
+- **create-mikro:** add `--firmware` for apps with custom firmware ([#450](https://github.com/mikrojs/mikro/pull/450))
+- **cli:** add mikro idf and mikro fw pack for custom firmware ([#449](https://github.com/mikrojs/mikro/pull/449))
+- **firmware:** compile C/C++ native modules into custom firmware ([#446](https://github.com/mikrojs/mikro/pull/446))
+- **cli:** write mikro build output to .mikro/build by default ([#445](https://github.com/mikrojs/mikro/pull/445))
+- **cli:** show radios and free heap when a device connects ([#442](https://github.com/mikrojs/mikro/pull/442))
+
+### Bug fixes
+
+- **cli:** make ota snapshot builds report the snapshot version ([#452](https://github.com/mikrojs/mikro/pull/452))
+- **cli:** stop frame parser stalling on a CR before a tiny frame ([#451](https://github.com/mikrojs/mikro/pull/451))
+- **types:** type import.meta's url, main and path fields + typecheck fix ([#443](https://github.com/mikrojs/mikro/pull/443))
+- **kv:** delete() no longer returns WriteFailed on a missing key ([#440](https://github.com/mikrojs/mikro/pull/440))
+- **kv:** keep RTC values if write fails due to storage full ([#438](https://github.com/mikrojs/mikro/pull/438))
+
+### Other
+
+- **native:** drop package bytecode builtins for now ([#448](https://github.com/mikrojs/mikro/pull/448))
+- **cli:** stop EntryGate JSON error test depending on temp path length ([#447](https://github.com/mikrojs/mikro/pull/447))
+- **platform:** require get_device_id ([#444](https://github.com/mikrojs/mikro/pull/444))
+
 ## 0.21.0 (2026-09-21)
 
 ### Breaking changes
