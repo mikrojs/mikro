@@ -14,14 +14,9 @@ set(MIKROJS_BOARD_NAME "${IDF_TARGET}-generic")
 set(MIKROJS_BOARD_DESCRIPTION "Generic ${IDF_TARGET} board")
 
 # mikrojs project setup: validates ESP-IDF version, compiles in the listed native modules.
-# Ask @mikrojs/firmware for the path of its project.cmake
-execute_process(
-    COMMAND pnpm exec mikro-fw cmake-path esp32
-    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-    OUTPUT_VARIABLE _MIK_CMAKE_PATH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    COMMAND_ERROR_IS_FATAL ANY
-)
-include(${_MIK_CMAKE_PATH})
+if(NOT DEFINED MikroFirmware_DIR)
+    message(FATAL_ERROR "Build with `mikro idf`, which tells CMake where @mikrojs/firmware is")
+endif()
+find_package(MikroFirmware REQUIRED COMPONENTS esp32 NO_DEFAULT_PATH)
 
 project(mikrojs)

@@ -1,12 +1,15 @@
 /* eslint-disable no-console */
 import {spawnSync, type SpawnSyncReturns, type StdioOptions} from 'node:child_process'
+import {existsSync} from 'node:fs'
 import * as pathlib from 'node:path'
+import {fileURLToPath} from 'node:url'
 
 import {command, constant, message} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import {passThrough} from '@optique/core/primitives'
 
+import {UserError} from '../lib/errorMessage.js'
 import {resolveProjectRoot} from '../lib/projectRoot.js'
 
 const EIM_DOCS = 'https://docs.espressif.com/projects/idf-im-ui/en/latest/'
@@ -22,8 +25,9 @@ export const args = command(
   },
 )
 
-export function run(config: InferValue<typeof args>): void {
-  process.exitCode = runIdf(withBuildDir(config.args))
+export async function run(config: InferValue<typeof args>): Promise<void> {
+  const projectDir = pathlib.resolve(optionValue(config.args, '-C', '--project-dir') ?? '')
+  process.exitCode = runIdf(idfArgs(projectDir, config.args))
 }
 
 /** The value of an idf.py option in any form it accepts (`-B dir`, `-Bdir`,
@@ -49,11 +53,56 @@ export function firmwareBuildDir(projectDir: string): string {
   return pathlib.join(root, '.mikro', name)
 }
 
-/** `args` with `-B <firmwareBuildDir>` in front, unless they name a build directory. */
-function withBuildDir(args: readonly string[]): readonly string[] {
-  if (optionValue(args, '-B', '--build-dir') !== undefined) return args
-  const projectDir = pathlib.resolve(optionValue(args, '-C', '--project-dir') ?? '')
-  return ['-B', firmwareBuildDir(projectDir), ...args]
+/** The folder of @mikrojs/firmware's CMake package (MikroFirmwareConfig.cmake),
+ *  as the firmware project in `projectDir` resolves the package: Node's
+ *  resolution of `@mikrojs/firmware` under the `cmake` export condition. */
+function firmwareCmakeDir(projectDir: string): string {
+  const resolved = spawnSync(
+    process.execPath,
+    [
+      '--conditions=cmake',
+      '--input-type=module',
+      '--eval',
+      "process.stdout.write(import.meta.resolve('@mikrojs/firmware'))",
+    ],
+    // Resolve as plain Node does: NODE_OPTIONS (the CLI's tsx in the Mikro.js
+    // repo, or the user's own) can load hooks that change the result.
+    {cwd: projectDir, encoding: 'utf8', env: {...process.env, NODE_OPTIONS: undefined}},
+  )
+  if (resolved.status !== 0) {
+    // Node names the child's --eval as the importer; leave that out
+    const error = /Error \[(\w+)\]: (.*?)(?: imported from .*)?$/m.exec(resolved.stderr)
+    if (error?.[1] === 'ERR_MODULE_NOT_FOUND') {
+      throw new UserError(
+        `@mikrojs/firmware is not installed for the firmware project in ${projectDir}. ` +
+          'Add it to the dependencies in package.json, and install them.',
+      )
+    }
+    throw new UserError(
+      `Could not resolve @mikrojs/firmware for ${projectDir}: ${error?.[2] ?? resolved.stderr.trim()}`,
+    )
+  }
+  const config = fileURLToPath(resolved.stdout)
+  if (pathlib.basename(config) !== 'MikroFirmwareConfig.cmake') {
+    throw new UserError(
+      `The @mikrojs/firmware installed for ${projectDir} has no CMake package ` +
+        '(MikroFirmwareConfig.cmake). Update @mikrojs/firmware.',
+    )
+  }
+  return pathlib.dirname(config)
+}
+
+/** `args` for idf.py with what a firmware build needs in front: where CMake
+ *  finds @mikrojs/firmware, for a folder with a CMakeLists.txt (so --help and
+ *  --version still run anywhere), and `-B <firmwareBuildDir>` unless `args`
+ *  name a build directory. */
+export function idfArgs(projectDir: string, args: readonly string[]): string[] {
+  const firmware = existsSync(pathlib.join(projectDir, 'CMakeLists.txt'))
+    ? [`-DMikroFirmware_DIR=${firmwareCmakeDir(projectDir)}`]
+    : []
+  const buildDir =
+    optionValue(args, '-B', '--build-dir') === undefined ? ['-B', firmwareBuildDir(projectDir)] : []
+  return [...firmware, ...buildDir, ...args]
 }
 
 /** A word for the shell that `eim run` passes its command to. */

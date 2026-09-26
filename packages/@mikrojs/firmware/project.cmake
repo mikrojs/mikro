@@ -1,15 +1,7 @@
-# project.cmake — reusable CMake module for mikrojs firmware projects
+# project.cmake — the ESP-IDF setup of a mikrojs firmware project
 #
-# Usage in user's CMakeLists.txt:
-#   cmake_minimum_required(VERSION 3.22)
-#   include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-#   execute_process(
-#       COMMAND npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32
-#       WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-#       OUTPUT_VARIABLE _MIK_CMAKE_PATH OUTPUT_STRIP_TRAILING_WHITESPACE
-#       COMMAND_ERROR_IS_FATAL ANY)
-#   include(${_MIK_CMAKE_PATH})
-#   project(my-firmware)
+# MikroFirmwareConfig.cmake includes it for find_package(MikroFirmware
+# COMPONENTS esp32).
 
 # ── Validate ESP-IDF version ─────────────────────────────────────────
 if(IDF_VERSION_MAJOR LESS 6 OR

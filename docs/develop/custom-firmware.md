@@ -19,7 +19,7 @@ Build custom firmware when the official Mikro.js firmware lacks something an app
 
 ## Create a project
 
-`package.json` depends on `@mikrojs/firmware`, on `mikro` for the `mikro idf` command, and on the packages whose native modules you want. `@mikrojs/firmware` has to be a direct dependency: the build runs its `mikro-fw` command through `npx`, which finds only the commands of the project's own dependencies.
+`package.json` depends on `@mikrojs/firmware`, on `mikro` for the `mikro idf` command, and on the packages whose native modules you want. `@mikrojs/firmware` has to be a direct dependency: `mikro idf` resolves it from the project, which package managers such as pnpm allow only for the project's own dependencies.
 
 ```json
 {
@@ -41,27 +41,24 @@ Build custom firmware when the official Mikro.js firmware lacks something an app
 cmake_minimum_required(VERSION 3.22)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-# Ask @mikrojs/firmware for the path of its project.cmake
-execute_process(
-    COMMAND npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32
-    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-    OUTPUT_VARIABLE _MIK_CMAKE_PATH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    COMMAND_ERROR_IS_FATAL ANY
-)
 # The native modules to compile in, by the names that apps import
 set(MIKROJS_NATIVE_MODULES "@my-scope/epaper/panel")
 
-include(${_MIK_CMAKE_PATH})
+if(NOT DEFINED MikroFirmware_DIR)
+    message(FATAL_ERROR "Build with `mikro idf`, which tells CMake where @mikrojs/firmware is")
+endif()
+find_package(MikroFirmware REQUIRED COMPONENTS esp32 NO_DEFAULT_PATH)
 
 project(my-firmware)
 ```
+
+[`mikro idf`](/cli#mikro-idf) resolves `@mikrojs/firmware` from the project and passes its folder to CMake as `MikroFirmware_DIR`, so build with `mikro idf`, not plain `idf.py`. `NO_DEFAULT_PATH` makes CMake use only that folder, never another copy installed elsewhere on the system. `COMPONENTS esp32` selects the chip family.
 
 Separate several native modules with `;`. The build stops if an entry is not an installed [native module](./native-modules). Without `MIKROJS_NATIVE_MODULES`, the build is the official Mikro.js firmware with the project's settings.
 
 The firmware takes the name of the project's package. The device reports it as `sys.board.name`, `mikro fw pack` names the archive after it, and `mikro flash --board` finds a [board package](./creating-boards)'s image by it. To name it otherwise, set `MIKROJS_BOARD_NAME`, and `MIKROJS_BOARD_DESCRIPTION` for the description `mikro flash` shows. A name has at most 63 characters and the form of a package name, optionally followed by `/<board>`: `@acme/boards/t-display`. You can also set the variables in the environment or with `-D`, which take priority over `set()`.
 
-An app can be its own firmware project: add `@mikrojs/firmware` to the app's dependencies, and put `CMakeLists.txt` next to its `package.json`. [`examples/chip-temperature`](https://github.com/mikrojs/mikro/tree/main/examples/chip-temperature) is set up this way; `pn create mikro --firmware` scaffolds one. ESP-IDF writes `sdkconfig`, `managed_components/` and `dependencies.lock` into the project folder, and the build into `.mikro/` (`build/` with plain `idf.py`), so add them to `.gitignore`.
+An app can be its own firmware project: add `@mikrojs/firmware` to the app's dependencies, and put `CMakeLists.txt` next to its `package.json`. [`examples/chip-temperature`](https://github.com/mikrojs/mikro/tree/main/examples/chip-temperature) is set up this way; `pn create mikro --firmware` scaffolds one. ESP-IDF writes `sdkconfig`, `managed_components/` and `dependencies.lock` into the project folder, and the build into `.mikro/`, so add them to `.gitignore`.
 
 ## Build and flash
 
@@ -73,7 +70,9 @@ pn mikro idf set-target esp32c6
 pn mikro idf build flash monitor
 ```
 
-[`mikro idf`](/cli#mikro-idf) passes its arguments to ESP-IDF's `idf.py`. When ESP-IDF is not active in the shell, it runs `idf.py` through EIM, which activates ESP-IDF first. Plain `idf.py` works too, in a shell where ESP-IDF is active (`eim select` prints the script to source).
+[`mikro idf`](/cli#mikro-idf) passes its arguments to ESP-IDF's `idf.py`. When ESP-IDF is not active in the shell, it runs `idf.py` through EIM, which activates ESP-IDF first.
+
+An IDE that runs CMake itself, such as the ESP-IDF extension for VS Code, has to pass `MikroFirmware_DIR` too. Run `pn mikro idf reconfigure` once; the `MikroFirmware_DIR` line in `.mikro/build-fw/CMakeCache.txt` (`.mikro/build-fw-<folder>/` for a firmware project in a folder of the app) then has the folder. Add `-DMikroFirmware_DIR=<folder>` to the CMake arguments in the IDE's settings. After you update `@mikrojs/firmware`, check the folder again, because it can change.
 
 ::: tip The build says "qjsc not found"
 pnpm skipped the build script of `@mikrojs/quickjs`, which builds the QuickJS bytecode compiler. Run `pnpm approve-builds`, select `@mikrojs/quickjs`, and install again.

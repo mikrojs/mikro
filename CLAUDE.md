@@ -223,13 +223,13 @@ External consumers can build custom firmware without cloning the monorepo by dep
 ```
 my-firmware/
 ├── package.json        # depends on @mikrojs/firmware + optional board/driver pkgs
-├── CMakeLists.txt      # includes project.cmake from @mikrojs/firmware
+├── CMakeLists.txt      # find_package(MikroFirmware REQUIRED COMPONENTS esp32 NO_DEFAULT_PATH)
 └── main/
     ├── CMakeLists.txt
     └── main.cpp        # calls MIK_Main() or custom logic
 ```
 
-The `@mikrojs/firmware` package provides `project.cmake`, which validates the ESP-IDF version, compiles in the native modules the project lists, and applies sdkconfig/partition defaults. Native modules are not discovered from installed dependencies: the project's `CMakeLists.txt` lists them before including `project.cmake` (overridable with `-D` or the environment; `-D` > env > `set()`):
+The `@mikrojs/firmware` package is a CMake package, `MikroFirmwareConfig.cmake`; its `esp32` component includes `project.cmake`. `project.cmake` validates the ESP-IDF version, compiles in the native modules the project lists, and applies sdkconfig/partition defaults. `mikro idf` resolves `@mikrojs/firmware` from the project under the `cmake` export condition and passes `-DMikroFirmware_DIR`; plain `idf.py` cannot build a firmware project. Native modules are not discovered from installed dependencies: the project's `CMakeLists.txt` lists them before `find_package` (overridable with `-D` or the environment; `-D` > env > `set()`):
 
 ```cmake
 set(MIKROJS_NATIVE_MODULES "@mikrojs-examples/chip-temperature")   # native modules to compile in, by import specifier
@@ -245,7 +245,7 @@ A **native module** is a module written in C/C++ and compiled into the firmware.
 - **Build and deploy**: it is compiled in only when the project lists it. The CLI leaves the import external, deploys nothing of it, and gates the deploy on the device reporting the module.
 - **Component names**: ESP-IDF names a component after its directory, so the directory names must be unique within one firmware.
 - **App modules**: an app can map a `#` import in its own `imports` field to C/C++ in the same form (exact or `*` pattern keys). The firmware project lists it as `#name`; `src/inputs.ts` resolves it in the nearest package at or above the project with a matching `imports` entry. Its component defines no `MIK_PACKAGE_NAME`, which makes the compile-time check accept only `#` names. The CLI refuses a `#` native import from any package other than the app (the cwd's package), since `#` names are per package but the firmware's registry is global.
-- **App as firmware project** (`examples/chip-temperature`): the firmware's `CMakeLists.txt` sits next to the app's `package.json`, which depends on `@mikrojs/firmware`. A firmware folder inside an app also works, with no `package.json` of its own. npm takes the nearest `package.json` as the project, so with one `npx --no --package=@mikrojs/firmware` fails to find the app's `@mikrojs/firmware`. The firmware's name (`MIK_BOARD_NAME`: `sys.board.name`, and the `fw` identity that guards custom firmware from the CLI's auto-reflash) is `MIKROJS_BOARD_NAME`, else the name in the nearest `package.json` at or above the project: the app's. The component writes it, the description, the chip and the version to `firmware.json` in the build folder.
+- **App as firmware project** (`examples/chip-temperature`): the firmware's `CMakeLists.txt` sits next to the app's `package.json`, which depends on `@mikrojs/firmware`. A firmware folder inside an app also works, with no `package.json` of its own. The firmware's name (`MIK_BOARD_NAME`: `sys.board.name`, and the `fw` identity that guards custom firmware from the CLI's auto-reflash) is `MIKROJS_BOARD_NAME`, else the name in the nearest `package.json` at or above the project: the app's. The component writes it, the description, the chip and the version to `firmware.json` in the build folder.
 
 A **board package** is prebuilt firmware plus an optional JS library (pins, pre-wired peripherals, a tsconfig preset). See `docs/develop/creating-boards.md`.
 

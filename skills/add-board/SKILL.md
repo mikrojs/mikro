@@ -83,7 +83,7 @@ Multi-board: one folder per board, each a firmware project with its own `CMakeLi
 Key points:
 
 - `image` must be in `files`: it is gitignored, and `mikro fw check` fails without it.
-- `@mikrojs/firmware` is a direct devDependency: the build runs its `mikro-fw` command through `npx`, which finds only the project's own dependencies.
+- `@mikrojs/firmware` is a direct devDependency: `mikro idf` resolves it from the project, and pnpm lets a project resolve only its own dependencies.
 - `mikro` is a plain required peer for the JS library; driver packages are dependencies. No `peerDependenciesMeta`.
 - The package's description becomes the board's description, shown when `mikro flash` asks which board to flash.
 - In this monorepo, use `"private": true`, `"version": "0.0.0"` and `workspace:*` ranges, and put the package under `packages/@mikrojs/`.
@@ -94,17 +94,13 @@ Key points:
 cmake_minimum_required(VERSION 3.22)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-execute_process(
-    COMMAND npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32
-    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-    OUTPUT_VARIABLE _MIK_CMAKE_PATH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    COMMAND_ERROR_IS_FATAL ANY
-)
 # Every native module the board's peripherals need, by the names apps import
 set(MIKROJS_NATIVE_MODULES "@acme/drivers/panel")
 
-include(${_MIK_CMAKE_PATH})
+if(NOT DEFINED MikroFirmware_DIR)
+    message(FATAL_ERROR "Build with `mikro idf`, which tells CMake where @mikrojs/firmware is")
+endif()
+find_package(MikroFirmware REQUIRED COMPONENTS esp32 NO_DEFAULT_PATH)
 
 project(devboard)
 ```

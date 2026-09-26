@@ -205,7 +205,7 @@ export function scaffold(options: ScaffoldOptions) {
         dependencies: {
           ...dependencies,
           mikro: `^${mikroVersion}`,
-          // A direct dependency: the firmware build runs its bin through npx.
+          // A direct dependency: `mikro idf` resolves it from the project.
           ...(firmware && {'@mikrojs/firmware': `^${mikroVersion}`}),
         },
         devDependencies: {
@@ -235,7 +235,6 @@ export function scaffold(options: ScaffoldOptions) {
     path.join(targetDir, '.gitignore'),
     gitignore + (firmware ? firmwareGitignore : ''),
   )
-  // Next to package.json: npx resolves bins from the nearest package.json.
   if (firmware) {
     fs.writeFileSync(path.join(targetDir, 'CMakeLists.txt'), firmwareCmakeLists(projectName))
   }

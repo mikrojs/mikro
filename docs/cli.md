@@ -122,7 +122,7 @@ pn mikro idf build flash monitor
 
 When `idf.py` is not on `PATH`, the command runs it through [EIM](https://docs.espressif.com/projects/idf-im-ui/en/latest/) with `eim run`, which activates ESP-IDF first. It exits with `idf.py`'s exit code.
 
-Use `mikro idf` for every step, including `flash` and `monitor`: it keeps its build apart from the one plain `idf.py` makes. Plain `idf.py` works too, in a shell where ESP-IDF is active.
+In a firmware project (a folder with a `CMakeLists.txt`), it also tells CMake where the project's `@mikrojs/firmware` is: it resolves the package from the project and passes `-DMikroFirmware_DIR` to `idf.py`, for the project's `find_package(MikroFirmware ...)`. A firmware project does not build with plain `idf.py`, so use `mikro idf` for every step, including `flash` and `monitor`.
 
 ## mikro fw
 

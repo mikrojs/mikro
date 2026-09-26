@@ -31,6 +31,7 @@
     "sdkconfig.defaults.*",
     "partitions.csv",
     "chips.json",
+    "MikroFirmwareConfig.cmake",
     "project.cmake",
     "resolve.cmake"
   ],
@@ -38,6 +39,7 @@
   "sideEffects": false,
   "exports": {
     ".": {
+      "cmake": "./MikroFirmwareConfig.cmake",
       "development": "./src/index.ts",
       "import": "./dist/index.js"
     },
@@ -73,6 +75,7 @@
   "publishConfig": {
     "exports": {
       ".": {
+        "cmake": "./MikroFirmwareConfig.cmake",
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       },

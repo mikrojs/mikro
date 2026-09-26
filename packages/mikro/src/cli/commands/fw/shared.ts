@@ -1,6 +1,6 @@
 import {agentError} from '../../lib/agent.js'
 import {describeError, UserError} from '../../lib/errorMessage.js'
-import {firmwareBuildDir, runIdf} from '../idf.js'
+import {firmwareBuildDir, idfArgs, runIdf} from '../idf.js'
 
 /** Build the firmware project in `projectDir` where `mikro idf` builds it,
  *  and return that directory; undefined when idf.py failed and the process is
@@ -12,7 +12,10 @@ export function buildFirmware(
   jsonOutput: boolean,
 ): string | undefined {
   const buildDir = firmwareBuildDir(projectDir)
-  const code = runIdf(['-B', buildDir, 'build'], jsonOutput ? ['inherit', 2, 2] : 'inherit')
+  const code = runIdf(
+    idfArgs(projectDir, ['-B', buildDir, 'build']),
+    jsonOutput ? ['inherit', 2, 2] : 'inherit',
+  )
   if (code !== 0) {
     // idf.py, or runIdf when it found neither idf.py nor eim, has said what went wrong.
     if (jsonOutput) agentError(command, `idf.py build exited with code ${code}`)
