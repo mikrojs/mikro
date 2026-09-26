@@ -130,6 +130,15 @@ export const HEADER_SIZE = 5
  * ~907 MB length and stall forever waiting for the payload. */
 export const MAX_FRAME_PAYLOAD = 256 * 1024
 
+/** CR and tab are message types too. Boot text ending in one, followed by a
+ * frame with a 0 to 3 byte payload, reads as a length under MAX_FRAME_PAYLOAD.
+ * The device sends these two with no or a short payload, so cap them; other
+ * types carry payloads too large to bound this way. */
+const MAX_PAYLOAD_BY_TYPE: Record<number, number> = {
+  [MSG_MANIFEST_DONE]: 0,
+  [MSG_PROMPT]: 32,
+}
+
 export interface Frame {
   type: number
   payload: Buffer
@@ -481,7 +490,7 @@ export class FrameParser {
       }
 
       const length = this.buf.readUInt32LE(offset + 1)
-      if (length > MAX_FRAME_PAYLOAD) {
+      if (length > (MAX_PAYLOAD_BY_TYPE[type] ?? MAX_FRAME_PAYLOAD)) {
         // Corrupted frame: skip byte and resync
         this.rawAccum = Buffer.concat([this.rawAccum, this.buf.subarray(offset, offset + 1)])
         offset++
