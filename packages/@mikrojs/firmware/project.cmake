@@ -47,15 +47,58 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-# ── Board and driver package discovery ───────────────────────────────
-# Scan the consuming project's package.json (CMAKE_SOURCE_DIR), not this
-# file's directory — while include()d, CMAKE_CURRENT_LIST_DIR is the
-# @mikrojs/firmware package inside node_modules.
+# ── Native modules ───────────────────────────────────────────────────
+# MIKROJS_NATIVE_MODULES lists the native modules to compile in, by import
+# specifier. Precedence: -D on the command line (cache) > environment > set()
+# in the project.
+if(DEFINED CACHE{MIKROJS_NATIVE_MODULES})
+    set(_MIK_NATIVE_MODULES "$CACHE{MIKROJS_NATIVE_MODULES}")
+elseif(DEFINED ENV{MIKROJS_NATIVE_MODULES})
+    set(_MIK_NATIVE_MODULES "$ENV{MIKROJS_NATIVE_MODULES}")
+else()
+    set(_MIK_NATIVE_MODULES "${MIKROJS_NATIVE_MODULES}")
+endif()
+
+# Resolve from the consuming project (CMAKE_SOURCE_DIR), not this file's
+# directory — while include()d, CMAKE_CURRENT_LIST_DIR is the @mikrojs/firmware
+# package inside node_modules.
 execute_process(
-    COMMAND node ${_MIK_RESOLVE} discover ${CMAKE_SOURCE_DIR}
+    COMMAND node ${_MIK_RESOLVE} inputs ${CMAKE_SOURCE_DIR}
+            "--native-modules=${_MIK_NATIVE_MODULES}"
     OUTPUT_VARIABLE _BOARD_JSON
+    ERROR_VARIABLE _BOARD_ERROR
+    RESULT_VARIABLE _BOARD_RESULT
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+if(NOT _BOARD_RESULT EQUAL 0)
+    message(FATAL_ERROR "mikrojs: native module resolution failed:\n${_BOARD_ERROR}")
+endif()
+string(JSON _BOARD_COMPONENT_DIRS GET "${_BOARD_JSON}" "components")
+string(JSON _BOARD_INPUTS GET "${_BOARD_JSON}" "configureDepends")
+# Re-run the resolution when a file it read changes: a reinstall that moved a
+# package, or an export that now points elsewhere.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_BOARD_INPUTS})
+# ESP-IDF names a component after its directory and keeps one of two with
+# the same name, so a native module directory named like an ESP-IDF component
+# (json, console, usb) would silently replace it, and one named like a
+# project component would silently be replaced.
+foreach(_dir IN LISTS _BOARD_COMPONENT_DIRS)
+    get_filename_component(_name "${_dir}" NAME)
+    if(NOT "$ENV{IDF_PATH}" STREQUAL "" AND EXISTS "$ENV{IDF_PATH}/components/${_name}")
+        message(FATAL_ERROR
+            "mikrojs: the native module in ${_dir} is named \"${_name}\", like an ESP-IDF "
+            "component, and would replace it. Rename its directory.")
+    endif()
+    foreach(_own IN ITEMS "${CMAKE_SOURCE_DIR}/components/${_name}"
+                          "${CMAKE_SOURCE_DIR}/managed_components/${_name}")
+        if(EXISTS "${_own}")
+            message(FATAL_ERROR
+                "mikrojs: the native module in ${_dir} is named \"${_name}\", like the "
+                "project's component ${_own}, and one would replace the other. Rename one of "
+                "the directories.")
+        endif()
+    endforeach()
+endforeach()
 
 # Start with the mikrojs component dir and default main
 set(EXTRA_COMPONENT_DIRS "${_MIK_COMPONENT_DIR}")
@@ -133,15 +176,13 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/sdkconfig")
     endif()
 endif()
 
-if(_BOARD_JSON)
-    string(JSON _BOARD_COMPONENT_DIRS GET "${_BOARD_JSON}" "components")
-    string(JSON _BOARD_SDKCONFIG_DEFAULTS GET "${_BOARD_JSON}" "sdkconfigs")
-    if(_BOARD_COMPONENT_DIRS)
-        set(EXTRA_COMPONENT_DIRS "${EXTRA_COMPONENT_DIRS};${_BOARD_COMPONENT_DIRS}")
-    endif()
-    if(_BOARD_SDKCONFIG_DEFAULTS)
-        list(APPEND _SDKCONFIG_LIST "${_BOARD_SDKCONFIG_DEFAULTS}")
-    endif()
+# Native module components, and the board's sdkconfig defaults.
+string(JSON _BOARD_SDKCONFIG_DEFAULTS GET "${_BOARD_JSON}" "sdkconfigs")
+if(_BOARD_COMPONENT_DIRS)
+    set(EXTRA_COMPONENT_DIRS "${EXTRA_COMPONENT_DIRS};${_BOARD_COMPONENT_DIRS}")
+endif()
+if(_BOARD_SDKCONFIG_DEFAULTS)
+    list(APPEND _SDKCONFIG_LIST "${_BOARD_SDKCONFIG_DEFAULTS}")
 endif()
 
 set(SDKCONFIG_DEFAULTS "${_SDKCONFIG_LIST}")

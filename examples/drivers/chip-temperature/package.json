@@ -1,0 +1,40 @@
+{
+  "name": "@mikrojs-examples/chip-temperature",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Example native driver: the chip's internal temperature sensor",
+  "keywords": [
+    "mikro-driver"
+  ],
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "files": [
+    "chiptemp"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./chiptemp/chiptemp.d.ts",
+      "native": "./chiptemp/chiptemp.cpp"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@mikrojs/firmware": "workspace:*",
+    "mikro": "workspace:*"
+  },
+  "peerDependencies": {
+    "@mikrojs/firmware": "workspace:*",
+    "mikro": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@mikrojs/firmware": {
+      "optional": true
+    },
+    "mikro": {
+      "optional": true
+    }
+  }
+}

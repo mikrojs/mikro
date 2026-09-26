@@ -507,6 +507,40 @@ importers:
         specifier: workspace:*
         version: link:../../packages/mikro
 
+  examples/chip-temperature:
+    dependencies:
+      '@mikrojs-examples/chip-temperature':
+        specifier: workspace:*
+        version: link:../drivers/chip-temperature
+      '@mikrojs/firmware':
+        specifier: workspace:*
+        version: link:../../packages/@mikrojs/firmware
+      mikro:
+        specifier: workspace:*
+        version: link:../../packages/mikro
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  examples/drivers/bme280:
+    devDependencies:
+      mikro:
+        specifier: workspace:*
+        version: link:../../../packages/mikro
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  examples/drivers/chip-temperature:
+    devDependencies:
+      '@mikrojs/firmware':
+        specifier: workspace:*
+        version: link:../../../packages/@mikrojs/firmware
+      mikro:
+        specifier: workspace:*
+        version: link:../../../packages/mikro
+
   examples/http-server:
     dependencies:
       mikro:

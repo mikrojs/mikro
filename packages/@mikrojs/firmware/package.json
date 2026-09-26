@@ -27,9 +27,12 @@
     "partitions.csv",
     "chips.json",
     "cmake.js",
-    "discover.js",
+    "inputs.js",
+    "inputs.d.ts",
     "index.js",
     "index.d.ts",
+    "manifest.js",
+    "manifest.d.ts",
     "project.cmake",
     "resolve.js"
   ],
@@ -42,7 +45,14 @@
       "default": "./index.js"
     },
     "./cmake": "./cmake.js",
-    "./discover": "./discover.js",
+    "./inputs": {
+      "types": "./inputs.d.ts",
+      "default": "./inputs.js"
+    },
+    "./manifest": {
+      "types": "./manifest.d.ts",
+      "default": "./manifest.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

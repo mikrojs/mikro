@@ -14,8 +14,10 @@ export interface TraceImportsOptions {
   fs?: FileSystem
   /** Export conditions to accept besides `import` and `default`. */
   conditions?: string[]
-  /** True for a specifier the firmware provides: it is reported, not resolved. */
-  isExternal?: (specifier: string) => boolean
+  /** True for a specifier the firmware provides: it is reported, not resolved.
+   *  `importer` is the real path of the importing file, then, for a file
+   *  reached through a link, the path it was reached at. */
+  isExternal?: (specifier: string, importer: string) => boolean
   /** Files with these extensions deploy, but are not parsed. */
   assetExtensions?: string[]
 }

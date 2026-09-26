@@ -227,7 +227,7 @@ static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_n
         for (mik_module_desc_t* d = mik__module_registry_head; d != nullptr; d = d->next) {
             if (strcmp(d->name, module_name) == 0) {
                 JSModuleDef* lazy_m = d->init(ctx);
-                if (lazy_m && mik_rt && d->consume) {
+                if (lazy_m && mik_rt && (d->consume || d->destroy)) {
                     MIK_RegisterLoopConsumer(mik_rt, d->consume, d->destroy);
                 }
                 return lazy_m;
@@ -261,7 +261,7 @@ static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_n
         for (mik_module_desc_t* d = mik__module_registry_head; d != nullptr; d = d->next) {
             if (strcmp(d->name, module_name) == 0) {
                 JSModuleDef* reg_m = d->init(ctx);
-                if (reg_m && mik_rt && d->consume) {
+                if (reg_m && mik_rt && (d->consume || d->destroy)) {
                     MIK_RegisterLoopConsumer(mik_rt, d->consume, d->destroy);
                 }
                 return reg_m;
@@ -280,6 +280,21 @@ static JSModuleDef* mik_module_loader_inner(JSContext* ctx, const char* module_n
             JS_ThrowTypeError(ctx, "Failed to resolve module specifier '%s'", module_name);
         }
         return NULL;
+    }
+
+    /* Package C modules registered under their public import specifier
+     * (MIK_REGISTER_PUBLIC_MODULE, e.g. "@mikrojs/drivers/sh8601"). Filesystem
+     * modules are named by path, so a bare name can only be one of these. */
+    if (module_name[0] != '/' && module_name[0] != '.') {
+        for (mik_module_desc_t* d = mik__module_registry_head; d != nullptr; d = d->next) {
+            if (strcmp(d->name, module_name) == 0) {
+                JSModuleDef* pkg_m = d->init(ctx);
+                if (pkg_m && mik_rt && (d->consume || d->destroy)) {
+                    MIK_RegisterLoopConsumer(mik_rt, d->consume, d->destroy);
+                }
+                return pkg_m;
+            }
+        }
     }
 
     /* Check external builtins for board/driver packages (e.g. "@mikrojs/your-driver").
@@ -450,7 +465,11 @@ int js_module_set_import_meta(JSContext* ctx, JSValue func_val, bool use_realpat
 
 /*
  * Resolve an export condition value to a string path.
- * Handles: string literals, and objects with "import" / "default" conditions.
+ * Handles: string literals, and objects with "import" / "default" / "native"
+ * conditions. A native module's "default" is JavaScript for hosts (tests, the
+ * simulator), so it wins; "native" last names the C/C++ source of a module
+ * without one, which is reported as missing from the firmware. A device never
+ * gets a native module's package files: the CLI keeps the import external.
  */
 static const char* mik__resolve_export_condition(JSContext* ctx, JSValue exp) {
     if (JS_IsString(exp)) {
@@ -459,7 +478,7 @@ static const char* mik__resolve_export_condition(JSContext* ctx, JSValue exp) {
     if (!JS_IsObject(exp)) {
         return NULL;
     }
-    static const char* conditions[] = {"import", "default"};
+    static const char* conditions[] = {"import", "default", "native"};
     for (size_t i = 0; i < countof(conditions); i++) {
         JSValue val = JS_GetPropertyStr(ctx, exp, conditions[i]);
         if (!JS_IsUndefined(val) && !JS_IsException(val)) {
@@ -710,6 +729,23 @@ static bool mik__is_ext_builtin_name(const char* name) {
     return false;
 }
 
+/* A name registered via MIK_REGISTER_PUBLIC_MODULE(): a package's C module,
+ * imported by its bare specifier. */
+static bool mik__is_public_module_name(const char* name) {
+    for (mik_module_desc_t* d = mik__module_registry_head; d != nullptr; d = d->next) {
+        if (strcmp(d->name, name) == 0) return true;
+    }
+    return false;
+}
+
+/* A package export whose target is C/C++ source is a native module. */
+static bool mik__is_native_source(const char* path) {
+    const char* ext = strrchr(path, '.');
+    if (!ext) return false;
+    return strcmp(ext, ".c") == 0 || strcmp(ext, ".cc") == 0 || strcmp(ext, ".cpp") == 0 ||
+           strcmp(ext, ".cxx") == 0;
+}
+
 /* Record an edge in the module dependency graph: `base` imports `target`.
  * No-ops if the MIKRuntime is absent, base is empty/non-module, or target
  * is anchored. Keyed by normalized names. */
@@ -754,6 +790,11 @@ static char* mik__module_normalizer_impl(JSContext* ctx, const char* base_name,
         if (mik__is_ext_builtin_name(name)) {
             return js_strdup(ctx, name);
         }
+        /* Same for a package's C module: the firmware provides it, so it is
+         * never looked up in node_modules. */
+        if (mik__is_public_module_name(name)) {
+            return js_strdup(ctx, name);
+        }
         /* Bare specifier — try node_modules resolution.
          * Heap-allocate the dir buffer to keep the normalizer stack frame
          * small during recursive .bjs loading. */
@@ -771,6 +812,16 @@ static char* mik__module_normalizer_impl(JSContext* ctx, const char* base_name,
                 }
                 char* resolved = mik__resolve_node_modules(ctx, base_dir, name);
                 js_free(ctx, base_dir);
+                if (resolved && mik__is_native_source(resolved)) {
+                    /* A registered native module never reaches node_modules, so
+                     * this one is not in the firmware. */
+                    js_free(ctx, resolved);
+                    JS_ThrowTypeError(ctx,
+                                      "Cannot import '%s': this firmware was not built with that "
+                                      "native module. Flash firmware that was built with it.",
+                                      name);
+                    return NULL;
+                }
                 if (resolved) {
                     return resolved;
                 }

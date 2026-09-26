@@ -58,13 +58,13 @@ TEST_CASE("GPIO numbers outside the table are not tracked") {
     MIK_ReleaseGpio(64, "Spi");
 }
 
-TEST_CASE("mik__claim_gpios rolls back and reports GpioInUse") {
+TEST_CASE("MIK_ClaimGpios rolls back and reports GpioInUse") {
     auto* rt = MIK_NewRuntime();
     auto* ctx = MIK_GetJSContext(rt);
     REQUIRE(MIK_ClaimGpio(12, "Pwm"));
 
     const int gpios[] = {10, 11, 12};
-    JSValue result = mik__claim_gpios(ctx, gpios, 3, "Spi");
+    JSValue result = MIK_ClaimGpios(ctx, gpios, 3, "Spi");
     CHECK(JS_IsObject(result));
     CHECK(MIK_GpioOwner(10) == nullptr);
     CHECK(MIK_GpioOwner(11) == nullptr);
@@ -81,9 +81,9 @@ TEST_CASE("mik__claim_gpios rolls back and reports GpioInUse") {
     JS_FreeCString(ctx, s);
     JS_FreeValue(ctx, json);
 
-    CHECK(JS_IsUndefined(mik__claim_gpios(ctx, gpios, 2, "Spi")));
+    CHECK(JS_IsUndefined(MIK_ClaimGpios(ctx, gpios, 2, "Spi")));
     CHECK(std::string(MIK_GpioOwner(11)) == "Spi");
-    mik__release_gpios(gpios, 2, "Spi");
+    MIK_ReleaseGpios(gpios, 2, "Spi");
     CHECK(MIK_GpioOwner(11) == nullptr);
     CHECK(std::string(MIK_GpioOwner(12)) == "Pwm");
     MIK_ReleaseGpio(12, "Pwm");
@@ -109,9 +109,9 @@ TEST_CASE("GpioInUse messages name the console and keep long owner names whole")
 
     JSValue global = JS_GetGlobalObject(ctx);
     const int console_gpio[] = {12};
-    JS_SetPropertyStr(ctx, global, "__console", mik__claim_gpios(ctx, console_gpio, 1, "Uart"));
+    JS_SetPropertyStr(ctx, global, "__console", MIK_ClaimGpios(ctx, console_gpio, 1, "Uart"));
     const int long_gpio[] = {13};
-    JS_SetPropertyStr(ctx, global, "__long", mik__claim_gpios(ctx, long_gpio, 1, "Uart"));
+    JS_SetPropertyStr(ctx, global, "__long", MIK_ClaimGpios(ctx, long_gpio, 1, "Uart"));
     JS_FreeValue(ctx, global);
 
     CHECK(eval_string(ctx, "__console.error.message") ==

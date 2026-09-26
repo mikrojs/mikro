@@ -2,6 +2,7 @@ packages:
   - bench-site
   - dev/*
   - examples/*
+  - examples/drivers/*
   - docs
   - esp32
   - packages/@mikrojs/*

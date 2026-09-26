@@ -60,7 +60,7 @@ static void mik__i2c_release(MIKI2CState* s) {
     i2c_del_master_bus(s->bus);
     s->bus = nullptr;
     const int gpios[] = {s->sda, s->scl};
-    mik__release_gpios(gpios, countof(gpios), "I2c");
+    MIK_ReleaseGpios(gpios, countof(gpios), "I2c");
     s->active = false;
 }
 
@@ -129,7 +129,7 @@ static JSValue js_i2c(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     JSValue invalid = mik__gpio_check(ctx, checks, countof(checks));
     if (!JS_IsUndefined(invalid)) return invalid;
     const int gpios[] = {sda, scl};
-    JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "I2c");
+    JSValue claim_failed = MIK_ClaimGpios(ctx, gpios, countof(gpios), "I2c");
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
     i2c_master_bus_config_t bus_cfg = {};
@@ -143,7 +143,7 @@ static JSValue js_i2c(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     i2c_master_bus_handle_t bus = nullptr;
     esp_err_t err = i2c_new_master_bus(&bus_cfg, &bus);
     if (err != ESP_OK) {
-        mik__release_gpios(gpios, countof(gpios), "I2c");
+        MIK_ReleaseGpios(gpios, countof(gpios), "I2c");
         return mik__result_err_named(ctx, "BusInitFailed", "failed to initialize I2C bus %d: %s",
                                      (int)port, esp_err_to_name(err));
     }
@@ -151,7 +151,7 @@ static JSValue js_i2c(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     auto* s = static_cast<MIKI2CState*>(calloc(1, sizeof(MIKI2CState)));
     if (!s) {
         i2c_del_master_bus(bus);
-        mik__release_gpios(gpios, countof(gpios), "I2c");
+        MIK_ReleaseGpios(gpios, countof(gpios), "I2c");
         return JS_ThrowOutOfMemory(ctx);
     }
     s->bus = bus;

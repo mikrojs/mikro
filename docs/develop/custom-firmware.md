@@ -42,14 +42,13 @@ my-firmware/
 }
 ```
 
-Add board or driver packages as needed (board/driver packages export `cmake.js` and are picked up automatically by `project.cmake`):
+Add the packages that the firmware uses:
 
 ```json
 {
   "dependencies": {
     "@mikrojs/firmware": "^0.1.0",
-    "@mikrojs/your-board": "^0.1.0",
-    "@mikrojs/your-driver": "^0.1.0"
+    "@my-scope/epaper": "^0.1.0"
   }
 }
 ```
@@ -65,12 +64,26 @@ execute_process(
     OUTPUT_VARIABLE _MIK_CMAKE
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+# Optional. Set it before including project.cmake.
+set(MIKROJS_NATIVE_MODULES "@my-scope/epaper/panel")
+
 include(${_MIK_CMAKE})
 
 project(my-firmware)
 ```
 
-The `project.cmake` from `@mikrojs/firmware` handles everything: ESP-IDF version validation, component discovery, sdkconfig defaults, and partition table setup.
+The `project.cmake` from `@mikrojs/firmware` handles the rest: ESP-IDF version validation, native modules, sdkconfig defaults, and partition table setup.
+
+`MIKROJS_NATIVE_MODULES` lists the [native modules](./native-modules) to compile in: the names that apps import, separated by `;`. The build stops if an entry is not an installed native module.
+
+You can also set it in the environment or with `-D`. `-D` has priority over the environment, and the environment has priority over `set()`:
+
+```sh
+MIKROJS_NATIVE_MODULES="@my-scope/epaper/panel" idf.py reconfigure build
+idf.py -DMIKROJS_NATIVE_MODULES="@my-scope/epaper/panel" build
+```
+
+CMake reads the environment only when it configures, so add `reconfigure` after you change the variable. A value passed with `-D` is stored in the build folder and applies to every later build until you run `idf.py fullclean`.
 
 ## Step 3: main.cpp (optional)
 
@@ -137,10 +150,11 @@ When you run `idf.py build`, the `project.cmake` included in your `CMakeLists.tx
 
 1. Validates ESP-IDF >= 6.1
 2. Resolves the `mikrojs` component from `@mikrojs/firmware`
-3. Scans your `package.json` dependencies for board/driver packages (via their `cmake.js` exports)
-4. Sets `EXTRA_COMPONENT_DIRS` to include all discovered components
-5. Configures sdkconfig defaults and partition table from the firmware package (overridable with local files)
-6. Embeds your project's `package.json` name as the firmware identity the device reports to the CLI
+3. Resolves each `MIKROJS_NATIVE_MODULES` entry to its C/C++ source, and adds the source's folder to `EXTRA_COMPONENT_DIRS`
+4. Configures sdkconfig defaults and partition table from the firmware package (overridable with local files)
+5. Embeds your project's `package.json` name as the firmware identity the device reports to the CLI
+
+A native module uses flash and RAM, so the build includes it only when the project lists it.
 
 If your project has no `main/` directory, the firmware package provides a default one that calls `MIK_Main()`.
 

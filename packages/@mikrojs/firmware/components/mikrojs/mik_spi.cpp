@@ -34,7 +34,7 @@ static void mik__spi_release(MIKSPIState* s) {
     s->device = nullptr;
     spi_bus_free(s->host);
     const int gpios[] = {s->clk, s->mosi, s->miso, s->cs};
-    mik__release_gpios(gpios, countof(gpios), "Spi");
+    MIK_ReleaseGpios(gpios, countof(gpios), "Spi");
     s->active = false;
 }
 
@@ -95,7 +95,7 @@ static JSValue js_spi(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     JSValue invalid = mik__gpio_check(ctx, checks, countof(checks));
     if (!JS_IsUndefined(invalid)) return invalid;
     const int gpios[] = {clk, mosi, miso, cs};
-    JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "Spi");
+    JSValue claim_failed = MIK_ClaimGpios(ctx, gpios, countof(gpios), "Spi");
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
     /* SPI2_HOST is 1, SPI3_HOST is 2, etc. — host maps directly */
@@ -110,7 +110,7 @@ static JSValue js_spi(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
 
     esp_err_t err = spi_bus_initialize(host_id, &bus_cfg, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
-        mik__release_gpios(gpios, countof(gpios), "Spi");
+        MIK_ReleaseGpios(gpios, countof(gpios), "Spi");
         return mik__result_err_named(ctx, "BusInitFailed", "SPI bus init failed: %s",
                                      esp_err_to_name(err));
     }
@@ -129,7 +129,7 @@ static JSValue js_spi(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     err = spi_bus_add_device(host_id, &dev_cfg, &device);
     if (err != ESP_OK) {
         spi_bus_free(host_id);
-        mik__release_gpios(gpios, countof(gpios), "Spi");
+        MIK_ReleaseGpios(gpios, countof(gpios), "Spi");
         return mik__result_err_named(ctx, "AddDeviceFailed", "failed to add SPI device: %s",
                                      esp_err_to_name(err));
     }
@@ -138,7 +138,7 @@ static JSValue js_spi(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     if (!s) {
         spi_bus_remove_device(device);
         spi_bus_free(host_id);
-        mik__release_gpios(gpios, countof(gpios), "Spi");
+        MIK_ReleaseGpios(gpios, countof(gpios), "Spi");
         return JS_ThrowOutOfMemory(ctx);
     }
     s->device = device;

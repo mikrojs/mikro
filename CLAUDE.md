@@ -228,12 +228,28 @@ my-firmware/
     └── main.cpp        # calls MIK_Main() or custom logic
 ```
 
-The `@mikrojs/firmware` package provides `project.cmake` which handles ESP-IDF version validation, component discovery (scans dependencies for board/driver packages), and sdkconfig/partition defaults. Native board and driver packages are discovered automatically from `package.json` dependencies via their `cmake.js` exports.
+The `@mikrojs/firmware` package provides `project.cmake`, which validates the ESP-IDF version, compiles in the native modules the project lists, and applies sdkconfig/partition defaults. Native modules are not discovered from installed dependencies: the project's `CMakeLists.txt` lists them before including `project.cmake` (overridable with `-D` or the environment; `-D` > env > `set()`):
 
-Driver and board packages come in two flavors:
+```cmake
+set(MIKROJS_NATIVE_MODULES "@mikrojs-examples/chip-temperature")   # native modules to compile in, by import specifier
+```
 
-- **Native**: Have C/C++ code, export `cmake.js`, compile into firmware via `MIK_REGISTER_MODULE`/`MIK_REGISTER_BUILTIN`. Use this for QSPI displays, custom peripherals, anything needing direct hardware access.
-- **Pure JS**: Regular npm packages using `mikrojs/spi`, `mikrojs/i2c`, etc. No native code, no `cmake.js`. Bundled and deployed with the user's app.
+`inputs.js` resolves each entry through `manifest.js` to the package export whose `native` condition targets C/C++ source, and adds that file's directory as an ESP-IDF component.
+
+A **native module** is a module written in C/C++ and compiled into the firmware. `examples/drivers/chip-temperature` is a complete one.
+
+- **Declaration**: a package export whose `native` condition targets the source, for example `".": {"types": "./chiptemp/chiptemp.d.ts", "native": "./chiptemp/chiptemp.cpp"}`. An optional `default` is a JS version for host tools.
+- **Registration**: the C registers under that import specifier with `MIK_REGISTER_PUBLIC_MODULE`. The component's `CMakeLists.txt` must define `MIK_PACKAGE_NAME`, and the specifier's package prefix is checked at compile time.
+- **Validation**: apps import it directly (no `native:` name; app code cannot import `native:*`), so it must validate its arguments. The package may also export JS that imports it; that JS deploys with the app.
+- **Build and deploy**: it is compiled in only when the project lists it. The CLI leaves the import external, deploys nothing of it, and gates the deploy on the device reporting the module.
+- **Component names**: ESP-IDF names a component after its directory, so the directory names must be unique within one firmware.
+
+A **driver** is code for a peripheral, in one of two flavors:
+
+- **Native**: a native module (`examples/drivers/chip-temperature`).
+- **Pure JS**: regular JS using `mikro/spi`, `mikro/i2c`, etc. (`examples/drivers/bme280`). Bundles with the user's app.
+
+Native modules need not be drivers (a codec, a numeric routine); the contract is the same.
 
 The `esp32/` directory in this repo is itself a thin consumer of `@mikrojs/firmware`, dogfooding the same workflow.
 
@@ -350,7 +366,7 @@ The public API exposes no constructors and no `new`. Handles come from PascalCas
 
 ### GPIO Claims
 
-Every module or driver that configures a GPIO pin claims it with `MIK_ClaimGpio(gpio, "ClassName")` (or `mik__claim_gpios` for several, which on a conflict releases the ones it claimed and returns a `GpioInUse` Result) and releases it with `MIK_ReleaseGpio(gpio, "ClassName")` in `end()` and the finalizer. A handle lives until `end()`, even when the app no longer refers to it. Call `MIK_KeepHandle(ctx, obj)` when creating the handle and `MIK_DropHandle(ctx, this_val)` in `end()`. The finalizer then runs only after `end()` or at runtime teardown. The console's GPIO pins are claimed at boot with owner `console`.
+Every module or driver that configures a GPIO pin claims it with `MIK_ClaimGpio(gpio, "ClassName")` (or `MIK_ClaimGpios` for several, which on a conflict releases the ones it claimed and returns a `GpioInUse` Result) and releases it with `MIK_ReleaseGpio(gpio, "ClassName")` in `end()` and the finalizer. A handle lives until `end()`, even when the app no longer refers to it. Call `MIK_KeepHandle(ctx, obj)` when creating the handle and `MIK_DropHandle(ctx, this_val)` in `end()`. The finalizer then runs only after `end()` or at runtime teardown. The console's GPIO pins are claimed at boot with owner `console`.
 
 ## Pre-commit Hooks
 

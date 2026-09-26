@@ -193,7 +193,7 @@ static void mik__i2s_finalizer(JSRuntime* rt, JSValue val) {
             i2s_del_channel(s->rx_chan);
         }
         const int gpios[] = MIK__I2S_GPIOS(s);
-        mik__release_gpios(gpios, countof(gpios), "I2s");
+        MIK_ReleaseGpios(gpios, countof(gpios), "I2s");
     }
     for (int i = 0; i < s->tx_count; i++) {
         MIKI2sTxChunk* c = &s->tx_queue[(s->tx_head + i) % MIK_I2S_TX_QUEUE_DEPTH];
@@ -362,7 +362,7 @@ static JSValue js_i2s(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     s->din = din;
 
     const int gpios[] = MIK__I2S_GPIOS(s);
-    JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "I2s");
+    JSValue claim_failed = MIK_ClaimGpios(ctx, gpios, countof(gpios), "I2s");
     if (!JS_IsUndefined(claim_failed)) {
         free(s);
         return claim_failed;
@@ -374,7 +374,7 @@ static JSValue js_i2s(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     if (err == ESP_OK && !mik__i2s_track(ctx, s)) err = ESP_ERR_NO_MEM;
     if (err != ESP_OK) {
         mik__i2s_del_channels(s);
-        mik__release_gpios(gpios, countof(gpios), "I2s");
+        MIK_ReleaseGpios(gpios, countof(gpios), "I2s");
         free(s);
         return mik__result_err_named(ctx, "ChannelInitFailed", "I2S init failed: %s",
                                      esp_err_to_name(err));
@@ -385,7 +385,7 @@ static JSValue js_i2s(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     if (JS_IsException(obj)) {
         mik__i2s_untrack(ctx, s);
         mik__i2s_del_channels(s);
-        mik__release_gpios(gpios, countof(gpios), "I2s");
+        MIK_ReleaseGpios(gpios, countof(gpios), "I2s");
         free(s);
         return obj;
     }
@@ -421,7 +421,7 @@ static JSValue js_i2s_end(JSContext* ctx, JSValue this_val, int argc, JSValue* a
     mik__i2s_untrack(ctx, s);
     mik__i2s_del_channels(s);
     const int gpios[] = MIK__I2S_GPIOS(s);
-    mik__release_gpios(gpios, countof(gpios), "I2s");
+    MIK_ReleaseGpios(gpios, countof(gpios), "I2s");
     s->active = false;
     MIK_DropHandle(ctx, this_val);
     return JS_UNDEFINED;

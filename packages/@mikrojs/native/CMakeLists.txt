@@ -206,6 +206,7 @@ if(BUILD_TESTING)
         test/modules_test.cpp
         test/virtual_modules_test.cpp
         test/ext_builtin_test.cpp
+        test/package_name_test.cpp
         test/text_encoding_test.cpp
         test/inspect_test.cpp
         test/platform_posix_test.cpp

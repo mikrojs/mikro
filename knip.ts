@@ -82,6 +82,11 @@ const config = {
       // component discovery), which knip can't see — no JS imports.
       ignoreDependencies: ['@mikrojs/firmware'],
     },
+    'examples/drivers/chip-temperature': {
+      // The peer dependency, declared locally as the package-json lint rule asks.
+      // The C++ uses it through the firmware build, not a JS import.
+      ignoreDependencies: ['@mikrojs/firmware'],
+    },
     'packages/@mikrojs/native': {
       // bundle-runtime.js + generate-symbol-map.js are invoked by CMake during
       // the firmware build (see @mikrojs/firmware/components/mikrojs/CMakeLists.txt

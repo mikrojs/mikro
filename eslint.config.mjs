@@ -15,6 +15,8 @@ export default [
       'packages/@mikrojs/quickjs/deps/**',
       'packages/@mikrojs/analyze-imports/test/**',
       'packages/@mikrojs/firmware/index.d.ts',
+      'packages/@mikrojs/firmware/manifest.d.ts',
+      'packages/@mikrojs/firmware/inputs.d.ts',
       '**/dist/**',
       // Any CMake build directory: `-B <dir>` is the normal way to keep a
       // second configuration around, and they all hold generated bundles.

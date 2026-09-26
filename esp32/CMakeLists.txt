@@ -8,7 +8,7 @@ endif ()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-# mikrojs project setup: validates ESP-IDF version, discovers components
+# mikrojs project setup: validates ESP-IDF version, compiles in the listed native modules
 execute_process(
     COMMAND node ${CMAKE_CURRENT_LIST_DIR}/node_modules/@mikrojs/firmware/resolve.js projectCmakePath
     OUTPUT_VARIABLE _MIK_CMAKE

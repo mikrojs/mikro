@@ -1,0 +1,11 @@
+.env
+.env.*
+.DS_Store
+node_modules
+build
+.mikro
+firmware/build
+firmware/managed_components/
+firmware/dependencies.lock
+firmware/sdkconfig
+firmware/sdkconfig.old

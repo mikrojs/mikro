@@ -13,7 +13,8 @@
  *   native           — JSON with native package paths
  *   version          — firmware package version
  *   projectName <dir> — package.json name of the consuming project (empty if none)
- *   discover <dir>   — discover board/driver components from project dir
+ *   inputs <dir> [--native-modules=<a;b>]
+ *                    — resolve the declared native modules (see inputs.js)
  */
 import {componentDir, projectCmakePath} from './cmake.js'
 import {configDir, defaultAppDir} from './index.js'
@@ -54,10 +55,23 @@ if (query === 'componentDir') {
   } catch {
     // No package.json (e.g. on-device test apps): no identity, empty output.
   }
-} else if (query === 'discover') {
+} else if (query === 'inputs') {
   const projectDir = process.argv[3]
-  const {discover} = await import('./discover.js')
-  process.stdout.write(JSON.stringify(discover(projectDir)))
+  let nativeModules = []
+  for (const arg of process.argv.slice(4)) {
+    if (arg.startsWith('--native-modules=')) {
+      nativeModules = arg.slice('--native-modules='.length).split(';').filter(Boolean)
+    }
+  }
+  const {resolveFirmwareInputs} = await import('./inputs.js')
+  try {
+    process.stdout.write(JSON.stringify(await resolveFirmwareInputs(projectDir, {nativeModules})))
+  } catch (e) {
+    // Manifest errors are complete messages for the CMake FATAL_ERROR; anything
+    // else is a bug worth a stack trace.
+    process.stderr.write(e.name === 'ManifestError' ? `${e.message}\n` : `${e.stack}\n`)
+    process.exit(1)
+  }
 } else {
   process.stderr.write(`Unknown query: ${query}\n`)
   process.exit(1)

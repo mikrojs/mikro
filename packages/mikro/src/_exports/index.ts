@@ -61,8 +61,7 @@ export type LogLevel = 'none' | 'error' | 'warn' | 'info' | 'debug'
 
 export interface MikroJSBuildConfig {
   /** Bundle user code into a single module via esbuild, with tree-shaking.
-   * Firmware builtins (mikrojs/*, native:*, and @mikrojs/* packages
-   * with native code) stay external. Reduces QuickJS per-module overhead
+   * Firmware builtins (mikro/*) and native modules stay external. Reduces QuickJS per-module overhead
    * and strips unused code paths, at the cost of less informative stack
    * traces. Default: false (per-file transform). */
   bundle?: boolean

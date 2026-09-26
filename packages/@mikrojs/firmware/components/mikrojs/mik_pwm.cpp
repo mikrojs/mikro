@@ -232,7 +232,7 @@ static JSValue js_pwm(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     invalid = mik__gpio_check(ctx, &check, 1);
     if (!JS_IsUndefined(invalid)) return invalid;
     const int gpios[] = {gpio};
-    JSValue claim_failed = mik__claim_gpios(ctx, gpios, 1, "Pwm");
+    JSValue claim_failed = MIK_ClaimGpios(ctx, gpios, 1, "Pwm");
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
     int ch = mik__pwm_alloc_channel();

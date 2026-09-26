@@ -163,7 +163,7 @@ execute_process(
 target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_VERSION=\"${_MIK_VERSION}\"")
 # Core runtime owns the bare `native:mikro/*` namespace. MIK_PACKAGE_NAME makes
 # MIK_REGISTER_MODULE enforce that every native module here is named
-# "native:mikro/<module>"; driver/board packages set their own package name.
+# "native:mikro/<module>"; a package's native module sets its package name.
 target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"mikro\"")
 # The version is read at configure time, so configure must re-run when the
 # firmware package version changes — otherwise an incremental idf.py build

@@ -323,12 +323,6 @@ JSModuleDef* mik__observable_operators_load(JSContext* ctx);
 int mik__observable_multicast_new(JSContext* ctx, JSValue* observable, JSValue* next,
                                   JSValue* complete);
 
-/* GPIO claims (gpio_claim.cpp). Claims every GPIO for `owner`; on the first one
- * already held, releases those claimed so far and returns an err Result
- * carrying GpioInUse {name, owner, message}. Returns JS_UNDEFINED on success. */
-JSValue mik__claim_gpios(JSContext* ctx, const int* gpios, int count, const char* owner);
-void mik__release_gpios(const int* gpios, int count, const char* owner);
-
 /* Watchdog (mik_watchdog.cpp). */
 /* Start a fresh blocking budget: top of each MIK_Loop pass, eval entry
  * points, REPL eval, and on return from a deliberately blocking native

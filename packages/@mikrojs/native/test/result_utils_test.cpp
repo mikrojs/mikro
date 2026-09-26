@@ -69,6 +69,19 @@ static const char* PRELUDE =
 
 /* ── Result prototype methods ───────────────────────────────────── */
 
+TEST_CASE_FIXTURE(RtFixture, "the public result helpers build Results" *
+                                 doctest::test_suite("result")) {
+    JSValue g = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, g, "__ok", MIK_ResultOk(ctx, JS_NewInt32(ctx, 7)));
+    JS_SetPropertyStr(ctx, g, "__void", MIK_ResultOkVoid(ctx));
+    JS_SetPropertyStr(ctx, g, "__err", MIK_ResultErrNamed(ctx, "PanelError", "reset %d", 3));
+    JS_FreeValue(ctx, g);
+    run(ctx,
+        "globalThis.__got = [__ok.map((v) => v + 1).value, __void.ok, __err.ok,\n"
+        "  __err.error.name, __err.error.message].join('|')\n");
+    CHECK(read_global_string(ctx, "__got") == "8|true|false|PanelError|reset 3");
+}
+
 TEST_CASE_FIXTURE(RtFixture, "ok and err factories" * doctest::test_suite("result")) {
     run(ctx, (std::string(PRELUDE) +
               "globalThis.__void = ok().ok && ok().value === undefined\n"

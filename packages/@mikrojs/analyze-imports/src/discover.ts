@@ -49,8 +49,10 @@ export interface DiscoverOptions {
   /** The app directory. */
   root: string
   conditions: string[]
-  /** True for a specifier the firmware provides. */
-  isExternal: (specifier: string) => boolean
+  /** True for a specifier the firmware provides. `importer` is the real path
+   *  of the importing file, then, for a file reached through a link, the path it
+   *  was reached at. */
+  isExternal: (specifier: string, importer: string) => boolean
   /** Files with these extensions deploy, but are not parsed. */
   assetExtensions: string[]
 }
@@ -137,7 +139,11 @@ export async function discover(entries: string[], options: DiscoverOptions): Pro
     if (parseError !== undefined) graph.problems.push(parseError)
 
     for (const ref of imports) {
-      if (isExternal(ref.specifier)) {
+      // Asked from both places the specifier may resolve from, see below.
+      if (
+        isExternal(ref.specifier, path) ||
+        (reachedAt !== path && isExternal(ref.specifier, reachedAt))
+      ) {
         module.imports.push({...ref, target: {type: 'external'}})
         continue
       }
