@@ -52,6 +52,7 @@ import {
   MSG_EVAL_ERROR,
   MSG_INFO,
   MSG_LOG,
+  MSG_MANIFEST_DONE,
   MSG_OK,
   MSG_PROMPT,
   MSG_READY,
@@ -539,6 +540,41 @@ describe('protocol', () => {
       expect(result.frames[0]!.payload.toString('utf-8')).to.equal('hello')
       // The banner bytes should be captured as raw output, not swallowed.
       expect(result.raw?.toString('utf-8')).to.contain('Mikro.js')
+    })
+
+    it('resyncs when text ending in \\r\\n is followed by a frame with a tiny payload', () => {
+      // `\r` is MSG_MANIFEST_DONE; the four bytes after it read as 0x0002020a,
+      // under MAX_FRAME_PAYLOAD, so the size guard alone does not reject it.
+      const parser = new FrameParser()
+      const stream = Buffer.concat([Buffer.from('boot\r\n', 'utf-8'), buildFrame(MSG_LOG, 'hi')])
+
+      const result = parser.feed(stream)
+      expect(result.frames.length).to.equal(1)
+      expect(result.frames[0]!.type).to.equal(MSG_LOG)
+      expect(result.frames[0]!.payload.toString('utf-8')).to.equal('hi')
+      expect(result.raw?.toString('utf-8')).to.equal('boot\r\n')
+
+      // An empty MSG_OK straight after the text, then a prompt.
+      const parser2 = new FrameParser()
+      const stream2 = Buffer.concat([
+        Buffer.from('ready\r\n', 'utf-8'),
+        buildFrame(MSG_OK),
+        buildFrame(MSG_PROMPT, '1.2ms'),
+      ])
+      const result2 = parser2.feed(stream2)
+      expect(result2.frames.map((f) => f.type)).to.deep.equal([MSG_OK, MSG_PROMPT])
+      expect(result2.raw?.toString('utf-8')).to.equal('ready\r\n')
+    })
+
+    it('still passes a genuine empty MSG_MANIFEST_DONE and a real prompt', () => {
+      const parser = new FrameParser()
+      const stream = Buffer.concat([
+        buildFrame(MSG_MANIFEST_DONE),
+        buildFrame(MSG_PROMPT, '12.5ms'),
+      ])
+      const result = parser.feed(stream)
+      expect(result.frames.map((f) => f.type)).to.deep.equal([MSG_MANIFEST_DONE, MSG_PROMPT])
+      expect(result.raw).to.be.null
     })
   })
 
