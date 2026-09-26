@@ -12,7 +12,7 @@ import {loadEnvFiles} from '../../lib/deploy.js'
 import {openSim} from '../../lib/openSim.js'
 import {parseMinifier, parseMinifyLevel} from '../../lib/parseMinifier.js'
 import {parseSize} from '../../lib/parseSize.js'
-import {getMikroDir, resolveProjectRoot} from '../../lib/projectRoot.js'
+import {getDevBuildDir, resolveProjectRoot} from '../../lib/projectRoot.js'
 import type {TestEvent} from '../../lib/session.js'
 import {SimAlreadyRunningError} from '../../lib/simPid.js'
 import {
@@ -179,7 +179,7 @@ export async function run(config: RunConfig): Promise<void> {
     minifyLevel: parseMinifyLevel(config.minifyLevel),
     envVars,
     timeout: timeoutMs,
-    buildDir: pathlib.join(getMikroDir(), 'build'),
+    buildDir: getDevBuildDir(),
     mikroEnv: 'simulator',
     updateHeapSnapshots: config.updateHeapSnapshots === true,
     ...(heapTolerance === undefined ? {} : {heapTolerance}),

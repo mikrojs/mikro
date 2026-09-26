@@ -15,7 +15,7 @@ import {collectFiles, loadEnvFiles} from '../../lib/deploy.js'
 import {formatDeployEvent} from '../../lib/deployProgress.js'
 import {openSim} from '../../lib/openSim.js'
 import {parseMinifier, parseMinifyLevel} from '../../lib/parseMinifier.js'
-import {getMikroDir, resolveProjectRoot} from '../../lib/projectRoot.js'
+import {getDevBuildDir, resolveProjectRoot} from '../../lib/projectRoot.js'
 import {resolveEntry} from '../../lib/resolveEntry.js'
 import {SimAlreadyRunningError} from '../../lib/simPid.js'
 
@@ -74,7 +74,7 @@ interface RunConfig {
 
 export async function run(config: RunConfig): Promise<void> {
   const entry = resolveEntry(config.entry)
-  const buildDir = pathlib.join(getMikroDir(), 'build')
+  const buildDir = getDevBuildDir()
   const minify = !config.noMinify
   const minifier = parseMinifier(config.minifier)
   const minifyLevel = parseMinifyLevel(config.minifyLevel)

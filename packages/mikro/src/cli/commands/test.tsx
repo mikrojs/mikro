@@ -13,7 +13,7 @@ import {formatDeployEvent} from '../lib/deployProgress.js'
 import {parseMinifier, parseMinifyLevel} from '../lib/parseMinifier.js'
 import {parseSize} from '../lib/parseSize.js'
 import {port} from '../lib/portValueParser.js'
-import {getMikroDir, resolveProjectRoot} from '../lib/projectRoot.js'
+import {getDevBuildDir, resolveProjectRoot} from '../lib/projectRoot.js'
 import {openSession} from '../lib/serial/openSession.js'
 import type {TestEvent} from '../lib/session.js'
 import {
@@ -195,7 +195,7 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
     minifyLevel: parseMinifyLevel(config.minifyLevel),
     envVars,
     timeout: timeoutMs,
-    buildDir: pathlib.join(getMikroDir(), 'build'),
+    buildDir: getDevBuildDir(),
     mikroEnv: 'test',
     updateHeapSnapshots: config.updateHeapSnapshots === true,
     ...(heapTolerance === undefined ? {} : {heapTolerance}),

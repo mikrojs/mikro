@@ -15,7 +15,7 @@ import {lastValueFrom, toArray} from 'rxjs'
 import {afterEach, beforeEach, describe, expect, it} from 'vitest'
 
 import type {LogLevel, MikroEnv} from '../../../_exports/index.js'
-import {build, type BuildEvent, buildTests, entryRootDir} from '../build.js'
+import {build, type BuildEvent, buildTests, entryRootDir, OUT_DIR_MARKER} from '../build.js'
 import {UserError} from '../errorMessage.js'
 
 function listFiles(dir: string): string[] {
@@ -318,6 +318,34 @@ describe('build', () => {
     expect(readFileSync(pathlib.join(deployed, 'package.json'), 'utf-8')).to.equal(
       '{"exports":{".":"./index.js"}}',
     )
+  })
+
+  it('refuses to delete a non-empty output directory it did not mark', async () => {
+    const markedBuild = build('app/main.ts', tempDir, {
+      minify: false,
+      bytecode: false,
+      markOutDir: true,
+    })
+    await expect(lastValueFrom(markedBuild)).rejects.toBeInstanceOf(UserError)
+    expect(readFileSync(pathlib.join(tempDir, 'app', 'main.ts'), 'utf-8')).to.equal(
+      'export const a = 1\n',
+    )
+  })
+
+  it('marks the output directory, rebuilds into it, and leaves the marker unlisted', async () => {
+    const buildDir = pathlib.join(tempDir, 'out')
+    const markedBuild = () =>
+      lastValueFrom(
+        build('app/main.ts', buildDir, {minify: false, bytecode: false, markOutDir: true}).pipe(
+          toArray(),
+        ),
+      )
+    await markedBuild()
+    const events = await markedBuild()
+
+    expect(listFiles(buildDir)).to.include(OUT_DIR_MARKER)
+    const listed = events.flatMap((e) => (e.type === 'file' ? [e.path] : []))
+    expect(listed).to.deep.equal(['/app/main.js', '/app/mikro.config.json', '/app/package.json'])
   })
 
   it('reports trace problems as a UserError, so the CLI prints them without a stack', async () => {

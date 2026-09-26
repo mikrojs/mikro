@@ -225,6 +225,7 @@ async function collectOutputFiles(buildDir: string): Promise<BuildEvent[]> {
   const entries = await readdir(buildDir, {recursive: true})
   const events: BuildEvent[] = []
   for (const entry of entries) {
+    if (entry === OUT_DIR_MARKER) continue
     const full = pathlib.join(buildDir, entry)
     const s = await stat(full)
     if (s.isFile()) {
@@ -232,6 +233,34 @@ async function collectOutputFiles(buildDir: string): Promise<BuildEvent[]> {
     }
   }
   return events
+}
+
+/** Marks an output directory as made by the build, so a later build may delete it. */
+export const OUT_DIR_MARKER = '.mikro-build'
+
+/** Delete buildDir before a build. With `marked`, refuse a non-empty directory
+ *  without the marker, since it may hold the user's own files, and mark it again. */
+async function emptyBuildDir(buildDir: string, marked: boolean): Promise<void> {
+  if (marked) {
+    const entries: string[] = await readdir(buildDir).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') return []
+      throw err
+    })
+    if (entries.length > 0 && !entries.includes(OUT_DIR_MARKER)) {
+      throw new UserError(
+        `Refusing to delete ${buildDir}: it is not empty and has no ${OUT_DIR_MARKER} file, ` +
+          'so it was not made by mikro build. Choose a new or empty output directory.',
+      )
+    }
+  }
+  await rm(buildDir, {force: true, recursive: true})
+  if (marked) {
+    await mkdir(buildDir, {recursive: true})
+    await writeFile(
+      pathlib.join(buildDir, OUT_DIR_MARKER),
+      'Output of mikro build. This directory is deleted and recreated on every build.\n',
+    )
+  }
 }
 
 function duplicatePackagesEvent(duplicates: DuplicatePackage[]): Observable<BuildEvent> {
@@ -395,6 +424,9 @@ export function build(
     /** Config environment to resolve from mikro.config.ts ('development' or
      * 'production'). Defaults to 'production'. */
     env?: MikroEnv
+    /** buildDir was chosen by the user: only delete it if a previous build
+     *  marked it (or it is empty), and mark it for the next one. */
+    markOutDir?: boolean
   },
 ): Observable<BuildEvent> {
   // Resolve the entry to a cwd-relative path so absolute paths (drag-and-drop,
@@ -591,7 +623,7 @@ export function build(
           bundle: shouldBundle,
         }),
         phase(shouldBundle ? 'Bundling' : 'Tracing imports'),
-        defer(() => rm(buildDir, {force: true, recursive: true})).pipe(ignoreElements()),
+        defer(() => emptyBuildDir(buildDir, options.markOutDir === true)).pipe(ignoreElements()),
         writeFiles,
         // After writeFiles: both write paths populate builtinImports as they run.
         defer(() =>
