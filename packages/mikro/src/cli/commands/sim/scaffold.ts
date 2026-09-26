@@ -2,21 +2,8 @@
 import {existsSync, mkdirSync, writeFileSync} from 'node:fs'
 import * as pathlib from 'node:path'
 
-import {command, constant, message, optional} from '@optique/core'
-import {object} from '@optique/core/constructs'
-import {flag} from '@optique/core/primitives'
-
 import type {BuiltinName} from '../../../simulator/builtins/types.js'
 import {getScaffoldTemplate, SCAFFOLDABLE_BUILTINS} from '../../../simulator/simTemplates.js'
-
-export const args = command(
-  'scaffold',
-  object({
-    subcommand: constant('scaffold' as const),
-    overwrite: optional(flag('--overwrite', {description: message`Overwrite existing stub files`})),
-  }),
-  {description: message`Generate simulator stub files for hardware builtins in sim/`},
-)
 
 export function run(config: {overwrite?: boolean}): void {
   const overwrite = config.overwrite === true

@@ -1,8 +1,5 @@
 import {getEsptoolPath} from '@mikrojs/esptool'
-import {command, constant, message, object, optional} from '@optique/core'
 import type {InferValue} from '@optique/core/parser'
-import {flag, option} from '@optique/core/primitives'
-import {string} from '@optique/core/valueparser'
 import spinners from 'cli-spinners'
 import figures from 'figures'
 import {Box, Text, useInput} from 'ink'
@@ -12,34 +9,11 @@ import type {Observable} from 'rxjs'
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
 import {INITIAL_SPAWN_STATE, ospawn, spawnErrorMessage, type SpawnState} from '../lib/ospawn.js'
-import {port} from '../lib/portValueParser.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
 import {TroubleshootingHint} from '../lib/troubleshooting.js'
 import {useObservable} from '../lib/useObservable.js'
-
-export const args = command(
-  'erase',
-  object({
-    action: constant('erase'),
-    port: optional(
-      option('-p', '--port', port(), {
-        description: message`Serial port of device to erase. Auto-detected if omitted.`,
-      }),
-    ),
-    baud: optional(
-      option('--baud', string({metavar: 'BAUD'}), {
-        description: message`Baud rate (default: 460800)`,
-      }),
-    ),
-    yes: optional(
-      flag('-y', '--yes', {
-        description: message`Skip confirmation prompt`,
-      }),
-    ),
-  }),
-  {description: message`Erase all flash on a connected device (factory reset)`},
-)
+import type {args} from './erase.args.js'
 
 type Props = {
   args: InferValue<typeof args>

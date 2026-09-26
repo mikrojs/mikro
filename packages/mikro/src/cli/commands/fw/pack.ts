@@ -3,12 +3,7 @@ import {readFile} from 'node:fs/promises'
 import * as pathlib from 'node:path'
 
 import {archiveName} from '@mikrojs/firmware/boards'
-import {command, constant, message, optional} from '@optique/core'
-import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
-import {option} from '@optique/core/primitives'
-import {integer, string} from '@optique/core/valueparser'
-import {path} from '@optique/run'
 import {stat} from 'fs/promises'
 import {create as tarCreate} from 'tar'
 
@@ -21,32 +16,8 @@ import {formatSize} from '../../lib/formatSize.js'
 import {imageFiles} from '../../lib/fwImage.js'
 import {sha256File} from '../../lib/ota.js'
 import {buildBoardImages, configuredPackage} from './build.js'
+import type {args} from './pack.args.js'
 import {buildFirmware, failFw, pickBoard} from './shared.js'
-
-export const args = command(
-  'pack',
-  object({
-    subcommand: constant('pack' as const),
-    out: optional(
-      option('--out', path({metavar: 'FILE', allowCreate: true, type: 'file'}), {
-        description: message`Output path for the archive (default: ./mikro-fw-<name>-<chip>.tar.gz)`,
-      }),
-    ),
-    board: optional(
-      option('--board', string({metavar: 'BOARD'}), {
-        description: message`In a board package, pack only this board: its key in boards.config.ts (./t-display) or its name. Without a name, it asks`,
-      }),
-    ),
-    parallel: optional(
-      option('--parallel', integer({metavar: 'N', min: 1}), {
-        description: message`In a board package, build up to N images at once, across boards, each with its output in a log beside its build folder`,
-      }),
-    ),
-  }),
-  {
-    description: message`Build the firmware project, or a board package's boards, and pack them for mikro flash --from`,
-  },
-)
 
 type Args = InferValue<typeof args>
 

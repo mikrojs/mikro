@@ -14,7 +14,7 @@ if (process.env.MIKROJS_WORKSPACE === '1') {
     .join(' ')
   spawn(
     process.execPath,
-    [join(import.meta.dirname, '../src/cli/cliWrapper.ts'), ...process.argv.slice(2)],
+    [join(import.meta.dirname, '../src/cli/cli.ts'), ...process.argv.slice(2)],
     {
       stdio: 'inherit',
       env: {
@@ -25,5 +25,5 @@ if (process.env.MIKROJS_WORKSPACE === '1') {
     },
   ).on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)))
 } else {
-  await import('../dist/cli/cliWrapper.js')
+  await import('../dist/cli/cli.js')
 }

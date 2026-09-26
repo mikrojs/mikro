@@ -15,7 +15,8 @@ import {render} from 'ink-testing-library'
 import React from 'react'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
-import Build, {args, run} from '../build.js'
+import {args} from '../build.args.js'
+import Build, {run} from '../build.js'
 
 type Args = InferValue<typeof args>
 

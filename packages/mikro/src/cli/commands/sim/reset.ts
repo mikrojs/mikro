@@ -3,9 +3,6 @@ import {existsSync, rmSync} from 'node:fs'
 import * as pathlib from 'node:path'
 import * as readline from 'node:readline/promises'
 
-import {command, constant, message, optional} from '@optique/core'
-import {object} from '@optique/core/constructs'
-import {flag} from '@optique/core/primitives'
 import figures from 'figures'
 
 import {getMikroDir} from '../../lib/projectRoot.js'
@@ -14,17 +11,6 @@ import {checkPid, SimAlreadyRunningError} from '../../lib/simPid.js'
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`
-
-export const args = command(
-  'reset',
-  object({
-    subcommand: constant('reset' as const),
-    yes: optional(flag('-y', '--yes', {description: message`Skip confirmation prompt`})),
-  }),
-  {
-    description: message`Erase the entire simulator state (filesystem + environment variables)`,
-  },
-)
 
 export async function run(config: {yes?: boolean}): Promise<void> {
   const mikroDir = getMikroDir()

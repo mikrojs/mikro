@@ -11,7 +11,8 @@ const listMock = vi.hoisted(() =>
 
 vi.mock('serialport', () => ({SerialPort: {list: listMock}}))
 
-const {argsParser, commands} = await import('../../program.js')
+const {argsParser} = await import('../../program.js')
+const {args: devArgs} = await import('../../commands/dev.args.js')
 
 describe('shell completion', () => {
   it('suggests every top-level subcommand', async () => {
@@ -38,7 +39,7 @@ describe('shell completion', () => {
   })
 
   it('suggests connected serial ports for --port, filtering ones without a serialNumber', async () => {
-    const suggestions = await suggest(commands.dev.args, ['dev', '--port', ''])
+    const suggestions = await suggest(devArgs, ['dev', '--port', ''])
     const texts = suggestions.flatMap((s) => (s.kind === 'literal' ? [s.text] : []))
     expect(texts).toContain('/dev/tty.usbmodem-fake-1')
     expect(texts).toContain('/dev/tty.usbmodem-fake-2')
@@ -47,7 +48,7 @@ describe('shell completion', () => {
 
   it('yields no port suggestions when SerialPort.list rejects', async () => {
     listMock.mockRejectedValueOnce(new Error('USB subsystem unavailable'))
-    const suggestions = await suggest(commands.dev.args, ['dev', '--port', ''])
+    const suggestions = await suggest(devArgs, ['dev', '--port', ''])
     const portPaths = suggestions
       .flatMap((s) => (s.kind === 'literal' ? [s.text] : []))
       .filter((t) => t.startsWith('/dev/'))

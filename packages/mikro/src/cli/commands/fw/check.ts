@@ -2,8 +2,6 @@ import * as pathlib from 'node:path'
 
 import {firmwareExports, loadBoards} from '@mikrojs/firmware/boards'
 import {findPackageRoot} from '@mikrojs/firmware/manifest'
-import {command, constant, message} from '@optique/core'
-import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import figures from 'figures'
 
@@ -12,11 +10,8 @@ import {loadBoardsConfig} from '../../lib/boardsConfig.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {UserError} from '../../lib/errorMessage.js'
 import {boardPackageProblems, configuredImageProblems} from '../../lib/fwImage.js'
+import type {args} from './check.args.js'
 import {failFw} from './shared.js'
-
-export const args = command('check', object({subcommand: constant('check' as const)}), {
-  description: message`Check a board package's boards.config.ts, its "firmware" exports and their images before it is published`,
-})
 
 type Args = InferValue<typeof args>
 

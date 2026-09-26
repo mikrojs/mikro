@@ -1,51 +1,20 @@
 import * as readline from 'node:readline/promises'
 
-import {command, constant, message, optional} from '@optique/core'
-import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
-import {flag, option} from '@optique/core/primitives'
 import figures from 'figures'
 import {filter, firstValueFrom} from 'rxjs'
 import {SerialPort} from 'serialport'
 
 import {BAUD_RATE, resolvePort} from '../lib/deploy.js'
-import {port} from '../lib/portValueParser.js'
 import {triggerSafeMode} from '../lib/recover.js'
 import {connectRepl, failOnDisconnect, type ReplSession} from '../lib/session.js'
 import {createSerialTransport, serialOpenError} from '../lib/transport.js'
+import type {args} from './clean.args.js'
 
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`
-
-export const args = command(
-  'clean',
-  object({
-    action: constant('clean'),
-    port: optional(
-      option('-p', '--port', port(), {
-        description: message`Serial port of device`,
-      }),
-    ),
-    full: optional(
-      flag('--full', {
-        description: message`Remove all files and environment variables (not just the deployed app)`,
-      }),
-    ),
-    recover: optional(
-      flag('--recover', {
-        description: message`Reset the device into safe mode before cleaning. Use when the deployed app is crash-looping.`,
-      }),
-    ),
-    yes: optional(
-      flag('-y', '--yes', {
-        description: message`Skip confirmation prompt`,
-      }),
-    ),
-  }),
-  {description: message`Remove deployed app from device`},
-)
 
 export async function run(config: InferValue<typeof args>): Promise<void> {
   const isFull = config.full === true
