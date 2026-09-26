@@ -2,17 +2,13 @@ cmake_minimum_required(VERSION 3.22)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
+if(NOT DEFINED MikroFirmware_DIR)
+    message(FATAL_ERROR "Build with `mikro idf`, which tells CMake where @mikrojs/firmware is")
+endif()
 # @mikrojs/firmware as the parent esp32/ project installs it, as a real path
-# like project.cmake takes it
-execute_process(
-    COMMAND pnpm exec mikro-fw cmake-path esp32
-    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-    OUTPUT_VARIABLE _MIK_CMAKE_PATH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    COMMAND_ERROR_IS_FATAL ANY
-)
-get_filename_component(_MIK_FIRMWARE_DIR "${_MIK_CMAKE_PATH}" DIRECTORY)
-file(REAL_PATH "${_MIK_FIRMWARE_DIR}" _MIK_FIRMWARE_DIR)
+# like project.cmake takes it. No component: this app uses the package's files.
+find_package(MikroFirmware REQUIRED NO_DEFAULT_PATH)
+file(REAL_PATH "${MikroFirmware_DIR}" _MIK_FIRMWARE_DIR)
 set(EXTRA_COMPONENT_DIRS "${_MIK_FIRMWARE_DIR}/components")
 # The package paths the mikrojs component builds from
 include("${_MIK_FIRMWARE_DIR}/resolve.cmake")

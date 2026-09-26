@@ -6,7 +6,6 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import {tmpdir} from 'node:os'
@@ -45,17 +44,13 @@ function write(file: string, content: string) {
   writeFileSync(file, content)
 }
 
-/** How the docs have a project find project.cmake: the package's bin, which
- *  npx runs wherever the package manager installed the package. */
-const FIND_PROJECT_CMAKE = [
-  'execute_process(',
-  '    COMMAND npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32',
-  '    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}',
-  '    OUTPUT_VARIABLE _MIK_CMAKE_PATH',
-  '    OUTPUT_STRIP_TRAILING_WHITESPACE',
-  '    COMMAND_ERROR_IS_FATAL ANY',
-  ')',
-  'include(${_MIK_CMAKE_PATH})',
+/** How the docs have a project find the package, with `mikro idf` passing
+ *  MikroFirmware_DIR. */
+const FIND_PACKAGE = [
+  'if(NOT DEFINED MikroFirmware_DIR)',
+  '    message(FATAL_ERROR "Build with `mikro idf`, which tells CMake where @mikrojs/firmware is")',
+  'endif()',
+  'find_package(MikroFirmware REQUIRED COMPONENTS esp32 NO_DEFAULT_PATH)',
 ]
 
 /** A consumer project; `lines` go before the include (set(MIKROJS_NATIVE_MODULES ...)). */
@@ -315,21 +310,50 @@ test.skipIf(!hasCmake())(
 )
 
 test.skipIf(!hasCmake())(
-  'a project finds project.cmake through the package bin, also when the package is hoisted',
+  'a project finds the package in MikroFirmware_DIR, and plain CMake is told to use mikro idf',
   () => {
-    // Installed at the workspace root, as npm and yarn workspaces hoist it,
-    // with its bin linked the way package managers link bins
-    const workspace = join(fixtureDir, 'hoisted')
-    mkdirSync(join(workspace, 'node_modules/@mikrojs'), {recursive: true})
-    mkdirSync(join(workspace, 'node_modules/.bin'))
-    symlinkSync(packageRoot, join(workspace, 'node_modules/@mikrojs/firmware'))
-    symlinkSync(
-      '../@mikrojs/firmware/bin/mikro-fw.js',
-      join(workspace, 'node_modules/.bin/mikro-fw'),
+    const dir = makeProject('find-package', {include: FIND_PACKAGE})
+    expect(
+      configure(dir, {args: [`-DMikroFirmware_DIR=${packageRoot}`]}).EXTRA_COMPONENT_DIRS,
+    ).toContain(join(realpathSync(packageRoot), 'components'))
+    // Plain CMake, without mikro idf, is told what to do
+    expect(() => configure(dir, {buildDir: join(dir, 'build-no-dir')})).toThrow(
+      /Build\s+with\s+`mikro\s+idf`/,
     )
-    const dir = makeProject('hoisted/firmware', {include: FIND_PROJECT_CMAKE})
-    expect(configure(dir).EXTRA_COMPONENT_DIRS).toContain(
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  'with a wrong MikroFirmware_DIR, NO_DEFAULT_PATH keeps CMake from using another copy',
+  () => {
+    const args = [
+      `-DMikroFirmware_DIR=${join(fixtureDir, 'no-such-dir')}`,
+      `-DCMAKE_PREFIX_PATH=${packageRoot}`,
+    ]
+    // Without NO_DEFAULT_PATH, CMake searches and finds the copy on CMAKE_PREFIX_PATH
+    const searching = makeProject('find-package-searching', {
+      include: ['find_package(MikroFirmware REQUIRED COMPONENTS esp32)'],
+    })
+    expect(configure(searching, {args}).EXTRA_COMPONENT_DIRS).toContain(
       join(realpathSync(packageRoot), 'components'),
+    )
+    const dir = makeProject('find-package-no-default-path', {include: FIND_PACKAGE})
+    expect(() => configure(dir, {args})).toThrow(
+      /Could\s+not\s+find\s+a\s+package\s+configuration\s+file/,
+    )
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  'find_package fails for a chip family the package does not build',
+  () => {
+    const dir = makeProject('find-package-family', {
+      include: ['find_package(MikroFirmware REQUIRED COMPONENTS rp2 NO_DEFAULT_PATH)'],
+    })
+    expect(() => configure(dir, {args: [`-DMikroFirmware_DIR=${packageRoot}`]})).toThrow(
+      /has\s+no\s+component\s+"rp2"/,
     )
   },
   30_000,

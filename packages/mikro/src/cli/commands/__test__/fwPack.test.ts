@@ -74,6 +74,16 @@ write(
 )
 chmodSync(pathlib.join(idfDir, 'idf.py'), 0o755)
 
+/** @mikrojs/firmware above both projects, as a workspace hoists it: the build
+ *  resolves it for MikroFirmware_DIR. */
+write(
+  pathlib.join(root, 'node_modules', '@mikrojs', 'firmware', 'package.json'),
+  JSON.stringify({
+    name: '@mikrojs/firmware',
+    exports: {'.': {cmake: './MikroFirmwareConfig.cmake'}},
+  }),
+)
+
 const app = pathlib.join(root, 'app')
 write(pathlib.join(app, 'package.json'), '{"name": "my-firmware"}')
 

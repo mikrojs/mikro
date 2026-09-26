@@ -73,23 +73,28 @@ runs:
         ccache --set-config=max_size=500M
         ccache --set-config=cache_dir=$HOME/.cache/ccache
 
+    # `mikro idf` tells CMake where @mikrojs/firmware is. MIKROJS_WORKSPACE runs
+    # the CLI from its TypeScript source, as in a checkout, so it needs no build.
     - shell: bash
       working-directory: esp32
       env:
         IDF_CCACHE_ENABLE: '1'
+        MIKROJS_WORKSPACE: '1'
         TARGET: ${{ inputs.target }}
       run: |
         . $IDF_PATH/export.sh
         rm -f sdkconfig
-        idf.py set-target $TARGET
-        idf.py build
+        pnpm mikro idf -B build set-target $TARGET
+        pnpm mikro idf -B build build
         ccache --show-stats
 
     - shell: bash
       working-directory: esp32
+      env:
+        MIKROJS_WORKSPACE: '1'
       run: |
         . $IDF_PATH/export.sh
-        idf.py size
+        pnpm mikro idf -B build size
 
     # esp32/build/firmware.json comes from the build (the mikrojs component
     # writes it): the image's name (<chip>-generic), chip and version. The CLI

@@ -11,7 +11,7 @@ pn mikro idf set-target esp32c6
 pn mikro idf build flash
 ```
 
-`mikro idf` runs ESP-IDF's `idf.py` with these arguments, through EIM when ESP-IDF is not active in the shell. Plain `idf.py` works too, in a shell where ESP-IDF is active.
+`mikro idf` runs ESP-IDF's `idf.py` with these arguments, through EIM when ESP-IDF is not active in the shell, and tells CMake where `@mikrojs/firmware` is.
 
 ## Run the app
 

@@ -187,7 +187,7 @@ switch (config.command.action) {
     break
   }
   case 'idf': {
-    idfCommand.run(config.command)
+    runCommand(idfCommand.run(config.command))
     break
   }
   case 'fw': {

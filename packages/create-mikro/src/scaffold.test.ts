@@ -220,12 +220,12 @@ describe('firmware option', () => {
     rmSync(tempDir, {recursive: true, force: true})
   })
 
-  it('makes the app its own firmware project, finding project.cmake through @mikrojs/firmware', () => {
+  it('makes the app its own firmware project, finding @mikrojs/firmware with find_package', () => {
     const cmake = readFileSync(path.join(targetDir, 'CMakeLists.txt'), 'utf-8')
-    expect(cmake).toContain('npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32')
-    expect(cmake).toContain('include(${_MIK_CMAKE_PATH})')
+    expect(cmake).toContain('if(NOT DEFINED MikroFirmware_DIR)')
+    expect(cmake).toContain('find_package(MikroFirmware REQUIRED COMPONENTS esp32 NO_DEFAULT_PATH)')
     expect(cmake).toContain('project(test-project)')
-    // A direct dependency, or npx cannot find the bin under pnpm
+    // A direct dependency, or `mikro idf` cannot resolve it under pnpm
     const pkg = JSON.parse(readFileSync(path.join(targetDir, 'package.json'), 'utf-8'))
     expect(pkg.dependencies['@mikrojs/firmware']).toBe('^0.0.0')
   })
