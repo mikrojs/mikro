@@ -7,35 +7,16 @@ description: Define a board package with pin maps, drivers, and sdkconfig
 
 A board package bundles driver dependencies with board-specific pin assignments and configuration. Users select a board by name and get a working setup without wiring knowledge.
 
-Board packages come in two styles depending on their drivers:
-
-1. **Native boards** use drivers with native C code. They need `cmake.js`, ESP-IDF components, and `MIK_REGISTER_BUILTIN`. The board's runtime is compiled to firmware bytecode. Use this for QSPI displays and other peripherals that need direct hardware access.
-
-2. **Pure JS boards** use drivers that are regular JavaScript (via `mikro/spi`, `mikro/i2c`, and the other core APIs). No `cmake.js`, no ESP-IDF component. The board is bundled and deployed with the user's app. Use this when the existing core APIs are sufficient.
+A board package is JavaScript: it is bundled and deployed with the user's app. Drivers that need C or C++ are [native modules](./native-modules), and firmware for the board lists them in `MIKROJS_NATIVE_MODULES` (see [Custom Firmware](./custom-firmware)).
 
 ## What a board package provides
 
 - **Pin map**: Which GPIO connects to what peripheral on this specific board.
 - **Pre-configured drivers**: Re-exports driver APIs with pins already filled in.
-- **sdkconfig.defaults**: PSRAM settings, flash size, CPU frequency (native boards only).
+- **sdkconfig.defaults**: PSRAM settings, flash size, CPU frequency.
 - **Board metadata**: Chip type, board name, and description declared in `package.json`.
 
-## Package structure (native board)
-
-```
-packages/@mikrojs/acme/
-  package.json                         # mikro.boards manifest + exports
-  cmake.js                             # exports componentPaths array
-  tsconfig.json
-  boards/
-    acme-devboard/                     # one directory per board
-      CMakeLists.txt                   # ESP-IDF component
-      builtins.cpp                     # MIK_REGISTER_BUILTIN
-      sdkconfig.defaults               # board-specific ESP-IDF config
-      acme-devboard.ts                 # re-exports drivers with board pins
-```
-
-## Package structure (pure JS board)
+## Package structure
 
 ```
 packages/@mikrojs/acme/
@@ -44,8 +25,6 @@ packages/@mikrojs/acme/
   src/
     acme-devboard.ts                   # re-exports drivers with board pins
 ```
-
-No `cmake.js`, no `boards/` directory with CMake files. Just a TypeScript module that imports from pure JS driver packages.
 
 ## Step 1: package.json
 
@@ -58,8 +37,7 @@ The `mikro.boards` field declares what boards this package provides:
   "private": true,
   "type": "module",
   "exports": {
-    "./acme-devboard": "./boards/acme-devboard/acme-devboard.ts",
-    "./cmake": "./cmake.js"
+    "./acme-devboard": "./boards/acme-devboard/acme-devboard.ts"
   },
   "mikro": {
     "boards": {
@@ -80,19 +58,7 @@ The `mikro.boards` field declares what boards this package provides:
 
 The keys in `mikro.boards` are subpath exports (prefixed with `./`). This ties the board declaration directly to the package's export map, preventing drift. The board name (without `./`) is what users pass to `MIKROJS_BOARD` and what appears in `sys.board().name`.
 
-## Step 2: cmake.js
-
-```js
-const path = require('path')
-module.exports = {
-  componentPath: path.join(__dirname, 'acme_board'),
-  sdkconfigDefaultsPath: path.join(__dirname, 'sdkconfig.defaults'),
-}
-```
-
-The build system reads `sdkconfigDefaultsPath` and merges it with the base sdkconfig.defaults.
-
-## Step 3: sdkconfig.defaults
+## Step 2: sdkconfig.defaults
 
 Board-specific ESP-IDF configuration. Common settings include PSRAM, flash size, and CPU frequency:
 
@@ -111,7 +77,7 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
 
 These are merged with the project's base `sdkconfig.defaults`. Board-specific values override the base.
 
-## Step 4: Runtime TypeScript module
+## Step 3: Runtime TypeScript module
 
 `runtime/acme-devboard/acme-devboard.ts`:
 
@@ -146,49 +112,6 @@ export function getDisplay() {
 ```
 
 The board module imports from driver packages and fills in the GPIO numbers. Users import from the board package and get a ready-to-use API.
-
-## Step 5: board_builtins.cpp
-
-Register the bytecode builtin so the runtime can resolve imports by package name:
-
-```cpp
-#include <mikrojs/mikrojs.h>
-
-// Generated during build
-#include "gen/acme-devboard.bytecode.h"
-
-MIK_REGISTER_BUILTIN(acme_devboard, "@mikrojs/acme/acme-devboard",
-                     qjsc_acme_devboard, qjsc_acme_devboard_size)
-```
-
-## Step 6: CMakeLists.txt
-
-```cmake
-idf_component_register(
-    SRCS "board_builtins.cpp"
-    INCLUDE_DIRS "."
-    REQUIRES mikrojs driver_bme280 driver_ssd1306
-)
-
-execute_process(
-    COMMAND node -e "process.stdout.write(require('@mikrojs/native/cmake').cmakePath)"
-    OUTPUT_VARIABLE MIKROJS_CMAKE_PATH
-)
-include(${MIKROJS_CMAKE_PATH})
-
-mikrojs_generate_bytecode(
-    RUNTIME_DIR "${CMAKE_CURRENT_LIST_DIR}/../runtime"
-    MODULES acme-devboard/acme-devboard
-    MODULE_PREFIX "@mikrojs/acme"
-    SYMBOL_PREFIX "acme_devboard"
-)
-
-mikrojs_force_include_builtins(${COMPONENT_LIB} acme_devboard)
-
-target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-```
-
-Note: `REQUIRES` lists the ESP-IDF component names (directory names of the driver components, for example `driver_bme280`). This is what gets the drivers compiled and linked.
 
 ## Building with a board
 

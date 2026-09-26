@@ -142,20 +142,26 @@ describe('session', () => {
       sendFrame(
         MSG_READY,
         Buffer.from(
-          encodeCbor({chip: 'esp32c6', board: 'esp32c6-generic', features: ['wifi', 'i2s']}),
+          encodeCbor({
+            chip: 'esp32c6',
+            board: 'c6-neo',
+            features: ['wifi', 'i2s'],
+            natives: ['c6-neo/ring-fx'],
+          }),
         ),
       )
 
       expect(events.length).to.equal(1)
       if (events[0]!.type === 'ready') {
-        expect(events[0]!.board).to.equal('esp32c6-generic')
+        expect(events[0]!.board).to.equal('c6-neo')
         expect(events[0]!.features).to.deep.equal(['wifi', 'i2s'])
+        expect(events[0]!.natives).to.deep.equal(['c6-neo/ring-fx'])
       }
 
       session.close()
     })
 
-    it('leaves board and features undefined on legacy firmware', () => {
+    it('leaves board, features and natives undefined on legacy firmware', () => {
       const {transport, sendFrame} = createMockTransport()
       const session = connectRepl(transport)
       const events: ReplEvent[] = []
@@ -167,6 +173,7 @@ describe('session', () => {
       if (events[0]!.type === 'ready') {
         expect(events[0]!.board).to.be.undefined
         expect(events[0]!.features).to.be.undefined
+        expect(events[0]!.natives).to.be.undefined
       }
 
       session.close()

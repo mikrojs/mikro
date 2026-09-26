@@ -150,6 +150,7 @@ export default defineConfig({
           {text: 'Custom Firmware', link: '/develop/custom-firmware'},
           {text: 'Building from Source', link: '/develop/building-firmware'},
           {text: 'Creating Drivers', link: '/develop/creating-drivers'},
+          {text: 'Native Modules', link: '/develop/native-modules'},
           {text: 'Creating Boards', link: '/develop/creating-boards'},
           {text: 'Architecture', link: '/develop/architecture'},
           {

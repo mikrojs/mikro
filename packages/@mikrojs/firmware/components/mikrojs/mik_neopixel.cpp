@@ -213,7 +213,7 @@ static JSValue js_neopixel(JSContext* ctx, JSValue this_val, int argc, JSValue* 
     JSValue invalid = mik__gpio_check(ctx, &check, 1);
     if (!JS_IsUndefined(invalid)) return invalid;
     const int gpios[] = {gpio};
-    JSValue claim_failed = mik__claim_gpios(ctx, gpios, 1, "NeoPixel");
+    JSValue claim_failed = MIK_ClaimGpios(ctx, gpios, 1, "NeoPixel");
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
     int bytes_per_led = rgbw ? 4 : 3;

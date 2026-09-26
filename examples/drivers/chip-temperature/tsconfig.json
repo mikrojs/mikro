@@ -1,0 +1,6 @@
+{
+  "extends": "mikro/tsconfig",
+  // The package is only declarations, which skipLibCheck would skip.
+  "compilerOptions": {"skipLibCheck": false},
+  "include": ["chiptemp/*.d.ts"]
+}

@@ -4,9 +4,11 @@
 #   cmake_minimum_required(VERSION 3.22)
 #   include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 #   execute_process(
-#       COMMAND node <path-to>/resolve.js projectCmakePath
-#       OUTPUT_VARIABLE _MIK_CMAKE OUTPUT_STRIP_TRAILING_WHITESPACE)
-#   include(${_MIK_CMAKE})
+#       COMMAND npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32
+#       WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+#       OUTPUT_VARIABLE _MIK_CMAKE_PATH OUTPUT_STRIP_TRAILING_WHITESPACE
+#       COMMAND_ERROR_IS_FATAL ANY)
+#   include(${_MIK_CMAKE_PATH})
 #   project(my-firmware)
 
 # ── Validate ESP-IDF version ─────────────────────────────────────────
@@ -21,41 +23,49 @@ endif()
 add_compile_options($<$<COMPILE_LANGUAGE:C>:-Wno-incompatible-pointer-types>)
 add_compile_options(-Wno-format)
 
-# resolve.js is next to this file
-get_filename_component(_MIK_RESOLVE "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
-set(_MIK_RESOLVE "${_MIK_RESOLVE}/resolve.js")
+# ── Firmware package paths ───────────────────────────────────────────
+# The package is this file's directory, as a real path (node_modules links
+# into the pnpm store), so its sources compile under one path.
+file(REAL_PATH "${CMAKE_CURRENT_LIST_DIR}" _MIK_CONFIG_DIR)
+set(_MIK_COMPONENT_DIR "${_MIK_CONFIG_DIR}/components")
+set(_MIK_DEFAULT_APP_DIR "${_MIK_CONFIG_DIR}/default-app")
 
-# ── Resolve firmware package paths ───────────────────────────────────
-execute_process(
-    COMMAND node ${_MIK_RESOLVE} componentDir
-    OUTPUT_VARIABLE _MIK_COMPONENT_DIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-if(NOT _MIK_COMPONENT_DIR)
-    message(FATAL_ERROR "@mikrojs/firmware not found. Run 'pnpm install' or 'npm install' first.")
+# ── Native modules ───────────────────────────────────────────────────
+# MIKROJS_NATIVE_MODULES lists the native modules to compile in, by import
+# specifier. Precedence: -D on the command line (cache) > environment > set()
+# in the project.
+if(DEFINED CACHE{MIKROJS_NATIVE_MODULES})
+    set(_MIK_NATIVE_MODULES "$CACHE{MIKROJS_NATIVE_MODULES}")
+elseif(DEFINED ENV{MIKROJS_NATIVE_MODULES})
+    set(_MIK_NATIVE_MODULES "$ENV{MIKROJS_NATIVE_MODULES}")
+else()
+    set(_MIK_NATIVE_MODULES "${MIKROJS_NATIVE_MODULES}")
 endif()
 
-execute_process(
-    COMMAND node ${_MIK_RESOLVE} configDir
-    OUTPUT_VARIABLE _MIK_CONFIG_DIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-execute_process(
-    COMMAND node ${_MIK_RESOLVE} defaultAppDir
-    OUTPUT_VARIABLE _MIK_DEFAULT_APP_DIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# ── Board and driver package discovery ───────────────────────────────
-# Scan the consuming project's package.json (CMAKE_SOURCE_DIR), not this
-# file's directory — while include()d, CMAKE_CURRENT_LIST_DIR is the
-# @mikrojs/firmware package inside node_modules.
-execute_process(
-    COMMAND node ${_MIK_RESOLVE} discover ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE _BOARD_JSON
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+# The package paths for the mikrojs component, and the native modules
+# resolved from _MIK_NATIVE_MODULES.
+include("${CMAKE_CURRENT_LIST_DIR}/resolve.cmake")
+# ESP-IDF names a component after its directory and keeps one of two with
+# the same name, so a native module directory named like an ESP-IDF component
+# (json, console, usb) would silently replace it, and one named like a
+# project component would silently be replaced.
+foreach(_dir IN LISTS _BOARD_COMPONENT_DIRS)
+    get_filename_component(_name "${_dir}" NAME)
+    if(NOT "$ENV{IDF_PATH}" STREQUAL "" AND EXISTS "$ENV{IDF_PATH}/components/${_name}")
+        message(FATAL_ERROR
+            "mikrojs: the native module in ${_dir} is named \"${_name}\", like an ESP-IDF "
+            "component, and would replace it. Rename its directory.")
+    endif()
+    foreach(_own IN ITEMS "${CMAKE_SOURCE_DIR}/components/${_name}"
+                          "${CMAKE_SOURCE_DIR}/managed_components/${_name}")
+        if(EXISTS "${_own}")
+            message(FATAL_ERROR
+                "mikrojs: the native module in ${_dir} is named \"${_name}\", like the "
+                "project's component ${_own}, and one would replace the other. Rename one of "
+                "the directories.")
+        endif()
+    endforeach()
+endforeach()
 
 # Start with the mikrojs component dir and default main
 set(EXTRA_COMPONENT_DIRS "${_MIK_COMPONENT_DIR}")
@@ -133,15 +143,12 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/sdkconfig")
     endif()
 endif()
 
-if(_BOARD_JSON)
-    string(JSON _BOARD_COMPONENT_DIRS GET "${_BOARD_JSON}" "components")
-    string(JSON _BOARD_SDKCONFIG_DEFAULTS GET "${_BOARD_JSON}" "sdkconfigs")
-    if(_BOARD_COMPONENT_DIRS)
-        set(EXTRA_COMPONENT_DIRS "${EXTRA_COMPONENT_DIRS};${_BOARD_COMPONENT_DIRS}")
-    endif()
-    if(_BOARD_SDKCONFIG_DEFAULTS)
-        list(APPEND _SDKCONFIG_LIST "${_BOARD_SDKCONFIG_DEFAULTS}")
-    endif()
+# Native module components, and the board's sdkconfig defaults.
+if(_BOARD_COMPONENT_DIRS)
+    set(EXTRA_COMPONENT_DIRS "${EXTRA_COMPONENT_DIRS};${_BOARD_COMPONENT_DIRS}")
+endif()
+if(_BOARD_SDKCONFIG_DEFAULTS)
+    list(APPEND _SDKCONFIG_LIST "${_BOARD_SDKCONFIG_DEFAULTS}")
 endif()
 
 set(SDKCONFIG_DEFAULTS "${_SDKCONFIG_LIST}")

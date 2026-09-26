@@ -287,30 +287,59 @@ typedef struct mik_module_desc_t {
 extern mik_module_desc_t* mik__module_registry_head;
 
 /* NOLINTBEGIN(bugprone-macro-parentheses,cppcoreguidelines-avoid-non-const-global-variables) */
-/* Namespace governance. The build defines MIK_PACKAGE_NAME for every component:
- * "mikro" for the core runtime, and the owning npm package name for a discovered
- * driver/board package (assigned authoritatively from the dependency graph, not
- * self-declared). A native module must then be named "native:<MIK_PACKAGE_NAME>/…"
- * and a registered builtin "<MIK_PACKAGE_NAME>/…". This reserves the native:
- * namespace to mikro and stops a package from claiming or shadowing another's
- * name. Enforced at compile time; the static_assert needs string-literal args
+/* Namespace governance. Each component's CMakeLists.txt defines MIK_PACKAGE_NAME:
+ * "mikro" for the core runtime, the owning npm package name for a driver or
+ * board package. A native module must then be named "native:<MIK_PACKAGE_NAME>/…",
+ * and a public module or registered builtin "<MIK_PACKAGE_NAME>" (the package's
+ * root export) or "<MIK_PACKAGE_NAME>/…". This keeps the native:
+ * namespace to mikro and catches a module named for the wrong package; the name
+ * is self-declared, so it does not stop a package that declares another's.
+ * An app's own module, which the app imports with a "#" specifier from its
+ * package.json "imports", belongs to no package: its component defines no
+ * MIK_PACKAGE_NAME, and its public module name must start with "#".
+ * Enforced at compile time; the static_assert needs string-literal args
  * (always the case here). */
 #ifdef MIK_PACKAGE_NAME
 #define MIK__REQUIRE_PREFIX(name_, prefix_)                                        \
     static_assert(__builtin_strncmp((name_), (prefix_), sizeof(prefix_) - 1) == 0, \
                   "mikrojs: name must start with \"" prefix_ "\"")
 #define MIK__REQUIRE_NATIVE_NS(name_) MIK__REQUIRE_PREFIX(name_, "native:" MIK_PACKAGE_NAME "/")
-#define MIK__REQUIRE_BUILTIN_NS(name_) MIK__REQUIRE_PREFIX(name_, MIK_PACKAGE_NAME "/")
+/* The package name itself, or a subpath of it. sizeof compares the lengths, so
+ * "@acme/pi" does not pass for "@acme/pix". */
+#define MIK__REQUIRE_BUILTIN_NS(name_)                                                   \
+    static_assert((sizeof(name_) == sizeof(MIK_PACKAGE_NAME) &&                          \
+                   __builtin_strncmp((name_), MIK_PACKAGE_NAME, sizeof(name_)) == 0) ||  \
+                      __builtin_strncmp((name_), MIK_PACKAGE_NAME "/",                   \
+                                        sizeof(MIK_PACKAGE_NAME "/") - 1) == 0,          \
+                  "mikrojs: name must be \"" MIK_PACKAGE_NAME "\" or start with \"" \
+                  MIK_PACKAGE_NAME "/\"")
+#define MIK__REQUIRE_PACKAGE_NS(name_) MIK__REQUIRE_BUILTIN_NS(name_)
 #else
 #define MIK__REQUIRE_PREFIX(name_, prefix_) static_assert(true, "")
 #define MIK__REQUIRE_NATIVE_NS(name_) static_assert(true, "")
 #define MIK__REQUIRE_BUILTIN_NS(name_) static_assert(true, "")
+/* Core may build without MIK_PACKAGE_NAME (host builds); a package's module
+ * never does, or it could take any name, a core one included. Without it, a
+ * public module is an app's own, named "#…". */
+#define MIK__REQUIRE_PACKAGE_NS(name_)                                                \
+    static_assert(__builtin_strncmp((name_), "#", 1) == 0,                           \
+                  "mikrojs: MIK_REGISTER_PUBLIC_MODULE needs MIK_PACKAGE_NAME, or a " \
+                  "\"#\" name for an app's own module; define MIK_PACKAGE_NAME in "   \
+                  "the component's CMakeLists.txt")
 #endif
 
 /* The descriptor has external linkage so the linker can be told to keep it
  * via -u flags (static symbols in static libraries get stripped). */
 #define MIK_REGISTER_MODULE(id, name_, init_, consume_, destroy_)              \
     MIK__REQUIRE_NATIVE_NS(name_);                                             \
+    MIK__MODULE_DESC(id, name_, init_, consume_, destroy_)
+/* A package's C module under its public import specifier
+ * ("@mikrojs/drivers/sh8601"): what app code imports, with no JS layer and no
+ * native: name. The specifier must start with the owning package's name, or
+ * with "#" for an app's own module, and the module must validate its
+ * arguments: app code calls it directly. */
+#define MIK_REGISTER_PUBLIC_MODULE(id, name_, init_, consume_, destroy_)       \
+    MIK__REQUIRE_PACKAGE_NS(name_);                                            \
     MIK__MODULE_DESC(id, name_, init_, consume_, destroy_)
 /* A platform C module under its public mikro/ name (mikro/gpio on ESP-IDF), for
  * modules with no bytecode layer. Core runtime only. */
@@ -325,11 +354,10 @@ extern mik_module_desc_t* mik__module_registry_head;
         mik__mod_desc_##id.next = mik__module_registry_head;                   \
         mik__module_registry_head = &mik__mod_desc_##id;                       \
     }
-/* Self-registration for bytecode builtins (board/driver JS runtime modules).
- * Driver packages use MIK_REGISTER_BUILTIN() to embed their JS wrappers as
- * firmware builtins, resolved by the real npm package name (e.g. "@mikrojs/your-driver"). */
+/* Self-registration for bytecode builtins compiled into the firmware under a
+ * package name (e.g. "@my-scope/codec"), resolved before node_modules. */
 typedef struct mik_ext_builtin_t {
-    const char* name;         /* module name, e.g. "@mikrojs/your-driver" */
+    const char* name;         /* module name, e.g. "@my-scope/codec" */
     const uint8_t* data;      /* compiled bytecode */
     uint32_t data_size;
     struct mik_ext_builtin_t* next;
@@ -470,6 +498,11 @@ bool MIK_ClaimGpio(int gpio, const char* owner);
 void MIK_ReleaseGpio(int gpio, const char* owner);
 /* The current owner of `gpio`, or NULL when it is free. */
 const char* MIK_GpioOwner(int gpio);
+/* Claims every GPIO in `gpios` for `owner`. If one is already held, releases
+ * the ones this call claimed and returns an err Result carrying GpioInUse
+ * {name, owner, message}. Returns JS_UNDEFINED when all are claimed. */
+JSValue MIK_ClaimGpios(JSContext* ctx, const int* gpios, int count, const char* owner);
+void MIK_ReleaseGpios(const int* gpios, int count, const char* owner);
 
 /* A handle that owns a resource lives until its end() or close(), even when
  * the app no longer refers to it. Call MIK_KeepHandle when you create the
@@ -478,6 +511,15 @@ const char* MIK_GpioOwner(int gpio);
  * handle that is not kept. */
 void MIK_KeepHandle(JSContext* ctx, JSValueConst handle);
 void MIK_DropHandle(JSContext* ctx, JSValueConst handle);
+
+/* Results for native module functions: {ok: true, value}, {ok: true}, or
+ * {ok: false, error: {name, message}}, with the methods app code expects
+ * (.map, .orPanic and the rest). MIK_ResultOk takes ownership of `value`.
+ * The error message is printf-style. */
+JSValue MIK_ResultOk(JSContext* ctx, JSValue value);
+JSValue MIK_ResultOkVoid(JSContext* ctx);
+JSValue MIK_ResultErrNamed(JSContext* ctx, const char* name, const char* fmt, ...)
+    __attribute__((format(printf, 3, 4)));
 
 #ifdef __cplusplus
 }

@@ -1,0 +1,26 @@
+{
+  "name": "mikrojs-chip-temperature-example",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Mikro.js example: firmware with a native driver, and an app that uses it",
+  "license": "MIT",
+  "author": "Bjørge Næss <bjoerge@gmail.com>",
+  "type": "module",
+  "main": "./app/main.ts",
+  "scripts": {
+    "dev": "mikro dev"
+  },
+  "dependencies": {
+    "@mikrojs-examples/chip-temperature": "workspace:*",
+    "@mikrojs/firmware": "workspace:*",
+    "mikro": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  },
+  "mikro": {
+    "predeploy": [
+      "tsc --noEmit --pretty"
+    ]
+  }
+}

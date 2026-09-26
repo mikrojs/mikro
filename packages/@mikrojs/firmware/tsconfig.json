@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": ["src/**/*.ts"],
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true,
+    // bin/mikro-fw.js runs src/ directly in the repository, so imports name
+    // the .ts files; the build rewrites them to .js
+    "rewriteRelativeImportExtensions": true
+  }
+}

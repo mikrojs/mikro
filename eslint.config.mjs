@@ -14,7 +14,9 @@ export default [
       'esp32/managed_components/**',
       'packages/@mikrojs/quickjs/deps/**',
       'packages/@mikrojs/analyze-imports/test/**',
-      'packages/@mikrojs/firmware/index.d.ts',
+      // Types for plain JS modules, outside any tsconfig project
+      'packages/@mikrojs/native/cmake.d.ts',
+      'packages/@mikrojs/quickjs/index.d.ts',
       '**/dist/**',
       // Any CMake build directory: `-B <dir>` is the normal way to keep a
       // second configuration around, and they all hold generated bundles.

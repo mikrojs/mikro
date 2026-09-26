@@ -3,6 +3,7 @@
 
 #include <quickjs.h>
 
+#include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
@@ -83,14 +84,12 @@ JSValue mik__result_err(JSContext* ctx, int code, int platform_errno, const char
     return obj;
 }
 
-JSValue mik__result_err_named(JSContext* ctx, const char* name, const char* fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
+static JSValue result_err_named_v(JSContext* ctx, const char* name, const char* fmt,
+                                  va_list ap) {
     /* 384 matches the HTTP task's error_buf: fetch errors pass through here
      * verbatim, and a smaller buffer truncates their trailing heap figures. */
     char msg[384];
     vsnprintf(msg, sizeof(msg), fmt, ap);
-    va_end(ap);
 
     JSValue error = JS_NewObject(ctx);
     JS_DefinePropertyValueStr(ctx, error, "name", JS_NewString(ctx, name), JS_PROP_C_W_E);
@@ -100,6 +99,26 @@ JSValue mik__result_err_named(JSContext* ctx, const char* name, const char* fmt,
     JS_DefinePropertyValueStr(ctx, obj, "ok", JS_FALSE, JS_PROP_C_W_E);
     JS_DefinePropertyValueStr(ctx, obj, "error", error, JS_PROP_C_W_E);
     return obj;
+}
+
+JSValue mik__result_err_named(JSContext* ctx, const char* name, const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    JSValue result = result_err_named_v(ctx, name, fmt, ap);
+    va_end(ap);
+    return result;
+}
+
+JSValue MIK_ResultOk(JSContext* ctx, JSValue value) { return mik__result_ok(ctx, value); }
+
+JSValue MIK_ResultOkVoid(JSContext* ctx) { return mik__result_ok_void(ctx); }
+
+JSValue MIK_ResultErrNamed(JSContext* ctx, const char* name, const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    JSValue result = result_err_named_v(ctx, name, fmt, ap);
+    va_end(ap);
+    return result;
 }
 
 JSValue mik__result_err_tag(JSContext* ctx, const char* name) {

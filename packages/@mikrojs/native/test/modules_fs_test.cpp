@@ -328,6 +328,29 @@ TEST_CASE_FIXTURE(ModFixture, "package resolution rejects unusable specifiers an
     CHECK(eval_main(ctx, "import 'badjson'\n", "/app/main4.js").find("Failed to resolve module specifier") != std::string::npos);
 }
 
+TEST_CASE_FIXTURE(ModFixture, "a native module the firmware lacks is named by its specifier" *
+                                  doctest::test_suite("modules-fs")) {
+    /* A deployed package keeps its exports map; the C source itself is not deployed. */
+    write("/node_modules/@acme/drivers/package.json",
+          "{\"exports\": {\"./panel\": {\"types\": \"./panel/panel.d.ts\", "
+          "\"native\": \"./panel/panel.cpp\"}}}");
+    CHECK(eval_main(ctx, "import '@acme/drivers/panel'\n") ==
+          "TypeError: Cannot import '@acme/drivers/panel': this firmware was not built with "
+          "that native module. Flash firmware that was built with it.");
+}
+
+TEST_CASE_FIXTURE(ModFixture, "a native module's host JavaScript loads in its place" *
+                                  doctest::test_suite("modules-fs")) {
+    write("/node_modules/@acme/fx/package.json",
+          "{\"exports\": {\"./fx\": {\"native\": \"./fx/fx.cpp\", "
+          "\"default\": \"./fx/fx.host.js\"}}}");
+    write("/node_modules/@acme/fx/fx/fx.host.js", "export const id = 'host'\n");
+    CHECK(eval_main(ctx,
+                    "import {id} from '@acme/fx/fx'\n"
+                    "globalThis.__fx = id\n") == "ok");
+    CHECK(read_global_string(ctx, "__fx") == "host");
+}
+
 TEST_CASE_FIXTURE(ModFixture, "package metadata variants: package.bjson and large manifests" *
                                   doctest::test_suite("modules-fs")) {
     /* precompiled package.bjson takes precedence over package.json */

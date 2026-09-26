@@ -1,0 +1,10 @@
+.env
+.env.*
+.DS_Store
+node_modules
+build
+.mikro
+managed_components/
+dependencies.lock
+sdkconfig
+sdkconfig.old

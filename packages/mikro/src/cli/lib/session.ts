@@ -132,6 +132,10 @@ export interface ReadyEvent {
   /** Firmware features compiled in (e.g. ['wifi', 'i2s']). Absent on legacy
    *  firmware, which callers treat as unknown: no feature gating. */
   features?: string[] | undefined
+  /** Package native modules compiled in (e.g. ['@mikrojs/drivers/sh8601']; empty
+   *  on a generic build). Absent on firmware predating the field, which
+   *  callers treat as unknown — no native module gating. */
+  natives?: string[] | undefined
   advisory?: FirmwareAdvisory | null
 }
 
@@ -1297,6 +1301,7 @@ function frameToEvent(frame: Frame): ReplEvent | null {
       let memReserved: number | undefined
       let board: string | undefined
       let features: string[] | undefined
+      let natives: string[] | undefined
       try {
         const info = decodeCbor(msg.payload) as {
           chip?: string
@@ -1309,6 +1314,7 @@ function frameToEvent(frame: Frame): ReplEvent | null {
           memRes?: number
           board?: string
           features?: string[]
+          natives?: string[]
         }
         chip = info.chip ?? null
         id = info.id ?? null
@@ -1327,6 +1333,9 @@ function frameToEvent(frame: Frame): ReplEvent | null {
         features = Array.isArray(info.features)
           ? info.features.filter((f): f is string => typeof f === 'string')
           : undefined
+        natives = Array.isArray(info.natives)
+          ? info.natives.filter((n): n is string => typeof n === 'string')
+          : undefined
       } catch {
         // ignore
       }
@@ -1344,6 +1353,7 @@ function frameToEvent(frame: Frame): ReplEvent | null {
         memReserved,
         board,
         features,
+        natives,
       }
     }
     case 'log':

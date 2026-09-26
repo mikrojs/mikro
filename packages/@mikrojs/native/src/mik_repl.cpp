@@ -34,9 +34,10 @@ static bool repl_async_skipped = false;  /* set when eval bails on paused async 
 static MIKReplTransport* repl_transport = nullptr;
 /* Sized to hold the base map plus a maximum-length npm package name as the
  * `fw` identity (214 chars), with room to spare for a typical `[rev, name]`
- * pair. A max-length identity combined with a near-max device name can still
+ * pair, or a typical map with about ten package native modules (~30 bytes
+ * each). A max-length identity combined with a near-max device name can still
  * exceed this; refresh_ready then drops the name (never the identity). */
-static uint8_t ready_buf[384];
+static uint8_t ready_buf[512];
 static size_t ready_len = 0;
 
 /* Memory left for the app, captured once from the boot path (see
@@ -904,10 +905,13 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
 /* Fills ready_buf/ready_len with CBOR device info:
  * {"chip": tstr, "id": tstr, "v": tstr, "board": tstr, "fw": tstr (when built
  * with MIK_FW_NAME), "name": tstr (only when named), "features": [tstr] (when
- * built with MIK_FW_FEATURES; host builds omit it)}.
+ * built with MIK_FW_FEATURES; host builds omit it), "natives": [tstr]}.
  * `board` is mik__board_name(). `features` lists the firmware features the
  * build compiled in (from the comma-separated MIK_FW_FEATURES define), so the
- * host knows which feature-gated builtins this firmware carries.
+ * host knows which feature-gated builtins this firmware carries. `natives`
+ * lists the registered C modules outside the core namespace (package native
+ * modules compiled in, e.g. "@mikrojs/drivers/sh8601"; empty on a generic
+ * build), so the host can refuse an app importing one this firmware lacks.
  * `fw` is the firmware identity (the firmware project's package name). The
  * host only auto-flashes its bundled prebuilt over a device whose identity
  * matches that prebuilt; omitting it reads as firmware predating identity
@@ -927,18 +931,25 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
  * the runtime is new (see there). */
 static void refresh_ready(MIKReplTransport* transport);
 
+/* A package's native module, under the public specifier apps import
+ * ("@mikrojs/drivers/sh8601"). native: names are internal, and the host only
+ * compares public specifiers, so they would only take buffer space. */
+static bool is_package_module(const char* name) {
+    return strncmp(name, "native:", 7) != 0 && strncmp(name, "mikro/", 6) != 0;
+}
+
 /* Encodes the MSG_READY map into buf, or measures it when buf is null. Returns
  * the length the encoding needs, which exceeds cap when it did not fit. */
 static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const char* id,
                            const char* version, const char* board, const char* fw,
-                           const char* name, const char* features, bool mem) {
+                           const char* name, const char* features, bool natives, bool mem) {
     /* Measuring calls pass buf=NULL; substitute a non-null base so
      * zero-length appends never hand memcpy a null pointer (UB). */
     static uint8_t measure_base;
     nanocbor_encoder_t enc;
     nanocbor_encoder_init(&enc, buf ? buf : &measure_base, buf ? cap : 0);
-    nanocbor_fmt_map(&enc,
-                     4 + (fw ? 1 : 0) + (name ? 1 : 0) + (features ? 1 : 0) + (mem ? 3 : 0));
+    nanocbor_fmt_map(&enc, 4 + (fw ? 1 : 0) + (name ? 1 : 0) + (features ? 1 : 0) +
+                               (natives ? 1 : 0) + (mem ? 3 : 0));
     nanocbor_put_tstr(&enc, "chip");
     nanocbor_put_tstr(&enc, chip);
     nanocbor_put_tstr(&enc, "id");
@@ -972,6 +983,17 @@ static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const cha
             size_t len = comma ? (size_t)(comma - p) : strlen(p);
             nanocbor_put_tstrn(&enc, p, len);
             p = comma ? comma + 1 : p + len;
+        }
+    }
+    if (natives) {
+        size_t count = 0;
+        for (mik_module_desc_t* d = mik__module_registry_head; d != nullptr; d = d->next) {
+            if (is_package_module(d->name)) count++;
+        }
+        nanocbor_put_tstr(&enc, "natives");
+        nanocbor_fmt_array(&enc, count);
+        for (mik_module_desc_t* d = mik__module_registry_head; d != nullptr; d = d->next) {
+            if (is_package_module(d->name)) nanocbor_put_tstr(&enc, d->name);
         }
     }
     if (mem) {
@@ -1013,34 +1035,40 @@ static void refresh_ready(MIKReplTransport* transport) {
      * end but still reports the length it would have needed, so ready_len must
      * come from a run that actually fit: sending the measured length would read
      * past ready_buf. Fields go in order of how little losing them costs.
-     * `features` first: without it the host treats the firmware as legacy and
+     * The memory figures first (below). Then `natives`: without it the host
+     * skips the native module gate, as it does for firmware that predates it.
+     * Then `features`: without it the host treats the firmware as legacy and
      * skips the feature gate, which is how every older firmware behaves. Then
      * `name`, dropped whole rather than truncated, since a partial pair decodes
      * as a different name at the host. `fw` last: a dropped `fw` reads as the
      * host's own bundled firmware, re-enabling the auto-reflash the identity
      * exists to prevent. `board` and the core fields are never dropped. */
     bool mem = boot_mem_captured;
+    bool natives = true;
     /* Diagnostics are the first thing to go when the map does not fit: losing
      * them costs a memory figure, while losing `name` or `fw` breaks identity. */
-    if (mem && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, mem) >
-                   sizeof(ready_buf)) {
+    if (mem && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, natives,
+                            mem) > sizeof(ready_buf)) {
         mem = false;
     }
-    if (features &&
-        encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, mem) >
-            sizeof(ready_buf)) {
+    if (natives && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features,
+                                natives, mem) > sizeof(ready_buf)) {
+        natives = false;
+    }
+    if (features && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features,
+                                 natives, mem) > sizeof(ready_buf)) {
         features = nullptr;
     }
-    if (name && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, mem) >
-                    sizeof(ready_buf)) {
+    if (name && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, natives,
+                             mem) > sizeof(ready_buf)) {
         name = nullptr;
     }
-    if (fw && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, mem) >
-                  sizeof(ready_buf)) {
+    if (fw && encode_ready(nullptr, 0, chip, id, version, board, fw, name, features, natives,
+                           mem) > sizeof(ready_buf)) {
         fw = nullptr;
     }
     ready_len = encode_ready(ready_buf, sizeof(ready_buf), chip, id, version, board, fw, name,
-                             features, mem);
+                             features, natives, mem);
     if (ready_len > sizeof(ready_buf)) ready_len = 0;
 }
 

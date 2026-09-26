@@ -1,205 +1,88 @@
 ---
 name: add-driver
-description: Scaffold a mikrojs driver package for a hardware peripheral. Use this skill whenever the user wants to create a native driver for a sensor, display, motor controller, LED strip, or any other hardware peripheral. Also trigger when the user mentions creating a driver package, writing an ESP-IDF component for mikrojs, wrapping a C/C++ hardware library for JavaScript, or asks about the MIK_REGISTER_MODULE / MIK_REGISTER_BUILTIN pattern for external packages. Even if the user just says "I want to add support for [hardware X]", this skill applies.
+description: Scaffold a mikrojs driver package for a hardware peripheral. Use this skill whenever the user wants to create a driver for a sensor, display, motor controller, LED strip, or any other hardware peripheral, wants to create a driver package, or asks how to wrap a C/C++ hardware library for JavaScript. Even if the user just says "I want to add support for [hardware X]", this skill applies.
 ---
 
 # Create a mikrojs Driver Package
 
-Generate all files for a new driver package that exposes hardware functionality to JavaScript via a native C/C++ module and TypeScript wrapper.
+A driver is an npm package that apps import like a core module. Decide the kind first:
 
-When this skill triggers, gather the required information from the user, then generate all files listed below. The repo's `docs/develop/creating-drivers.md` walks through the file layout and the `MIK_REGISTER_MODULE` / `MIK_REGISTER_BUILTIN` registration pattern; refer to it for the canonical structure. After generating files, guide the user through building and testing.
+- **JavaScript driver** (the default): TypeScript on the core APIs (`mikro/i2c`, `mikro/spi`, `mikro/gpio`, `mikro/uart`). It deploys with the app and runs on any firmware. Reference: `docs/develop/creating-drivers.md` and `examples/drivers/bme280`.
+- **Native driver**: a native module, C or C++ compiled into custom firmware. Use it only when the core APIs are not enough: QSPI or DMA transfers, precise timing, or a vendor C library. Reference: `docs/develop/native-modules.md` and `examples/drivers/chip-temperature`.
 
-The example below uses placeholders: `{scope}` is the author's npm scope (e.g. `@my-scope` — never `@mikrojs`, which is reserved for first-party packages), `{name}` is the package/chip name (e.g. `bme280`), and `{module}` is the import subpath (e.g. `sensor`). The package is a single standalone driver, `{scope}/{name}`, importable at `{scope}/{name}/{module}`.
+Read the reference page and example for the kind you pick before writing files; they are the source of truth, and this skill only summarizes them.
 
 ## What you need from the user
 
-1. **npm scope** (e.g. `@my-scope`) — the package publishes under the author's own scope
-2. **Package / chip name** (e.g. `bme280`, `st7789`, `drv2605`)
-3. **Module subpath** (e.g. `sensor`, `display`) — what app code imports after the package name
-4. **Hardware interface** (I2C, SPI, GPIO, UART, etc.)
-5. **What the JS API should look like** (e.g. `readTemperature()`, `createDisplay(config)`)
+1. **npm scope and package name** (e.g. `@my-scope/bme280`). Never `@mikrojs`, which is reserved for first-party packages.
+2. **Hardware interface** (I2C, SPI, GPIO, UART, ...) and the chip's datasheet or a reference driver.
+3. **The JS API** apps should get (e.g. `read()`, `draw(pixels)`).
+4. **Whether the core APIs are enough.** If they are, write a JavaScript driver.
 
-## Package structure to generate
+## JavaScript driver
+
+Copy the layout of `examples/drivers/bme280`: `package.json`, `tsconfig.json`, TypeScript source, built to `dist/` with `tsc`. `package.json` exports the built files and declares `mikro` as a plain peer dependency with the versions the driver is tested against (no `peerDependenciesMeta`).
+
+Follow the conventions of the core modules:
+
+- A PascalCase factory named after the handle type returns a `Result`: `Tmp102(options): Result<Tmp102, I2cError>`. Declare `interface Tmp102` and `function Tmp102` together (declaration merging), and implement the handle as a class that is not exported, so its methods are shared between instances.
+- Anything that can fail returns a `Result`. Pass errors from the core APIs on unchanged (`if (!r.ok) return r`), or add context with `err(new Error('...', {cause: r.error}))`.
+- `end()` releases the bus or pins, and is safe to call twice.
+- The core APIs claim the pins they configure. A driver that only reads or writes a pin takes a handle, such as `DigitalIn(4)`, and does not call `end()` on it.
+- Device code: function declarations over `const` arrows, no small callback helpers (each closure costs RAM in QuickJS), and `sleep(ms)` from `mikro/sleep` for delays.
+
+## Native driver
 
 ```
 {scope}/{name}/
-  package.json                    # npm package with exports and cmake
-  cmake.js                        # exports componentPath for ESP-IDF build
-  tsconfig.json                   # TypeScript config for runtime files
-  native/                         # ESP-IDF component directory
-    CMakeLists.txt                # idf_component_register + bytecode generation
-    idf_component.yml             # ESP-IDF dependencies
-    src/
-      mik_{name}.cpp              # Native module + MIK_REGISTER_MODULE + MIK_REGISTER_BUILTIN
-  src/
-    internal.d.ts                 # Type declarations for native:{scope}/{name}/{module}
-    {module}/
-      {module}.ts                 # JS wrapper (compiled to bytecode)
-      types.ts                    # Public TypeScript types (exported to consumers)
+  package.json
+  {module}/
+    CMakeLists.txt        # the ESP-IDF component
+    {module}.cpp          # registers "{scope}/{name}/{module}"
+    {module}.d.ts         # the types apps compile against
 ```
 
-## Files to generate
-
-### 1. package.json
+`package.json` makes the module a package export whose `native` condition points at the source:
 
 ```json
 {
   "name": "{scope}/{name}",
-  "version": "0.0.0",
-  "description": "{description}",
-  "license": "MIT",
+  "version": "0.1.0",
   "type": "module",
+  "files": ["{module}"],
   "exports": {
-    "./{module}": {
-      "types": "./src/{module}/types.ts",
-      "default": "./src/{module}/{module}.ts"
-    },
-    "./cmake": "./cmake.js"
-  }
+    "./{module}": {"types": "./{module}/{module}.d.ts", "native": "./{module}/{module}.cpp"}
+  },
+  "peerDependencies": {"@mikrojs/firmware": "^0.21.0", "mikro": "^0.21.0"}
 }
 ```
 
-The builtin is resolved by exact subpath, so the package exports `./{module}` (not the package root). The `types` condition prevents `native:*` imports from leaking to TypeScript consumers; the `default` condition is what the bytecode compiler resolves.
-
-### 2. cmake.js
-
-```js
-import {dirname, join} from 'node:path'
-import {fileURLToPath} from 'node:url'
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
-
-export const componentPath = join(__dirname, 'native')
-```
-
-### 3. tsconfig.json
-
-```json
-{
-  "extends": "../../../tsconfig.json",
-  "include": ["./src/**/*.ts"],
-  "compilerOptions": {
-    "types": [],
-    "noEmit": true,
-    "moduleDetection": "auto",
-    "customConditions": ["development"]
-  }
-}
-```
-
-### 4. idf_component.yml
-
-```yaml
-dependencies:
-  idf:
-    version: '>=5.5.3'
-```
-
-### 5. CMakeLists.txt
+`{module}/CMakeLists.txt`:
 
 ```cmake
-set(_DRIVER_PKG_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
-execute_process(
-    COMMAND node -e "import {bytecodeCmakePath} from '@mikrojs/native/cmake'; import {cmakePath} from '@mikrojs/quickjs'; process.stdout.write(JSON.stringify({bytecodeCmake: bytecodeCmakePath, quickjsCmake: cmakePath, runtime: '${CMAKE_CURRENT_LIST_DIR}/../src'}))"
-    WORKING_DIRECTORY ${_DRIVER_PKG_DIR}
-    OUTPUT_VARIABLE _DRIVER_JSON
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-string(JSON _BYTECODE_CMAKE GET "${_DRIVER_JSON}" "bytecodeCmake")
-string(JSON _QUICKJS_CMAKE GET "${_DRIVER_JSON}" "quickjsCmake")
-string(JSON _RUNTIME_DIR GET "${_DRIVER_JSON}" "runtime")
-
-include("${_QUICKJS_CMAKE}")
-
 idf_component_register(
-    SRCS "src/mik_{name}.cpp"
-    INCLUDE_DIRS "src"
+    SRCS "{module}.cpp"
+    INCLUDE_DIRS "."
     REQUIRES mikrojs
 )
-
-# Package namespace. MIK_REGISTER_MODULE / MIK_REGISTER_BUILTIN enforce at build
-# time that names are qualified with it (native:{scope}/{name}/<module> and
-# {scope}/{name}/<module>), so the package can't claim or shadow another's
-# native: name. native:mikro/* is reserved for the core runtime.
+# The module registers itself from a static library; without this the linker
+# drops it. The argument is the first argument of MIK_REGISTER_PUBLIC_MODULE.
+mikrojs_force_include_modules({id})
 target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"{scope}/{name}\"")
-
-include("${_BYTECODE_CMAKE}")
-mikrojs_force_include_modules({name})
-mikrojs_force_include_builtins({name})
-mikrojs_generate_bytecode(
-    RUNTIME_DIR "${_RUNTIME_DIR}"
-    MODULES {module}
-    MODULE_PREFIX "{scope}/{name}"
-    SYMBOL_PREFIX "{name}"
-    TARGET gen_{module}_bytecode
-    WORKING_DIRECTORY "${_DRIVER_PKG_DIR}"
-)
-add_dependencies(${COMPONENT_LIB} gen_{module}_bytecode)
-target_include_directories(${COMPONENT_LIB} PRIVATE "${gen_{module}_bytecode_INCLUDE_DIR}")
 ```
 
-### 6. Native C++ module (mik\_{name}.cpp)
+In the C++ (see the full example in `docs/develop/native-modules.md`):
 
-```cpp
-#include "mikro/errors.h"
-#include "mikro/mikrojs.h"
-#include "mikro/private.h"
-#include "mikro/utils.h"
-
-// Generated bytecode header (gen/<SYMBOL_PREFIX>_<module>.h)
-#include "gen/{name}_{module}.h"
-
-// ... native function implementations ...
-
-// Module init (called lazily on first import)
-JSModuleDef* mik__{name}_mod_init(JSContext* ctx) {
-    JSModuleDef* m = JS_NewCModule(ctx, "native:{scope}/{name}/{module}", mik__{name}_module_init);
-    if (!m) return nullptr;
-    // JS_AddModuleExport for each export
-    return m;
-}
-
-MIK_REGISTER_MODULE({name}, "native:{scope}/{name}/{module}", mik__{name}_mod_init, nullptr, nullptr)
-
-MIK_REGISTER_BUILTIN({name}, "{scope}/{name}/{module}",
-                      {name}_{module}_bytecode,
-                      {name}_{module}_bytecode_size)
-```
-
-### 7. TypeScript types (types.ts)
-
-Export all public interfaces and function signatures. This file MUST NOT import from `native:*`. It is what TypeScript consumers see.
-
-### 8. JS wrapper ({module}.ts)
-
-```typescript
-import * as native from 'native:{scope}/{name}/{module}'
-import {type Result, err, ok} from 'mikro/result'
-import type {SomeType} from './types.js'
-
-export type {SomeType} from './types.js'
-
-// Wrap native calls with typed Result returns
-```
-
-### 9. internal.d.ts
-
-Ambient type declarations for the `native:{scope}/{name}/{module}` native module. Only used by the driver's own typechecking, NOT exported to consumers.
-
-## Important notes
-
-- The ESP-IDF component directory is named `native/`. Its parent package name determines the logical component identity.
-- `mikrojs_force_include_modules()` and `mikrojs_force_include_builtins()` are required. Without them, the linker strips the self-registration constructors from the static library.
-- The `types` export condition in package.json prevents `native:*` imports from leaking to TypeScript consumers.
-- Claim every GPIO pin the driver configures with `MIK_ClaimGpio(gpio, "{ClassName}")` before configuring it, and release with `MIK_ReleaseGpio(gpio, "{ClassName}")` in `end()` and the finalizer. A handle lives until `end()`, even when the app no longer refers to it. Call `MIK_KeepHandle(ctx, obj)` when creating a native handle and `MIK_DropHandle(ctx, this_val)` in `end()`. A failed claim is a typed `GpioInUse` error (`{name: 'GpioInUse', owner: MIK_GpioOwner(gpio), message}`); release the GPIOs claimed before it.
-- Get class IDs with `MIK_NewClassID(rt, &id)`, never `JS_NewClassID`. QuickJS numbers class IDs per runtime, but the static that holds the ID outlives the runtime, so a later runtime can hand another class the same number and run the wrong finalizer. One plain `JS_NewClassID` call in a driver can still collide with the IDs `MIK_NewClassID` hands out.
-- Use `heap_caps_malloc(size, MALLOC_CAP_DMA)` for DMA-capable buffers (internal SRAM only, limited).
-- Vendor C files (`.c`) compile fine, but C++ code including vendor headers may need manual struct initialization instead of vendor macros (due to `-Werror`).
+- Register with `MIK_REGISTER_PUBLIC_MODULE({id}, "{scope}/{name}/{module}", init, consume, destroy)` and create the module with `JS_NewCModule` under the same name. The compiler checks that the name starts with `MIK_PACKAGE_NAME`.
+- Each export needs `JS_AddModuleExport` in the init function and `JS_SetModuleExport` when the module is evaluated.
+- Apps import the module directly, so validate every argument in C: types, ranges, buffer lengths.
+- Return `Result`s with `MIK_ResultOk`, `MIK_ResultOkVoid` and `MIK_ResultErrNamed`.
+- Claim the pins it configures with `MIK_ClaimGpios(ctx, gpios, count, "ClassName")`, and release them with `MIK_ReleaseGpios` in `end()` and the finalizer. For a native handle, call `MIK_KeepHandle(ctx, obj)` when creating it and `MIK_DropHandle(ctx, this_val)` in `end()`.
+- Get class IDs with `MIK_NewClassID(rt, &id)`, never `JS_NewClassID`.
+- Give the component folder a unique name after what it contains (`sh8601`), not `main`, `mikrojs`, `native`, `src` or the name of an ESP-IDF component.
+- Compile vendor C libraries as `.c` files, and allocate DMA buffers with `heap_caps_malloc(size, MALLOC_CAP_DMA)`.
 
 ## Testing
 
-1. Add the driver to the firmware's `package.json` dependencies
-2. `pnpm install`
-3. Build: `cd esp32 && idf.py build`
-4. Flash: `idf.py flash monitor`
-5. Test from the REPL or deploy a test app
+- **JavaScript driver:** build it (`pn build`), import it from an app, and deploy with `pn mikro dev`.
+- **Native driver:** build custom firmware that lists the module. An app can be its own firmware project, as in `examples/chip-temperature`: a `CMakeLists.txt` next to its `package.json` with `set(MIKROJS_NATIVE_MODULES "{scope}/{name}/{module}")`. Build and flash it with `idf.py set-target <chip>` and `idf.py build flash`, then deploy the app with `pn mikro dev`.

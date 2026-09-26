@@ -756,9 +756,9 @@ int MIK_Loop(MIKRuntime* mik_rt) {
     mik__stdin_consume(mik_rt->ctx);
     mik__timers_consume(mik_rt->ctx);
 
-    /* Call registered loop consumers */
+    /* Call registered loop consumers; a module may register only a destroy hook. */
     for (const auto& consumer : mik_rt->loop_consumers) {
-        consumer.consume_fn(mik_rt->ctx);
+        if (consumer.consume_fn) consumer.consume_fn(mik_rt->ctx);
     }
 
     mik__execute_jobs(mik_rt->ctx);

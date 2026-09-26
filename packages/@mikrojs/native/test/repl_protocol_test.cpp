@@ -186,8 +186,32 @@ TEST_CASE("CMD_HELLO triggers MSG_READY" * doctest::test_suite("repl_protocol"))
                   "MSG_READY should contain the board name");
     CHECK_MESSAGE(ready->payload.find("features") == std::string::npos,
                   "Host builds have no MIK_FW_FEATURES, so no features field");
+    CHECK_MESSAGE(ready->payload.find("natives") != std::string::npos,
+                  "MSG_READY should list the package native modules (none on host, but the field "
+                  "must be present so the host can tell it from legacy firmware)");
 
     proto_teardown();
+}
+
+TEST_CASE("MSG_READY natives lists package modules by specifier, not native: names" *
+          doctest::test_suite("repl_protocol")) {
+    mik_module_desc_t internal = {"native:@acme/pi/impl", nullptr, nullptr, nullptr,
+                                  mik__module_registry_head};
+    mik_module_desc_t pub = {"@acme/pi/pi", nullptr, nullptr, nullptr, &internal};
+    mik__module_registry_head = &pub;
+    proto_setup();
+
+    std::vector<uint8_t> input;
+    append_frame(input, MIK_CMD_HELLO, nullptr);
+    append_frame(input, MIK_CMD_EXIT, nullptr);
+    auto frames = run_protocol(input);
+    auto* ready = find_frame(frames, MIK_MSG_READY);
+    REQUIRE(ready != nullptr);
+    CHECK(ready->payload.find("@acme/pi/pi") != std::string::npos);
+    CHECK(ready->payload.find("native:") == std::string::npos);
+
+    proto_teardown();
+    mik__module_registry_head = internal.next;
 }
 
 TEST_CASE("MSG_READY board field decodes as generic on host" *
@@ -1504,9 +1528,9 @@ TEST_CASE("READY includes the device name and drops one that cannot fit" *
     g_ready_name = "zephyr-livingroom";
     CHECK(hello().find("zephyr-livingroom") != std::string::npos);
 
-    /* a name that overflows the 384-byte ready buffer is dropped whole
-     * rather than truncated into a different-looking name */
-    static std::string huge(400, 'n');
+    /* a name that overflows the ready buffer is dropped whole rather than
+     * truncated into a different-looking name */
+    static std::string huge(600, 'n');
     g_ready_name = huge.c_str();
     std::string payload = hello();
     CHECK(payload.find("nnnnnnnn") == std::string::npos);

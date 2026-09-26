@@ -1,4 +1,4 @@
-# ── Resolve package paths via Node.js ────────────────────────────────
+# ── Package paths ────────────────────────────────────────────────────
 # MIKROJS_PROJECT_DIR is the directory containing package.json and node_modules.
 # Defaults to CMAKE_SOURCE_DIR which works for both:
 #   - Monorepo: CMAKE_SOURCE_DIR is esp32/ (has package.json with workspace deps)
@@ -7,28 +7,18 @@ if(NOT DEFINED MIKROJS_PROJECT_DIR)
     set(MIKROJS_PROJECT_DIR "${CMAKE_SOURCE_DIR}")
 endif()
 
-# resolve.js lives in the firmware package root, two levels up from this component
-set(_MIK_RESOLVE "${CMAKE_CURRENT_LIST_DIR}/../../resolve.js")
-
-execute_process(
-    COMMAND node ${_MIK_RESOLVE} quickjs
-    OUTPUT_VARIABLE QUICKJS_CMAKE_PATH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-execute_process(
-    COMMAND node ${_MIK_RESOLVE} native
-    OUTPUT_VARIABLE _NATIVE_JSON
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-# Parse JSON output
-string(JSON MIK_INCLUDE_DIR GET "${_NATIVE_JSON}" "include")
-string(JSON MIK_SRC_DIR GET "${_NATIVE_JSON}" "src")
-string(JSON MIK_RUNTIME_DIR GET "${_NATIVE_JSON}" "runtime")
-string(JSON MIK_SCRIPTS_DIR GET "${_NATIVE_JSON}" "scripts")
-string(JSON MIK_BYTECODE_CMAKE GET "${_NATIVE_JSON}" "bytecodeCmake")
-
-# Include quickjs.cmake for QUICKJS_SOURCES, QUICKJS_INCLUDE_DIR, etc.
-include("${QUICKJS_CMAKE_PATH}")
+# The MIK_* paths come from resolve.cmake, which project.cmake includes.
+# ESP-IDF first runs this file in a separate script-mode pass that only
+# collects REQUIRES, where they are unset. That pass reads no SRCS, so only
+# the include below needs a guard; REQUIRES must never depend on them.
+if(MIK_SRC_DIR)
+    # Include quickjs.cmake for QUICKJS_SOURCES, QUICKJS_INCLUDE_DIR, etc.
+    include("${MIK_QUICKJS_CMAKE}")
+elseif(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    message(FATAL_ERROR
+        "mikrojs: the @mikrojs/native paths are not set. Include @mikrojs/firmware's "
+        "project.cmake in the project's CMakeLists.txt, before project().")
+endif()
 
 # nanocbor lives inside the native package
 set(MIK_NANOCBOR_DIR "${MIK_SRC_DIR}/../deps/nanocbor")
@@ -155,15 +145,12 @@ set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES
     COMPILE_OPTIONS "-Wno-unused-but-set-variable")
 
 # ── Board and version metadata ──────────────────────────────────────
-execute_process(
-    COMMAND node ${_MIK_RESOLVE} version
-    OUTPUT_VARIABLE _MIK_VERSION
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+file(READ "${CMAKE_CURRENT_LIST_DIR}/../../package.json" _MIK_PACKAGE)
+string(JSON _MIK_VERSION GET "${_MIK_PACKAGE}" version)
 target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_VERSION=\"${_MIK_VERSION}\"")
 # Core runtime owns the bare `native:mikro/*` namespace. MIK_PACKAGE_NAME makes
 # MIK_REGISTER_MODULE enforce that every native module here is named
-# "native:mikro/<module>"; driver/board packages set their own package name.
+# "native:mikro/<module>"; a package's native module sets its package name.
 target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"mikro\"")
 # The version is read at configure time, so configure must re-run when the
 # firmware package version changes — otherwise an incremental idf.py build
@@ -171,24 +158,35 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_PACKAGE_NAME=\"mikro\""
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_LIST_DIR}/../../package.json")
 
-# Firmware identity: the consuming project's package.json name, reported in
+# Firmware identity: the name in the nearest package.json at or above the
+# project (the app's, for a firmware folder inside an app), reported in
 # MSG_READY as `fw`. The CLI only auto-flashes its bundled prebuilt over a
 # device whose identity matches the prebuilt's own recorded name, so custom
 # firmware is protected from the auto-reflash without any project marker.
-# Absent (no package.json, e.g. on-device test apps) the field is omitted.
-execute_process(
-    COMMAND node ${_MIK_RESOLVE} projectName ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE _MIK_FW_NAME
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+# Absent (no package.json, or no name in the nearest one) the field is omitted.
+set(_MIK_FW_NAME "")
+set(_MIK_FW_DIR "${CMAKE_SOURCE_DIR}")
+while(NOT EXISTS "${_MIK_FW_DIR}/package.json")
+    get_filename_component(_MIK_FW_PARENT "${_MIK_FW_DIR}" DIRECTORY)
+    if(_MIK_FW_PARENT STREQUAL _MIK_FW_DIR)
+        break()
+    endif()
+    set(_MIK_FW_DIR "${_MIK_FW_PARENT}")
+endwhile()
+if(EXISTS "${_MIK_FW_DIR}/package.json")
+    file(READ "${_MIK_FW_DIR}/package.json" _MIK_PROJECT_PACKAGE)
+    string(JSON _MIK_FW_NAME ERROR_VARIABLE _MIK_FW_NAME_ERROR
+        GET "${_MIK_PROJECT_PACKAGE}" name)
+    if(_MIK_FW_NAME_ERROR)
+        set(_MIK_FW_NAME "")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${_MIK_FW_DIR}/package.json")
+endif()
 # STREQUAL, not if(_MIK_FW_NAME): a project named "0", "off", or "false"
 # would read as a false constant and silently lose its identity.
 if(NOT _MIK_FW_NAME STREQUAL "")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_NAME=\"${_MIK_FW_NAME}\"")
-endif()
-if(EXISTS "${CMAKE_SOURCE_DIR}/package.json")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        "${CMAKE_SOURCE_DIR}/package.json")
 endif()
 
 # UTC build timestamp. `string(TIMESTAMP ... UTC)` honors SOURCE_DATE_EPOCH
@@ -227,38 +225,23 @@ else()
     set(_MIK_WIFI_FLAG "--wifi=off")
 endif()
 
+execute_process(
+    COMMAND node "${MIK_SCRIPTS_DIR}/modules-list.js" ${_MIK_BLE_FLAG} ${_MIK_WIFI_FLAG}
+    OUTPUT_VARIABLE _MIK_LISTS
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE _MIK_LISTS_RESULT
+)
+if(NOT _MIK_LISTS_RESULT EQUAL 0)
+    message(FATAL_ERROR "modules-list.js failed")
+endif()
+string(JSON _MIK_FEATURES GET "${_MIK_LISTS}" features)
+string(JSON _MIK_MODULES GET "${_MIK_LISTS}" native)
+string(JSON _MIK_BYTECODE_MODULES GET "${_MIK_LISTS}" bytecode)
+
 # Firmware feature list (e.g. "wifi,i2s,ble"), reported in MSG_READY so the
 # host knows which feature-gated builtins this firmware carries.
-execute_process(
-    COMMAND node "${MIK_SCRIPTS_DIR}/modules-list.js" features ${_MIK_BLE_FLAG} ${_MIK_WIFI_FLAG}
-    OUTPUT_VARIABLE _MIK_FEATURES
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE _MIK_FEATURES_RESULT
-)
-if(NOT _MIK_FEATURES_RESULT EQUAL 0)
-    message(FATAL_ERROR "modules-list.js features failed")
-endif()
 string(REPLACE ";" "," _MIK_FEATURES "${_MIK_FEATURES}")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_FEATURES=\"${_MIK_FEATURES}\"")
-
-execute_process(
-    COMMAND node "${MIK_SCRIPTS_DIR}/modules-list.js" native ${_MIK_BLE_FLAG} ${_MIK_WIFI_FLAG}
-    OUTPUT_VARIABLE _MIK_MODULES
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE _MIK_MODULES_RESULT
-)
-if(NOT _MIK_MODULES_RESULT EQUAL 0)
-    message(FATAL_ERROR "modules-list.js native failed")
-endif()
-execute_process(
-    COMMAND node "${MIK_SCRIPTS_DIR}/modules-list.js" bytecode ${_MIK_BLE_FLAG} ${_MIK_WIFI_FLAG}
-    OUTPUT_VARIABLE _MIK_BYTECODE_MODULES
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE _MIK_BYTECODE_RESULT
-)
-if(NOT _MIK_BYTECODE_RESULT EQUAL 0)
-    message(FATAL_ERROR "modules-list.js bytecode failed")
-endif()
 # The lists are read at configure time, so configure must re-run when the
 # table or the script changes.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS

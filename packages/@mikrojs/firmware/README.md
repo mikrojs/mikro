@@ -4,18 +4,18 @@ ESP32 firmware package for Mikro.js. Provides the ESP-IDF integration, build sys
 
 ## What's included
 
-- **`project.cmake`** - CMake module that integrates with ESP-IDF. Handles component discovery, SDK config merging, and partition table defaults.
+- **`project.cmake`** - CMake module that integrates with ESP-IDF. Turns the native modules that the project lists into ESP-IDF components, merges SDK config, and applies partition table defaults.
 - **`components/mikrojs/`** - ESP-IDF component that compiles the Mikro.js runtime, QuickJS engine, and platform-specific C modules.
 - **Default configs** - `sdkconfig.defaults` and `partitions.csv` for common setups.
 
 ## Usage
 
-A custom firmware project depends on this package and includes `project.cmake` (resolved via `resolve.js`, see the docs below for the CMakeLists boilerplate):
+A custom firmware project depends on this package and includes its `project.cmake`, whose path the package's `mikro-fw` bin prints (see the docs below for the CMakeLists boilerplate):
 
 ```
 my-firmware/
 ├── package.json          # depends on @mikrojs/firmware
-├── CMakeLists.txt        # resolves and includes project.cmake via resolve.js
+├── CMakeLists.txt        # includes project.cmake from @mikrojs/firmware
 └── main/                 # optional: omit it and the package's default main
     ├── CMakeLists.txt    # (which calls MIK_Main()) is used automatically
     └── main.cpp

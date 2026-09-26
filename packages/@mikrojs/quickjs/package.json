@@ -24,6 +24,7 @@
     "deps/quickjs/*.h",
     "deps/quickjs/LICENSE",
     "index.js",
+    "index.d.ts",
     "postinstall.js",
     "quickjs.cmake"
   ],

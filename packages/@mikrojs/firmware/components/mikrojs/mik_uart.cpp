@@ -74,7 +74,7 @@ static void mik__uart_release(MIKRuntime* mik_rt, MIKUartState* s) {
     mik__uart_untrack(mik_rt, s);
     uart_driver_delete(s->port);
     const int gpios[] = {s->tx_pin, s->rx_pin};
-    mik__release_gpios(gpios, countof(gpios), "Uart");
+    MIK_ReleaseGpios(gpios, countof(gpios), "Uart");
     s->active = false;
 }
 
@@ -130,7 +130,7 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
     JSValue invalid = mik__gpio_check(ctx, checks, countof(checks));
     if (!JS_IsUndefined(invalid)) return invalid;
     const int gpios[] = {tx, rx};
-    JSValue claim_failed = mik__claim_gpios(ctx, gpios, countof(gpios), "Uart");
+    JSValue claim_failed = MIK_ClaimGpios(ctx, gpios, countof(gpios), "Uart");
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
 
     auto uart_port = static_cast<uart_port_t>(port);
@@ -138,7 +138,7 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
      * refused before uart_param_config and uart_set_pin can change its baud
      * rate and pins. */
     if (uart_is_driver_installed(uart_port)) {
-        mik__release_gpios(gpios, countof(gpios), "Uart");
+        MIK_ReleaseGpios(gpios, countof(gpios), "Uart");
         return mik__result_err_named(ctx, "DriverInstallFailed", "port %d is already in use",
                                      (int)port);
     }
@@ -153,7 +153,7 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
 
     esp_err_t err = uart_param_config(uart_port, &uart_config);
     if (err != ESP_OK) {
-        mik__release_gpios(gpios, countof(gpios), "Uart");
+        MIK_ReleaseGpios(gpios, countof(gpios), "Uart");
         return mik__result_err_named(ctx, "InvalidParam",
                                      "uart_param_config failed on port %d: %s", (int)port,
                                      esp_err_to_name(err));
@@ -162,7 +162,7 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
     err = uart_set_pin(uart_port, tx >= 0 ? tx : UART_PIN_NO_CHANGE,
                        rx >= 0 ? rx : UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     if (err != ESP_OK) {
-        mik__release_gpios(gpios, countof(gpios), "Uart");
+        MIK_ReleaseGpios(gpios, countof(gpios), "Uart");
         return mik__result_err_named(ctx, "SetPinFailed",
                                      "uart_set_pin failed on port %d (tx=%d, rx=%d): %s", (int)port,
                                      tx, rx, esp_err_to_name(err));
@@ -173,7 +173,7 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
     int rx_buf = rx >= 0 ? MIK_UART_RX_BUF_SIZE : UART_HW_FIFO_LEN(uart_port) + 1;
     err = uart_driver_install(uart_port, rx_buf, 0, 0, nullptr, ESP_INTR_FLAG_IRAM);
     if (err != ESP_OK) {
-        mik__release_gpios(gpios, countof(gpios), "Uart");
+        MIK_ReleaseGpios(gpios, countof(gpios), "Uart");
         return mik__result_err_named(ctx, "DriverInstallFailed",
                                      "uart_driver_install failed on port %d: %s", (int)port,
                                      esp_err_to_name(err));
@@ -182,7 +182,7 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
     auto* s = static_cast<MIKUartState*>(calloc(1, sizeof(MIKUartState)));
     if (!s) {
         uart_driver_delete(uart_port);
-        mik__release_gpios(gpios, countof(gpios), "Uart");
+        MIK_ReleaseGpios(gpios, countof(gpios), "Uart");
         return JS_ThrowOutOfMemory(ctx);
     }
     s->port = uart_port;
@@ -194,7 +194,7 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
     JSValue obj = JS_NewObjectClass(ctx, mik_uart_class_id);
     if (JS_IsException(obj)) {
         uart_driver_delete(uart_port);
-        mik__release_gpios(gpios, countof(gpios), "Uart");
+        MIK_ReleaseGpios(gpios, countof(gpios), "Uart");
         free(s);
         return obj;
     }

@@ -42,7 +42,7 @@ static std::string mik__gpio_in_use_message(int gpio, const char* owner) {
     return message + owner;
 }
 
-JSValue mik__claim_gpios(JSContext* ctx, const int* gpios, int count, const char* owner) {
+JSValue MIK_ClaimGpios(JSContext* ctx, const int* gpios, int count, const char* owner) {
     for (int i = 0; i < count; i++) {
         if (MIK_ClaimGpio(gpios[i], owner)) continue;
         const char* holder = MIK_GpioOwner(gpios[i]);
@@ -52,12 +52,12 @@ JSValue mik__claim_gpios(JSContext* ctx, const int* gpios, int count, const char
         std::string message = mik__gpio_in_use_message(gpios[i], holder);
         JS_SetPropertyStr(ctx, error, "message",
                           JS_NewStringLen(ctx, message.data(), message.size()));
-        mik__release_gpios(gpios, i, owner);
+        MIK_ReleaseGpios(gpios, i, owner);
         return mik__result_err_obj(ctx, error);
     }
     return JS_UNDEFINED;
 }
 
-void mik__release_gpios(const int* gpios, int count, const char* owner) {
+void MIK_ReleaseGpios(const int* gpios, int count, const char* owner) {
     for (int i = 0; i < count; i++) MIK_ReleaseGpio(gpios[i], owner);
 }

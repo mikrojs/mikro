@@ -1,39 +1,36 @@
 import {existsSync, readFileSync} from 'node:fs'
-import {dirname, join} from 'node:path'
-import {fileURLToPath} from 'node:url'
+import {join} from 'node:path'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-
-export const componentDir = join(__dirname, 'components')
-export const configDir = __dirname
-export const defaultAppDir = join(__dirname, 'default-app')
-export const projectCmakePath = join(__dirname, 'project.cmake')
+/** The package root: src/ or dist/ is one level down. */
+const packageRoot = join(import.meta.dirname, '..')
 
 /** Chips the firmware supports, from chips.json (e.g. "esp32c6"). */
-export const chips = JSON.parse(readFileSync(join(__dirname, 'chips.json'), 'utf8')).chips
+export const chips: string[] = (
+  JSON.parse(readFileSync(join(packageRoot, 'chips.json'), 'utf8')) as {chips: string[]}
+).chips
 
-const prebuildsRoot = join(__dirname, 'prebuilds')
+const prebuildsRoot = join(packageRoot, 'prebuilds')
 
 // Generic prebuilds live in board-named `<chip>-generic/` dirs; `<chip>/` is
 // the legacy layout of older published packages and local states.
-export function prebuiltFirmwareDir(chip) {
+export function prebuiltFirmwareDir(chip: string): string {
   const boardDir = join(prebuildsRoot, `${chip}-generic`)
   if (existsSync(join(boardDir, 'flasher_args.json'))) return boardDir
   return join(prebuildsRoot, chip)
 }
 
-export function hasPrebuiltFirmware(chip) {
+export function hasPrebuiltFirmware(chip: string): boolean {
   return existsSync(join(prebuiltFirmwareDir(chip), 'flasher_args.json'))
 }
 
 /** Identity of the bundled prebuilt for `chip` (the package name of the
  *  firmware project it was built from), or undefined when no prebuilt or no
  *  recorded identity exists. */
-export function prebuiltFirmwareName(chip) {
+export function prebuiltFirmwareName(chip: string): string | undefined {
   try {
     const {name} = JSON.parse(
       readFileSync(join(prebuiltFirmwareDir(chip), 'firmware.json'), 'utf8'),
-    )
+    ) as {name?: unknown}
     return typeof name === 'string' ? name : undefined
   } catch {
     return undefined

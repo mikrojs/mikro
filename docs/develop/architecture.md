@@ -5,7 +5,7 @@ description: How the Mikro.js build system, module registration, and bytecode pi
 
 # Architecture
 
-This page explains how the pieces fit together. The goal is "enough to understand what goes where" when building drivers and board packages.
+This page explains how the parts of Mikro.js fit together, for people who build drivers and board packages.
 
 ## Three layers
 
@@ -24,62 +24,49 @@ This page explains how the pieces fit together. The goal is "enough to understan
 
 **Core runtime** is a standalone C++ library with zero ESP-IDF dependencies. It can be built and tested on a desktop.
 
-**Driver packages** come in two flavors:
+**Drivers** are of two kinds:
 
-- **Native drivers**: ESP-IDF components with C/C++ code, registered via `MIK_REGISTER_MODULE` and `MIK_REGISTER_BUILTIN`. Compiled into firmware. Use for QSPI displays and other peripherals needing direct hardware access.
-- **Pure JS drivers**: Regular npm packages that use core APIs like `mikro/spi`. Bundled and deployed with the user's app. No native code, no `cmake.js`.
+- **Native drivers** are [native modules](./native-modules): C or C++ in an ESP-IDF component, compiled into the firmware. Apps import them by package name. None of their code is deployed with the app.
+- **Pure JS drivers** are normal modules that use core APIs like `mikro/spi`. They are bundled and deployed with the app.
 
-**Board packages** are thin layers that depend on drivers and provide board-specific pin assignments. Native boards include sdkconfig and ESP-IDF components. Pure JS boards are just TypeScript re-exports.
+**Board packages** are thin layers that depend on drivers and provide board-specific pin assignments and sdkconfig defaults. C or C++ that a board needs is a native module, which the firmware project lists. See [Creating Boards](./creating-boards) and [Creating Drivers](./creating-drivers).
 
 ## Native module registration
 
-Native modules (C/C++ functions callable from JavaScript) self-register using the `MIK_REGISTER_MODULE` macro:
+A native module registers itself with `MIK_REGISTER_PUBLIC_MODULE`, under the name that apps import:
 
 ```cpp
-MIK_REGISTER_MODULE(bme280, "native:@my-scope/bme280/sensor", mik__bme280_init, nullptr, nullptr)
+MIK_REGISTER_PUBLIC_MODULE(epaper, "@my-scope/epaper/panel", mik__epaper_init, nullptr, nullptr)
 ```
 
-The macro takes five arguments: a unique C identifier, the module name, an init function, an optional loop consumer, and an optional destroy function. It works via a GCC/Clang constructor attribute. At program startup, before `main()` runs, each registered module adds itself to a global linked list. When JavaScript code imports `native:@my-scope/bme280/sensor`, the module loader walks this list and calls the module's init function.
+The macro has five arguments: a unique C identifier, the module name, an init function, an optional loop consumer, and an optional destroy function. It uses a GCC/Clang constructor attribute. Before `main()` runs, each module adds itself to a global linked list. When JavaScript imports `@my-scope/epaper/panel`, the loader finds the module in this list and calls its init function.
 
-Native module names are package-qualified: `native:<package-name>/<module>`. The bare `native:mikro/*` namespace is reserved for the core runtime. The build defines `MIK_PACKAGE_NAME` per component and the macro enforces the prefix at compile time, so a package cannot claim or shadow another's `native:` name.
+The runtime's internal modules register with `MIK_REGISTER_MODULE`, under `native:mikro/*` names. Apps cannot import these names.
 
-The same reservation applies to NVS: namespace names starting with `mik.` belong to the runtime (`mik.env`, `mik.sec`, `mik.kv`, `mik.sys`). Inside `mik.sys`, runtime subsystems name their keys with a `<subsystem>.<key>` dotted prefix under the 15-character NVS limit.
+Each component's `CMakeLists.txt` sets `MIK_PACKAGE_NAME` (`mikro` for the runtime). At compile time, the macros make sure that each module name starts with it. This catches a module name copied from another package by mistake. It doesn't stop a package that sets another package's name on purpose.
 
-Modules are initialized lazily: the factory function runs on first import, not at startup. This keeps boot time and memory usage low when a module is compiled in but not used.
+NVS namespaces that start with `mik.` also belong to the runtime (`mik.env`, `mik.sec`, `mik.kv`, `mik.sys`). In `mik.sys`, runtime subsystems start their keys with `<subsystem>.`, within the 15-character NVS limit.
+
+A module initializes on its first import, not at startup. This keeps boot time and memory use low when a module is compiled in but not used.
 
 ### Linker considerations
 
-Because the module registration symbols live in static library archives, the linker may discard them if nothing else in the program references them. The `mikrojs_force_include_modules()` CMake function adds the necessary linker flags (`-u` on GCC/Clang) to force-include specific symbols:
+The registration symbols are in static libraries, so the linker can discard them when nothing else refers to them. `mikrojs_force_include_modules()` adds linker flags (`-u` on GCC/Clang) that keep them:
 
 ```cmake
-mikrojs_force_include_modules(bme280)
+mikrojs_force_include_modules(epaper)
 ```
 
-## Bytecode builtin registration
+## Bytecode builtins
 
-TypeScript wrapper modules are pre-compiled to QuickJS bytecode and embedded in the firmware binary. They register with `MIK_REGISTER_BUILTIN`:
+The core runtime's own TypeScript modules (`mikro/fs`, `mikro/result` and so on) are pre-compiled to QuickJS bytecode and embedded in the firmware binary. They register with `MIK_REGISTER_BUILTIN`, which uses the same constructor and linked-list pattern as native modules. When JavaScript imports `mikro/fs`, the loader finds the matching builtin, deserializes the bytecode with `JS_ReadObject`, and returns the module, with no filesystem lookup.
 
-```cpp
-MIK_REGISTER_BUILTIN("@my-scope/bme280/sensor",
-                      qjsc_bme280, qjsc_bme280_size)
-```
+Driver and board modules do not use this path. They are normal modules, deployed with the app. Only native modules are in the firmware.
 
-This uses the same constructor/linked-list pattern as native modules. When JavaScript imports `@my-scope/bme280/sensor`, the loader finds the matching builtin, deserializes the bytecode with `JS_ReadObject`, and returns the module.
-
-The builtin name matches the npm package path that user code imports. This is how `import {readSensor} from '@my-scope/bme280/sensor'` resolves without a filesystem lookup.
-
-Like native modules, builtins need force-include linker flags:
-
-```cmake
-mikrojs_force_include_builtins(bme280)
-```
-
-## Bytecode pipeline
-
-TypeScript source files become C headers containing bytecode arrays:
+### Bytecode pipeline
 
 ```
-  runtime/bme280/bme280.ts
+  runtime/fs/fs.ts
            │
            ▼
      esbuild bundle          (1 JS file, externals preserved)
@@ -88,49 +75,40 @@ TypeScript source files become C headers containing bytecode arrays:
      qjsc compile            (bytecode → C uint8_t array)
            │
            ▼
-  gen/bme280.bytecode.h      (#include'd in .cpp, linked into firmware)
+  gen/<module>.h             (#include'd in builtins.cpp, linked into firmware)
 ```
 
-The `mikrojs_generate_bytecode()` CMake function orchestrates both steps:
+**esbuild** bundles each TypeScript module into a single JavaScript file. `mikro/*` and `native:*` imports are marked as external since they resolve at runtime inside the firmware.
 
-```cmake
-mikrojs_generate_bytecode(
-    RUNTIME_DIR "${CMAKE_CURRENT_LIST_DIR}/../runtime"
-    MODULES sensor
-    MODULE_PREFIX "@my-scope/bme280"
-    SYMBOL_PREFIX "bme280"
-)
-```
-
-**esbuild** bundles each TypeScript module into a single JavaScript file. All `mikro/*` and `@mikrojs/*` imports are marked as external since they resolve at runtime inside the firmware.
-
-**qjsc** (the QuickJS bytecode compiler) takes the bundled JS and produces a C header with a `const uint8_t[]` array. This is built from the same QuickJS source as the runtime engine, guaranteeing bytecode version compatibility.
+**qjsc** (the QuickJS bytecode compiler) takes the bundled JS and produces a C header with a `const uint8_t[]` array. It is built from the same QuickJS source as the runtime engine, which guarantees bytecode version compatibility.
 
 ## Module resolution at runtime
 
-When JavaScript executes an `import` statement, the module loader checks several sources in order:
+When JavaScript runs an `import`, the loader tries these sources in order:
 
-1. **Native modules**: Names starting with `native:` are looked up in the native module registry (the linked list populated by `MIK_REGISTER_MODULE`).
-2. **Bytecode builtins**: Names matching registered builtins (for example `@my-scope/bme280/sensor` or `mikro/result`) are deserialized from embedded bytecode.
-3. **Filesystem**: Relative paths (starting with `.` or `/`) are loaded from the device filesystem (LittleFS). JSON files are auto-wrapped. `.bjs` files are loaded as pre-compiled bytecode.
+1. **Runtime internals**: A `native:` name is looked up in the list that `MIK_REGISTER_MODULE` fills.
+2. **Bytecode builtins**: A builtin name, for example `mikro/result`, loads from bytecode in the firmware.
+3. **Native modules**: A name that a native module registered, for example `@acme/drivers/sh8601` or an app's own `#sensor`, runs that module's init function.
+4. **Filesystem**: A relative path (starting with `.` or `/`) loads from the device filesystem (LittleFS). JSON files load as modules, and `.bjs` files load as bytecode. Other package names resolve through `node_modules`. See [Module System](/internals/module-system).
 
-The module normalizer passes through `native:`, `mikro/`, and `@mikrojs/` prefixed names unchanged. Relative paths are resolved against the importing module's directory.
+The loader does not change `native:` names, `mikro/` names, or the names of registered native modules. It resolves relative paths against the folder of the importing module.
 
-## How board packages wire in
+## How native modules get into firmware
 
-The build system discovers driver and board packages automatically:
+Installing a package puts nothing in the firmware. The project lists what goes in:
 
-1. **Package discovery**: During CMake configure, the build system reads `esp32/package.json`, finds all `@mikrojs/*` dependencies, and calls `require('<pkg>/cmake')` on each.
-2. **Component registration**: Each package's `cmake.js` exports a `componentPath` pointing to its ESP-IDF component directory. CMake adds these as extra component directories.
-3. **sdkconfig merge**: If a package exports `sdkconfigDefaultsPath`, the file is appended to the sdkconfig defaults list. Board-specific values override the base project defaults.
-4. **Dependency wiring**: ESP-IDF's component system handles the rest. `REQUIRES` declarations in each component's `CMakeLists.txt` set up include paths and link order.
+1. The project lists its native modules with `set(MIKROJS_NATIVE_MODULES "@acme/drivers/sh8601")` in its `CMakeLists.txt`, or with the same variable in the environment or `-D`.
+2. `project.cmake` runs `mikro-fw inputs`, which resolves each entry with the `native` condition to C or C++ source: a package export, or for a `#` entry, the app's `imports`. The source's folder becomes an ESP-IDF component.
+3. ESP-IDF builds each component; the `REQUIRES` in its `CMakeLists.txt` set the include paths and the link order.
+
+`mikro deploy` follows the app's imports to make sure that the device's firmware has every native module that the app needs.
 
 ## Key CMake functions
 
 | Function                           | Purpose                                                                               |
 | ---------------------------------- | ------------------------------------------------------------------------------------- |
-| `mikrojs_generate_bytecode()`      | Run the TS -> esbuild -> qjsc pipeline for runtime modules                            |
 | `mikrojs_force_include_modules()`  | Add `-u` linker flags so self-registered native modules survive dead-code elimination |
-| `mikrojs_force_include_builtins()` | Same, but for bytecode builtins                                                       |
+| `mikrojs_generate_bytecode()`      | Run the TS -> esbuild -> qjsc pipeline (core runtime modules)                         |
+| `mikrojs_force_include_builtins()` | Same as `mikrojs_force_include_modules()`, for bytecode builtins                      |
 
 All three are defined in the CMake module exported by `@mikrojs/native` (accessed via `require('@mikrojs/native/cmake').cmakePath`).

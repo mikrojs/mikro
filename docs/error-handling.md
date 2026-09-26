@@ -244,7 +244,7 @@ The same rule applies when an error moves instead of being logged. Keep the orig
 
 - **Returning** from a function: propagate the typed error as-is (`if (!r.ok) return r`), or add context and keep the original as `cause`: `err(new Error('download failed', {cause: r.error}))`. Never flatten to `{message: r.error.name}`.
 - **Panicking**: `result.orPanic('WiFi required')` keeps the error as the panic's cause, and the crash report prints it. Do not build the message yourself with ``panic(`failed: ${result.error.name}`)``.
-- **Converting a caught exception** to a `Result`: carry the thrown value as `cause`, not `e.message`. See [Creating drivers](/develop/creating-drivers) for the native-boundary pattern.
+- **Converting a caught exception** to a `Result`: carry the thrown value as `cause`, not `e.message`.
 
 ## What about exceptions?
 

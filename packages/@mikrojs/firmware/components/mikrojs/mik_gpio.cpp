@@ -93,7 +93,7 @@ static MIKGpioState* mik__gpio_get(JSContext* ctx, JSValueConst this_val, JSClas
 
 /* Claims `gpio` for the handle kind, or returns the GpioInUse Result. */
 static JSValue mik__gpio_claim(JSContext* ctx, int gpio, MIKGpioKind kind) {
-    return mik__claim_gpios(ctx, &gpio, 1, s_owner_names[kind]);
+    return MIK_ClaimGpios(ctx, &gpio, 1, s_owner_names[kind]);
 }
 
 /* Converts a JS value to a pin level. Returns false unless it is the number 0 or 1. */

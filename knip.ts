@@ -14,14 +14,13 @@ const config = {
       ignoreDependencies: ['mikro', 'wrangler'],
     },
     'packages/@mikrojs/firmware': {
-      // @mikrojs/native is imported by modules-list.test.js, so knip sees it;
-      // the others are consumed by CMake only.
-      ignoreDependencies: ['@mikrojs/quickjs', 'esbuild'],
-      // resolve.js is invoked by CMake, not imported. The ota_host .build/ tree
-      // is scratch the gunzip host test generates (gitignored); knip still walks
-      // it once the test has run, so the ignore is only redundant on a clean
-      // checkout.
-      ignore: ['resolve.js', 'components/mikrojs/test/ota_host/.build/**'],
+      // esbuild is consumed by CMake only (the runtime bundle); knip sees the
+      // others through src/cli.ts and the tests.
+      ignoreDependencies: ['esbuild'],
+      // The ota_host .build/ tree is scratch the gunzip host test generates
+      // (gitignored); knip still walks it once the test has run, so the ignore
+      // is only redundant on a clean checkout.
+      ignore: ['components/mikrojs/test/ota_host/.build/**'],
     },
     'examples/sleep': {
       // Each app/*.ts file is a stand-alone entry — users pick one with
@@ -82,6 +81,11 @@ const config = {
       // component discovery), which knip can't see — no JS imports.
       ignoreDependencies: ['@mikrojs/firmware'],
     },
+    'examples/drivers/chip-temperature': {
+      // The peer dependency, declared locally as the package-json lint rule asks.
+      // The C++ uses it through the firmware build, not a JS import.
+      ignoreDependencies: ['@mikrojs/firmware'],
+    },
     'packages/@mikrojs/native': {
       // bundle-runtime.js + generate-symbol-map.js are invoked by CMake during
       // the firmware build (see @mikrojs/firmware/components/mikrojs/CMakeLists.txt
@@ -120,6 +124,10 @@ const config = {
   ignore: [
     'taze.config.ts',
     'packages/@mikrojs/quickjs/deps/**',
+    // Types for plain JS exports: TypeScript reads each next to the .js file
+    // the export names, so nothing imports them by name
+    'packages/@mikrojs/native/cmake.d.ts',
+    'packages/@mikrojs/quickjs/index.d.ts',
     // todo: ideally we should run knip here too, but not sure how
     'packages/create-mikro/src/templates/**',
     // mikro.config.ts is discovered at runtime by the CLI, not imported

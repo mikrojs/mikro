@@ -1,7 +1,6 @@
 import {existsSync} from 'node:fs'
 import {stripTypeScriptTypes} from 'node:module'
 import * as pathlib from 'node:path'
-import {fileURLToPath} from 'node:url'
 
 import {
   applyRewrites,
@@ -42,6 +41,7 @@ import {
 } from './capabilities.js'
 import {didYouMean} from './didYouMean.js'
 import {UserError} from './errorMessage.js'
+import {nativeModuleLabel} from './firmwareModules.js'
 import {loadMikroConfig} from './loadMikroConfig.js'
 import {minifyJs} from './minify.js'
 import {parseSize} from './parseSize.js'
@@ -83,6 +83,26 @@ function loadNative(): Promise<MikrojsNative> {
 /** How a builtin was imported. Dynamic-only imports never gate a deploy. */
 type BuiltinImportKind = 'static' | 'dynamic'
 
+/** An import of a native module (by its package specifier) and where its
+ * C/C++ lives (`<package>/<dir>`), for messages. */
+interface NativeImport {
+  kind: BuiltinImportKind
+  owner: string
+}
+
+/** Record a native module import, static winning over dynamic. */
+function recordNative(
+  imports: Map<string, NativeImport>,
+  id: string,
+  kind: BuiltinImportKind,
+  owner: string,
+): void {
+  const seen = imports.get(id)
+  if (seen === undefined || (kind === 'static' && seen.kind === 'dynamic')) {
+    imports.set(id, {kind, owner})
+  }
+}
+
 function unknownModuleError(name: string): string {
   if (isTypesOnlyModule(name)) {
     return `'mikro/${name}' exports types only. Import it with \`import type\`.`
@@ -95,61 +115,44 @@ function unknownModuleError(name: string): string {
 }
 
 /** esbuild plugin that marks mikrojs firmware builtins as external so the
- * on-device loader resolves them against the baked-in bytecode table instead
- * of esbuild trying to inline their source. Pure-JS `@mikrojs/*` packages
- * (no ./cmake export) fall through to normal resolution and get bundled.
+ * on-device loader resolves them against the firmware instead of esbuild
+ * trying to inline their source. Board and driver packages are ordinary JS
+ * and bundle; only their native modules (exports that target C/C++) stay
+ * external, each reported through `onNativeImport` with its import kind and
+ * importer.
  * `mikro/*` names are validated against the capability table; each resolved
  * one is reported through `onBuiltinImport` with its import kind. */
 function mikrojsExternalsPlugin(
   onBuiltinImport?: (name: string, kind: BuiltinImportKind) => void,
+  onNativeImport?: (id: string, kind: BuiltinImportKind, owner: string) => void,
 ): import('esbuild').Plugin {
   return {
     name: 'mikrojs-externals',
     setup(build) {
       build.onResolve({filter: /^(mikro$|mikro\/|native:)/}, (args) => {
+        const kind = args.kind === 'dynamic-import' ? 'dynamic' : 'static'
         if (args.path.startsWith('mikro/')) {
           const name = args.path.slice('mikro/'.length)
           if (!isTableModule(name)) {
             return {errors: [{text: unknownModuleError(name)}]}
           }
-          onBuiltinImport?.(name, args.kind === 'dynamic-import' ? 'dynamic' : 'static')
+          onBuiltinImport?.(name, kind)
         }
         return {path: args.path, external: true}
       })
-      // Any bare package specifier (scoped `@scope/...` or unscoped `name/...`)
-      // that resolves to a firmware builtin package is externalized so it binds
-      // to the firmware builtin instead of being bundled. Not limited to
-      // @mikrojs/* — third-party driver/board packages work the same way.
+      // A bare package specifier (scoped `@scope/...` or unscoped `name/...`)
+      // that resolves to a native module is externalized: the firmware binds it.
       build.onResolve({filter: /^@?[^./]/}, (args) => {
-        if (isFirmwareBuiltin(args.path)) {
+        const fromDir = args.resolveDir || process.cwd()
+        // A native module (its export targets C/C++): the firmware provides it.
+        const owner = nativeModuleLabel(args.path, fromDir)
+        if (owner !== undefined) {
+          onNativeImport?.(args.path, args.kind === 'dynamic-import' ? 'dynamic' : 'static', owner)
           return {path: args.path, external: true}
         }
         return null
       })
     },
-  }
-}
-
-/** Check if a package is a firmware builtin (has native code), regardless of npm
- * scope. Firmware builtin packages export ./cmake which provides ESP-IDF
- * component paths. */
-const firmwareBuiltinCache = new Map<string, boolean>()
-function isFirmwareBuiltin(id: string): boolean {
-  // Extract package name from import specifier (e.g. "@mikrojs/some-board/some-variant" -> "@mikrojs/some-board")
-  const parts = id.split('/')
-  const pkgName =
-    parts.length >= 2 && parts[0]!.startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0]!
-  if (firmwareBuiltinCache.has(pkgName)) return firmwareBuiltinCache.get(pkgName)!
-  try {
-    // For packages without an exports map, import.meta.resolve returns a URL
-    // without checking that the file exists, so verify on disk.
-    const resolved = import.meta.resolve(`${pkgName}/cmake`)
-    const isBuiltin = existsSync(fileURLToPath(resolved))
-    firmwareBuiltinCache.set(pkgName, isBuiltin)
-    return isBuiltin
-  } catch {
-    firmwareBuiltinCache.set(pkgName, false)
-    return false
   }
 }
 
@@ -176,6 +179,18 @@ export interface BuildFeatures {
   optional: string[]
   /** Feature → statically imported builtin modules that require it. */
   modules: Record<string, string[]>
+  /** Native modules the app imports, by package specifier
+   * (`@mikrojs/drivers/sh8601`), which only firmware built with them provides. */
+  natives: NativeNeeds
+}
+
+export interface NativeNeeds {
+  /** Statically imported native modules; gate a deploy. */
+  imported: string[]
+  /** Dynamically-only imported native modules. Never gate a deploy. */
+  optional: string[]
+  /** Specifier → where the module's C/C++ lives (`<package>/<dir>`), for messages. */
+  owners: Record<string, string>
 }
 
 export type BuildEvent =
@@ -204,6 +219,7 @@ function phase(name: string): Observable<BuildEvent> {
 
 function computeFeatures(
   builtinImports: Map<string, BuiltinImportKind> | undefined,
+  nativeImports: Map<string, NativeImport> | undefined,
   configFloor: readonly string[] | undefined,
 ): BuildFeatures {
   const entries = [...(builtinImports ?? [])]
@@ -218,7 +234,12 @@ function computeFeatures(
     const feature = moduleFeature(name)
     if (feature !== undefined) (modules[feature] ??= []).push(name)
   }
-  return {imported, floor, optional, modules}
+  const natives: NativeNeeds = {imported: [], optional: [], owners: {}}
+  for (const [id, {kind, owner}] of [...(nativeImports ?? [])].sort()) {
+    natives[kind === 'static' ? 'imported' : 'optional'].push(id)
+    natives.owners[id] = owner
+  }
+  return {imported, floor, optional, modules, natives}
 }
 
 async function collectOutputFiles(buildDir: string): Promise<BuildEvent[]> {
@@ -272,15 +293,26 @@ function duplicatePackagesEvent(duplicates: DuplicatePackage[]): Observable<Buil
  *  node_modules/ when rootDir is a subdirectory) are placed inside it, and the
  *  rewritten import specifiers point there. */
 export async function trace(entries: string[], rootDir: string) {
+  const nativeOwners = new Map<string, string>()
   const {files, problems, duplicatePackages, externals} = await traceImports(entries, {
     deployDir: rootDir,
     conditions: ['import'],
     assetExtensions: ['.txt'],
     // Every mikro/* name is the firmware's; unknown ones are rejected below.
-    // Firmware builtin packages (any scope) have native code and a ./cmake
-    // export, and resolve to the firmware builtin. Pure JS packages are traced
-    // and deployed normally.
-    isExternal: (id) => id.startsWith('mikro/') || isBuiltinModule(id) || isFirmwareBuiltin(id),
+    isExternal: (id, importer) => {
+      if (id.startsWith('mikro/') || isBuiltinModule(id)) return true
+      if (!/^@?[^./]/.test(id)) return false
+      const fromDir = pathlib.dirname(importer)
+      // A native module (its export targets C/C++): the firmware provides it,
+      // so nothing of it is traced or deployed.
+      const owner = nativeModuleLabel(id, fromDir)
+      if (owner !== undefined) {
+        nativeOwners.set(id, owner)
+        return true
+      }
+      // Board and driver packages are traced and deployed like any JS.
+      return false
+    },
   })
   const names = [...externals.keys()]
     .filter((id) => id.startsWith('mikro/'))
@@ -303,7 +335,11 @@ export async function trace(entries: string[], rootDir: string) {
     )
   }
   if (problems.length > 0) throw new UserError(problems.join('\n'))
-  return {files, duplicatePackages, builtinImports}
+  const nativeImports = new Map<string, NativeImport>()
+  for (const [id, owner] of nativeOwners) {
+    recordNative(nativeImports, id, externals.get(id) === 'dynamic' ? 'dynamic' : 'static', owner)
+  }
+  return {files, duplicatePackages, builtinImports, nativeImports}
 }
 
 const REWRITABLE = ['.ts', '.js', '.mjs']
@@ -321,11 +357,11 @@ function writeTraced(
   rootDir: string,
   buildDir: string,
   options: TransformOptions,
-  onBuiltinImports: (imports: Map<string, BuiltinImportKind>) => void,
+  onImports: (builtins: Map<string, BuiltinImportKind>, natives: Map<string, NativeImport>) => void,
 ): Observable<BuildEvent> {
   return defer(() => trace(entries, rootDir)).pipe(
-    mergeMap(({files, duplicatePackages, builtinImports}) => {
-      onBuiltinImports(builtinImports)
+    mergeMap(({files, duplicatePackages, builtinImports, nativeImports}) => {
+      onImports(builtinImports, nativeImports)
       return concat(
         duplicatePackagesEvent(duplicatePackages),
         writeTracedFiles(files, buildDir, options),
@@ -463,13 +499,17 @@ export function build(
       // Populated by whichever write path runs; read by the features event
       // emitted after it.
       let builtinImports: Map<string, BuiltinImportKind> | undefined
+      let nativeImports: Map<string, NativeImport> | undefined
 
       const writeFilesUnbundled = writeTraced(
         [entry],
         rootDir,
         buildDir,
         {minify: options.minify, minifier, minifyLevel, pureFuncs},
-        (traced) => (builtinImports = traced),
+        (traced, natives) => {
+          builtinImports = traced
+          nativeImports = natives
+        },
       )
 
       const writeFilesBundled = defer(async () => {
@@ -483,7 +523,9 @@ export function build(
         const virtualOutdir = pathlib.resolve(process.cwd(), '__mikro_bundle_out__')
         const entryDir = pathlib.dirname(entry)
         const bundleImports = new Map<string, BuiltinImportKind>()
+        const bundleNatives = new Map<string, NativeImport>()
         builtinImports = bundleImports
+        nativeImports = bundleNatives
         const result = await esbuild
           .build({
             entryPoints: [entry],
@@ -504,10 +546,13 @@ export function build(
             legalComments: 'none',
             logLevel: 'silent',
             plugins: [
-              mikrojsExternalsPlugin((name, kind) => {
-                // Static wins: a module imported both ways gates like a static one.
-                if (kind === 'static' || !bundleImports.has(name)) bundleImports.set(name, kind)
-              }),
+              mikrojsExternalsPlugin(
+                (name, kind) => {
+                  // Static wins: a module imported both ways gates like a static one.
+                  if (kind === 'static' || !bundleImports.has(name)) bundleImports.set(name, kind)
+                },
+                (id, kind, owner) => recordNative(bundleNatives, id, kind, owner),
+              ),
             ],
             ...(pureFuncs.length > 0 ? {pure: pureFuncs} : undefined),
           })
@@ -627,7 +672,10 @@ export function build(
         writeFiles,
         // After writeFiles: both write paths populate builtinImports as they run.
         defer(() =>
-          of<BuildEvent>({type: 'features', ...computeFeatures(builtinImports, config?.features)}),
+          of<BuildEvent>({
+            type: 'features',
+            ...computeFeatures(builtinImports, nativeImports, config?.features),
+          }),
         ),
         writePackageJson.pipe(ignoreElements()),
         writeConfig.pipe(ignoreElements()),
@@ -707,13 +755,17 @@ export function buildTests(
       // Populated by the trace inside writeFiles; read by the features event
       // emitted after it.
       let builtinImports: Map<string, BuiltinImportKind> | undefined
+      let nativeImports: Map<string, NativeImport> | undefined
 
       const writeFiles = writeTraced(
         entries,
         rootDir,
         buildDir,
         {minify: options.minify, minifier, minifyLevel, pureFuncs},
-        (traced) => (builtinImports = traced),
+        (traced, natives) => {
+          builtinImports = traced
+          nativeImports = natives
+        },
       )
 
       const writePackageJson = defer(async () => {
@@ -779,7 +831,10 @@ export function buildTests(
         defer(() => rm(buildDir, {force: true, recursive: true})).pipe(ignoreElements()),
         writeFiles,
         defer(() =>
-          of<BuildEvent>({type: 'features', ...computeFeatures(builtinImports, config?.features)}),
+          of<BuildEvent>({
+            type: 'features',
+            ...computeFeatures(builtinImports, nativeImports, config?.features),
+          }),
         ),
         writePackageJson.pipe(ignoreElements()),
         writeConfig.pipe(ignoreElements()),

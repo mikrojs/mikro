@@ -43,7 +43,7 @@ WiFi + HTTPS is the biggest consumer. A simple blinky uses almost nothing, but a
 
 - Connect to WiFi once and stay connected, rather than reconnecting per request.
 - Talk to local endpoints over plain HTTP when RAM is scarce. TLS costs up to ~40 KB per handshake.
-- If your app never uses WiFi (it networks over a cellular modem, say), build [custom firmware](./develop/custom-firmware#overriding-defaults) with `CONFIG_MIKROJS_WIFI=n`. The WiFi driver takes about 20 KB of RAM at boot even when the radio is never started.
+- If your app never uses WiFi (it networks over a cellular modem, say), build [custom firmware](./develop/custom-firmware#change-esp-idf-settings) with `CONFIG_MIKROJS_WIFI=n`. The WiFi driver takes about 20 KB of RAM at boot even when the radio is never started.
 - Concatenating strings in a loop allocates a new string every iteration. Push to an array and `.join()` once.
 - Load modules only when you need them, with a dynamic import:
 
@@ -169,7 +169,7 @@ Mikro.js runs a single-threaded event loop, like Node.js. WiFi, timers, and ever
 
 On device, the filesystem uses [LittleFS](https://github.com/littlefs-project/littlefs) on a flash partition. Files persist across reboots and deep sleep.
 
-[`storageUsage()`](/api/sys#storageusage) reports how much space the filesystem has on your device. The size comes from the firmware's partition table. The generic firmware for each chip assumes 4 MB of flash and gives the filesystem 1472 KB, so on a module with 8 MB or 16 MB it uses only the first 4 MB. To use the rest, build [custom firmware with a larger partition table](/develop/custom-firmware#partition-table).
+[`storageUsage()`](/api/sys#storageusage) reports how much space the filesystem has on your device. The size comes from the firmware's partition table. The generic firmware for each chip assumes 4 MB of flash and gives the filesystem 1472 KB, so on a module with 8 MB or 16 MB it uses only the first 4 MB. To use the rest, build [custom firmware with a larger partition table](/develop/custom-firmware#use-a-bigger-flash-chip).
 
 Flash memory has limited write cycles (~100,000 per sector), so avoid writing on every loop iteration. Buffer data in RAM and write periodically, or use [`rtcStorage`](/api/kv) for smaller, frequently changing values.
 

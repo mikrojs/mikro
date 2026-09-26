@@ -8,14 +8,10 @@ endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-set(_MIK_RESOLVE "${CMAKE_CURRENT_LIST_DIR}/../resolve.js")
-
-execute_process(
-    COMMAND node ${_MIK_RESOLVE} componentDir
-    OUTPUT_VARIABLE _MIK_COMPONENT_DIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-set(EXTRA_COMPONENT_DIRS "${_MIK_COMPONENT_DIR}")
+file(REAL_PATH "${CMAKE_CURRENT_LIST_DIR}/.." _MIK_FIRMWARE_DIR)
+set(EXTRA_COMPONENT_DIRS "${_MIK_FIRMWARE_DIR}/components")
+# The package paths the mikrojs component builds from
+include("${_MIK_FIRMWARE_DIR}/resolve.cmake")
 
 set(TEST_COMPONENTS "mikrojs" CACHE STRING "List of components to test")
 

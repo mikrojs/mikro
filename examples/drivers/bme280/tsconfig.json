@@ -1,0 +1,10 @@
+{
+  "extends": "mikro/tsconfig",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "outDir": "dist",
+    "sourceMap": false
+  },
+  "include": ["bme280.ts"]
+}
