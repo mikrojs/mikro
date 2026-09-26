@@ -10,7 +10,7 @@
  * The files read on the way are returned too, so CMake re-runs this when one
  * of them changes.
  *
- * Run by project.cmake via `node resolve.js inputs <dir> --native-modules=…`.
+ * Run by resolve.cmake (through project.cmake) via `mikro-fw inputs <dir> --native-modules=…`.
  */
 import {existsSync, readFileSync} from 'node:fs'
 import {basename, join, resolve} from 'node:path'

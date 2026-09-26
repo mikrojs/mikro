@@ -5,10 +5,10 @@ import {dirname, join} from 'node:path'
 
 import {afterAll, expect, test} from 'vitest'
 
-/* Native module resolution as the firmware build runs it: `node resolve.js
+/* Native module resolution as the firmware build runs it: `mikro-fw
  * inputs <project> --native-modules=…`, a real Node process. */
 
-const resolveJs = join(import.meta.dirname, 'resolve.js')
+const cliJs = join(import.meta.dirname, 'cli.js')
 // Real path: resolution reports real paths (/private/var vs /var on macOS)
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'mik-fw-resolve-')))
 
@@ -52,7 +52,7 @@ function moduleDir(dir, {native = true} = {}) {
 
 /** The full output, `configureDepends` (the files CMake watches) included. */
 function run(dir, {nativeModules} = {}) {
-  const args = [resolveJs, 'inputs', dir]
+  const args = [cliJs, 'inputs', dir]
   if (nativeModules !== undefined) args.push(`--native-modules=${nativeModules}`)
   const out = JSON.parse(execFileSync('node', args, {encoding: 'utf8', stdio: 'pipe'}))
   // Order is not part of the contract
@@ -60,10 +60,12 @@ function run(dir, {nativeModules} = {}) {
   return out
 }
 
-/** The build inputs, without the watched files (see run). */
+/** The build inputs, without the watched files (see run) or the package paths. */
 function resolveInputs(dir, options) {
   const out = run(dir, options)
   delete out.configureDepends
+  delete out.quickjsCmake
+  delete out.native
   return out
 }
 

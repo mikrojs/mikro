@@ -59,15 +59,18 @@ Add the packages that the firmware uses:
 cmake_minimum_required(VERSION 3.22)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
+# Ask @mikrojs/firmware for the path of its project.cmake
 execute_process(
-    COMMAND node ${CMAKE_CURRENT_LIST_DIR}/node_modules/@mikrojs/firmware/resolve.js projectCmakePath
-    OUTPUT_VARIABLE _MIK_CMAKE
+    COMMAND npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    OUTPUT_VARIABLE _MIK_CMAKE_PATH
     OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY
 )
 # Optional. Set it before including project.cmake.
 set(MIKROJS_NATIVE_MODULES "@my-scope/epaper/panel")
 
-include(${_MIK_CMAKE})
+include(${_MIK_CMAKE_PATH})
 
 project(my-firmware)
 ```

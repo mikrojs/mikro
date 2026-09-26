@@ -14,14 +14,13 @@ const config = {
       ignoreDependencies: ['mikro', 'wrangler'],
     },
     'packages/@mikrojs/firmware': {
-      // @mikrojs/native is imported by modules-list.test.js, so knip sees it;
-      // the others are consumed by CMake only.
-      ignoreDependencies: ['@mikrojs/quickjs', 'esbuild'],
-      // resolve.js is invoked by CMake, not imported. The ota_host .build/ tree
-      // is scratch the gunzip host test generates (gitignored); knip still walks
-      // it once the test has run, so the ignore is only redundant on a clean
-      // checkout.
-      ignore: ['resolve.js', 'components/mikrojs/test/ota_host/.build/**'],
+      // esbuild is consumed by CMake only (the runtime bundle); knip sees the
+      // others through cli.js and the tests.
+      ignoreDependencies: ['esbuild'],
+      // The ota_host .build/ tree is scratch the gunzip host test generates
+      // (gitignored); knip still walks it once the test has run, so the ignore
+      // is only redundant on a clean checkout.
+      ignore: ['components/mikrojs/test/ota_host/.build/**'],
     },
     'examples/sleep': {
       // Each app/*.ts file is a stand-alone entry — users pick one with

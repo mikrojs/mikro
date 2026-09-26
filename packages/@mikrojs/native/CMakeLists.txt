@@ -95,14 +95,15 @@ endif()
 # `native:mikro/*` import with an explicit "not available" error (or is
 # satisfied by a sim stub) instead of a silent "Builtin not available".
 execute_process(
-    COMMAND node "${CMAKE_CURRENT_SOURCE_DIR}/scripts/modules-list.js" bytecode --host
-    OUTPUT_VARIABLE _MIK_HOST_MODULES
+    COMMAND node "${CMAKE_CURRENT_SOURCE_DIR}/scripts/modules-list.js" --host
+    OUTPUT_VARIABLE _MIK_HOST_LISTS
     OUTPUT_STRIP_TRAILING_WHITESPACE
     RESULT_VARIABLE _MIK_HOST_MODULES_RESULT
 )
 if(NOT _MIK_HOST_MODULES_RESULT EQUAL 0)
-    message(FATAL_ERROR "modules-list.js bytecode --host failed")
+    message(FATAL_ERROR "modules-list.js --host failed")
 endif()
+string(JSON _MIK_HOST_MODULES GET "${_MIK_HOST_LISTS}" bytecode)
 # The list is read at configure time, so configure must re-run when the table
 # or the script changes.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS

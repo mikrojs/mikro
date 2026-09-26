@@ -1,5 +1,14 @@
-import {execFileSync} from 'node:child_process'
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs'
+import {execFileSync, spawnSync} from 'node:child_process'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {dirname, isAbsolute, join} from 'node:path'
 
@@ -34,8 +43,21 @@ function write(file, content) {
   writeFileSync(file, content)
 }
 
+/** How the docs have a project find project.cmake: the package's bin, which
+ *  npx runs wherever the package manager installed the package. */
+const FIND_PROJECT_CMAKE = [
+  'execute_process(',
+  '    COMMAND npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32',
+  '    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}',
+  '    OUTPUT_VARIABLE _MIK_CMAKE_PATH',
+  '    OUTPUT_STRIP_TRAILING_WHITESPACE',
+  '    COMMAND_ERROR_IS_FATAL ANY',
+  ')',
+  'include(${_MIK_CMAKE_PATH})',
+]
+
 /** A consumer project; `lines` go before the include (set(MIKROJS_NATIVE_MODULES ...)). */
-function makeProject(name, {lines = []} = {}) {
+function makeProject(name, {lines = [], include = [`include("${projectCmake}")`]} = {}) {
   const dir = join(fixtureDir, name)
   write(
     join(dir, 'CMakeLists.txt'),
@@ -48,7 +70,7 @@ function makeProject(name, {lines = []} = {}) {
       'set(IDF_TARGET esp32s3)',
       'project(fixture NONE)',
       ...lines,
-      `include("${projectCmake}")`,
+      ...include,
       'message(STATUS "TEST_EXTRA_COMPONENT_DIRS=${EXTRA_COMPONENT_DIRS}")',
       '',
     ].join('\n'),
@@ -99,21 +121,127 @@ test('resolution is empty for projects without a package.json', async () => {
   })
 })
 
-test('projectName resolves the consuming project package.json name', () => {
-  const resolve = join(import.meta.dirname, 'resolve.js')
-  const dir = join(fixtureDir, 'named-project')
-  mkdirSync(dir)
-  writeFileSync(join(dir, 'package.json'), JSON.stringify({name: 'acme-sensor-fw'}))
-  expect(execFileSync('node', [resolve, 'projectName', dir], {encoding: 'utf8'})).toBe(
-    'acme-sensor-fw',
-  )
+const component = join(import.meta.dirname, 'components', 'mikrojs')
 
-  // No package.json (on-device test apps): empty output, so CMake defines
-  // no MIK_FW_NAME and the device omits the fw identity.
-  const emptyDir = join(fixtureDir, 'unnamed-project')
-  mkdirSync(emptyDir)
-  expect(execFileSync('node', [resolve, 'projectName', emptyDir], {encoding: 'utf8'})).toBe('')
-})
+/** Configure the mikrojs component in a project at `dir` the way ESP-IDF does
+ *  after project.cmake, with ESP-IDF's commands stubbed and a stand-in for
+ *  quickjs.cmake (which would patch QuickJS and build qjsc). */
+function configureComponent(dir) {
+  const stub = join(dir, 'stub.c')
+  write(stub, '')
+  write(
+    join(dir, 'quickjs-stub.cmake'),
+    `set(QUICKJS_SOURCES "${stub}")\nset(QJSC_EXECUTABLE "${stub}")\n`,
+  )
+  write(
+    join(dir, 'CMakeLists.txt'),
+    [
+      'cmake_minimum_required(VERSION 3.22)',
+      'set(IDF_VERSION_MAJOR 6)',
+      'set(IDF_VERSION_MINOR 1)',
+      'set(IDF_VERSION_PATCH 0)',
+      'set(IDF_TARGET esp32c6)',
+      'project(fixture C)',
+      `include("${projectCmake}")`,
+      'message(STATUS "TEST_QUICKJS_CMAKE=${MIK_QUICKJS_CMAKE}")',
+      `set(MIK_QUICKJS_CMAKE "${join(dir, 'quickjs-stub.cmake')}")`,
+      'set(CONFIG_MIKROJS_WIFI 1)',
+      'macro(idf_component_register)',
+      '  set(COMPONENT_LIB mikrojs_lib)',
+      `  add_library(mikrojs_lib STATIC "${stub}")`,
+      'endmacro()',
+      // The symbol map hook attaches to <project>.elf
+      'function(idf_build_get_property var property)',
+      '  set(${var} fixture PARENT_SCOPE)',
+      'endfunction()',
+      `add_library(fixture.elf STATIC "${stub}")`,
+      `add_subdirectory("${component}" mikrojs)`,
+      'get_target_property(definitions mikrojs_lib COMPILE_DEFINITIONS)',
+      'message(STATUS "TEST_DEFINITIONS=${definitions}")',
+      '',
+    ].join('\n'),
+  )
+  return configure(dir)
+}
+
+test.skipIf(!hasCmake())(
+  'the component compiles in the firmware version, the project name and the features',
+  () => {
+    const dir = join(fixtureDir, 'component-named')
+    write(join(dir, 'package.json'), JSON.stringify({name: 'acme-sensor-fw'}))
+    const vars = configureComponent(dir)
+    const {version} = JSON.parse(readFileSync(join(import.meta.dirname, 'package.json'), 'utf8'))
+    expect(vars.DEFINITIONS).toContain(`MIK_FW_VERSION="${version}"`)
+    expect(vars.DEFINITIONS).toContain('MIK_FW_NAME="acme-sensor-fw"')
+    expect(vars.DEFINITIONS).toContain('MIK_FW_FEATURES="wifi,i2s"')
+    expect(existsSync(vars.QUICKJS_CMAKE)).toBe(true)
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  'without a package.json, or a name in it, the firmware has no name',
+  () => {
+    // On-device test apps have no package.json: the device omits the fw identity
+    const bare = configureComponent(join(fixtureDir, 'component-bare'))
+    expect(bare.DEFINITIONS).toContain('MIK_FW_VERSION=')
+    expect(bare.DEFINITIONS).not.toContain('MIK_FW_NAME')
+
+    const unnamed = join(fixtureDir, 'component-unnamed')
+    write(join(unnamed, 'package.json'), JSON.stringify({private: true}))
+    expect(configureComponent(unnamed).DEFINITIONS).not.toContain('MIK_FW_NAME')
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  "the component's requirements pass runs without project.cmake",
+  () => {
+    // ESP-IDF first includes each component's CMakeLists.txt from a separate
+    // script-mode CMake run, where idf_component_register records REQUIRES and
+    // returns. None of project.cmake's variables are set there.
+    const script = join(fixtureDir, 'requirements-pass.cmake')
+    write(
+      script,
+      [
+        'macro(idf_component_register)',
+        '  cmake_parse_arguments(_ "" "" "SRCS;INCLUDE_DIRS;REQUIRES" ${ARGN})',
+        '  message(STATUS "TEST_REQUIRES=${__REQUIRES}")',
+        '  return()',
+        'endmacro()',
+        'function(collect_requirements)',
+        `  include("${join(component, 'CMakeLists.txt')}")`,
+        'endfunction()',
+        'set(CMAKE_BUILD_EARLY_EXPANSION 1)',
+        'collect_requirements()',
+        '',
+      ].join('\n'),
+    )
+    const {status, stdout, stderr} = spawnSync('cmake', ['-P', script], {encoding: 'utf8'})
+    // A clean stderr: include() of an unset path would only warn
+    expect({status, stderr}).toEqual({status: 0, stderr: ''})
+    expect(stdout).toMatch(/TEST_REQUIRES=.*\besp_wifi\b/)
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
+  'a project finds project.cmake through the package bin, also when the package is hoisted',
+  () => {
+    // Installed at the workspace root, as npm and yarn workspaces hoist it,
+    // with its bin linked the way package managers link bins
+    const workspace = join(fixtureDir, 'hoisted')
+    mkdirSync(join(workspace, 'node_modules/@mikrojs'), {recursive: true})
+    mkdirSync(join(workspace, 'node_modules/.bin'))
+    symlinkSync(import.meta.dirname, join(workspace, 'node_modules/@mikrojs/firmware'))
+    symlinkSync('../@mikrojs/firmware/cli.js', join(workspace, 'node_modules/.bin/mikro-fw'))
+    const dir = makeProject('hoisted/firmware', {include: FIND_PROJECT_CMAKE})
+    expect(configure(dir).EXTRA_COMPONENT_DIRS).toContain(
+      join(realpathSync(import.meta.dirname), 'components'),
+    )
+  },
+  30_000,
+)
 
 test.skipIf(!hasCmake())(
   'declared native modules land in EXTRA_COMPONENT_DIRS; installed but undeclared ones do not',

@@ -2,24 +2,23 @@ cmake_minimum_required(VERSION 3.22)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-# Resolve from the parent esp32/ directory which has node_modules
-set(_MIK_RESOLVE "${CMAKE_CURRENT_LIST_DIR}/../node_modules/@mikrojs/firmware/resolve.js")
-
-# Resolve mikrojs component from @mikrojs/firmware
+# @mikrojs/firmware as the parent esp32/ project installs it, as a real path
+# like project.cmake takes it
 execute_process(
-    COMMAND node ${_MIK_RESOLVE} componentDir
-    OUTPUT_VARIABLE _MIK_COMPONENT_DIR
+    COMMAND npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    OUTPUT_VARIABLE _MIK_CMAKE_PATH
     OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY
 )
-set(EXTRA_COMPONENT_DIRS "${_MIK_COMPONENT_DIR}")
+get_filename_component(_MIK_FIRMWARE_DIR "${_MIK_CMAKE_PATH}" DIRECTORY)
+file(REAL_PATH "${_MIK_FIRMWARE_DIR}" _MIK_FIRMWARE_DIR)
+set(EXTRA_COMPONENT_DIRS "${_MIK_FIRMWARE_DIR}/components")
+# The package paths the mikrojs component builds from
+include("${_MIK_FIRMWARE_DIR}/resolve.cmake")
 
 # Test config lives at <firmware-package>/test/
-execute_process(
-    COMMAND node ${_MIK_RESOLVE} configDir
-    OUTPUT_VARIABLE _MIK_CONFIG_DIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-set(_MIK_TEST_DIR "${_MIK_CONFIG_DIR}/test")
+set(_MIK_TEST_DIR "${_MIK_FIRMWARE_DIR}/test")
 
 # Copy partition table to local dir so sdkconfig.defaults relative path works
 file(COPY "${_MIK_TEST_DIR}/littlefs_partition.csv" DESTINATION "${CMAKE_CURRENT_LIST_DIR}")

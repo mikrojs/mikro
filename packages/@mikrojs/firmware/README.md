@@ -10,12 +10,12 @@ ESP32 firmware package for Mikro.js. Provides the ESP-IDF integration, build sys
 
 ## Usage
 
-A custom firmware project depends on this package and includes `project.cmake` (resolved via `resolve.js`, see the docs below for the CMakeLists boilerplate):
+A custom firmware project depends on this package and includes its `project.cmake`, whose path the package's `mikro-fw` bin prints (see the docs below for the CMakeLists boilerplate):
 
 ```
 my-firmware/
 ├── package.json          # depends on @mikrojs/firmware
-├── CMakeLists.txt        # resolves and includes project.cmake via resolve.js
+├── CMakeLists.txt        # includes project.cmake from @mikrojs/firmware
 └── main/                 # optional: omit it and the package's default main
     ├── CMakeLists.txt    # (which calls MIK_Main()) is used automatically
     └── main.cpp
