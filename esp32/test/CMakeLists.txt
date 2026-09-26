@@ -5,7 +5,7 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # @mikrojs/firmware as the parent esp32/ project installs it, as a real path
 # like project.cmake takes it
 execute_process(
-    COMMAND npx --no --package=@mikrojs/firmware -- mikro-fw cmake-path esp32
+    COMMAND pnpm exec mikro-fw cmake-path esp32
     WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
     OUTPUT_VARIABLE _MIK_CMAKE_PATH
     OUTPUT_STRIP_TRAILING_WHITESPACE
