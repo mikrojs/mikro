@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-import {spawnSync, type SpawnSyncReturns, type StdioOptions} from 'node:child_process'
+import {spawn, spawnSync, type SpawnSyncReturns, type StdioOptions} from 'node:child_process'
 import {existsSync, readFileSync} from 'node:fs'
 import * as pathlib from 'node:path'
 import {fileURLToPath} from 'node:url'
@@ -137,13 +137,38 @@ function exitCode(result: SpawnSyncReturns<Buffer>): number {
 export function runIdf(args: readonly string[], stdio: StdioOptions = 'inherit'): number {
   const direct = spawnSync('idf.py', args, {stdio})
   if (!notFound(direct)) return exitCode(direct)
-  // idf.py must stay unquoted: in EIM's shell it is an alias, and a quoted alias does not expand.
-  const viaEim = spawnSync('eim', ['run', ['idf.py', ...args.map(shellQuote)].join(' ')], {stdio})
+  const viaEim = spawnSync('eim', eimArgs(args), {stdio})
   if (notFound(viaEim)) {
-    console.error(
-      `Error: idf.py is not on PATH, and EIM is not installed. Activate ESP-IDF in the shell, or install it with EIM: ${EIM_DOCS}`,
-    )
+    console.error(NO_IDF)
     return 1
   }
   return exitCode(viaEim)
+}
+
+/** runIdf without blocking, so several builds can run at once. */
+export async function runIdfAsync(args: readonly string[], stdio: StdioOptions): Promise<number> {
+  const run = (command: string, commandArgs: readonly string[]) =>
+    new Promise<number | 'not found'>((resolve) => {
+      spawn(command, commandArgs, {stdio})
+        .on('error', (error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT') return resolve('not found')
+          console.error('Error: idf.py could not be run:', error)
+          resolve(1)
+        })
+        .on('close', (code) => resolve(code ?? 1))
+    })
+  const direct = await run('idf.py', args)
+  if (direct !== 'not found') return direct
+  const viaEim = await run('eim', eimArgs(args))
+  if (viaEim !== 'not found') return viaEim
+  console.error(NO_IDF)
+  return 1
+}
+
+const NO_IDF = `Error: idf.py is not on PATH, and EIM is not installed. Activate ESP-IDF in the shell, or install it with EIM: ${EIM_DOCS}`
+
+/** `eim run` with idf.py and `args`. idf.py must stay unquoted: in EIM's
+ *  shell it is an alias, and a quoted alias does not expand. */
+function eimArgs(args: readonly string[]): string[] {
+  return ['run', ['idf.py', ...args.map(shellQuote)].join(' ')]
 }

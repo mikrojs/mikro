@@ -519,7 +519,7 @@ export async function resolveFlashPlan(
   if (!existsSync(path.join(dir, 'flasher_args.json'))) {
     throw new UserError(
       `The image of ${resolved.board.name} in ${dir} is incomplete: flasher_args.json is missing. ` +
-        'Run `mikro fw prepack` in its package.',
+        'Run `mikro fw build` in its package.',
     )
   }
   const flasherArgs = await fitToDeviceFlash(await readFlasherArgs(dir), device)

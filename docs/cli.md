@@ -134,7 +134,7 @@ In a firmware project (a folder with a `CMakeLists.txt`), it also tells CMake wh
 
 ### mikro fw pack
 
-Build a [custom firmware](/develop/custom-firmware) project and pack it into an archive that [`mikro flash --from`](#mikro-flash) can flash: `flasher_args.json`, the files it lists, and `firmware.json`. Run it in the project folder. In a [board package](/develop/creating-boards), it runs `mikro fw prepack` first and packs each board's image.
+Build a [custom firmware](/develop/custom-firmware) project and pack it into an archive that [`mikro flash --from`](#mikro-flash) can flash: `flasher_args.json`, the files it lists, and `firmware.json`. Run it in the project folder. In a [board package](/develop/creating-boards), it runs `mikro fw build` first and packs each board's image.
 
 ```sh
 pn mikro fw pack
@@ -143,20 +143,31 @@ pn mikro fw pack
 | Option          | Description                                                                                                                                                                                                     |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--out FILE`    | Output path for the archive (default: `./mikro-fw-<name>-<chip>.tar.gz`, without the chip when the name already ends with it or is `<chip>-generic`, or `./mikro-fw-<chip>.tar.gz` for firmware without a name) |
-| `--board BOARD` | In a board package, pack only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name                                                                                             |
+| `--board BOARD` | In a board package, pack only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name. A bare `--board` asks which, or without a terminal lists the boards                        |
+| `--parallel N`  | In a board package, build up to N images at once, as [`mikro fw build --parallel`](#mikro-fw-build) does                                                                                                        |
 
-### mikro fw prepack
+### mikro fw build
 
-Build the boards in a [board package](/develop/creating-boards)'s `boards.config.ts` and write each image into the folder that the board's `firmware` export points at, then check the package as `mikro fw check` does. Run it in the package. Each board builds from a firmware project generated in `.mikro/fw-<board>`, into `.mikro/build-fw-<board>` (`.mikro/fw` and `.mikro/build-fw` for the board at `.`). A board package runs it from npm's `prepack` script, so `npm pack` and `npm publish` always include fresh images.
+Build the boards in a [board package](/develop/creating-boards)'s `boards.config.ts` and write each image into the folder that the board's `firmware` export points at, then check the package as `mikro fw check` does. Run it in the package. Each board builds from a firmware project generated in `.mikro/fw-<board>`, into `.mikro/build-fw-<board>` (`.mikro/fw` and `.mikro/build-fw` for the board at `.`). A board package runs it from npm's `prepack` script, so `npm pack` and `npm publish` always include fresh images. Each board's new images replace its image folder once they are all built, so a failed build leaves the last ones. Before it builds, it stops if the folder holds anything but that board's images, so a `dist` set to the wrong folder loses nothing.
 
 ```sh
-pn mikro fw prepack
+pn mikro fw build
 ```
 
-| Option          | Description                                                                                                                            |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `--board BOARD` | Build only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name                                       |
-| `--image IMAGE` | Build only this image of each board, `full` or one of its [leaner images](/develop/creating-boards#leaner-images), and keep the others |
+| Option          | Description                                                                                                                                                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--board BOARD` | Build only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name. A bare `--board` asks which, or without a terminal lists the boards                                                                                                        |
+| `--image IMAGE` | Build only this image of each board, `full` or one of its [leaner images](/develop/creating-boards#leaner-images), and keep the others. A bare `--image` asks which, or without a terminal lists the images                                                                  |
+| `--parallel N`  | Build up to N images at once, from all the boards, instead of one after another (`--parallel 4`). Each build writes its output to a log beside its build folder (`.mikro/build-fw+no-ble.log`), and a line per image says how it went. After a failure, no more builds start |
+| `--flash`       | Then flash the image it built, as [`mikro flash`](#mikro-flash) does. It needs one board (`--board` in a package with several) and, for a board with leaner images, `--image`                                                                                                |
+
+### mikro fw list
+
+List the boards in a [board package](/develop/creating-boards)'s `boards.config.ts` and their images, one line per board. With `--json`, it prints them as JSON, for example to build each image in a CI job of its own with `mikro fw build --board <board> --image <image>`.
+
+```sh
+pn mikro fw list
+```
 
 ### mikro fw check
 

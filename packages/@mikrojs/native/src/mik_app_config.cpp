@@ -12,12 +12,18 @@
 
 static const char* TAG = "mik_app_config";
 
+/* memReserved when the config names none. The firmware lowers it for a build
+ * without radios, which has no WiFi or TLS demand to keep heap for. */
+#ifndef MIK_DEFAULT_MEM_RESERVED
+#define MIK_DEFAULT_MEM_RESERVED (64 * 1024)
+#endif
+
 void MIK_DefaultConfig(MIKConfig* config) {
     config->panic_restart_delay_ms = 1000;
     config->panic_mode = MIK_PANIC_RESTART;
     config->panic_sleep_duration_ms = 0;
     config->stack_size = 0;
-    config->mem_reserved = 64 * 1024;
+    config->mem_reserved = MIK_DEFAULT_MEM_RESERVED;
     config->fs_read_max = 0; /* 0 = runtime default (65536) */
     config->entry_point[0] = '\0';
     config->wifi_country[0] = '\0';

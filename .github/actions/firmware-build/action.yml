@@ -1,20 +1,21 @@
 name: Build firmware
-description: Build the mikrojs firmware for a single ESP32 chip target and
-  upload as artifact
+description: Build one image of one of mikro's generic boards and upload it as
+  an artifact
 # NOTE: Caller must:
 #   1. Set `runs-on: ubuntu-latest` and `container: espressif/idf:v6.1`
 #      (composite actions cannot set these themselves).
 #   2. Run `actions/checkout` before invoking this action so that the
 #      relative `uses: ./.github/actions/firmware-build` path resolves.
 inputs:
-  target:
-    description: ESP32 chip target (esp32, esp32c3, esp32c5, esp32c6, esp32s3)
+  board:
+    description: |
+      The board in packages/mikro/boards.config.ts (esp32c6-generic), as
+      `mikro fw list --json` names it.
     required: true
   image:
     description: |
-      The generic board's image to build: full, or one of the images in
-      packages/mikro/boards.config.ts (no-ble). Each job builds one, so the
-      images build in parallel.
+      The board's image to build: full, or one of its images (no-ble). Each
+      job builds one, so the images build in parallel.
     required: false
     default: full
   pack-format:
@@ -70,10 +71,10 @@ runs:
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/.cache/ccache
-        key: ccache-firmware-${{ inputs.target }}-${{ inputs.image }}-${{ github.sha }}
+        key: ccache-firmware-${{ inputs.board }}-${{ inputs.image }}-${{ github.sha }}
         restore-keys: |
-          ccache-firmware-${{ inputs.target }}-${{ inputs.image }}-
-          ccache-firmware-${{ inputs.target }}-
+          ccache-firmware-${{ inputs.board }}-${{ inputs.image }}-
+          ccache-firmware-${{ inputs.board }}-
 
     - shell: bash
       run: |
@@ -86,23 +87,22 @@ runs:
         # hash content, so a fresh build dir missed every object.
         ccache --set-config=compiler_check=content
 
-    # One image of the target's generic board, from mikro's boards.config.ts:
-    # `mikro fw prepack --image` builds it into .mikro/build-fw-<target>-generic
-    # (+<image> for the other images) and writes it to
-    # dist-fw/<target>-generic/<image>, firmware.json included (name
-    # <target>-generic, chip, version, features). MIKROJS_WORKSPACE runs the
-    # CLI from its TypeScript source, as in a checkout, so it needs no build.
+    # One image of the board, from mikro's boards.config.ts: `mikro fw build
+    # --image` builds it into .mikro/build-fw-<board> (+<image> for the other
+    # images) and writes it to dist-fw/<board>/<image>, firmware.json included
+    # (name, chip, version, features). MIKROJS_WORKSPACE runs the CLI from its
+    # TypeScript source, as in a checkout, so it needs no build.
     - shell: bash
       working-directory: packages/mikro
       env:
         IDF_CCACHE_ENABLE: '1'
         MIKROJS_WORKSPACE: '1'
-        TARGET: ${{ inputs.target }}
+        BOARD: ${{ inputs.board }}
         IMAGE: ${{ inputs.image }}
       run: |
         . $IDF_PATH/export.sh
         start=$(date +%s)
-        node bin/mikrojs.js fw prepack --board "$TARGET-generic" --image "$IMAGE"
+        node bin/mikrojs.js fw build --board "$BOARD" --image "$IMAGE"
         ccache --show-stats
         # Drop the entries this build did not use, so the saved cache stays
         # the size of one build instead of growing towards max_size.
@@ -112,27 +112,27 @@ runs:
       working-directory: packages/mikro
       env:
         MIKROJS_WORKSPACE: '1'
-        TARGET: ${{ inputs.target }}
+        BOARD: ${{ inputs.board }}
         IMAGE: ${{ inputs.image }}
       run: |
         . $IDF_PATH/export.sh
         suffix=$([ "$IMAGE" = full ] || echo "+$IMAGE")
-        node bin/mikrojs.js idf -C ".mikro/fw-$TARGET-generic$suffix" -B ".mikro/build-fw-$TARGET-generic$suffix" size
+        node bin/mikrojs.js idf -C ".mikro/fw-$BOARD$suffix" -B ".mikro/build-fw-$BOARD$suffix" size
 
     # The image in a folder of its name, which the release puts in mikro's
-    # dist-fw/<target>-generic beside the board's other images.
+    # dist-fw/<board> beside the board's other images.
     - if: inputs.pack-format == 'unpacked'
       shell: bash
       env:
-        TARGET: ${{ inputs.target }}
+        BOARD: ${{ inputs.board }}
         IMAGE: ${{ inputs.image }}
       run: |
         mkdir -p firmware-out
-        cp -R "packages/mikro/dist-fw/$TARGET-generic/$IMAGE" firmware-out/
+        cp -R "packages/mikro/dist-fw/$BOARD/$IMAGE" firmware-out/
 
     - if: inputs.pack-format == 'tarball'
       shell: bash
-      working-directory: packages/mikro/dist-fw/${{ inputs.target }}-generic/${{ inputs.image }}
+      working-directory: packages/mikro/dist-fw/${{ inputs.board }}/${{ inputs.image }}
       env:
         ARTIFACT_NAME: ${{ inputs.artifact-name }}
       run: |

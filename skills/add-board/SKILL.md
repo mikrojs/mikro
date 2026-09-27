@@ -20,8 +20,8 @@ When this skill triggers, gather the required information from the user, then ge
 ## How a board package works
 
 - `boards.config.ts` at the package root describes the board: `chip`, `sdkconfig` (fragments), `partitions`, and `nativeModules` (every native module the board's peripherals need; nothing is found from imports). There is no CMake project to write.
-- `pn mikro fw prepack` generates a firmware project from the config, builds it, and writes the image (`firmware.json`, `flasher_args.json` and the files it flashes) into the folder that the board's `firmware` export points at, then checks the package. The package's `prepack` script runs it, so a published package always has a fresh image.
-- The `firmware` condition on an export declares the board: `".": {"firmware": "./dist-fw/full/firmware.json"}`. It must match the config: `mikro fw prepack` and `mikro fw check` print the entries to add when it doesn't. Apps depend on the package, and `mikro flash` finds the board through that condition.
+- `pn mikro fw build` generates a firmware project from the config, builds it, and writes the image (`firmware.json`, `flasher_args.json` and the files it flashes) into the folder that the board's `firmware` export points at, then checks the package. The package's `prepack` script runs it, so a published package always has a fresh image.
+- The `firmware` condition on an export declares the board: `".": {"firmware": "./dist-fw/full/firmware.json"}`. It must match the config: `mikro fw build` and `mikro fw check` print the entries to add when it doesn't. Apps depend on the package, and `mikro flash` finds the board through that condition.
 - The board names itself: the name is the export's specifier (the package name for `.`), or `name` in the config; the description is the package's, or `description`. The device reports the name as `sys.board.name`; `mikro flash --board` and `mikro.config.ts` use it.
 - `images: [{ble: false}]` on a board also builds leaner images (features `ble`, `wifi`), named `no-ble` and so on; apps pick one by what they need (`mikro flash --features wifi` gives the leanest with WiFi, `--features full` the full image). Add them only when the board's users need the flash or RAM back.
 - There is no extending: apps flash the image as it is. To change a board's firmware, fork the package.
@@ -44,7 +44,7 @@ Single board:
 └── README.md
 ```
 
-Multi-board: one entry per board in `boards.config.ts`, keyed `./<board>`, each exported as `"./<board>": {"firmware": "./dist-fw/<board>/full/firmware.json"}`; the name defaults to `@acme/boards/<board>`. One `pn mikro fw prepack` in the package builds them all (each into `.mikro/build-fw-<board>`); `--board <board>` builds one. Variants that need different builds (octal PSRAM, say) are boards of their own that share a base object in the config; a variant with more flash needs none, since `mikro flash` gives the extra flash to the filesystem.
+Multi-board: one entry per board in `boards.config.ts`, keyed `./<board>`, each exported as `"./<board>": {"firmware": "./dist-fw/<board>/full/firmware.json"}`; the name defaults to `@acme/boards/<board>`. One `pn mikro fw build` in the package builds them all (each into `.mikro/build-fw-<board>`); `--board <board>` builds one. Variants that need different builds (octal PSRAM, say) are boards of their own that share a base object in the config; a variant with more flash needs none, since `mikro flash` gives the extra flash to the filesystem.
 
 ## Files to generate
 
@@ -66,7 +66,7 @@ Multi-board: one entry per board in `boards.config.ts`, keyed `./<board>`, each 
   "files": ["dist", "dist-fw", "tsconfig.json"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "npm run build && mikro fw prepack"
+    "prepack": "npm run build && mikro fw build"
   },
   "dependencies": {
     "@acme/drivers": "^0.1.0"
@@ -185,13 +185,13 @@ dist-fw
 
 1. Build the image (the chip comes from the config):
    ```sh
-   pn mikro fw prepack
+   pn mikro fw build
    ```
 2. `pn mikro fw check` reports anything that would stop the image from flashing or publishing.
 3. In an app that depends on the package (a workspace app, or after `npm pack`), run `pn mikro flash`, then deploy a test app that imports from the board package. `mikro flash --build-dir .mikro/build-fw` flashes the build directly.
 
 ## Important notes
 
-- `mikro fw prepack` keeps the generated project in `.mikro/fw` and starts its `sdkconfig` over when the board's settings or chip change.
+- `mikro fw build` keeps the generated project in `.mikro/fw` and starts its `sdkconfig` over when the board's settings or chip change.
 - A board name has at most 63 characters and the form of a package name, optionally followed by `/<board>`; the build stops otherwise.
 - Board modules are bundled and deployed with the app, like any other dependency.

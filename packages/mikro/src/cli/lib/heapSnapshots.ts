@@ -92,6 +92,16 @@ export type BootFigures = NonNullable<HeapSnapshotFile['boot']>
  *  firmware old enough not to report it. */
 export const DEFAULT_MEM_RESERVED = 64 * 1024
 
+/** The fallback for firmware with these features: 16 KB without radios (see
+ *  the firmware component's CMakeLists.txt). Firmware that reports no features
+ *  predates that and always used 64 KB. */
+export function defaultMemReserved(features: readonly string[] | undefined): number {
+  if (features === undefined || features.includes('wifi') || features.includes('ble')) {
+    return DEFAULT_MEM_RESERVED
+  }
+  return 16 * 1024
+}
+
 export function readBootSnapshot(root: string, chip: string): BootFigures | undefined {
   return readFile(snapshotFilePath(root, chip)).boot
 }

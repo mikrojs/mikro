@@ -245,7 +245,7 @@ export function defineConfig<T extends MikroJSConfig>(config: T) {
 
 export type {BoardConfig, BoardsConfig, Chip} from '@mikrojs/firmware/boards'
 
-/** A board package's boards.config.ts: the boards `mikro fw prepack` builds,
+/** A board package's boards.config.ts: the boards `mikro fw build` builds,
  *  keyed by the export that declares each (`.` or `./<board>`).
  *
  * ```ts

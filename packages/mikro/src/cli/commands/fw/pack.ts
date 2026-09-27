@@ -7,7 +7,7 @@ import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import {option} from '@optique/core/primitives'
-import {string} from '@optique/core/valueparser'
+import {integer, string} from '@optique/core/valueparser'
 import {path} from '@optique/run'
 import {stat} from 'fs/promises'
 import {create as tarCreate} from 'tar'
@@ -20,8 +20,8 @@ import {readFlasherArgs} from '../../lib/esptool.js'
 import {formatSize} from '../../lib/formatSize.js'
 import {imageFiles} from '../../lib/fwImage.js'
 import {sha256File} from '../../lib/ota.js'
-import {configuredPackage, prepackBoards} from './prepack.js'
-import {buildFirmware, failFw} from './shared.js'
+import {buildBoardImages, configuredPackage} from './build.js'
+import {buildFirmware, failFw, pickBoard} from './shared.js'
 
 export const args = command(
   'pack',
@@ -34,7 +34,12 @@ export const args = command(
     ),
     board: optional(
       option('--board', string({metavar: 'BOARD'}), {
-        description: message`In a board package, pack only this board: its key in boards.config.ts (./t-display) or its name`,
+        description: message`In a board package, pack only this board: its key in boards.config.ts (./t-display) or its name. Without a name, it asks`,
+      }),
+    ),
+    parallel: optional(
+      option('--parallel', integer({metavar: 'N', min: 1}), {
+        description: message`In a board package, build up to N images at once, across boards, each with its output in a log beside its build folder`,
       }),
     ),
   }),
@@ -93,18 +98,27 @@ function printArtifact(artifact: Artifact): void {
   console.log(`  size      ${formatSize(artifact.size)}`)
 }
 
-/** A board package packs its boards' images as `fw prepack` writes them, so
+/** A board package packs its boards' images as `fw build` writes them, so
  *  the archives and the published package hold the same files. */
 async function packBoards(
   configured: NonNullable<Awaited<ReturnType<typeof configuredPackage>>>,
   config: Args,
   jsonOutput: boolean,
 ): Promise<void> {
-  const boards = selectBoards(configured.boards, config.board)
+  const boards = selectBoards(
+    configured.boards,
+    config.board === '' ? await pickBoard(configured.boards) : config.board,
+  )
   if (config.out !== undefined && boards.reduce((n, b) => n + 1 + b.images.length, 0) > 1) {
     throw new UserError('--out names one archive: pick a board without other images with --board.')
   }
-  const images = await prepackBoards(configured.packageDir, boards, 'fw pack', jsonOutput)
+  const images = await buildBoardImages(
+    configured.packageDir,
+    boards,
+    'fw pack',
+    jsonOutput,
+    config.parallel,
+  )
   if (images === undefined) return
   const artifacts: Artifact[] = []
   for (const image of images) {
@@ -140,6 +154,11 @@ export async function run(config: Args): Promise<void> {
     if (config.board !== undefined) {
       throw new UserError(
         '--board picks a board of a board package, and this has no boards.config.ts.',
+      )
+    }
+    if (config.parallel !== undefined) {
+      throw new UserError(
+        "--parallel builds a board package's images at once, and this has no boards.config.ts.",
       )
     }
     const buildDir = buildFirmware(projectDir, 'fw pack', jsonOutput)

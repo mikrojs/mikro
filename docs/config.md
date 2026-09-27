@@ -28,7 +28,7 @@ These options are bundled into the deployed app and read by the firmware at boot
 | `watchdog.feed`     | `number`            | off                              | Max ms between `watchdog.feed()` calls           |
 | `watchdog.awake`    | `number`            | off                              | Max ms awake per wake cycle                      |
 | `stackSize`         | `number` (bytes)    | firmware default                 | QuickJS C stack size                             |
-| `memReserved`       | `number` (bytes)    | `65536` (64 KB)                  | Heap reserved for native subsystems              |
+| `memReserved`       | `number` (bytes)    | 64 KB, 16 KB without radios      | Heap reserved for native subsystems              |
 | `wifi.country`      | `WifiCountryCode`   | none                             | WiFi regulatory country code                     |
 | `wifi.hostname`     | `string`            | device name, else `mikrojs-<id>` | DHCP hostname advertised by the STA interface    |
 | `logFile`           | `true \| object`    | off                              | Enable on-device file logging                    |
@@ -81,6 +81,8 @@ QuickJS C stack size. Controls how deep call stacks and recursion can go before 
 ### `memReserved`
 
 Amount of system heap to keep out of QuickJS's reach, reserved for native subsystems (WiFi, lwIP, TLS, HTTP client, C drivers). At runtime initialization, the QuickJS soft cap is computed as `free_heap_at_init - memReserved`.
+
+The default is 64 KB, or 16 KB on firmware built without WiFi and BLE (such as the `no-ble+no-wifi` image), which has no network stack to reserve for.
 
 - If your app doesn't touch the network stack, **lower it** (16-32 KB). This leaves more of the heap for JS and module loading.
 - **Keep the default** (64 KB) for anything with WiFi + HTTPS. TLS handshakes need contiguous multi-KB buffers.
@@ -199,7 +201,7 @@ Options that tell the CLI which board and firmware the project is for. They are 
 
 ### `board` {#board}
 
-`mikro flash` picks the board in this order: the `--board` flag, then `board` from the config, then the board in the project's dependencies when there is exactly one. With several, it takes the one for the connected chip; when several are for that chip, it asks which one, or stops and lists them without a terminal. Without board dependencies, the CLI detects the chip and uses its generic board, `<chip>-generic`.
+`mikro flash` picks the board in this order: the `--board` flag, then `board` from the config, then the board in the project itself or its dependencies when there is exactly one, so a board package flashes its own board. With several, it takes the one for the connected chip; when several are for that chip, it asks which one, or stops and lists them without a terminal. Without board dependencies, the CLI detects the chip and uses its generic board, `<chip>-generic`.
 
 A board's name is the name its firmware reports, usually the name of its [board package](/develop/creating-boards) (`@acme/devboard`), or `@acme/boards/t-display` for one board of several in a package. A generic board is `<chip>-generic`. Before it writes anything, `mikro flash` checks that the connected chip matches the board and stops if it does not.
 

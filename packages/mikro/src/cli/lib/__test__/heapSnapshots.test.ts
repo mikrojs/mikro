@@ -8,6 +8,7 @@ import {
   applyBootSnapshot,
   classifyBootSnapshot,
   classifyHeapSnapshot,
+  defaultMemReserved,
   heapTolerance,
   readBootSnapshot,
   readSnapshot,
@@ -345,5 +346,21 @@ describe('classifyHeapSnapshot', () => {
         }
       }
     }
+  })
+})
+
+describe('defaultMemReserved', () => {
+  test('keeps 64 KB for firmware with a radio', () => {
+    expect(defaultMemReserved(['wifi', 'i2s', 'ble'])).toBe(64 * 1024)
+    expect(defaultMemReserved(['ble'])).toBe(64 * 1024)
+  })
+
+  test('drops to 16 KB for firmware without radios', () => {
+    expect(defaultMemReserved(['i2s'])).toBe(16 * 1024)
+    expect(defaultMemReserved([])).toBe(16 * 1024)
+  })
+
+  test('assumes 64 KB for firmware that reports no features', () => {
+    expect(defaultMemReserved(undefined)).toBe(64 * 1024)
   })
 })

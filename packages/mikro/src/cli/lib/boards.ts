@@ -29,7 +29,7 @@ export interface BoardInfo {
   dir?: string
   /** One of the generic images that ship with mikro. */
   bundled?: boolean
-  /** Where `mikro fw prepack` builds the board, when that folder exists (a
+  /** Where `mikro fw build` builds the board, when that folder exists (a
    *  workspace, or the board author's own checkout). */
   buildDir?: string
   /** The features of the full image, from its firmware.json. */
@@ -44,14 +44,14 @@ function boardSuffix(key: string, image?: string): string {
   return `${key === '.' ? '' : `-${key.replace(/^\.\//, '')}`}${image ? `+${image}` : ''}`
 }
 
-/** Where `mikro fw prepack` builds a board: `.mikro/build-fw` for the board at
+/** Where `mikro fw build` builds a board: `.mikro/build-fw` for the board at
  *  `.`, `.mikro/build-fw-t-display` for `./t-display`, and
  *  `.mikro/build-fw-t-display+no-ble` for one of its images. */
 export function boardBuildDir(packageDir: string, key: string, image?: string): string {
   return path.join(packageDir, '.mikro', `build-fw${boardSuffix(key, image)}`)
 }
 
-/** The firmware project `mikro fw prepack` generates for a board or one of
+/** The firmware project `mikro fw build` generates for a board or one of
  *  its images: `.mikro/fw`, `.mikro/fw-t-display`, `.mikro/fw-t-display+no-ble`. */
 export function boardProjectDir(packageDir: string, key: string, image?: string): string {
   return path.join(packageDir, '.mikro', `fw${boardSuffix(key, image)}`)
@@ -113,6 +113,12 @@ export async function discoverBoards(
   assertNoLegacyMikroConfig(pkg, 'package.json')
 
   const bundled = path.resolve(bundledBoardsDir(projectDir))
+  // A board package's own boards, so it can flash them from its own folder
+  if (path.resolve(projectDir) !== bundled) {
+    const own = loadBoards(projectDir)
+    boards.push(...own.boards.map((image) => fromImage(image)))
+    problems.push(...own.problems)
+  }
   for (const depName of Object.keys({...pkg.dependencies, ...pkg.devDependencies})) {
     if (depName === '@mikrojs/firmware') continue
     const depDir = findPackageDir(depName, projectDir)
@@ -148,5 +154,5 @@ export function staleImage(board: BoardInfo): string | undefined {
   const image = path.join(dir, app)
   if (!existsSync(built) || !existsSync(image)) return undefined
   if (statSync(built).mtimeMs <= statSync(image).mtimeMs) return undefined
-  return `the image of ${board.name} is older than its last build in ${buildDir}; run \`mikro fw prepack\` in its package`
+  return `the image of ${board.name} is older than its last build in ${buildDir}; run \`mikro fw build\` in its package`
 }

@@ -219,7 +219,7 @@ set_property(SOURCE "${MIK_SRC_DIR}/mik_sys.cpp" APPEND PROPERTY COMPILE_DEFINIT
     "MIK_BUILD_DATE_UTC=\"${_MIK_BUILD_DATE_UTC}\"")
 
 # firmware.json next to flasher_args.json: what the image is, for the tools
-# that read it without a device (mikro flash, mikro fw pack and prepack).
+# that read it without a device (mikro flash, mikro fw pack and build).
 # Written below, once the feature list is known.
 set(_MIK_FW_JSON "{")
 if(NOT _MIK_NAME STREQUAL "")
@@ -278,6 +278,12 @@ file(WRITE "${CMAKE_BINARY_DIR}/firmware.json" "${_MIK_FW_JSON}")
 # host knows which feature-gated builtins this firmware carries.
 string(REPLACE ";" "," _MIK_FEATURES "${_MIK_FEATURES}")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_FEATURES=\"${_MIK_FEATURES}\"")
+# Without radios there is no WiFi, lwIP or TLS demand to hold heap back for, so
+# the default memReserved drops from 64 KB to 16 KB (mik_app_config.cpp). The
+# CLI's defaultMemReserved follows the same rule.
+if(NOT CONFIG_BT_ENABLED AND NOT CONFIG_MIKROJS_WIFI)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_DEFAULT_MEM_RESERVED=16384")
+endif()
 # The lists are read at configure time, so configure must re-run when the
 # table or the script changes.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
