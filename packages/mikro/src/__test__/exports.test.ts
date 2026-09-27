@@ -17,11 +17,22 @@ describe('package exports', () => {
     publishConfig: {exports: Record<string, ExportEntry>}
   }
 
+  // The generic boards (`./esp32c6-generic`): a `firmware` condition only,
+  // pointing at an image, not a module.
+  const isBoard = (entry: ExportEntry | undefined) =>
+    typeof entry === 'object' && Object.keys(entry).join() === 'firmware'
+
   const featureConditions = (entry: ExportEntry) =>
     typeof entry === 'string' ? [] : Object.keys(entry).filter((key) => key.startsWith('mikro:'))
 
   it('publishConfig.exports covers exactly the dev subpaths', () => {
     expect(Object.keys(pkg.publishConfig.exports).sort()).toEqual(Object.keys(pkg.exports).sort())
+  })
+
+  it('publishes each generic board with the same firmware condition', () => {
+    for (const [subpath, entry] of Object.entries(pkg.exports)) {
+      if (isBoard(entry)) expect(pkg.publishConfig.exports[subpath], subpath).toEqual(entry)
+    }
   })
 
   it('feature-gated subpaths gate the published entry behind the same conditions', () => {
@@ -41,7 +52,8 @@ describe('package exports', () => {
     // added without a table entry would be importable in the editor only.
     const hostOnly = (subpath: string) =>
       ['.', './package.json', './runtime', './tsconfig'].includes(subpath) ||
-      subpath.startsWith('./tsconfig/')
+      subpath.startsWith('./tsconfig/') ||
+      isBoard(pkg.exports[subpath])
     const names = Object.keys(pkg.exports)
       .filter((subpath) => !hostOnly(subpath))
       .map((subpath) => subpath.slice('./'.length))
@@ -63,7 +75,7 @@ describe('package exports', () => {
     }
     for (const [subpath, entry] of Object.entries(pkg.exports)) {
       if (typeof entry !== 'object' || entry === null) continue
-      if (subpath === '.') continue
+      if (subpath === '.' || isBoard(entry)) continue
       expect(leaf(pkg.publishConfig.exports[subpath]!), subpath).toMatch(/^\.\/dist\//)
     }
   })

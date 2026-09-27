@@ -247,13 +247,13 @@ jobs:
       - name: Download firmware
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # ratchet:actions/download-artifact@v8
         with:
-          path: packages/@mikrojs/firmware/dist-fw/
+          path: packages/mikro/dist-fw/
           pattern: firmware-*
           merge-multiple: false
 
       - name: Normalize firmware layout
         run: |
-          cd packages/@mikrojs/firmware/dist-fw
+          cd packages/mikro/dist-fw
           for dir in firmware-*; do
             if [ -d "$dir" ]; then
               mv "$dir" "${dir#firmware-}"
@@ -261,10 +261,14 @@ jobs:
           done
           find . -type f | sort
 
-      # Every chip's image is there, complete, named <chip>-generic and built
-      # with this version; the same check as the package's prepublishOnly.
+      # Every generic board in mikro's boards.config.ts has its image, complete,
+      # named as configured and from a version this CLI accepts. The package's
+      # prepublishOnly runs this too, and also needs this exact version.
       - name: Check firmware images
-        run: node --conditions=development packages/@mikrojs/firmware/scripts/check-images.ts
+        working-directory: packages/mikro
+        env:
+          MIKROJS_WORKSPACE: '1'
+        run: node bin/mikrojs.js fw check
 
       # `inputs.dry_run` is null on `pull_request` triggers; the GHA expression
       # `null && X || ''` evaluates to '' there, which is the desired no-flag
@@ -308,7 +312,7 @@ jobs:
           pnpm --silent releaser github-release \
             --version ${{ needs.plan.outputs.version }} \
             --latest \
-            --firmware-dir packages/@mikrojs/firmware/dist-fw
+            --firmware-dir packages/mikro/dist-fw
 
       - name: Comment on PR (preview modes only)
         if: (needs.plan.outputs.mode == 'pr-preview' || needs.plan.outputs.mode ==

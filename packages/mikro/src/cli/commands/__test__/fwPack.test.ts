@@ -480,6 +480,24 @@ describe('mikro fw check', () => {
     expect(exit).toHaveBeenCalledWith(1)
   })
 
+  it('fails on an image built for another board than boards.config.ts now names', async () => {
+    process.chdir(board)
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    await runPrepack({subcommand: 'prepack', board: undefined})
+    write(pathlib.join(board, 'boards.config.ts'), BOARD_CONFIG.replace('esp32c6', 'esp32s3'))
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+
+    await runCheck({subcommand: 'check'})
+
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'the image is @acme/devboard for esp32c6, but boards.config.ts has @acme/devboard for esp32s3',
+      ),
+    )
+    expect(exit).toHaveBeenCalledWith(1)
+  })
+
   it('fails on exports that do not match boards.config.ts', async () => {
     process.chdir(board)
     write(

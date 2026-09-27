@@ -27,6 +27,7 @@
   },
   "files": [
     "dist",
+    "dist-fw",
     "runtime.d.ts",
     "tsconfig",
     "tsconfig.base.json",
@@ -58,6 +59,21 @@
     "./env": {
       "development": "./src/_exports/env.ts",
       "import": "./dist/_exports/env.js"
+    },
+    "./esp32-generic": {
+      "firmware": "./dist-fw/esp32-generic/firmware.json"
+    },
+    "./esp32c3-generic": {
+      "firmware": "./dist-fw/esp32c3-generic/firmware.json"
+    },
+    "./esp32c5-generic": {
+      "firmware": "./dist-fw/esp32c5-generic/firmware.json"
+    },
+    "./esp32c6-generic": {
+      "firmware": "./dist-fw/esp32c6-generic/firmware.json"
+    },
+    "./esp32s3-generic": {
+      "firmware": "./dist-fw/esp32s3-generic/firmware.json"
     },
     "./format": {
       "development": "./src/_exports/format.ts",
@@ -261,12 +277,28 @@
       "./udp": "./dist/_exports/udp.js",
       "./watchdog": "./dist/_exports/watchdog.js",
       "./runtime": "./runtime.d.ts",
-      "./package.json": "./package.json"
+      "./package.json": "./package.json",
+      "./esp32-generic": {
+        "firmware": "./dist-fw/esp32-generic/firmware.json"
+      },
+      "./esp32c3-generic": {
+        "firmware": "./dist-fw/esp32c3-generic/firmware.json"
+      },
+      "./esp32c5-generic": {
+        "firmware": "./dist-fw/esp32c5-generic/firmware.json"
+      },
+      "./esp32c6-generic": {
+        "firmware": "./dist-fw/esp32c6-generic/firmware.json"
+      },
+      "./esp32s3-generic": {
+        "firmware": "./dist-fw/esp32s3-generic/firmware.json"
+      }
     }
   },
   "scripts": {
     "build:presets": "node scripts/emit-tsconfig-presets.js",
     "build:ts": "node scripts/emit-tsconfig-presets.js && tsc -p tsconfig.build.json",
+    "prepublishOnly": "node --conditions=development scripts/check-images.ts",
     "publint": "publint",
     "test:device": "DEVICE_TEST=1 vitest run src/cli/lib/__test__/protocol-device.test.ts",
     "typecheck": "tsc --noEmit",

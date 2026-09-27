@@ -11,7 +11,7 @@
  * as a board only if its firmware.json parses, so another tool's `firmware`
  * condition is reported, not taken for a board.
  *
- * @mikrojs/firmware's own generic images are boards too (`./esp32c6-generic`).
+ * The generic images are boards too, in mikro (`mikro/esp32c6-generic`).
  *
  * The package's boards.config.ts says what `mikro fw prepack` builds; its
  * exports must match it (checkBoardsConfig). Apps never read the config.
@@ -571,13 +571,4 @@ export function checkBoardsConfig(
     })
   }
   return {boards, problems}
-}
-
-/** The package root of @mikrojs/firmware: src/ or dist/ is one level down. */
-const firmwarePackageDir = join(import.meta.dirname, '..')
-
-/** The generic images @mikrojs/firmware ships, one per chip. In the
- *  repository they are not built; the release builds them. */
-export function genericBoards(): {boards: BoardImage[]; problems: BoardProblem[]} {
-  return loadBoards(firmwarePackageDir)
 }

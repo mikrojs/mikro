@@ -3,14 +3,10 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
 import {chips} from '@mikrojs/firmware'
-import {
-  type BoardImage,
-  type BoardProblem,
-  genericBoards,
-  loadBoards,
-} from '@mikrojs/firmware/boards'
+import {type BoardImage, type BoardProblem, loadBoards} from '@mikrojs/firmware/boards'
 import {findPackageDir} from '@mikrojs/firmware/manifest'
 
+import {bundledBoardsDir, bundledImages} from './bundledImages.js'
 import {assertNoLegacyMikroConfig} from './legacyConfig.js'
 
 export interface BoardInfo {
@@ -23,10 +19,10 @@ export interface BoardInfo {
   /** The export that declares the board ("@acme/boards/t-display"). */
   specifier?: string
   /** The image folder: flasher_args.json and the files it lists. Absent for a
-   *  bundled board whose image this CLI's @mikrojs/firmware lacks (in the
-   *  repository, where the release has not built them). */
+   *  bundled board whose image is missing (in the repository, where the
+   *  release has not built them). */
   dir?: string
-  /** One of the generic images @mikrojs/firmware ships with this CLI. */
+  /** One of the generic images that ship with mikro. */
   bundled?: boolean
   /** Where `mikro fw prepack` builds the board, when that folder exists (a
    *  workspace, or the board author's own checkout). */
@@ -65,9 +61,9 @@ function fromImage(image: BoardImage, bundled?: boolean): BoardInfo {
 }
 
 /** The generic `<chip>-generic` boards, one per supported chip, with the image
- *  @mikrojs/firmware ships for it when it has one. */
+ *  mikro ships for it when it has one. */
 export function bundledBoards(): BoardInfo[] {
-  const {boards} = genericBoards()
+  const {boards} = bundledImages()
   return chips.map((chip) => {
     const image = boards.find((b) => b.name === `${chip}-generic` && b.chip === chip)
     return image
@@ -86,8 +82,10 @@ interface PkgJson {
 /**
  * The boards the project's dependencies declare: every export with a
  * `firmware` condition whose firmware.json parses, and the ones that don't (not
- * built, or not a Mikro.js image). @mikrojs/firmware's own generic images are
- * the bundled boards, not project boards.
+ * built, or not a Mikro.js image). The package with the bundled generic
+ * boards (the app's mikro) is skipped: they are the fallback, not project
+ * boards. So is @mikrojs/firmware, whose versions from before the generic
+ * boards moved to mikro export them too.
  */
 export async function discoverBoards(
   projectDir: string,
@@ -102,10 +100,11 @@ export async function discoverBoards(
   }
   assertNoLegacyMikroConfig(pkg, 'package.json')
 
+  const bundled = path.resolve(bundledBoardsDir(projectDir))
   for (const depName of Object.keys({...pkg.dependencies, ...pkg.devDependencies})) {
     if (depName === '@mikrojs/firmware') continue
     const depDir = findPackageDir(depName, projectDir)
-    if (depDir === undefined) continue
+    if (depDir === undefined || path.resolve(depDir) === bundled) continue
     const loaded = loadBoards(depDir)
     boards.push(...loaded.boards.map((image) => fromImage(image)))
     problems.push(...loaded.problems)

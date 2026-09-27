@@ -8,10 +8,10 @@ endif ()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-# The official generic image for the target chip; @mikrojs/firmware ships it
-# under this name.
-set(MIKROJS_BOARD_NAME "${IDF_TARGET}-generic")
-set(MIKROJS_BOARD_DESCRIPTION "Generic ${IDF_TARGET} board")
+# The firmware development project. Its builds take the package's name,
+# @mikrojs/firmware-dev, so the CLI treats them as custom firmware and never
+# takes them for the official generic images, which mikro's boards.config.ts
+# builds.
 
 # mikrojs project setup: validates ESP-IDF version, compiles in the listed native modules.
 if(NOT DEFINED MikroFirmware_DIR)

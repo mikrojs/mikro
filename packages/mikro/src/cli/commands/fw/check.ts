@@ -11,7 +11,7 @@ import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
 import {loadBoardsConfig} from '../../lib/boardsConfig.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {UserError} from '../../lib/errorMessage.js'
-import {boardPackageProblems} from '../../lib/fwImage.js'
+import {boardPackageProblems, configuredImageProblems} from '../../lib/fwImage.js'
 import {failFw} from './shared.js'
 
 export const args = command('check', object({subcommand: constant('check' as const)}), {
@@ -33,7 +33,11 @@ export async function run(_config: Args): Promise<void> {
       throw new UserError(`${packageJson} has no export with a "firmware" condition.`)
     }
 
-    const problems = [...(config?.problems ?? []), ...boardPackageProblems(packageDir)]
+    const problems = [
+      ...(config?.problems ?? []),
+      ...boardPackageProblems(packageDir),
+      ...(config === undefined ? [] : configuredImageProblems(packageDir, config.boards)),
+    ]
     const failing = new Set(problems.map((p) => p.specifier))
     const boards = loadBoards(packageDir).boards.filter((b) => !failing.has(b.specifier))
     if (jsonOutput) {

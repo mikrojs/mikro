@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Tagged releases are handled by release.yml, which uses the same firmware-build
-# composite action and bundles the binaries into the published @mikrojs/firmware
+# composite action and bundles the binaries into the published mikro
 # npm package. This workflow only produces artifacts for ad-hoc / PR / dispatch
 # builds, consumed via `mikro flash --from=mikrojs/mikro@<sha>`.
 

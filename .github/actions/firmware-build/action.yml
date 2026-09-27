@@ -77,13 +77,13 @@ runs:
         # hash content, so a fresh build dir missed every object.
         ccache --set-config=compiler_check=content
 
-    # The target's generic board, from @mikrojs/firmware's boards.config.ts:
+    # The target's generic board, from mikro's boards.config.ts:
     # `mikro fw prepack` builds it into .mikro/build-fw-<target>-generic and
     # writes the image to dist-fw/<target>-generic, firmware.json included
     # (name <target>-generic, chip, version). MIKROJS_WORKSPACE runs the CLI
     # from its TypeScript source, as in a checkout, so it needs no build.
     - shell: bash
-      working-directory: packages/@mikrojs/firmware
+      working-directory: packages/mikro
       env:
         IDF_CCACHE_ENABLE: '1'
         MIKROJS_WORKSPACE: '1'
@@ -91,20 +91,20 @@ runs:
       run: |
         . $IDF_PATH/export.sh
         start=$(date +%s)
-        node ../../mikro/bin/mikrojs.js fw prepack --board "$TARGET-generic"
+        node bin/mikrojs.js fw prepack --board "$TARGET-generic"
         ccache --show-stats
         # Drop the entries this build did not use, so the saved cache stays
         # the size of one build instead of growing towards max_size.
         ccache --evict-older-than "$(( $(date +%s) - start + 1 ))s"
 
     - shell: bash
-      working-directory: packages/@mikrojs/firmware
+      working-directory: packages/mikro
       env:
         MIKROJS_WORKSPACE: '1'
         TARGET: ${{ inputs.target }}
       run: |
         . $IDF_PATH/export.sh
-        node ../../mikro/bin/mikrojs.js idf -C ".mikro/fw-$TARGET-generic" -B ".mikro/build-fw-$TARGET-generic" size
+        node bin/mikrojs.js idf -C ".mikro/fw-$TARGET-generic" -B ".mikro/build-fw-$TARGET-generic" size
 
     - if: inputs.pack-format == 'unpacked'
       shell: bash
@@ -112,11 +112,11 @@ runs:
         TARGET: ${{ inputs.target }}
       run: |
         mkdir -p firmware-out
-        cp -R "packages/@mikrojs/firmware/dist-fw/$TARGET-generic/." firmware-out/
+        cp -R "packages/mikro/dist-fw/$TARGET-generic/." firmware-out/
 
     - if: inputs.pack-format == 'tarball'
       shell: bash
-      working-directory: packages/@mikrojs/firmware/dist-fw/${{ inputs.target }}-generic
+      working-directory: packages/mikro/dist-fw/${{ inputs.target }}-generic
       env:
         ARTIFACT_NAME: ${{ inputs.artifact-name }}
       run: |

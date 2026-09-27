@@ -2,7 +2,12 @@ import {existsSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
-import {type BoardProblem, checkBoardPackage, loadBoards} from '@mikrojs/firmware/boards'
+import {
+  type BoardProblem,
+  checkBoardPackage,
+  type ConfiguredBoard,
+  loadBoards,
+} from '@mikrojs/firmware/boards'
 
 import {boardBuildDir, staleImage} from './boards.js'
 import {UserError} from './errorMessage.js'
@@ -73,6 +78,29 @@ export async function writeImage(
     await fs.mkdir(path.dirname(path.join(image, file)), {recursive: true})
     await fs.copyFile(path.join(buildDir, file), path.join(image, file))
   }
+}
+
+/** Images that don't match their board in boards.config.ts, in name or chip
+ *  (built before the config changed). An image not built is
+ *  checkBoardPackage's to report. */
+export function configuredImageProblems(
+  packageDir: string,
+  boards: ConfiguredBoard[],
+): BoardProblem[] {
+  const images = loadBoards(packageDir).boards
+  const problems: BoardProblem[] = []
+  for (const board of boards) {
+    const image = images.find((i) => i.key === board.key)
+    if (image !== undefined && (image.name !== board.name || image.chip !== board.chip)) {
+      problems.push({
+        specifier: board.specifier,
+        message:
+          `the image is ${image.name} for ${image.chip}, but boards.config.ts has ` +
+          `${board.name} for ${board.chip}; run \`mikro fw prepack\``,
+      })
+    }
+  }
+  return problems
 }
 
 /**

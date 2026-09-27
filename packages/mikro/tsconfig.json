@@ -1,6 +1,13 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["runtime.d.ts", "test/*.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "include": [
+    "runtime.d.ts",
+    "test/*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "scripts/*.ts",
+    "boards.config.ts"
+  ],
   "compilerOptions": {
     "types": [],
     "typeRoots": [],

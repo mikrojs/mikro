@@ -1,10 +1,9 @@
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs'
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {dirname, join} from 'node:path'
 
 import {afterAll, expect, test} from 'vitest'
 
-import generic from '../../boards.config.ts'
 import {
   archiveName,
   boardFileName,
@@ -203,24 +202,6 @@ test('a package without "files" does not publish its gitignored image', () => {
       message: 'the image folder dist-fw is not in "files", so it isn\'t published',
     },
   ])
-})
-
-test('@mikrojs/firmware declares a generic image for every chip, the same when published', () => {
-  const pkg = JSON.parse(
-    readFileSync(join(import.meta.dirname, '..', '..', 'package.json'), 'utf8'),
-  ) as {exports: Record<string, unknown>; publishConfig: {exports: Record<string, unknown>}}
-  for (const chip of chips) {
-    const entry = {firmware: `./dist-fw/${chip}-generic/firmware.json`}
-    expect(pkg.exports[`./${chip}-generic`]).toEqual(entry)
-    expect(pkg.publishConfig.exports[`./${chip}-generic`]).toEqual(entry)
-  }
-})
-
-test("@mikrojs/firmware's boards.config.ts builds a generic board for every chip, as its exports declare", () => {
-  const packageDir = join(import.meta.dirname, '..', '..')
-  const {boards, problems} = checkBoardsConfig(packageDir, generic)
-  expect(problems).toEqual([])
-  expect(boards.map((b) => [b.name, b.chip])).toEqual(chips.map((c) => [`${c}-generic`, c]))
 })
 
 function configured(name: string, pkg: Record<string, unknown>, config: unknown) {

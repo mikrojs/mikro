@@ -19,7 +19,7 @@ import {boardProjectDir} from '../../lib/boards.js'
 import {BOARDS_CONFIG, loadBoardsConfig, selectBoards} from '../../lib/boardsConfig.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {UserError} from '../../lib/errorMessage.js'
-import {boardPackageProblems, writeImage} from '../../lib/fwImage.js'
+import {boardPackageProblems, configuredImageProblems, writeImage} from '../../lib/fwImage.js'
 import {buildBoard, failFw} from './shared.js'
 
 export const args = command(
@@ -84,7 +84,10 @@ export async function prepackBoards(
     )
   }
   const specifiers = new Set(boards.map((b) => b.specifier))
-  const problems = boardPackageProblems(packageDir).filter((p) => specifiers.has(p.specifier))
+  const problems = [
+    ...boardPackageProblems(packageDir),
+    ...configuredImageProblems(packageDir, boards),
+  ].filter((p) => specifiers.has(p.specifier))
   const images = loadBoards(packageDir).boards.filter((b) => specifiers.has(b.specifier))
   if (problems.length > 0) {
     throw new UserError(`The images in ${displayPath(packageDir)}:\n${problemLines(problems)}`)
