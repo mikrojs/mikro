@@ -147,7 +147,10 @@ set_source_files_properties(${QUICKJS_SOURCES} PROPERTIES
 # ── Board and version metadata ──────────────────────────────────────
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../../package.json" _MIK_PACKAGE)
 string(JSON _MIK_VERSION GET "${_MIK_PACKAGE}" version)
-target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_VERSION=\"${_MIK_VERSION}\"")
+# The version and the build date change between builds, so only the files that
+# read them get them: the rest of the component neither recompiles nor misses ccache.
+set_property(SOURCE "${MIK_SRC_DIR}/mik_repl.cpp" "${MIK_SRC_DIR}/mik_sys.cpp" "mik_main.cpp"
+    "mik_ota_env.cpp" APPEND PROPERTY COMPILE_DEFINITIONS "MIK_FW_VERSION=\"${_MIK_VERSION}\"")
 # Core runtime owns the bare `native:mikro/*` namespace. MIK_PACKAGE_NAME makes
 # MIK_REGISTER_MODULE enforce that every native module here is named
 # "native:mikro/<module>"; a package's native module sets its package name.
@@ -212,7 +215,8 @@ endif()
 # build via its own reconfigure step, so in practice it's close to
 # build-fresh on ESP-IDF).
 string(TIMESTAMP _MIK_BUILD_DATE_UTC "%Y-%m-%dT%H:%M:%SZ" UTC)
-target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_BUILD_DATE_UTC=\"${_MIK_BUILD_DATE_UTC}\"")
+set_property(SOURCE "${MIK_SRC_DIR}/mik_sys.cpp" APPEND PROPERTY COMPILE_DEFINITIONS
+    "MIK_BUILD_DATE_UTC=\"${_MIK_BUILD_DATE_UTC}\"")
 
 # firmware.json next to flasher_args.json: what the image is, for the tools
 # that read it without a device (mikro flash, mikro fw pack and prepack).

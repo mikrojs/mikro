@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import {tmpdir} from 'node:os'
-import {dirname, isAbsolute, join} from 'node:path'
+import {basename, dirname, isAbsolute, join} from 'node:path'
 
 import {afterAll, expect, test} from 'vitest'
 
@@ -170,6 +170,8 @@ function configureComponent(dir: string, lines: string[] = []) {
       `set(MIK_QUICKJS_CMAKE "${join(dir, 'quickjs-stub.cmake')}")`,
       'set(CONFIG_MIKROJS_WIFI 1)',
       'macro(idf_component_register)',
+      '  cmake_parse_arguments(_REG "" "" "INCLUDE_DIRS;REQUIRES;SRCS" ${ARGN})',
+      '  set_property(GLOBAL PROPERTY TEST_SRCS "${_REG_SRCS}")',
       '  set(COMPONENT_LIB mikrojs_lib)',
       `  add_library(mikrojs_lib STATIC "${stub}")`,
       'endmacro()',
@@ -181,10 +183,34 @@ function configureComponent(dir: string, lines: string[] = []) {
       `add_subdirectory("${component}" mikrojs)`,
       'get_target_property(definitions mikrojs_lib COMPILE_DEFINITIONS)',
       'message(STATUS "TEST_DEFINITIONS=${definitions}")',
+      // Each source's own definitions, as TEST_SRC<n>=<path>|<definitions>
+      'get_property(srcs GLOBAL PROPERTY TEST_SRCS)',
+      'set(n 0)',
+      'foreach(src IN LISTS srcs)',
+      `  get_filename_component(src "\${src}" ABSOLUTE BASE_DIR "${component}")`,
+      `  get_property(defs SOURCE "\${src}" DIRECTORY "${component}" PROPERTY COMPILE_DEFINITIONS)`,
+      '  message(STATUS "TEST_SRC${n}=${src}|${defs}")',
+      '  math(EXPR n "${n} + 1")',
+      'endforeach()',
       '',
     ].join('\n'),
   )
   return configure(dir)
+}
+
+/** Each component source configureComponent printed, with its own definitions. */
+function sourceDefinitions(vars: Record<string, string>): [string, string][] {
+  return Object.entries(vars)
+    .filter(([name]) => /^SRC\d+$/.test(name))
+    .map(([, value]) => {
+      const [file = '', definitions = ''] = value.split('|')
+      return [file, definitions]
+    })
+}
+
+/** The definitions of the component source named `name`. */
+function definitionsOf(vars: Record<string, string>, name: string) {
+  return sourceDefinitions(vars).find(([file]) => basename(file) === name)?.[1]
 }
 
 test.skipIf(!hasCmake())(
@@ -196,7 +222,7 @@ test.skipIf(!hasCmake())(
       JSON.stringify({name: 'acme-sensor-fw', description: 'ACME sensor node'}),
     )
     const vars = configureComponent(dir)
-    expect(vars.DEFINITIONS).toContain(`MIK_FW_VERSION="${version}"`)
+    expect(definitionsOf(vars, 'mik_sys.cpp')).toContain(`MIK_FW_VERSION="${version}"`)
     expect(vars.DEFINITIONS).toContain('MIK_BOARD_NAME="acme-sensor-fw"')
     expect(vars.DEFINITIONS).toContain('MIK_FW_FEATURES="wifi,i2s"')
     expect(existsSync(vars.QUICKJS_CMAKE ?? '')).toBe(true)
@@ -224,11 +250,32 @@ test.skipIf(!hasCmake())(
 )
 
 test.skipIf(!hasCmake())(
+  'the version and build date go to the sources that read them, and only those',
+  () => {
+    // They change between builds; on the whole component, every build would
+    // recompile it and miss ccache. A source that lacks them compiles its
+    // #ifdef fallback without a warning.
+    const vars = configureComponent(join(fixtureDir, 'component-sources'))
+    expect(vars.DEFINITIONS).not.toMatch(/MIK_FW_VERSION|MIK_BUILD_DATE_UTC/)
+    const sources = sourceDefinitions(vars)
+    expect(sources.length).toBeGreaterThan(50)
+    // Third-party sources (deps/, a submodule CI may not check out) read neither
+    for (const [file, definitions] of sources.filter(([file]) => !file.includes('/deps/'))) {
+      const text = readFileSync(file, 'utf8')
+      for (const name of ['MIK_FW_VERSION', 'MIK_BUILD_DATE_UTC']) {
+        expect(definitions.includes(`${name}=`), `${name} in ${file}`).toBe(text.includes(name))
+      }
+    }
+  },
+  30_000,
+)
+
+test.skipIf(!hasCmake())(
   'without a package.json, or a name in it, the firmware has no name',
   () => {
     // No package.json at or above the project: the device omits the fw identity
     const bare = configureComponent(join(fixtureDir, 'component-bare'))
-    expect(bare.DEFINITIONS).toContain('MIK_FW_VERSION=')
+    expect(definitionsOf(bare, 'mik_sys.cpp')).toContain('MIK_FW_VERSION=')
     expect(bare.DEFINITIONS).not.toContain('MIK_BOARD_NAME')
     expect(firmwareJson(join(fixtureDir, 'component-bare'))).toEqual({chip: 'esp32c6', version})
 
