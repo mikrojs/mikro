@@ -1,6 +1,11 @@
+import {spawnSync} from 'node:child_process'
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs'
+import {tmpdir} from 'node:os'
+import {dirname, join} from 'node:path'
+
 import {describe, expect, test} from 'vitest'
 
-import {extractChangelogSection, firmwareAssetNames} from './githubRelease.js'
+import {extractChangelogSection, firmwareAssetNames, packFirmwareAssets} from './githubRelease.js'
 
 const SAMPLE = `# Changelog
 
@@ -91,5 +96,46 @@ describe('firmwareAssetNames', () => {
       'mikro-fw-xiao-esp32c6.tar.gz',
       'mikrojs-firmware-xiao-esp32c6.tar.gz',
     ])
+  })
+})
+
+describe('packFirmwareAssets', () => {
+  test('each image of a board gets an archive of its own', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'releaser-fw-'))
+    try {
+      for (const file of [
+        'esp32c6-generic/full/flasher_args.json',
+        'esp32c6-generic/full/firmware.json',
+        'esp32c6-generic/full/bootloader/bootloader.bin',
+        'esp32c6-generic/no-ble/flasher_args.json',
+        'esp32c6-generic/no-ble/firmware.json',
+        'esp32c6-generic/no-ble/bootloader/bootloader.bin',
+      ]) {
+        mkdirSync(dirname(join(dir, file)), {recursive: true})
+        writeFileSync(join(dir, file), '{}')
+      }
+      const assets = packFirmwareAssets(dir)
+      const files = (name: string) => {
+        const asset = assets.find((a) => a.name === name)
+        if (asset === undefined) throw new Error(`no ${name}`)
+        const r = spawnSync('tar', ['tzf', asset.path], {encoding: 'utf8'})
+        return r.stdout
+          .split('\n')
+          .map((f) => f.replace(/^\.\//, ''))
+          .filter((f) => f !== '' && !f.endsWith('/'))
+          .sort()
+      }
+      expect(assets.map((a) => a.name).sort()).toEqual([
+        'mikro-fw-esp32c6-generic+no-ble.tar.gz',
+        'mikro-fw-esp32c6-generic.tar.gz',
+        'mikrojs-firmware-esp32c6-generic.tar.gz',
+        'mikrojs-firmware-esp32c6.tar.gz',
+      ])
+      const image = ['bootloader/bootloader.bin', 'firmware.json', 'flasher_args.json']
+      expect(files('mikro-fw-esp32c6-generic.tar.gz')).toEqual(image)
+      expect(files('mikro-fw-esp32c6-generic+no-ble.tar.gz')).toEqual(image)
+    } finally {
+      rmSync(dir, {recursive: true, force: true})
+    }
   })
 })

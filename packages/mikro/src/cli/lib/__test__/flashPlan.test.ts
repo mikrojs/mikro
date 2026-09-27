@@ -12,7 +12,7 @@ import * as pathlib from 'node:path'
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
-import {flashFirmware, type FlashPlan, resolveFlashPlan} from '../flashFirmware.js'
+import {chooseImage, flashFirmware, type FlashPlan, resolveFlashPlan} from '../flashFirmware.js'
 
 // No real esptool: chip detection fails, which the plan treats as "unknown"
 // and falls back to the board's or --target's chip.
@@ -79,9 +79,9 @@ function installBoards(dir: string) {
     const pkg = pathlib.join(dir, 'node_modules', name)
     write(
       pathlib.join(pkg, 'package.json'),
-      JSON.stringify({name, exports: {'.': {firmware: './dist-fw/firmware.json'}}}),
+      JSON.stringify({name, exports: {'.': {firmware: './dist-fw/full/firmware.json'}}}),
     )
-    writeImage(pathlib.join(pkg, 'dist-fw'), name)
+    writeImage(pathlib.join(pkg, 'dist-fw', 'full'), name)
   }
   return pathlib.join(dir, 'node_modules/ring')
 }
@@ -91,6 +91,26 @@ function plan_(result: FlashPlan | {choose: unknown}): FlashPlan {
   if ('choose' in result) throw new Error('expected a plan, got a choice of boards')
   return result
 }
+
+describe('chooseImage', () => {
+  const board = {
+    name: 'ring',
+    chip: 'esp32c6',
+    dir: '/ring',
+    features: ['wifi', 'ble'],
+    images: [{name: 'no-ble', features: ['wifi'], dir: '/ring/no-ble'}],
+  }
+
+  it('takes full by name, and without images or a match, the full image', () => {
+    expect(chooseImage(board, 'full', ['wifi'])).toEqual({
+      dir: '/ring',
+      features: {name: 'full', source: 'flag'},
+    })
+    expect(chooseImage(board, undefined, undefined)).toEqual({dir: '/ring'})
+    expect(chooseImage(board, undefined, ['ble'])).toEqual({dir: '/ring'})
+    expect(chooseImage({...board, images: undefined}, undefined, ['wifi'])).toEqual({dir: '/ring'})
+  })
+})
 
 describe('resolveFlashPlan', () => {
   let originalCwd: string
@@ -115,9 +135,46 @@ describe('resolveFlashPlan', () => {
     expect(plan.image).toBe('board')
     expect(plan.board).toEqual({name: 'ring', source: 'flag'})
     expect(plan.flasherArgs.files.map((f) => f.filename)).toEqual([
-      pathlib.join(ring, 'dist-fw/bootloader.bin'),
-      pathlib.join(ring, 'dist-fw/app.bin'),
+      pathlib.join(ring, 'dist-fw/full/bootloader.bin'),
+      pathlib.join(ring, 'dist-fw/full/app.bin'),
     ])
+  })
+
+  it("flashes the board's image --features names, else the one the device runs", async () => {
+    const ring = installBoards(tempDir)
+    // The no-ble image beside full/, found by its folder
+    const lean = pathlib.join(ring, 'dist-fw', 'no-ble')
+    writeImage(lean, 'ring')
+    const features = (dir: string, list: string[]) =>
+      write(
+        pathlib.join(dir, 'firmware.json'),
+        JSON.stringify({name: 'ring', chip: 'esp32c6', version: '0.21.0', features: list}),
+      )
+    features(pathlib.join(ring, 'dist-fw', 'full'), ['wifi', 'ble'])
+    features(lean, ['wifi'])
+    const app = (plan: FlashPlan) => plan.flasherArgs.files.map((f) => f.filename).at(-1)
+
+    const named = plan_(
+      await resolveFlashPlan({port: '/dev/null', board: 'ring', features: 'no-ble'}),
+    )
+    expect(named.features).toEqual({name: 'no-ble', source: 'flag'})
+    expect(app(named)).toBe(pathlib.join(lean, 'app.bin'))
+
+    const kept = plan_(
+      await resolveFlashPlan({port: '/dev/null', board: 'ring', deviceFeatures: ['wifi']}),
+    )
+    expect(kept.features).toEqual({name: 'no-ble', source: 'device'})
+    expect(app(kept)).toBe(pathlib.join(lean, 'app.bin'))
+
+    const full = plan_(
+      await resolveFlashPlan({port: '/dev/null', board: 'ring', deviceFeatures: ['wifi', 'ble']}),
+    )
+    expect(full.features).toBeUndefined()
+    expect(app(full)).toBe(pathlib.join(ring, 'dist-fw', 'full', 'app.bin'))
+
+    await expect(
+      resolveFlashPlan({port: '/dev/null', board: 'ring', features: 'no-wifi'}),
+    ).rejects.toThrow('ring has no no-wifi image. Its images: full, no-ble')
   })
 
   it('flashes the bundled image of the chip', async () => {
@@ -150,7 +207,7 @@ describe('resolveFlashPlan', () => {
 
   it("flashes the only board for the device's chip", async () => {
     installBoards(tempDir)
-    writeImage(pathlib.join(tempDir, 'node_modules/plain/dist-fw'), 'plain', 'esp32s3')
+    writeImage(pathlib.join(tempDir, 'node_modules/plain/dist-fw/full'), 'plain', 'esp32s3')
     const plan = plan_(
       await resolveFlashPlan({port: '/dev/null', target: 'esp32c6', pickBoard: true}),
     )

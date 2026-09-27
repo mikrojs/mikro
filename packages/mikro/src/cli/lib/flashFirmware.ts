@@ -48,6 +48,11 @@ export interface FlashPlanOptions {
    *  BoardChoice, for a picker. Otherwise (headless) the plan stops and lists
    *  them. */
   pickBoard?: boolean
+  /** The board's image to flash, by name (`no-ble`, or `full`): `--features`. */
+  features?: string
+  /** The features the device's firmware reports, so a reflash keeps the image
+   *  it runs when `features` doesn't name one. */
+  deviceFeatures?: string[]
   /** Progress callback for the resolution/flash phases. */
   onProgress?: (message: string) => void
 }
@@ -64,6 +69,9 @@ export interface FlashPlan {
   /** The board flashed and how it was chosen. Absent for `--build-dir`
    * flashes, which take the build as-is. */
   board?: {name: string; source: BoardSource}
+  /** The board's image, when it isn't the full one by default: named with
+   *  `--features`, or the one the device runs now. */
+  features?: {name: string; source: 'flag' | 'device'}
   /** Shown before the go-ahead; none stops the flash: the board's image is
    *  older than its build, or a dependency's `firmware` export was skipped. */
   warnings: string[]
@@ -252,6 +260,41 @@ function verifyBoardChip(port: string, board: BoardInfo, detected: Chip | undefi
  *   - neither: the image the board package ships, or else the generic
  *     prebuilt bundled with this CLI version
  */
+/** Whether two feature lists hold the same features. */
+function sameFeatures(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((feature) => b.includes(feature))
+}
+
+/**
+ * The image of `board` to flash: the one `requested` names (`full` is the
+ * board's own), else the one whose features the device reports, so a reflash
+ * keeps what the device runs, else the full image.
+ */
+export function chooseImage(
+  board: BoardInfo & {dir: string},
+  requested: string | undefined,
+  deviceFeatures: string[] | undefined,
+): {dir: string; features?: {name: string; source: 'flag' | 'device'}} {
+  const images = [{name: 'full', dir: board.dir, features: board.features}, ...(board.images ?? [])]
+  if (requested !== undefined) {
+    const image = images.find((i) => i.name === requested)
+    if (image === undefined) {
+      throw new UserError(
+        `${board.name} has no ${requested} image. Its images: ` +
+          images.map((i) => i.name).join(', '),
+      )
+    }
+    return {dir: image.dir, features: {name: image.name, source: 'flag'}}
+  }
+  const running =
+    deviceFeatures === undefined
+      ? undefined
+      : board.images?.find((i) => sameFeatures(i.features, deviceFeatures))
+  return running === undefined
+    ? {dir: board.dir}
+    : {dir: running.dir, features: {name: running.name, source: 'device'}}
+}
+
 export async function resolveFlashPlan(
   opts: FlashPlanOptions & {
     /** How an explicit `board` was chosen; `flag` unless a picker supplied it. */
@@ -261,6 +304,11 @@ export async function resolveFlashPlan(
   const {port, buildDir, from, board: boardFlag, configBoard, target, onProgress} = opts
 
   if (buildDir) {
+    if (opts.features !== undefined) {
+      throw new UserError(
+        '--features picks an image of a board; --build-dir flashes a build as it is.',
+      )
+    }
     const [flasherArgs, esptoolPath] = await Promise.all([
       readFlasherArgs(buildDir),
       getEsptoolPath(),
@@ -316,12 +364,16 @@ export async function resolveFlashPlan(
       name: resolved?.board.name ?? `${resolvedChip}-generic`,
       source: resolved?.source ?? 'detected',
     }
+    const image = opts.features === 'full' ? undefined : opts.features
     const firmwareDir = await resolveFrom({
       from,
       chip: resolvedChip,
       board: board.name,
+      image,
       onProgress: (message) => onProgress?.(message),
     })
+    const features =
+      opts.features === undefined ? undefined : {name: opts.features, source: 'flag' as const}
     const flasherArgs = await fitToDeviceFlash(await readFlasherArgs(firmwareDir), device)
     // A release without the board's archive falls back to the chip's: report
     // what was downloaded, not what was asked for.
@@ -335,6 +387,7 @@ export async function resolveFlashPlan(
         flasherArgs,
         image: 'from',
         board: {name: archived.value.name, source: 'detected'},
+        features,
         warnings,
         devicePartitionTable,
       })
@@ -344,6 +397,7 @@ export async function resolveFlashPlan(
       flasherArgs,
       image: 'from',
       board,
+      features,
       warnings,
       devicePartitionTable,
     })
@@ -367,11 +421,15 @@ export async function resolveFlashPlan(
         `or fetch a CI artifact with --from=mikrojs/mikro@<sha>.`,
     )
   }
-  const {dir} = resolved.board
+  const {dir, features} = chooseImage(
+    {...resolved.board, dir: resolved.board.dir},
+    opts.features,
+    opts.deviceFeatures,
+  )
   if (!existsSync(path.join(dir, 'flasher_args.json'))) {
     throw new UserError(
       `The image of ${resolved.board.name} in ${dir} is incomplete: flasher_args.json is missing. ` +
-        'Run `mikro fw prepack` in its firmware project.',
+        'Run `mikro fw prepack` in its package.',
     )
   }
   const flasherArgs = await fitToDeviceFlash(await readFlasherArgs(dir), device)
@@ -382,6 +440,7 @@ export async function resolveFlashPlan(
     flasherArgs,
     image: resolved.board.bundled ? 'bundled' : 'board',
     board: boardInfo,
+    features,
     warnings,
     devicePartitionTable,
   })

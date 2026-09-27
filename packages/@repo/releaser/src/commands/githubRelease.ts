@@ -28,7 +28,7 @@ export const args = command(
     ),
     firmwareDir: optional(
       option('--firmware-dir', string({metavar: 'PATH'}), {
-        description: message`Directory whose <board>/ subdirs (e.g. esp32c6-generic/) are tarballed and uploaded as mikro-fw-<board>.tar.gz assets, and under their older mikrojs-firmware- names.`,
+        description: message`Directory of <board>/ subdirs (e.g. esp32c6-generic/) whose full/ images are tarballed and uploaded as mikro-fw-<board>.tar.gz assets, and under their older mikrojs-firmware- names; a board's other images (<board>/no-ble/) as mikro-fw-<board>+<image>.tar.gz.`,
       }),
     ),
   }),
@@ -116,9 +116,11 @@ export function firmwareAssetNames(board: string): string[] {
   return names
 }
 
-// Tar each board-named subdir (e.g. esp32c6-generic/) under firmwareDir into a
-// tmp file and return {name, path} pairs ready for upload.
-function packFirmwareAssets(firmwareDir: string): Array<{name: string; path: string}> {
+// Tar each image of each board-named subdir (e.g. esp32c6-generic/) under
+// firmwareDir into a tmp file and return {name, path} pairs ready for upload:
+// the full image (full/) under the board's names, and each other image
+// (no-ble/) as mikro-fw-<board>+<image>.
+export function packFirmwareAssets(firmwareDir: string): Array<{name: string; path: string}> {
   const absDir = resolve(MONOREPO_ROOT, firmwareDir)
   if (!statSync(absDir, {throwIfNoEntry: false})?.isDirectory()) {
     console.error(`No firmware dir at ${absDir} — skipping asset upload`)
@@ -129,14 +131,21 @@ function packFirmwareAssets(firmwareDir: string): Array<{name: string; path: str
   for (const entry of readdirSync(absDir, {withFileTypes: true})) {
     if (!entry.isDirectory()) continue
     const board = entry.name
-    const tarPath = join(tmpdir(), `mikrojs-firmware-${board}.tar.gz`)
-    const r = spawnSync('tar', ['czf', tarPath, '-C', join(absDir, board), '.'], {
-      stdio: 'inherit',
-    })
-    if (r.status !== 0) {
-      throw new Error(`tar failed for ${board} (status ${r.status})`)
+    for (const image of readdirSync(join(absDir, board), {withFileTypes: true})) {
+      if (!image.isDirectory()) continue
+      const names =
+        image.name === 'full'
+          ? firmwareAssetNames(board)
+          : [`mikro-fw-${board}+${image.name}.tar.gz`]
+      const tarPath = join(tmpdir(), names[0]!)
+      const r = spawnSync('tar', ['czf', tarPath, '-C', join(absDir, board, image.name), '.'], {
+        stdio: 'inherit',
+      })
+      if (r.status !== 0) {
+        throw new Error(`tar failed for ${board}/${image.name} (status ${r.status})`)
+      }
+      for (const name of names) out.push({name, path: tarPath})
     }
-    for (const name of firmwareAssetNames(board)) out.push({name, path: tarPath})
   }
   return out
 }

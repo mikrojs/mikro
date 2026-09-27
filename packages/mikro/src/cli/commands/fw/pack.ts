@@ -63,11 +63,18 @@ async function builtName(buildDir: string): Promise<string | undefined> {
 
 /** The image in `dir` packed as `mikro flash --from` reads it: flasher_args.json,
  *  the files it flashes at their paths, and firmware.json. */
-async function packImage(dir: string, name: string | undefined, out: string | undefined) {
+async function packImage(
+  dir: string,
+  name: string | undefined,
+  out: string | undefined,
+  image?: string,
+) {
   const [flasherArgs, files] = await Promise.all([readFlasherArgs(dir), imageFiles(dir)])
   // Default to the working directory, like `mikro ota pack`, under the name
-  // `mikro flash --from` looks for in a release: the firmware's and the chip's.
-  const outPath = out ?? pathlib.resolve(`${archiveName(name, flasherArgs.chip)}.tar.gz`)
+  // `mikro flash --from` looks for in a release: the firmware's and the chip's,
+  // then `+no-ble` for one of a board's other images.
+  const archive = `${archiveName(name, flasherArgs.chip)}${image ? `+${image}` : ''}`
+  const outPath = out ?? pathlib.resolve(`${archive}.tar.gz`)
   await tarCreate({file: outPath, cwd: dir, gzip: {level: 9}, portable: true, noMtime: true}, files)
   const [checksum, info] = await Promise.all([sha256File(outPath), stat(outPath)])
   return {outPath, chip: flasherArgs.chip, name, checksum, size: info.size}
@@ -94,13 +101,18 @@ async function packBoards(
   jsonOutput: boolean,
 ): Promise<void> {
   const boards = selectBoards(configured.boards, config.board)
-  if (config.out !== undefined && boards.length > 1) {
-    throw new UserError('--out names one archive: pick a board with --board.')
+  if (config.out !== undefined && boards.reduce((n, b) => n + 1 + b.images.length, 0) > 1) {
+    throw new UserError('--out names one archive: pick a board without other images with --board.')
   }
   const images = await prepackBoards(configured.packageDir, boards, 'fw pack', jsonOutput)
   if (images === undefined) return
   const artifacts: Artifact[] = []
-  for (const image of images) artifacts.push(await packImage(image.dir, image.name, config.out))
+  for (const image of images) {
+    artifacts.push(await packImage(image.dir, image.name, config.out))
+    for (const other of image.images ?? []) {
+      artifacts.push(await packImage(other.dir, image.name, config.out, other.name))
+    }
+  }
   if (jsonOutput) {
     agentResult('fw pack', {
       archives: artifacts.map(({outPath, chip, name, checksum, size}) => ({

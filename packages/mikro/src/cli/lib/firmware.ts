@@ -1,11 +1,11 @@
 import {execFile} from 'node:child_process'
-import {createWriteStream} from 'node:fs'
+import {createWriteStream, existsSync} from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import {pipeline} from 'node:stream/promises'
 import {promisify} from 'node:util'
 
-import {archiveName, boardFileName, isArchiveForChip} from '@mikrojs/firmware/boards'
+import {archiveName, boardFileName, FULL_IMAGE, isArchiveForChip} from '@mikrojs/firmware/boards'
 
 import {paths} from './envPaths.js'
 import {UserError} from './errorMessage.js'
@@ -22,6 +22,8 @@ export type ResolveFromOptions = {
   from: string
   chip?: Chip
   board?: string
+  /** One of the board's other images (`no-ble`), whose archive has that suffix. */
+  image?: string
   onProgress?: (message: string) => void
 }
 
@@ -31,9 +33,15 @@ export type ResolveFromOptions = {
  * The archive names to look for, best first, without `.tar.gz`: the
  * `mikro-fw-` names `mikro fw pack` and releases use (see archiveName), then
  * the `mikrojs-firmware-<board>` and `mikrojs-firmware-<chip>` names of older
- * releases and builds.
+ * releases and builds. For one of a board's other images, only its own name
+ * (`mikro-fw-<board>-<chip>+no-ble`).
  */
-function archiveCandidates(chip: Chip | undefined, board: string | undefined): string[] {
+function archiveCandidates(
+  chip: Chip | undefined,
+  board: string | undefined,
+  image?: string,
+): string[] {
+  if (image !== undefined) return chip === undefined ? [] : [`${archiveName(board, chip)}+${image}`]
   const names: string[] = []
   if (board !== undefined && chip !== undefined) names.push(archiveName(board, chip))
   if (board !== undefined) names.push(`mikrojs-firmware-${boardFileName(board)}`)
@@ -143,14 +151,25 @@ export function selectReleaseAsset(
   chip: Chip | undefined,
   board: string | undefined,
   repo: string,
+  image?: string,
 ): ReleaseAsset {
-  for (const name of archiveCandidates(chip, board)) {
+  const candidates = archiveCandidates(chip, board, image)
+  for (const name of candidates) {
     const asset = assets.find((a) => a.name === `${name}.tar.gz`)
     if (asset) return asset
   }
+  if (image !== undefined) {
+    throw new UserError(
+      `No ${candidates[0] ?? image} archive in the ${repo} release.\n` +
+        `Available assets: ${assets.map((a) => a.name).join(', ') || 'none'}`,
+    )
+  }
+  // A full image is never one of a board's other images (`+no-ble`)
   const archives = assets.filter(
     (a) =>
-      a.name.endsWith('.tar.gz') && (a.name.startsWith('mikro-fw-') || a.name.includes('firmware')),
+      a.name.endsWith('.tar.gz') &&
+      !a.name.includes('+') &&
+      (a.name.startsWith('mikro-fw-') || a.name.includes('firmware')),
   )
   if (chip !== undefined) {
     const forChip = archives.filter((a) =>
@@ -244,19 +263,30 @@ export function selectWorkflowArtifact(
   chip: Chip | undefined,
   board: string | undefined,
   repo: string,
+  image?: string,
 ): WorkflowArtifact {
-  for (const name of archiveCandidates(chip, board)) {
-    const unpacked = name.replace(/^mikrojs-firmware-/, 'firmware-')
+  const candidates = archiveCandidates(chip, board, image)
+  for (const name of candidates) {
+    // The release workflow names its unpacked images firmware-<board>[+<image>]
+    const unpacked = name.replace(/^(mikrojs-firmware|mikro-fw)-/, 'firmware-')
     const artifact = artifacts.find((a) => a.name === name || a.name === unpacked)
     if (artifact) return artifact
+  }
+  if (image !== undefined) {
+    throw new UserError(
+      `No ${candidates[0] ?? image} artifact in the ${repo} build.\n` +
+        `Available artifacts: ${artifacts.map((a) => a.name).join(', ') || 'none'}`,
+    )
   }
   if (chip !== undefined) {
     const forChip = artifacts.filter((a) => isArchiveForChip(a.name, chip))
     if (forChip.length === 1) return forChip[0]!
   }
 
-  // Auto: single firmware artifact
-  const firmwareArtifacts = artifacts.filter((a) => isFirmwareArtifact(a.name))
+  // Auto: single firmware artifact, never one of a board's other images
+  const firmwareArtifacts = artifacts.filter(
+    (a) => isFirmwareArtifact(a.name) && !a.name.includes('+'),
+  )
   if (firmwareArtifacts.length === 1) return firmwareArtifacts[0]!
 
   if (firmwareArtifacts.length === 0) {
@@ -331,8 +361,9 @@ async function downloadAndExtractWorkflowArtifact(
 
   // Unzip the outer GitHub artifact zip into a temp dir, then handle two
   // possible layouts: tarball pack (zip contains a single .tar.gz to extract)
-  // or unpacked pack (zip contains firmware files directly — flasher_args.json
-  // alongside bootloader/, partition_table/, mikrojs.bin).
+  // or unpacked pack (zip contains firmware files directly: flasher_args.json
+  // alongside bootloader/, partition_table/ and mikrojs.bin, or a board folder
+  // with them in full/).
   // Wipe extractedDir first so a partial previous attempt can't trip up
   // fs.rename below (ENOTEMPTY on existing subdirectories).
   await fs.rm(extractedDir, {recursive: true, force: true})
@@ -343,11 +374,12 @@ async function downloadAndExtractWorkflowArtifact(
 
   const files = await fs.readdir(tmpDir)
   const tarball = files.find((f) => f.endsWith('.tar.gz'))
+  const imageDir = files.includes(FULL_IMAGE) ? path.join(tmpDir, FULL_IMAGE) : tmpDir
   if (tarball) {
     await execFileAsync('tar', ['xzf', path.join(tmpDir, tarball), '-C', extractedDir])
-  } else if (files.includes('flasher_args.json')) {
-    for (const file of files) {
-      await fs.rename(path.join(tmpDir, file), path.join(extractedDir, file))
+  } else if (existsSync(path.join(imageDir, 'flasher_args.json'))) {
+    for (const file of await fs.readdir(imageDir)) {
+      await fs.rename(path.join(imageDir, file), path.join(extractedDir, file))
     }
   } else {
     await fs.rm(tmpDir, {recursive: true})
@@ -393,8 +425,9 @@ async function resolveViaRelease(
   chip: Chip | undefined,
   board: string | undefined,
   report: (msg: string) => void,
+  image?: string,
 ): Promise<string> {
-  const cacheId = board === undefined ? (chip ?? 'firmware') : boardFileName(board)
+  const cacheId = `${board === undefined ? (chip ?? 'firmware') : boardFileName(board)}${image ? `+${image}` : ''}`
   const cacheTag = tag ?? 'latest'
   const extractedDir = path.join(CACHE_DIR, `${cacheId}-${cacheTag}`)
   const flasherArgsPath = path.join(extractedDir, 'flasher_args.json')
@@ -407,7 +440,7 @@ async function resolveViaRelease(
   }
 
   const release = await fetchRelease(token, repo, tag)
-  const asset = selectReleaseAsset(release.assets, chip, board, repo)
+  const asset = selectReleaseAsset(release.assets, chip, board, repo, image)
   report(`Downloading ${asset.name}…`)
   await downloadAndExtractReleaseAsset(token, asset, extractedDir)
   return extractedDir
@@ -420,8 +453,9 @@ async function resolveViaActions(
   chip: Chip | undefined,
   board: string | undefined,
   report: (msg: string) => void,
+  image?: string,
 ): Promise<string> {
-  const cacheId = board === undefined ? (chip ?? 'firmware') : boardFileName(board)
+  const cacheId = `${board === undefined ? (chip ?? 'firmware') : boardFileName(board)}${image ? `+${image}` : ''}`
   const extractedDir = path.join(CACHE_DIR, `${cacheId}-${sha}`)
   const flasherArgsPath = path.join(extractedDir, 'flasher_args.json')
 
@@ -434,7 +468,7 @@ async function resolveViaActions(
 
   report(`Looking for firmware build in ${repo}…`)
   const artifacts = await fetchWorkflowArtifacts(token, repo, sha)
-  const artifact = selectWorkflowArtifact(artifacts, chip, board, repo)
+  const artifact = selectWorkflowArtifact(artifacts, chip, board, repo, image)
 
   if (artifact.expired) {
     throw new UserError(
@@ -465,7 +499,7 @@ async function resolveViaActions(
  * firmware tarballs as GitHub Release assets.
  */
 export async function resolveFrom(options: ResolveFromOptions): Promise<string> {
-  const {from, chip, board, onProgress} = options
+  const {from, chip, board, image, onProgress} = options
   const trail: string[] = []
   const step = (msg: string) => {
     trail.push(msg)
@@ -504,14 +538,14 @@ export async function resolveFrom(options: ResolveFromOptions): Promise<string> 
     // No ref → latest release
     if (!ref) {
       step(`Fetching latest release from ${repo}…`)
-      return await resolveViaRelease(token, repo, undefined, chip, board, step)
+      return await resolveViaRelease(token, repo, undefined, chip, board, step, image)
     }
 
     // Release tag (v-prefix) → try Releases first, fall back to Actions
     if (isReleaseTag(ref)) {
       step(`Resolving release ${ref} from ${repo}…`)
       try {
-        return await resolveViaRelease(token, repo, ref, chip, board, step)
+        return await resolveViaRelease(token, repo, ref, chip, board, step, image)
       } catch {
         step(`No release found for ${ref}, trying CI artifacts…`)
       }
@@ -524,12 +558,12 @@ export async function resolveFrom(options: ResolveFromOptions): Promise<string> 
 
     // Try Actions artifacts
     try {
-      return await resolveViaActions(token, repo, fullSha, chip, board, step)
+      return await resolveViaActions(token, repo, fullSha, chip, board, step, image)
     } catch (actionsError) {
       // Last resort: try as release tag (handles non-v-prefix tags and expired artifacts)
       try {
         step(`CI artifact not available, trying as release tag…`)
-        return await resolveViaRelease(token, repo, ref, chip, board, step)
+        return await resolveViaRelease(token, repo, ref, chip, board, step, image)
       } catch {
         throw actionsError
       }

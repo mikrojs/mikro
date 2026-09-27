@@ -97,16 +97,19 @@ Flash the Mikro.js runtime firmware to a device. You only need to do this once p
 mikro flash
 ```
 
-| Option            | Description                                                                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `-p, --port PORT` | Serial port (auto-detected if omitted)                                                                                                     |
-| `--target CHIP`   | Target chip (for example `esp32c6`). Auto-detected if omitted                                                                              |
-| `--board BOARD`   | Board name, for example `@acme/devboard` or `esp32c6-generic`. Discovered from `package.json` if omitted                                   |
-| `--build-dir DIR` | Path to a local ESP-IDF build directory. If omitted, downloads pre-built firmware                                                          |
-| `--from REF`      | Firmware source: a release tag (`v0.2.0`), branch, commit SHA, GitHub repo (`user/repo` or `user/repo@ref`), or URL to a `.tar.gz` archive |
-| `--baud BAUD`     | Baud rate for flashing (default: `460800`)                                                                                                 |
-| `-y, --yes`       | Skip confirmation prompt                                                                                                                   |
-| `--force`         | Flash even if the device reports custom firmware, or the new partition table would shrink the app filesystem and erase its files           |
+| Option             | Description                                                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `-p, --port PORT`  | Serial port (auto-detected if omitted)                                                                                                                                               |
+| `--target CHIP`    | Target chip (for example `esp32c6`). Auto-detected if omitted                                                                                                                        |
+| `--board BOARD`    | Board name, for example `@acme/devboard` or `esp32c6-generic`. Discovered from `package.json` if omitted                                                                             |
+| `--features IMAGE` | The board's image to flash, by name: one of its [leaner images](/develop/creating-boards#leaner-images) (`no-ble`), or `full`. Without it, a reflash keeps the image the device runs |
+| `--build-dir DIR`  | Path to a local ESP-IDF build directory. If omitted, downloads pre-built firmware                                                                                                    |
+| `--from REF`       | Firmware source: a release tag (`v0.2.0`), branch, commit SHA, GitHub repo (`user/repo` or `user/repo@ref`), or URL to a `.tar.gz` archive                                           |
+| `--baud BAUD`      | Baud rate for flashing (default: `460800`)                                                                                                                                           |
+| `-y, --yes`        | Skip confirmation prompt                                                                                                                                                             |
+| `--force`          | Flash even if the device reports custom firmware, or the new partition table would shrink the app filesystem and erase its files                                                     |
+
+The generic boards also have leaner images: `no-ble` without Bluetooth, `no-wifi` without WiFi, and `no-ble+no-wifi` without either. `mikro flash --features no-ble` flashes one, which leaves more memory for an app that doesn't use [`mikro/ble`](/api/ble) or [`mikro/wifi`](/api/wifi).
 
 On a module with more flash than the firmware was built for, the generic firmware, a board package's image and `--from` firmware give the [app filesystem](/developing-for-microcontrollers#filesystem) the rest of the flash, up to 16 MB. This applies when `user` is the last partition, as in the default partition table.
 
@@ -150,9 +153,10 @@ Build the boards in a [board package](/develop/creating-boards)'s `boards.config
 pn mikro fw prepack
 ```
 
-| Option          | Description                                                                                      |
-| --------------- | ------------------------------------------------------------------------------------------------ |
-| `--board BOARD` | Build only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name |
+| Option          | Description                                                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `--board BOARD` | Build only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name                                       |
+| `--image IMAGE` | Build only this image of each board, `full` or one of its [leaner images](/develop/creating-boards#leaner-images), and keep the others |
 
 ### mikro fw check
 

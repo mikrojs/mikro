@@ -62,6 +62,11 @@ export const args = command(
         description: message`Board name, for example @acme/devboard or esp32c6-generic. Discovered from package.json if omitted.`,
       }),
     ),
+    features: optional(
+      option('--features', string({metavar: 'IMAGE'}), {
+        description: message`The board's image to flash, by name: no-ble, or full for the full image. Without it, a reflash keeps the image the device runs.`,
+      }),
+    ),
     target: optional(
       option('--target', string({metavar: 'CHIP'}), {
         description: message`Target chip (e.g. esp32c6). Auto-detected from the connected device if omitted.`,
@@ -103,6 +108,7 @@ type InitState =
       esptoolPath: string
       image: FlashPlan['image']
       board?: FlashPlan['board']
+      features?: FlashPlan['features']
       warnings: string[]
       filesystemSize?: number
     }
@@ -122,9 +128,16 @@ const BOARD_SOURCE_LABELS: Record<BoardSource, string> = {
  *  wedged, or unflashed devices are a primary use of `mikro flash`. */
 const PROBE_TIMEOUT_MS = 4000
 
-/** The device's firmware identity (`fw`), and the same when it is not the
- *  firmware bundled with this CLI (`custom`). */
-type ProbeState = {status: 'pending'} | {status: 'done'; fw?: string; custom?: string}
+/** The device's firmware identity (`fw`), the same when it is not the
+ *  firmware bundled with this CLI (`custom`), and the features it reports. */
+type ProbeState =
+  | {status: 'pending'}
+  | {status: 'done'; fw?: string; custom?: string; features?: string[]}
+
+const FEATURES_SOURCE_LABELS: Record<NonNullable<FlashPlan['features']>['source'], string> = {
+  flag: 'from --features',
+  device: 'what the device runs now',
+}
 
 export default function FlashCmd(props: Props) {
   const {
@@ -134,6 +147,7 @@ export default function FlashCmd(props: Props) {
       release,
       firmware: firmwareSource,
       board: boardFlag,
+      features,
       target,
       port,
       baud,
@@ -184,7 +198,12 @@ export default function FlashCmd(props: Props) {
         try {
           const ready = await firstValueFrom(h.session.awaitReady$(PROBE_TIMEOUT_MS))
           if (cancelled) return
-          setProbe({status: 'done', fw: ready.fw, custom: customFirmwareOf(ready)})
+          setProbe({
+            status: 'done',
+            fw: ready.fw,
+            custom: customFirmwareOf(ready),
+            features: ready.features,
+          })
         } finally {
           h.close()
         }
@@ -199,6 +218,9 @@ export default function FlashCmd(props: Props) {
       handles.then((h) => h.close()).catch(() => {})
     }
   }, [needsProbe, devicePath])
+
+  // What the device reports running, so the plan keeps its image
+  const deviceFeatures = probe.status === 'done' ? probe.features : undefined
 
   useEffect(() => {
     if (deprecatedFlag) return
@@ -220,6 +242,8 @@ export default function FlashCmd(props: Props) {
         board: boardFlag ?? pickedBoard,
         boardSource: boardFlag ? 'flag' : 'picked',
         configBoard: config?.board,
+        features,
+        deviceFeatures,
         target,
         // Only an interactive run without --yes can answer the picker.
         pickBoard: process.stdin.isTTY && yes !== true,
@@ -249,12 +273,14 @@ export default function FlashCmd(props: Props) {
     from,
     boardFlag,
     pickedBoard,
+    features,
     target,
     yes,
     force,
     deviceDiscovery.status,
     devicePath,
     probe.status,
+    deviceFeatures,
   ])
 
   if (deprecatedFlag) {
@@ -412,6 +438,7 @@ export default function FlashCmd(props: Props) {
         port={device.path}
         flashSize={initState.flasherArgs.flashSize}
         filesystemSize={initState.filesystemSize}
+        features={initState.features}
         warnings={warnings}
         onConfirm={() => setConfirmed(true)}
         onCancel={() => process.exit(0)}
@@ -428,6 +455,7 @@ export default function FlashCmd(props: Props) {
       port={device.path}
       baudRate={baudRate}
       board={board}
+      features={initState.features}
       // Warnings were shown at the prompt, unless --yes skipped it.
       warnings={yes === true ? warnings : []}
     />
@@ -451,11 +479,12 @@ function ConfirmFlash(props: {
   port: string
   flashSize: string
   filesystemSize: number | undefined
+  features?: FlashPlan['features']
   warnings: string[]
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const {port, flashSize, filesystemSize, warnings, onConfirm, onCancel} = props
+  const {port, flashSize, filesystemSize, features, warnings, onConfirm, onCancel} = props
 
   useInput((input) => {
     if (input.toLowerCase() === 'y') {
@@ -472,6 +501,11 @@ function ConfirmFlash(props: {
         {figures.warning} This will flash new firmware to the device on {port}, overwriting the
         existing firmware.
       </Text>
+      {features ? (
+        <Text>
+          Image: {features.name} ({FEATURES_SOURCE_LABELS[features.source]})
+        </Text>
+      ) : null}
       {filesystemSize === undefined ? null : (
         <Text>
           App filesystem: {formatSize(filesystemSize)} ({flashSize} flash)
@@ -496,10 +530,11 @@ function FlashProgress(props: {
   port: string
   baudRate: number
   board?: FlashPlan['board']
+  features?: FlashPlan['features']
   /** Empty when the prompt already showed them. */
   warnings: string[]
 }) {
-  const {esptoolPath, flasherArgs, port, baudRate, board, warnings} = props
+  const {esptoolPath, flasherArgs, port, baudRate, board, features, warnings} = props
 
   const observable = useMemo((): Observable<SpawnState> => {
     const esptoolArgs = getWriteFlashMultiArgs({
@@ -567,6 +602,11 @@ function FlashProgress(props: {
           <Text color="gray">
             board: {board.name} ({BOARD_SOURCE_LABELS[board.source]})
           </Text>
+          {features ? (
+            <Text color="gray">
+              image: {features.name} ({FEATURES_SOURCE_LABELS[features.source]})
+            </Text>
+          ) : null}
           {board.source === 'picked' ? (
             <Text color="gray">
               add board: &apos;{board.name}&apos; to mikro.config.ts, or pass --board, to skip the

@@ -10,6 +10,13 @@ inputs:
   target:
     description: ESP32 chip target (esp32, esp32c3, esp32c5, esp32c6, esp32s3)
     required: true
+  image:
+    description: |
+      The generic board's image to build: full, or one of the images in
+      packages/mikro/boards.config.ts (no-ble). Each job builds one, so the
+      images build in parallel.
+    required: false
+    default: full
   pack-format:
     description: 'How to lay out the uploaded artifact: tarball | unpacked'
     required: true
@@ -63,8 +70,10 @@ runs:
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/.cache/ccache
-        key: ccache-firmware-${{ inputs.target }}-${{ github.sha }}
-        restore-keys: ccache-firmware-${{ inputs.target }}-
+        key: ccache-firmware-${{ inputs.target }}-${{ inputs.image }}-${{ github.sha }}
+        restore-keys: |
+          ccache-firmware-${{ inputs.target }}-${{ inputs.image }}-
+          ccache-firmware-${{ inputs.target }}-
 
     - shell: bash
       run: |
@@ -77,21 +86,23 @@ runs:
         # hash content, so a fresh build dir missed every object.
         ccache --set-config=compiler_check=content
 
-    # The target's generic board, from mikro's boards.config.ts:
-    # `mikro fw prepack` builds it into .mikro/build-fw-<target>-generic and
-    # writes the image to dist-fw/<target>-generic, firmware.json included
-    # (name <target>-generic, chip, version). MIKROJS_WORKSPACE runs the CLI
-    # from its TypeScript source, as in a checkout, so it needs no build.
+    # One image of the target's generic board, from mikro's boards.config.ts:
+    # `mikro fw prepack --image` builds it into .mikro/build-fw-<target>-generic
+    # (+<image> for the other images) and writes it to
+    # dist-fw/<target>-generic/<image>, firmware.json included (name
+    # <target>-generic, chip, version, features). MIKROJS_WORKSPACE runs the
+    # CLI from its TypeScript source, as in a checkout, so it needs no build.
     - shell: bash
       working-directory: packages/mikro
       env:
         IDF_CCACHE_ENABLE: '1'
         MIKROJS_WORKSPACE: '1'
         TARGET: ${{ inputs.target }}
+        IMAGE: ${{ inputs.image }}
       run: |
         . $IDF_PATH/export.sh
         start=$(date +%s)
-        node bin/mikrojs.js fw prepack --board "$TARGET-generic"
+        node bin/mikrojs.js fw prepack --board "$TARGET-generic" --image "$IMAGE"
         ccache --show-stats
         # Drop the entries this build did not use, so the saved cache stays
         # the size of one build instead of growing towards max_size.
@@ -102,21 +113,26 @@ runs:
       env:
         MIKROJS_WORKSPACE: '1'
         TARGET: ${{ inputs.target }}
+        IMAGE: ${{ inputs.image }}
       run: |
         . $IDF_PATH/export.sh
-        node bin/mikrojs.js idf -C ".mikro/fw-$TARGET-generic" -B ".mikro/build-fw-$TARGET-generic" size
+        suffix=$([ "$IMAGE" = full ] || echo "+$IMAGE")
+        node bin/mikrojs.js idf -C ".mikro/fw-$TARGET-generic$suffix" -B ".mikro/build-fw-$TARGET-generic$suffix" size
 
+    # The image in a folder of its name, which the release puts in mikro's
+    # dist-fw/<target>-generic beside the board's other images.
     - if: inputs.pack-format == 'unpacked'
       shell: bash
       env:
         TARGET: ${{ inputs.target }}
+        IMAGE: ${{ inputs.image }}
       run: |
         mkdir -p firmware-out
-        cp -R "packages/mikro/dist-fw/$TARGET-generic/." firmware-out/
+        cp -R "packages/mikro/dist-fw/$TARGET-generic/$IMAGE" firmware-out/
 
     - if: inputs.pack-format == 'tarball'
       shell: bash
-      working-directory: packages/mikro/dist-fw/${{ inputs.target }}-generic
+      working-directory: packages/mikro/dist-fw/${{ inputs.target }}-generic/${{ inputs.image }}
       env:
         ARTIFACT_NAME: ${{ inputs.artifact-name }}
       run: |

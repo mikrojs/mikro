@@ -63,20 +63,25 @@ export function missingFeaturesError(
     // Stock firmware has every feature, so a gap usually means a custom build:
     // `mikro flash` would replace that build, and is the wrong advice for it.
     const custom = customFirmwareOf(ready)
+    // `--features full`: plain `mikro flash` keeps the image the device runs,
+    // which may be one of a board's leaner images.
     const fix =
       custom === undefined
         ? [
             `The device currently runs the ${firmware} firmware.`,
-            // Plain `mikro flash` installs the bundled <chip>-generic build,
-            // which has every feature the chip supports.
-            `To deploy this app, flash the generic ${ready.chip ?? 'chip'} firmware, ` +
+            // The full <chip>-generic image has every feature the chip supports.
+            `To deploy this app, flash the full generic ${ready.chip ?? 'chip'} firmware, ` +
               `which includes ${named}:`,
             '',
-            '  mikro flash',
+            '  mikro flash --features full',
           ]
         : [
             `The device currently runs custom firmware "${custom}".`,
-            `To deploy this app, rebuild that firmware with ${named}, then flash it:`,
+            `If that is one of a board package's leaner images, flash the board's full image:`,
+            '',
+            '  mikro flash --features full',
+            '',
+            `Otherwise rebuild that firmware with ${named}, then flash it:`,
             '',
             '  mikro flash --build-dir <your-firmware-build>',
           ]

@@ -233,6 +233,7 @@ test.skipIf(!hasCmake())(
       description: 'ACME sensor node',
       chip: 'esp32c6',
       version,
+      features: ['wifi', 'i2s'],
     })
   },
   30_000,
@@ -277,7 +278,11 @@ test.skipIf(!hasCmake())(
     const bare = configureComponent(join(fixtureDir, 'component-bare'))
     expect(definitionsOf(bare, 'mik_sys.cpp')).toContain('MIK_FW_VERSION=')
     expect(bare.DEFINITIONS).not.toContain('MIK_BOARD_NAME')
-    expect(firmwareJson(join(fixtureDir, 'component-bare'))).toEqual({chip: 'esp32c6', version})
+    expect(firmwareJson(join(fixtureDir, 'component-bare'))).toEqual({
+      chip: 'esp32c6',
+      version,
+      features: ['wifi', 'i2s'],
+    })
 
     const unnamed = join(fixtureDir, 'component-unnamed')
     write(join(unnamed, 'package.json'), JSON.stringify({private: true}))
@@ -302,6 +307,7 @@ test.skipIf(!hasCmake())(
       description: 'LILYGO T-Display, 1.14" \\ ST7789',
       chip: 'esp32c6',
       version,
+      features: ['wifi', 'i2s'],
     })
   },
   30_000,

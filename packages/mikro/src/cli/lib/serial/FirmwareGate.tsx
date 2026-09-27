@@ -68,6 +68,8 @@ export function FirmwareGate(props: FirmwareGateProps) {
   // toggling it doesn't restart the flash effect.
   const [confirmAbort, setConfirmAbort] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  // The features the device reports, so the reflash keeps its image
+  const deviceFeaturesRef = useRef<string[] | undefined>(undefined)
 
   // Probe compatibility once on mount.
   useEffect(() => {
@@ -79,6 +81,7 @@ export function FirmwareGate(props: FirmwareGateProps) {
         try {
           const ready = await firstValueFrom(h.session.awaitReady$(PROBE_TIMEOUT_MS))
           if (cancelled) return
+          deviceFeaturesRef.current = ready.features
           if (ready.advisory?.kind === 'incompatible') {
             // Never flash the bundled build over a device reporting custom
             // firmware, not even with --yes: that silently reverts its
@@ -120,6 +123,7 @@ export function FirmwareGate(props: FirmwareGateProps) {
     abortRef.current = controller
     flashFirmware({
       port: devicePath,
+      deviceFeatures: deviceFeaturesRef.current,
       signal: controller.signal,
       onProgress: (message) => {
         if (!cancelled) setState({status: 'flashing', message})

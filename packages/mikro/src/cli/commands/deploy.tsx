@@ -242,6 +242,7 @@ export async function run(
       await flashFirmware({
         port: devicePath,
         configBoard: artifact.configBoard,
+        deviceFeatures: err.features,
         onProgress: (m) => log(m),
       })
       const pm = await detectPreferredPm()
