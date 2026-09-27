@@ -17,13 +17,15 @@ import {option} from '@optique/core/primitives'
 import {integer, string} from '@optique/core/valueparser'
 
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
-import {boardProjectDir} from '../../lib/boards.js'
+import {boardBuildDir, boardProjectDir} from '../../lib/boards.js'
 import {BOARDS_CONFIG, loadBoardsConfig, selectBoards} from '../../lib/boardsConfig.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {UserError} from '../../lib/errorMessage.js'
 import {
   boardPackageProblems,
   builtImageProblems,
+  checkBoardFolder,
+  checkImageFolder,
   configuredImageProblems,
   writeBoardImage,
   writeBoardImages,
@@ -94,8 +96,7 @@ async function buildOneImage(
   commandName: string,
   jsonOutput: boolean,
 ): Promise<{name: string; chip: string; dir: string}[] | undefined> {
-  const written: {name: string; chip: string; dir: string}[] = []
-  for (const board of boards) {
+  const jobs = boards.map((board) => {
     const configured = board.images.find((i) => i.name === image)
     if (image !== FULL_IMAGE && configured === undefined) {
       throw new UserError(
@@ -103,10 +104,22 @@ async function buildOneImage(
           [FULL_IMAGE, ...board.images.map((i) => i.name)].join(', '),
       )
     }
+    return {board, configured}
+  })
+  // Before any build, so a folder that is not the board's stops it at once
+  for (const {board, configured} of jobs) {
+    await checkImageFolder(
+      board,
+      image,
+      boardBuildDir(packageDir, board.key, configured?.name),
+      board.project ?? boardProjectDir(packageDir, board.key, configured?.name),
+    )
+  }
+  const written: {name: string; chip: string; dir: string}[] = []
+  for (const {board, configured} of jobs) {
     const buildDir = await buildBoard(packageDir, board, commandName, jsonOutput, configured)
     if (buildDir === undefined) return undefined
-    const project = board.project ?? boardProjectDir(packageDir, board.key, configured?.name)
-    const dir = await writeBoardImage(board, image, buildDir, project)
+    const dir = await writeBoardImage(board, image, buildDir)
     written.push({name: board.name, chip: board.chip, dir})
   }
   const problems = boards.flatMap((board) => builtImageProblems(board, image))
@@ -207,13 +220,16 @@ export async function buildBoardImages(
   jsonOutput: boolean,
   parallel?: number,
 ): Promise<BoardImage[] | undefined> {
-  const write = (board: ConfiguredBoard, buildDir: string, imageBuilds: NamedBuild[]) =>
-    writeBoardImages(
+  // Before any build, so a folder that is not the board's stops it at once
+  for (const board of boards) {
+    await checkBoardFolder(
       board,
-      buildDir,
-      imageBuilds,
+      [undefined, ...board.images].map((i) => boardBuildDir(packageDir, board.key, i?.name)),
       board.project ?? boardProjectDir(packageDir, board.key),
     )
+  }
+  const write = (board: ConfiguredBoard, buildDir: string, imageBuilds: NamedBuild[]) =>
+    writeBoardImages(board, buildDir, imageBuilds)
   if (parallel !== undefined) {
     const builds = await buildImagesAtOnce(packageDir, boards, jsonOutput, parallel)
     // Each board whose builds all succeeded, as in turn the boards before a failure

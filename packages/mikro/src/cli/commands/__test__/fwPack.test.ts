@@ -464,10 +464,24 @@ describe('mikro fw build', () => {
     })
     expect(error).toHaveBeenLastCalledWith(expect.stringContaining('holds more than the images'))
 
-    // A folder with other files in it is not replaced
+    // What Finder leaves behind is no reason to stop
     write(pathlib.join(board, 'boards.config.ts'), BOARD_CONFIG)
     write(pathlib.join(board, 'package.json'), JSON.stringify(BOARD_PACKAGE))
+    write(pathlib.join(board, 'dist-fw', '.DS_Store'), '')
+    error.mockClear()
+    await runBuild({subcommand: 'build', board: undefined, image: undefined, parallel: undefined})
+    expect(error).not.toHaveBeenCalled()
+    // An image folder with only that in it counts as empty
+    rmSync(pathlib.join(board, 'dist-fw', 'full'), {recursive: true})
+    write(pathlib.join(board, 'dist-fw', 'full', '.DS_Store'), '')
+    await runBuild({subcommand: 'build', board: undefined, image: 'full', parallel: undefined})
+    expect(error).not.toHaveBeenCalled()
+    expect(existsSync(pathlib.join(board, 'dist-fw', 'full', 'firmware.json'))).toBe(true)
+    rmSync(pathlib.join(board, 'dist-fw'), {recursive: true})
+
+    // A folder with other files in it is not emptied, and nothing builds
     write(pathlib.join(board, 'dist-fw', 'index.js'), 'export {}\n')
+    rmSync(idfLog, {force: true})
     await runBuild({
       subcommand: 'build',
       board: undefined,
@@ -475,12 +489,26 @@ describe('mikro fw build', () => {
       parallel: undefined,
     })
     expect(error).toHaveBeenLastCalledWith(
-      expect.stringContaining('holds files that are not an image'),
+      expect.stringContaining('dist-fw holds more than images (index.js)'),
     )
     expect(existsSync(pathlib.join(board, 'dist-fw', 'index.js'))).toBe(true)
+    expect(idfCalls()).toEqual([])
+
+    // Nor an image written straight into it, as before images moved to full/
+    rmSync(pathlib.join(board, 'dist-fw', 'index.js'))
+    write(pathlib.join(board, 'dist-fw', 'firmware.json'), '{}')
+    await runBuild({
+      subcommand: 'build',
+      board: undefined,
+      image: undefined,
+      parallel: undefined,
+    })
+    expect(error).toHaveBeenLastCalledWith(
+      expect.stringContaining('dist-fw holds an image in the layout from before full/'),
+    )
+    rmSync(pathlib.join(board, 'dist-fw', 'firmware.json'))
 
     // Nor one with another board's image in it
-    rmSync(pathlib.join(board, 'dist-fw', 'index.js'))
     write(pathlib.join(board, 'dist-fw', 't-display', 'firmware.json'), '{}')
     await runBuild({
       subcommand: 'build',

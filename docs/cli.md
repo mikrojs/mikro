@@ -148,7 +148,7 @@ pn mikro fw pack
 
 ### mikro fw build
 
-Build the boards in a [board package](/develop/creating-boards)'s `boards.config.ts` and write each image into the folder that the board's `firmware` export points at, then check the package as `mikro fw check` does. Run it in the package. Each board builds from a firmware project generated in `.mikro/fw-<board>`, into `.mikro/build-fw-<board>` (`.mikro/fw` and `.mikro/build-fw` for the board at `.`). A board package runs it from npm's `prepack` script, so `npm pack` and `npm publish` always include fresh images.
+Build the boards in a [board package](/develop/creating-boards)'s `boards.config.ts` and write each image into the folder that the board's `firmware` export points at, then check the package as `mikro fw check` does. Run it in the package. Each board builds from a firmware project generated in `.mikro/fw-<board>`, into `.mikro/build-fw-<board>` (`.mikro/fw` and `.mikro/build-fw` for the board at `.`). A board package runs it from npm's `prepack` script, so `npm pack` and `npm publish` always include fresh images. Each board's new images replace its image folder once they are all built, so a failed build leaves the last ones. Before it builds, it stops if the folder holds anything but that board's images, so a `dist` set to the wrong folder loses nothing.
 
 ```sh
 pn mikro fw build

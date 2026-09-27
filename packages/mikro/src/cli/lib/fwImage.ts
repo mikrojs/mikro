@@ -28,7 +28,8 @@ export async function imageFiles(dir: string): Promise<string[]> {
   ]
 }
 
-/** What Finder leaves in a folder it shows, which says nothing about it. */
+/** What macOS's Finder leaves in a folder it has shown: not the user's, and
+ *  replaced with the folder. */
 const FINDER_FILES = new Set(['.DS_Store'])
 
 /** Whether `child` is `parent` or inside it. */
@@ -45,36 +46,36 @@ async function copyImage(buildDir: string, dir: string): Promise<void> {
   }
 }
 
+const OWN_FOLDER = 'Set "dist" in boards.config.ts to a folder of its own, such as dist-fw.'
+
 /**
- * Replace a board's folder with its full image, built in `fullBuild`, in
- * `full/`, and each of its other images in a folder beside it. The folder is
- * replaced whole, so it must hold nothing but this board's images: not a
- * build directory or a folder around one, not the firmware project or a folder
- * around it, no other board's image, and if it exists, empty or images.
+ * Check a board's folder before `mikro fw build` builds its images, which
+ * replace the folder once they are all built (`full/` and one folder beside it
+ * per other image), so a failed build leaves the last images. It must hold
+ * nothing but this board's images: not one of `builds` or a folder around one,
+ * not the firmware project or a folder around it, no other board's image, no
+ * other files. What Finder leaves is fine.
  */
-export async function writeBoardImages(
+export async function checkBoardFolder(
   board: {name: string; boardDir: string},
-  fullBuild: string,
-  imageBuilds: {name: string; buildDir: string}[],
+  builds: string[],
   projectDir: string,
 ): Promise<void> {
   const dir = path.resolve(board.boardDir)
-  const builds = [fullBuild, ...imageBuilds.map((i) => i.buildDir)].map((b) => path.resolve(b))
-  const ownFolder = 'Set "dist" in boards.config.ts to a folder of its own, such as dist-fw.'
   if (
-    builds.some((build) => within(build, dir) || within(dir, build)) ||
+    builds.some((b) => within(path.resolve(b), dir) || within(dir, path.resolve(b))) ||
     within(path.resolve(projectDir), dir)
   ) {
     throw new UserError(
-      `The image folder ${dir} holds more than the images, and mikro fw build replaces ` +
-        `the whole folder. ${ownFolder}`,
+      `The image folder ${dir} holds more than the images, and mikro fw build replaces the ` +
+        `whole folder. ${OWN_FOLDER}`,
     )
   }
   if (existsSync(dir)) {
     const entries = (await fs.readdir(dir)).filter((e) => !FINDER_FILES.has(e))
-    // This board's images, current or no longer configured, are replaced too
-    const nested = entries.filter((e) => existsSync(path.join(dir, e, 'firmware.json')))
-    const others = nested.filter((e) => {
+    // This board's images, current or no longer configured, go too
+    const images = entries.filter((e) => existsSync(path.join(dir, e, 'firmware.json')))
+    const others = images.filter((e) => {
       const read = readFirmwareJson(path.join(dir, e, 'firmware.json'))
       return !read.ok || read.value.name !== board.name
     })
@@ -84,40 +85,41 @@ export async function writeBoardImages(
           'build replaces the whole folder. Delete them if the package no longer has those boards.',
       )
     }
-    // An image written straight into the folder, before images moved to full/
-    const rest = entries.filter((e) => !nested.includes(e))
-    if (rest.length > 0 && !rest.includes('firmware.json') && !rest.includes('flasher_args.json')) {
+    const rest = entries.filter((e) => !images.includes(e))
+    if (rest.includes('firmware.json')) {
       throw new UserError(
-        `${dir} holds files that are not an image, and mikro fw build replaces the whole ` +
-          `folder. ${ownFolder}`,
+        `${dir} holds an image in the layout from before full/, with firmware.json directly ` +
+          'in the folder. Empty the folder, then build again: mikro fw build writes each image ' +
+          'to a folder of its own (full/, and one beside it for each other image).',
       )
     }
-  }
-  await fs.rm(dir, {recursive: true, force: true})
-  await copyImage(fullBuild, path.join(dir, FULL_IMAGE))
-  for (const {name, buildDir} of imageBuilds) {
-    await copyImage(buildDir, path.join(dir, name))
+    if (rest.length > 0) {
+      throw new UserError(
+        `${dir} holds more than images (${rest.join(', ')}), and mikro fw build replaces the ` +
+          `whole folder. ${OWN_FOLDER}`,
+      )
+    }
   }
 }
 
 /**
- * Replace one image of a board (`full`, or `no-ble`), built in `buildDir`,
- * leaving its others: `mikro fw build --image`. The image's folder must not
- * hold a build or the firmware project, and if it has anything in it, it must
- * be an image of this board.
+ * Check the folder of one image of a board (`full`, or `no-ble`) before
+ * `mikro fw build --image` builds it; the new image replaces it once built,
+ * leaving the others. It must not hold the build or the firmware project, and
+ * if it has anything in it, it must be an image of this board.
  */
-export async function writeBoardImage(
+export async function checkImageFolder(
   board: {name: string; boardDir: string},
   image: string,
   buildDir: string,
   projectDir: string,
-): Promise<string> {
+): Promise<void> {
   const dir = path.join(path.resolve(board.boardDir), image)
   const build = path.resolve(buildDir)
   if (within(build, dir) || within(dir, build) || within(path.resolve(projectDir), dir)) {
     throw new UserError(
       `The image folder ${dir} holds more than the image, and mikro fw build replaces the ` +
-        'whole folder. Set "dist" in boards.config.ts to a folder of its own, such as dist-fw.',
+        `whole folder. ${OWN_FOLDER}`,
     )
   }
   if (existsSync(dir) && (await fs.readdir(dir)).some((e) => !FINDER_FILES.has(e))) {
@@ -129,6 +131,30 @@ export async function writeBoardImage(
       )
     }
   }
+}
+
+/** Replace a board's folder with its images: the full one, built in
+ *  `fullBuild`, in `full/`, and each of its others in a folder beside it. */
+export async function writeBoardImages(
+  board: {boardDir: string},
+  fullBuild: string,
+  imageBuilds: {name: string; buildDir: string}[],
+): Promise<void> {
+  await fs.rm(board.boardDir, {recursive: true, force: true})
+  await copyImage(fullBuild, path.join(board.boardDir, FULL_IMAGE))
+  for (const {name, buildDir} of imageBuilds) {
+    await copyImage(buildDir, path.join(board.boardDir, name))
+  }
+}
+
+/** Replace the folder of one image of a board with the image built in
+ *  `buildDir`. */
+export async function writeBoardImage(
+  board: {boardDir: string},
+  image: string,
+  buildDir: string,
+): Promise<string> {
+  const dir = path.join(board.boardDir, image)
   await fs.rm(dir, {recursive: true, force: true})
   await copyImage(buildDir, dir)
   return dir
