@@ -179,7 +179,8 @@ export interface ScaffoldOptions {
   mikroVersion: string
   templatesDir: string
   pkgManager: PkgManager
-  /** Target chip; it selects the tsconfig preset. Default: 'esp32c6'. */
+  /** The chip: what a firmware project builds for (default: esp32c6), and the
+   *  tsconfig preset. Without it, an app extends the default preset. */
   chip?: string
   /** Make the app its own firmware project, for native modules or custom settings. */
   firmware?: boolean
@@ -187,8 +188,8 @@ export interface ScaffoldOptions {
 
 export function scaffold(options: ScaffoldOptions) {
   const {targetDir, template, projectName, mikroVersion, templatesDir, pkgManager} = options
-  const chip = options.chip ?? 'esp32c6'
   const firmware = options.firmware ?? false
+  const chip = options.chip ?? (firmware ? 'esp32c6' : undefined)
 
   // Create project directory
   fs.mkdirSync(targetDir, {recursive: true})
@@ -257,7 +258,7 @@ export function scaffold(options: ScaffoldOptions) {
       hardware: templateMeta?.hardware,
       wiring: templateMeta?.wiring,
       setup,
-      firmware: firmware ? {chip} : undefined,
+      firmware: firmware && chip !== undefined ? {chip} : undefined,
     }),
   )
 }
