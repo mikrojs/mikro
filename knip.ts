@@ -49,7 +49,7 @@ const config = {
       entry: ['app/*.ts'],
     },
     'packages/mikro': {
-      // boards.config.ts: `mikro fw prepack` loads the generic boards' config.
+      // boards.config.ts: `mikro fw build` loads the generic boards' config.
       entry: ['src/cli/cliWrapper.ts', 'src/cli/cli.ts', 'src/_exports/*.ts', 'boards.config.ts'],
       project: ['src/**/*.{ts,tsx}'],
       // @mikrojs/quickjs: native addon resolved at runtime

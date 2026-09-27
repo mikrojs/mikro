@@ -28,7 +28,7 @@ function write(file: string, content: string) {
   writeFileSync(file, content)
 }
 
-/** An image as `mikro fw prepack` leaves it: firmware.json, flasher_args.json
+/** An image as `mikro fw build` leaves it: firmware.json, flasher_args.json
  *  and the files it lists. */
 function writeImage(dir: string, firmware: Record<string, unknown>) {
   write(join(dir, 'firmware.json'), JSON.stringify(firmware))

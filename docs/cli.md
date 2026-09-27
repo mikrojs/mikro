@@ -134,7 +134,7 @@ In a firmware project (a folder with a `CMakeLists.txt`), it also tells CMake wh
 
 ### mikro fw pack
 
-Build a [custom firmware](/develop/custom-firmware) project and pack it into an archive that [`mikro flash --from`](#mikro-flash) can flash: `flasher_args.json`, the files it lists, and `firmware.json`. Run it in the project folder. In a [board package](/develop/creating-boards), it runs `mikro fw prepack` first and packs each board's image.
+Build a [custom firmware](/develop/custom-firmware) project and pack it into an archive that [`mikro flash --from`](#mikro-flash) can flash: `flasher_args.json`, the files it lists, and `firmware.json`. Run it in the project folder. In a [board package](/develop/creating-boards), it runs `mikro fw build` first and packs each board's image.
 
 ```sh
 pn mikro fw pack
@@ -144,19 +144,21 @@ pn mikro fw pack
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--out FILE`    | Output path for the archive (default: `./mikro-fw-<name>-<chip>.tar.gz`, without the chip when the name already ends with it or is `<chip>-generic`, or `./mikro-fw-<chip>.tar.gz` for firmware without a name) |
 | `--board BOARD` | In a board package, pack only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name                                                                                             |
+| `--parallel N`  | In a board package, build up to N images at once, as [`mikro fw build --parallel`](#mikro-fw-build) does                                                                                                        |
 
-### mikro fw prepack
+### mikro fw build
 
 Build the boards in a [board package](/develop/creating-boards)'s `boards.config.ts` and write each image into the folder that the board's `firmware` export points at, then check the package as `mikro fw check` does. Run it in the package. Each board builds from a firmware project generated in `.mikro/fw-<board>`, into `.mikro/build-fw-<board>` (`.mikro/fw` and `.mikro/build-fw` for the board at `.`). A board package runs it from npm's `prepack` script, so `npm pack` and `npm publish` always include fresh images.
 
 ```sh
-pn mikro fw prepack
+pn mikro fw build
 ```
 
-| Option          | Description                                                                                                                            |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `--board BOARD` | Build only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name                                       |
-| `--image IMAGE` | Build only this image of each board, `full` or one of its [leaner images](/develop/creating-boards#leaner-images), and keep the others |
+| Option          | Description                                                                                                                                                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--board BOARD` | Build only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name                                                                                                                                                                             |
+| `--image IMAGE` | Build only this image of each board, `full` or one of its [leaner images](/develop/creating-boards#leaner-images), and keep the others                                                                                                                                       |
+| `--parallel N`  | Build up to N images at once, from all the boards, instead of one after another (`--parallel 4`). Each build writes its output to a log beside its build folder (`.mikro/build-fw+no-ble.log`), and a line per image says how it went. After a failure, no more builds start |
 
 ### mikro fw check
 

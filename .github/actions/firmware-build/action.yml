@@ -87,7 +87,7 @@ runs:
         ccache --set-config=compiler_check=content
 
     # One image of the target's generic board, from mikro's boards.config.ts:
-    # `mikro fw prepack --image` builds it into .mikro/build-fw-<target>-generic
+    # `mikro fw build --image` builds it into .mikro/build-fw-<target>-generic
     # (+<image> for the other images) and writes it to
     # dist-fw/<target>-generic/<image>, firmware.json included (name
     # <target>-generic, chip, version, features). MIKROJS_WORKSPACE runs the
@@ -102,7 +102,7 @@ runs:
       run: |
         . $IDF_PATH/export.sh
         start=$(date +%s)
-        node bin/mikrojs.js fw prepack --board "$TARGET-generic" --image "$IMAGE"
+        node bin/mikrojs.js fw build --board "$TARGET-generic" --image "$IMAGE"
         ccache --show-stats
         # Drop the entries this build did not use, so the saved cache stays
         # the size of one build instead of growing towards max_size.

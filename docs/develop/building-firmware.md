@@ -38,12 +38,12 @@ The build reports its name as `@mikrojs/firmware-dev`, so the CLI treats it as c
 A [board package](./creating-boards) builds its firmware from its `boards.config.ts`, not in `esp32/`: the config holds each board's chip, settings and native modules. In the package:
 
 ```sh
-pn mikro fw prepack
+pn mikro fw build
 ```
 
-`mikro fw prepack` builds every board in the config and writes each image into the folder that the board's `firmware` export points at. An app that depends on the package flashes that image with `mikro flash`.
+`mikro fw build` builds every board in the config and writes each image into the folder that the board's `firmware` export points at. An app that depends on the package flashes that image with `mikro flash`.
 
-The generic images ship with `mikro`, which is a board package too, built the same way: `pn mikro fw prepack --board esp32c6-generic` in `packages/mikro` builds the C6's images, the full one and its leaner ones, into its `dist-fw/`.
+The generic images ship with `mikro`, which is a board package too, built the same way: `pn mikro fw build --board esp32c6-generic` in `packages/mikro` builds the C6's images, the full one and its leaner ones, into its `dist-fw/`.
 
 ## Running on-device tests
 

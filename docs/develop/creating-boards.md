@@ -16,7 +16,7 @@ Apps install board packages as a dependency, and `mikro flash` flashes the board
 ├── package.json
 ├── boards.config.ts      the board: chip, settings, native modules
 ├── sdkconfig.defaults    ESP-IDF settings for the board (optional)
-├── dist-fw/full/         the firmware image; written by mikro fw prepack, not in git
+├── dist-fw/full/         the firmware image; written by mikro fw build, not in git
 ├── pins.ts, display.ts   the JS library for apps (optional)
 └── dist/                 the library's build output
 ```
@@ -35,7 +35,7 @@ Apps install board packages as a dependency, and `mikro flash` flashes the board
   "files": ["dist", "dist-fw"],
   "scripts": {
     "build": "tsc",
-    "prepack": "npm run build && mikro fw prepack"
+    "prepack": "npm run build && mikro fw build"
   },
   "dependencies": {
     "@acme/drivers": "^0.1.0"
@@ -70,7 +70,7 @@ export default defineBoards({
 })
 ```
 
-Each key is the export that declares the board: `.` for a package with one board. The package's `exports` must match the config. `mikro fw prepack` and `mikro fw check` stop when they don't, and print the entries to add.
+Each key is the export that declares the board: `.` for a package with one board. The package's `exports` must match the config. `mikro fw build` and `mikro fw check` stop when they don't, and print the entries to add.
 
 | Field           | Description                                                                                    |
 | --------------- | ---------------------------------------------------------------------------------------------- |
@@ -103,14 +103,14 @@ Add `.mikro/` and `dist-fw/` to `.gitignore`. A board with its own `project` als
 ## Step 2: Build the image
 
 ```sh
-pn mikro fw prepack
+pn mikro fw build
 ```
 
-`mikro fw prepack` generates a firmware project for the board in `.mikro/fw`, builds it into `.mikro/build-fw` for the board's chip, and writes the image into the folder that the export's `firmware` condition points at. The package's `prepack` script runs it, so `npm pack` and `npm publish` always include a fresh image, and publishing needs ESP-IDF.
+`mikro fw build` generates a firmware project for the board in `.mikro/fw`, builds it into `.mikro/build-fw` for the board's chip, and writes the image into the folder that the export's `firmware` condition points at. The package's `prepack` script runs it, so `npm pack` and `npm publish` always include a fresh image, and publishing needs ESP-IDF.
 
 To try the image on a device before you publish, flash it from an app in the same workspace that depends on the package, or with `mikro flash --build-dir .mikro/build-fw`.
 
-`mikro fw prepack` then checks the package and stops if the image wouldn't flash or publish. `mikro fw check` runs the same checks without building, for example in CI.
+`mikro fw build` then checks the package and stops if the image wouldn't flash or publish. `mikro fw check` runs the same checks without building, for example in CI.
 
 ## Step 3: The JS library (optional)
 
@@ -216,7 +216,7 @@ export default defineBoards({
 })
 ```
 
-The features are `ble` and `wifi`. Each image is named after what it changes (`no-ble`, `no-ble+no-wifi`), builds in `.mikro/build-fw+no-ble`, and goes in a folder of that name beside the full image (`dist-fw/no-ble/` next to `dist-fw/full/`), so each folder holds one image. Each image's `firmware.json` lists its features, and `mikro flash` finds a board's images by their folders. `mikro fw prepack --image no-ble` builds one image and keeps the others, for example to build the images in parallel CI jobs. `mikro fw prepack` checks that each image has the features it asks for and differs from the full image. `mikro fw pack` names the archive of each with its name as a suffix: `mikro-fw-acme-devboard-esp32c6+no-ble.tar.gz`.
+The features are `ble` and `wifi`. Each image is named after what it changes (`no-ble`, `no-ble+no-wifi`), builds in `.mikro/build-fw+no-ble`, and goes in a folder of that name beside the full image (`dist-fw/no-ble/` next to `dist-fw/full/`), so each folder holds one image. Each image's `firmware.json` lists its features, and `mikro flash` finds a board's images by their folders. `mikro fw build --image no-ble` builds one image and keeps the others, for example to build the images in parallel CI jobs. `mikro fw build` checks that each image has the features it asks for and differs from the full image. `mikro fw pack` names the archive of each with its name as a suffix: `mikro-fw-acme-devboard-esp32c6+no-ble.tar.gz`.
 
 `mikro flash` flashes the full image. `mikro flash --features wifi` flashes the leanest image with the features listed (here `no-ble`), and `--features min` the leanest of all. From then on a reflash keeps the image the device runs, until `--features full` (`--force` and `--from` flash the full image). When no image has the features, the firmware lacks one of them altogether, and `mikro flash` says which.
 
@@ -249,7 +249,7 @@ export default defineBoards({
 
 Each board's name is its export's specifier (`@acme/boards/t-display`) unless it sets `name`. A package has one board at `.` or boards at `./<board>`, not both. Name each export by its board: `mikro flash` can't list a `firmware` condition under a `./*` pattern.
 
-`mikro fw prepack` builds every board, each in `.mikro/build-fw-<board>`, and writes its image to `dist-fw/<board>/full/`. `mikro fw prepack --board t-display` builds one. The `prepack` script stays `npm run build && mikro fw prepack`.
+`mikro fw build` builds every board, each in `.mikro/build-fw-<board>`, and writes its image to `dist-fw/<board>/full/`. `mikro fw build --board t-display` builds one. The `prepack` script stays `npm run build && mikro fw build`.
 
 Variants of a board that need different builds, such as one with octal PSRAM, are boards of their own. The config is TypeScript, so they can share the rest:
 
@@ -276,4 +276,4 @@ export default defineBoards({
 })
 ```
 
-`mikro fw prepack` then builds that project and gives it the board's name, description and chip. The project's `CMakeLists.txt` lists its native modules in `MIKROJS_NATIVE_MODULES`, and its own `sdkconfig.defaults` and `partitions.csv` apply.
+`mikro fw build` then builds that project and gives it the board's name, description and chip. The project's `CMakeLists.txt` lists its native modules in `MIKROJS_NATIVE_MODULES`, and its own `sdkconfig.defaults` and `partitions.csv` apply.

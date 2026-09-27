@@ -1,10 +1,14 @@
+import {closeSync, openSync} from 'node:fs'
+import {mkdir} from 'node:fs/promises'
+import * as path from 'node:path'
+
 import type {ConfiguredBoard, ConfiguredImage} from '@mikrojs/firmware/boards'
 
 import {agentError} from '../../lib/agent.js'
 import {boardBuildDir} from '../../lib/boards.js'
 import {boardBuildArgs, writeBoardProject} from '../../lib/boardsConfig.js'
 import {describeError, UserError} from '../../lib/errorMessage.js'
-import {firmwareBuildDir, firmwareDefaults, idfArgs, runIdf} from '../idf.js'
+import {firmwareBuildDir, firmwareDefaults, idfArgs, runIdf, runIdfAsync} from '../idf.js'
 
 /** Build the firmware project in `projectDir` where `mikro idf` builds it,
  *  and return that directory; undefined when idf.py failed and the process is
@@ -54,6 +58,32 @@ export async function buildBoard(
     return undefined
   }
   return boardBuildDir(packageDir, board.key, image?.name)
+}
+
+/** Build a board or one of its images like buildBoard, with idf.py's output
+ *  in a log beside the build folder (`.mikro/build-fw+no-ble.log`) instead of
+ *  the terminal, so several can build at once. */
+export async function buildBoardLogged(
+  packageDir: string,
+  board: ConfiguredBoard,
+  image: ConfiguredImage | undefined,
+): Promise<{buildDir: string; log: string; code: number}> {
+  const projectDir =
+    board.project ??
+    (await writeBoardProject(packageDir, board, image, firmwareDefaults(packageDir, board.chip)))
+  const buildDir = boardBuildDir(packageDir, board.key, image?.name)
+  const log = `${buildDir}.log`
+  await mkdir(path.dirname(log), {recursive: true})
+  const fd = openSync(log, 'w')
+  try {
+    const code = await runIdfAsync(
+      idfArgs(projectDir, boardBuildArgs(packageDir, board, projectDir, image)),
+      ['ignore', fd, fd],
+    )
+    return {buildDir, log, code}
+  } finally {
+    closeSync(fd)
+  }
 }
 
 /** Report a failed `mikro fw` command and exit with 1. */

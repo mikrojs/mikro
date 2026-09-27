@@ -66,7 +66,7 @@ export async function writeBoardImages(
     within(path.resolve(projectDir), dir)
   ) {
     throw new UserError(
-      `The image folder ${dir} holds more than the images, and mikro fw prepack replaces ` +
+      `The image folder ${dir} holds more than the images, and mikro fw build replaces ` +
         `the whole folder. ${ownFolder}`,
     )
   }
@@ -81,14 +81,14 @@ export async function writeBoardImages(
     if (others.length > 0) {
       throw new UserError(
         `${dir} holds the images of other boards (${others.join(', ')}), and mikro fw ` +
-          'prepack replaces the whole folder. Delete them if the package no longer has those boards.',
+          'build replaces the whole folder. Delete them if the package no longer has those boards.',
       )
     }
     // An image written straight into the folder, before images moved to full/
     const rest = entries.filter((e) => !nested.includes(e))
     if (rest.length > 0 && !rest.includes('firmware.json') && !rest.includes('flasher_args.json')) {
       throw new UserError(
-        `${dir} holds files that are not an image, and mikro fw prepack replaces the whole ` +
+        `${dir} holds files that are not an image, and mikro fw build replaces the whole ` +
           `folder. ${ownFolder}`,
       )
     }
@@ -102,7 +102,7 @@ export async function writeBoardImages(
 
 /**
  * Replace one image of a board (`full`, or `no-ble`), built in `buildDir`,
- * leaving its others: `mikro fw prepack --image`. The image's folder must not
+ * leaving its others: `mikro fw build --image`. The image's folder must not
  * hold a build or the firmware project, and if it has anything in it, it must
  * be an image of this board.
  */
@@ -116,7 +116,7 @@ export async function writeBoardImage(
   const build = path.resolve(buildDir)
   if (within(build, dir) || within(dir, build) || within(path.resolve(projectDir), dir)) {
     throw new UserError(
-      `The image folder ${dir} holds more than the image, and mikro fw prepack replaces the ` +
+      `The image folder ${dir} holds more than the image, and mikro fw build replaces the ` +
         'whole folder. Set "dist" in boards.config.ts to a folder of its own, such as dist-fw.',
     )
   }
@@ -124,7 +124,7 @@ export async function writeBoardImage(
     const read = readFirmwareJson(path.join(dir, 'firmware.json'))
     if (!read.ok || read.value.name !== board.name) {
       throw new UserError(
-        `${dir} holds something other than an image of ${board.name}, and mikro fw prepack ` +
+        `${dir} holds something other than an image of ${board.name}, and mikro fw build ` +
           'replaces the whole folder.',
       )
     }
@@ -157,7 +157,7 @@ export function configuredImageProblems(
     if (full.name !== board.name || full.chip !== board.chip) {
       problem(
         `the image is ${full.name} for ${full.chip}, but boards.config.ts has ` +
-          `${board.name} for ${board.chip}; run \`mikro fw prepack\``,
+          `${board.name} for ${board.chip}; run \`mikro fw build\``,
       )
     }
     const names = (list: string[]) => (list.length > 0 ? list.join(', ') : 'none')
@@ -166,7 +166,7 @@ export function configuredImageProblems(
     if (listed.join() !== wanted.join()) {
       problem(
         `the other images built are ${names(listed)}, but boards.config.ts has ` +
-          `${names(wanted)}; run \`mikro fw prepack\``,
+          `${names(wanted)}; run \`mikro fw build\``,
       )
     }
     for (const configured of board.images) {
@@ -192,7 +192,7 @@ function featureProblems(configured: ConfiguredImage, features: string[]): strin
     .map(([feature, on]) => `the ${configured.name} image ${on ? 'lacks' : 'has'} ${feature}`)
 }
 
-/** What is wrong with one image `mikro fw prepack --image` wrote: not an image
+/** What is wrong with one image `mikro fw build --image` wrote: not an image
  *  of the board, or without the features its config asks for. The board's
  *  other images may not be built, so the package as a whole is `fw check`'s. */
 export function builtImageProblems(board: ConfiguredBoard, image: string): BoardProblem[] {

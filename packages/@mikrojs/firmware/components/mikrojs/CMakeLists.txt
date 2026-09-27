@@ -219,7 +219,7 @@ set_property(SOURCE "${MIK_SRC_DIR}/mik_sys.cpp" APPEND PROPERTY COMPILE_DEFINIT
     "MIK_BUILD_DATE_UTC=\"${_MIK_BUILD_DATE_UTC}\"")
 
 # firmware.json next to flasher_args.json: what the image is, for the tools
-# that read it without a device (mikro flash, mikro fw pack and prepack).
+# that read it without a device (mikro flash, mikro fw pack and build).
 # Written below, once the feature list is known.
 set(_MIK_FW_JSON "{")
 if(NOT _MIK_NAME STREQUAL "")

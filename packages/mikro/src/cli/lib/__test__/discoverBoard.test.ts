@@ -43,7 +43,7 @@ function write(file: string, content: string) {
   writeFileSync(file, content)
 }
 
-/** A board image as `mikro fw prepack` writes it. */
+/** A board image as `mikro fw build` writes it. */
 function writeImage(dir: string, firmware: Record<string, unknown>) {
   write(pathlib.join(dir, 'firmware.json'), JSON.stringify({version: '0.21.0', ...firmware}))
   write(
@@ -59,7 +59,7 @@ function writeImage(dir: string, firmware: Record<string, unknown>) {
 }
 
 /** A single-board package `c6-neo` and a multi-board `@fx/boards` with two boards,
- *  the first with the build `mikro fw prepack` leaves. */
+ *  the first with the build `mikro fw build` leaves. */
 function installBoards(dir: string) {
   const neo = pathlib.join(dir, 'node_modules/c6-neo')
   write(
@@ -245,7 +245,7 @@ describe('staleImage', () => {
       const later = new Date(Date.now() + 60_000)
       utimesSync(built, later, later)
       expect(staleImage(board)).toBe(
-        `the image of @acme/devboard is older than its last build in ${buildDir}; run \`mikro fw prepack\` in its package`,
+        `the image of @acme/devboard is older than its last build in ${buildDir}; run \`mikro fw build\` in its package`,
       )
     } finally {
       rmSync(pkg, {recursive: true, force: true})

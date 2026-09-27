@@ -351,7 +351,7 @@ describe('resolveFlashPlan', () => {
   })
 
   it("warns when a workspace board's image is older than its last build", async () => {
-    // The board package is in the workspace, with the build `mikro fw prepack` left
+    // The board package is in the workspace, with the build `mikro fw build` left
     const pkg = pathlib.join(tempDir, 'boards/ring')
     write(
       pathlib.join(pkg, 'package.json'),

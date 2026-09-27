@@ -4,7 +4,7 @@
  *
  *   "./t-display": {"firmware": "./dist-fw/t-display/full/firmware.json", "default": "./dist/t-display/index.js"}
  *
- * The image folder holds what `mikro fw prepack` copies out of a build:
+ * The image folder holds what `mikro fw build` copies out of a build:
  * firmware.json (written by the mikrojs component's CMake), flasher_args.json
  * and the files it lists. When the image folder is `full/`, the board's other
  * images (`no-ble`) sit in folders beside it, one image per folder, each with
@@ -15,7 +15,7 @@
  *
  * The generic images are boards too, in mikro (`mikro/esp32c6-generic`).
  *
- * The package's boards.config.ts says what `mikro fw prepack` builds; its
+ * The package's boards.config.ts says what `mikro fw build` builds; its
  * exports must match it (checkBoardsConfig). Apps never read the config.
  */
 import {existsSync, readdirSync, readFileSync} from 'node:fs'
@@ -291,7 +291,7 @@ function coveredByFiles(files: unknown, path: string): boolean {
 
 /**
  * Everything wrong with a board package's `firmware` exports, for
- * `mikro fw check` and `mikro fw prepack`: images missing or not parsing,
+ * `mikro fw check` and `mikro fw build`: images missing or not parsing,
  * files flasher_args.json lists missing, images outside the package or not
  * published, two boards with one name, and `publishConfig.exports` pointing
  * elsewhere. Checks that depend on the CLI (the version it accepts, a newer
@@ -413,7 +413,7 @@ export interface BoardConfig {
   /** Native modules to compile in, by the specifiers apps import. */
   nativeModules?: readonly string[]
   /** A firmware project (a folder with a CMakeLists.txt) to build instead of
-   *  the one `mikro fw prepack` generates. It brings its own settings,
+   *  the one `mikro fw build` generates. It brings its own settings,
    *  partition table and native modules. */
   project?: string
   /** Images to build besides the full one, each with features switched off
@@ -447,7 +447,7 @@ export interface ConfiguredBoard {
   /** The `firmware` target the board's export must have: `./dist-fw/t-display/full/firmware.json`. */
   target: string
   /** The board's folder: the full image in `full/`, the others beside it.
-   *  `mikro fw prepack` replaces it whole. */
+   *  `mikro fw build` replaces it whole. */
   boardDir: string
   /** The images besides the full one. */
   images: ConfiguredImage[]

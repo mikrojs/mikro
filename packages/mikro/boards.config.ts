@@ -1,6 +1,6 @@
 // The generic boards: the firmware without anything board-specific, one board
 // per chip, each with a no-ble and a no-ble+no-wifi image besides the full one.
-// The release builds them with `mikro fw prepack` (one image per CI job) into
+// The release builds them with `mikro fw build` (one image per CI job) into
 // dist-fw/, and the CLI flashes them when a project has no board of its own.
 // They ship with mikro, so apps never list them.
 import {type BoardConfig, type Chip, defineBoards} from 'mikro'
