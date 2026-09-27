@@ -9,7 +9,6 @@ import {
   boardFileName,
   checkBoardPackage,
   checkBoardsConfig,
-  CHIPS,
   firmwareExports,
   imageName,
   isArchiveForChip,
@@ -517,8 +516,4 @@ test('an archive is for the chip in the place archiveName puts it', () => {
   // A board's other images are only ever asked for by name
   expect(isArchiveForChip('mikro-fw-esp32c6-generic+no-ble', 'esp32c6')).toBe(false)
   expect(isArchiveForChip('mikrojs-firmware-esp32', 'esp32')).toBe(false)
-})
-
-test('the Chip type lists the chips in chips.json', () => {
-  expect([...CHIPS]).toEqual(chips)
 })

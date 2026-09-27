@@ -175,10 +175,15 @@ describe('chip option', () => {
   })
 
   it('offers exactly the chips the firmware supports', () => {
-    // create-mikro ships standalone, so it keeps its own copy of the list.
-    const {chips} = JSON.parse(
-      readFileSync(path.join(workspaceRoot, 'packages/@mikrojs/firmware/chips.json'), 'utf-8'),
-    ) as {chips: string[]}
+    // create-mikro ships standalone, so it keeps its own copy of the list in
+    // @mikrojs/firmware's CHIPS
+    const source = readFileSync(
+      path.join(workspaceRoot, 'packages/@mikrojs/firmware/src/index.ts'),
+      'utf-8',
+    )
+    const chips = [.../CHIPS = \[([^\]]*)\]/.exec(source)![1]!.matchAll(/'([^']+)'/g)].map(
+      (m) => m[1],
+    )
     expect([...CHIPS]).toEqual(chips)
   })
 

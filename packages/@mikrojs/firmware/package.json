@@ -29,7 +29,6 @@
     "sdkconfig.defaults",
     "sdkconfig.defaults.*",
     "partitions.csv",
-    "chips.json",
     "MikroFirmwareConfig.cmake",
     "project.cmake",
     "resolve.cmake"

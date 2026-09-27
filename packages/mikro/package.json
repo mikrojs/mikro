@@ -296,8 +296,8 @@
     }
   },
   "scripts": {
-    "build:presets": "node scripts/emit-tsconfig-presets.js",
-    "build:ts": "node scripts/emit-tsconfig-presets.js && tsc -p tsconfig.build.json",
+    "build:presets": "node --conditions=development scripts/emit-tsconfig-presets.js",
+    "build:ts": "node --conditions=development scripts/emit-tsconfig-presets.js && tsc -p tsconfig.build.json",
     "prepublishOnly": "node --conditions=development scripts/check-images.ts",
     "publint": "publint",
     "test:device": "DEVICE_TEST=1 vitest run src/cli/lib/__test__/protocol-device.test.ts",

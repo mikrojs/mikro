@@ -1,10 +1,6 @@
-import {readFileSync} from 'node:fs'
-import {join} from 'node:path'
+/** Chips the firmware supports (e.g. "esp32c6"): it has settings for each. */
+const CHIPS = ['esp32', 'esp32c3', 'esp32c5', 'esp32c6', 'esp32s3'] as const
+export type Chip = (typeof CHIPS)[number]
 
-/** The package root: src/ or dist/ is one level down. */
-const packageRoot = join(import.meta.dirname, '..')
-
-/** Chips the firmware supports, from chips.json (e.g. "esp32c6"). */
-export const chips: string[] = (
-  JSON.parse(readFileSync(join(packageRoot, 'chips.json'), 'utf8')) as {chips: string[]}
-).chips
+/** CHIPS as a plain list, to check a string against. */
+export const chips: readonly string[] = CHIPS
