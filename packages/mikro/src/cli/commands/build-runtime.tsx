@@ -1,7 +1,6 @@
 import {mkdir, readFile, writeFile} from 'node:fs/promises'
 import * as pathlib from 'node:path'
 
-import {compileBytecodeToHeader} from '@mikrojs/native'
 import {command, constant, type InferValue, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import {argument, option} from '@optique/core/primitives'
@@ -117,6 +116,9 @@ async function buildModule(
   const moduleName = `mikrojs/${module.name}`
   const symbolName = `mikrojs_${module.name}_bytecode`
 
+  // Loaded here, not at the top: the CLI imports every command at startup, and
+  // the other commands must run where the native addon isn't built (CI jobs)
+  const {compileBytecodeToHeader} = await import('@mikrojs/native')
   const header = compileBytecodeToHeader(bundleSource, moduleName, symbolName, externals)
 
   // Only write if content changed to avoid unnecessary recompilation
