@@ -23,7 +23,7 @@ import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:
 
 import {array, enumOf, object, optional, string, validate} from '@mikrojs/schema'
 
-import {chips} from './index.ts'
+import {type Chip, chips} from './index.ts'
 
 /** A board's image, as its firmware.json describes it. */
 export interface BoardImage {
@@ -371,10 +371,8 @@ export function checkBoardPackage(packageDir: string): BoardProblem[] {
   return problems
 }
 
-/** The chips a board can be built for, as a type: chips.json's list, which a
- *  test keeps this in step with. */
-export const CHIPS = ['esp32', 'esp32c3', 'esp32c5', 'esp32c6', 'esp32s3'] as const
-export type Chip = (typeof CHIPS)[number]
+/** The chips a board can be built for. */
+export type {Chip} from './index.ts'
 
 /** The features an image can leave out or add, and the ESP-IDF setting that
  *  switches each. */

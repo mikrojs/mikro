@@ -9,11 +9,15 @@ import {afterAll, describe, expect, it} from 'vitest'
 const pkgRoot = fileURLToPath(new URL('../..', import.meta.url))
 
 /* The tsconfig/ presets are committed (so the published package and in-repo
- * extends both work from a plain checkout) but generated from modules.json +
- * chips.json. Guard against the committed files drifting from the emitter. */
+ * extends both work from a plain checkout) but generated from modules.json and
+ * @mikrojs/firmware's chips. Guard against the committed files drifting from the emitter. */
 describe('tsconfig presets', () => {
   const outDir = mkdtempSync(join(tmpdir(), 'mikro-tsconfig-presets-'))
-  execFileSync(process.execPath, [join(pkgRoot, 'scripts/emit-tsconfig-presets.js'), outDir])
+  execFileSync(process.execPath, [
+    '--conditions=development',
+    join(pkgRoot, 'scripts/emit-tsconfig-presets.js'),
+    outDir,
+  ])
 
   afterAll(() => {
     rmSync(outDir, {recursive: true, force: true})
