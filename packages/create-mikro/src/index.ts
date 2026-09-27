@@ -31,7 +31,7 @@ const args = object({
   ),
   chip: optional(
     option('--chip', string({metavar: 'CHIP'}), {
-      description: message`Target chip (default: esp32c6)`,
+      description: message`The chip a firmware project builds for (default: esp32c6)`,
     }),
   ),
   firmware: optional(
@@ -129,23 +129,26 @@ async function main(config: InferValue<typeof args>): Promise<void> {
     process.exit(0)
   }
 
-  // A script that passes the name and --template must not meet a new prompt,
-  // so without a terminal the chip falls back to the default.
-  const chip =
-    config.chip ||
-    (!process.stdin.isTTY && 'esp32c6') ||
-    ((await p.select({
-      message: 'Select your ESP32 chip',
-      initialValue: 'esp32c6',
-      options: CHIPS.map((c) => ({
-        label: c === 'esp32c6' ? `${CHIP_LABELS[c]} (default)` : CHIP_LABELS[c],
-        value: c as string,
-      })),
-    })) as string)
-
-  if (p.isCancel(chip)) {
-    p.cancel('Cancelled.')
-    process.exit(0)
+  // Only a firmware project needs the chip: an app's is detected when it's
+  // flashed. A script that passes the name and --template must not meet a new
+  // prompt, so without a terminal the chip falls back to the default.
+  let chip = config.chip
+  if (chip === undefined && config.firmware === true) {
+    const picked = process.stdin.isTTY
+      ? await p.select({
+          message: 'Select your ESP32 chip',
+          initialValue: 'esp32c6',
+          options: CHIPS.map((c) => ({
+            label: c === 'esp32c6' ? `${CHIP_LABELS[c]} (default)` : CHIP_LABELS[c],
+            value: c as string,
+          })),
+        })
+      : 'esp32c6'
+    if (p.isCancel(picked)) {
+      p.cancel('Cancelled.')
+      process.exit(0)
+    }
+    chip = picked as string
   }
 
   const rawName = projectName.trim()
