@@ -58,28 +58,35 @@ export function missingFeaturesError(
       ...missingFloor.map((feature) => `  - ${feature}: listed under features in mikro.config.ts`),
     ]
     const all = [...missing, ...missingFloor]
-    const named =
-      all.length === 1 ? all[0]! : `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]!}`
-    // Stock firmware has every feature, so a gap usually means a custom build:
-    // `mikro flash` would replace that build, and is the wrong advice for it.
+    const list = (items: string[]) =>
+      items.length === 1
+        ? items[0]!
+        : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]!}`
+    const named = list(all)
+    // Everything the app needs, not just what is missing: the leanest image
+    // with only the missing features may lack others the device has now.
+    const needed = [...new Set([...features.imported, ...features.floor])]
+    // Custom firmware gets its own advice: `mikro flash` would replace that
+    // build with a stock image.
     const custom = customFirmwareOf(ready)
-    // `--features full`: plain `mikro flash` keeps the image the device runs,
-    // which may be one of a board's leaner images.
+    // `--features`: plain `mikro flash` keeps the image the device runs, which
+    // may be one of a board's leaner images; this picks the leanest with what
+    // the app needs.
+    const flash = `  mikro flash --features ${needed.join(',')}`
     const fix =
       custom === undefined
         ? [
             `The device currently runs the ${firmware} firmware.`,
-            // The full <chip>-generic image has every feature the chip supports.
-            `To deploy this app, flash the full generic ${ready.chip ?? 'chip'} firmware, ` +
-              `which includes ${named}:`,
+            `To deploy this app, flash the leanest of its images with ${list(needed)}:`,
             '',
-            '  mikro flash --features full',
+            flash,
           ]
         : [
             `The device currently runs custom firmware "${custom}".`,
-            `If that is one of a board package's leaner images, flash the board's full image:`,
+            `If that is one of a board package's leaner images, flash the leanest of the ` +
+              `board's images with ${list(needed)}:`,
             '',
-            '  mikro flash --features full',
+            flash,
             '',
             `Otherwise rebuild that firmware with ${named}, then flash it:`,
             '',

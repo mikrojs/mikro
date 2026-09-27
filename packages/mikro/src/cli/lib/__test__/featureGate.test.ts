@@ -92,9 +92,9 @@ describe('missingFeaturesError', () => {
         '  - ble: imported as mikro/ble',
         '',
         'The device currently runs the esp32c6-generic firmware.',
-        'To deploy this app, flash the full generic esp32c6 firmware, which includes ble:',
+        'To deploy this app, flash the leanest of its images with ble:',
         '',
-        '  mikro flash --features full',
+        '  mikro flash --features ble',
       ].join('\n'),
     )
   })
@@ -115,9 +115,9 @@ describe('missingFeaturesError', () => {
         '  - ble: imported as mikro/ble',
         '',
         'The device currently runs the esp32c6-generic firmware.',
-        'To deploy this app, flash the full generic esp32c6 firmware, which includes wifi and ble:',
+        'To deploy this app, flash the leanest of its images with wifi and ble:',
         '',
-        '  mikro flash --features full',
+        '  mikro flash --features wifi,ble',
       ].join('\n'),
     )
   })
@@ -130,9 +130,9 @@ describe('missingFeaturesError', () => {
     expect(message).toContain(
       [
         'The device currently runs custom firmware "my-firmware".',
-        "If that is one of a board package's leaner images, flash the board's full image:",
+        "If that is one of a board package's leaner images, flash the leanest of the board's images with ble:",
         '',
-        '  mikro flash --features full',
+        '  mikro flash --features ble',
         '',
         'Otherwise rebuild that firmware with ble, then flash it:',
         '',
@@ -145,7 +145,9 @@ describe('missingFeaturesError', () => {
   it('errors on a config floor feature the device lacks', () => {
     const message = missingFeaturesError(features({floor: ['ble'], optional: ['ble']}), ready)
     expect(message).toContain('  - ble: listed under features in mikro.config.ts')
-    expect(message).toContain('flash the full generic esp32c6 firmware, which includes ble:')
+    expect(message).toContain(
+      'flash the leanest of its images with ble:\n\n  mikro flash --features ble',
+    )
   })
 
   it('passes when the device has every floor feature', () => {
@@ -160,7 +162,20 @@ describe('missingFeaturesError', () => {
     expect(message).toContain('  - ble: imported as mikro/ble')
     expect(message).toContain('  - i2s: listed under features in mikro.config.ts')
     expect(message).toContain(
-      'flash the full generic esp32c6 firmware, which includes ble and i2s:',
+      'flash the leanest of its images with ble and i2s:\n\n  mikro flash --features ble,i2s',
+    )
+  })
+
+  it('asks for every feature the app needs, not only the missing ones', () => {
+    // The device runs no-ble; asking only for ble would pick an image without wifi
+    const message = missingFeaturesError(
+      features({imported: ['wifi', 'ble'], modules: {wifi: ['wifi'], ble: ['ble']}}),
+      {...ready, features: ['wifi', 'i2s']},
+    )
+    expect(message).toContain('  - ble: imported as mikro/ble')
+    expect(message).not.toContain('  - wifi:')
+    expect(message).toContain(
+      'flash the leanest of its images with wifi and ble:\n\n  mikro flash --features wifi,ble',
     )
   })
 

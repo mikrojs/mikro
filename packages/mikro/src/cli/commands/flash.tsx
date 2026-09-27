@@ -20,6 +20,8 @@ import {
   assertFilesystemKept,
   type BoardSource,
   type FlashPlan,
+  type ImageChoice,
+  parseFeatures,
   resolveFlashPlan,
 } from '../lib/flashFirmware.js'
 import {formatSize} from '../lib/formatSize.js'
@@ -64,8 +66,8 @@ export const args = command(
       }),
     ),
     features: optional(
-      option('--features', string({metavar: 'IMAGE'}), {
-        description: message`The board's image to flash, by name: no-ble, or full for the full image. Without it, a reflash keeps the image the device runs.`,
+      option('--features', string({metavar: 'FEATURES'}), {
+        description: message`Flash the leanest of the board's images with these features, comma-separated (wifi, or wifi,ble), min for the leanest image, or full for the full image. Without it, a reflash keeps the image the device runs.`,
       }),
     ),
     target: optional(
@@ -109,7 +111,7 @@ type InitState =
       esptoolPath: string
       image: FlashPlan['image']
       board?: FlashPlan['board']
-      features?: FlashPlan['features']
+      chosenImage?: FlashPlan['chosenImage']
       warnings: string[]
       filesystemSize?: number
     }
@@ -135,8 +137,8 @@ type ProbeState =
   | {status: 'pending'}
   | {status: 'done'; fw?: string; custom?: string; features?: string[]}
 
-const FEATURES_SOURCE_LABELS: Record<NonNullable<FlashPlan['features']>['source'], string> = {
-  flag: 'from --features',
+const IMAGE_SOURCE_LABELS: Record<ImageChoice['source'], string> = {
+  features: 'from --features',
   device: 'what the device runs now',
 }
 
@@ -243,7 +245,7 @@ export default function FlashCmd(props: Props) {
         board: boardFlag ?? pickedBoard,
         boardSource: boardFlag ? 'flag' : 'picked',
         configBoard: config?.board,
-        features,
+        features: features === undefined ? undefined : parseFeatures(features),
         deviceFeatures,
         target,
         // Only an interactive run without --yes can answer the picker.
@@ -439,7 +441,7 @@ export default function FlashCmd(props: Props) {
         port={device.path}
         flashSize={initState.flasherArgs.flashSize}
         filesystemSize={initState.filesystemSize}
-        features={initState.features}
+        chosenImage={initState.chosenImage}
         warnings={warnings}
         onConfirm={() => setConfirmed(true)}
         onCancel={() => process.exit(0)}
@@ -456,7 +458,7 @@ export default function FlashCmd(props: Props) {
       port={device.path}
       baudRate={baudRate}
       board={board}
-      features={initState.features}
+      chosenImage={initState.chosenImage}
       // Warnings were shown at the prompt, unless --yes skipped it.
       warnings={yes === true ? warnings : []}
     />
@@ -480,12 +482,12 @@ function ConfirmFlash(props: {
   port: string
   flashSize: string
   filesystemSize: number | undefined
-  features?: FlashPlan['features']
+  chosenImage?: FlashPlan['chosenImage']
   warnings: string[]
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const {port, flashSize, filesystemSize, features, warnings, onConfirm, onCancel} = props
+  const {port, flashSize, filesystemSize, chosenImage, warnings, onConfirm, onCancel} = props
 
   useInput((input) => {
     if (input.toLowerCase() === 'y') {
@@ -502,9 +504,9 @@ function ConfirmFlash(props: {
         {figures.warning} This will flash new firmware to the device on {port}, overwriting the
         existing firmware.
       </Text>
-      {features ? (
+      {chosenImage ? (
         <Text>
-          Image: {features.name} ({FEATURES_SOURCE_LABELS[features.source]})
+          Image: {chosenImage.name} ({IMAGE_SOURCE_LABELS[chosenImage.source]})
         </Text>
       ) : null}
       {filesystemSize === undefined ? null : (
@@ -531,11 +533,11 @@ function FlashProgress(props: {
   port: string
   baudRate: number
   board?: FlashPlan['board']
-  features?: FlashPlan['features']
+  chosenImage?: FlashPlan['chosenImage']
   /** Empty when the prompt already showed them. */
   warnings: string[]
 }) {
-  const {esptoolPath, flasherArgs, port, baudRate, board, features, warnings} = props
+  const {esptoolPath, flasherArgs, port, baudRate, board, chosenImage, warnings} = props
 
   const observable = useMemo((): Observable<SpawnState> => {
     const esptoolArgs = getWriteFlashMultiArgs({
@@ -603,9 +605,9 @@ function FlashProgress(props: {
           <Text color="gray">
             board: {board.name} ({BOARD_SOURCE_LABELS[board.source]})
           </Text>
-          {features ? (
+          {chosenImage ? (
             <Text color="gray">
-              image: {features.name} ({FEATURES_SOURCE_LABELS[features.source]})
+              image: {chosenImage.name} ({IMAGE_SOURCE_LABELS[chosenImage.source]})
             </Text>
           ) : null}
           {board.source === 'picked' ? (

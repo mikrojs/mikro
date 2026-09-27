@@ -218,7 +218,7 @@ export default defineBoards({
 
 The features are `ble` and `wifi`. Each image is named after what it changes (`no-ble`, `no-ble+no-wifi`), builds in `.mikro/build-fw+no-ble`, and goes in a folder of that name beside the full image (`dist-fw/no-ble/` next to `dist-fw/full/`), so each folder holds one image. Each image's `firmware.json` lists its features, and `mikro flash` finds a board's images by their folders. `mikro fw prepack --image no-ble` builds one image and keeps the others, for example to build the images in parallel CI jobs. `mikro fw prepack` checks that each image has the features it asks for and differs from the full image. `mikro fw pack` names the archive of each with its name as a suffix: `mikro-fw-acme-devboard-esp32c6+no-ble.tar.gz`.
 
-`mikro flash` flashes the full image. `mikro flash --features no-ble` flashes another, and from then on a reflash keeps the image the device runs, until `--features full`.
+`mikro flash` flashes the full image. `mikro flash --features wifi` flashes the leanest image with the features listed (here `no-ble`), and `--features min` the leanest of all. From then on a reflash keeps the image the device runs, until `--features full` (`--force` and `--from` flash the full image). When no image has the features, the firmware lacks one of them altogether, and `mikro flash` says which.
 
 ## Multi-board packages
 

@@ -5,7 +5,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import {getEsptoolPath} from '@mikrojs/esptool'
-import {readFirmwareJson} from '@mikrojs/firmware/boards'
+import {FULL_IMAGE, readFirmwareJson} from '@mikrojs/firmware/boards'
 import {lastValueFrom} from 'rxjs'
 
 import {type BoardInfo, bundledBoards, discoverBoards, staleImage} from './boards.js'
@@ -48,10 +48,12 @@ export interface FlashPlanOptions {
    *  BoardChoice, for a picker. Otherwise (headless) the plan stops and lists
    *  them. */
   pickBoard?: boolean
-  /** The board's image to flash, by name (`no-ble`, or `full`): `--features`. */
-  features?: string
+  /** Features the image must have (`wifi`), or `full` for the full image:
+   *  `--features`, which flashes the leanest of the board's images with all of
+   *  them. */
+  features?: string[]
   /** The features the device's firmware reports, so a reflash keeps the image
-   *  it runs when `features` doesn't name one. */
+   *  it runs when `features` doesn't pick one. */
   deviceFeatures?: string[]
   /** Progress callback for the resolution/flash phases. */
   onProgress?: (message: string) => void
@@ -69,9 +71,9 @@ export interface FlashPlan {
   /** The board flashed and how it was chosen. Absent for `--build-dir`
    * flashes, which take the build as-is. */
   board?: {name: string; source: BoardSource}
-  /** The board's image, when it isn't the full one by default: named with
-   *  `--features`, or the one the device runs now. */
-  features?: {name: string; source: 'flag' | 'device'}
+  /** The board's image, when it isn't the full one by default: the leanest
+   *  with the `--features` asked for, or the one the device runs now. */
+  chosenImage?: ImageChoice
   /** Shown before the go-ahead; none stops the flash: the board's image is
    *  older than its build, or a dependency's `firmware` export was skipped. */
   warnings: string[]
@@ -79,6 +81,12 @@ export interface FlashPlan {
   devicePartitionTable?: Uint8Array
   /** Size of the app filesystem (`user` partition) the firmware will have. */
   filesystemSize?: number
+}
+
+/** An image of a board picked by `--features`, or by what the device runs. */
+export interface ImageChoice {
+  name: string
+  source: 'features' | 'device'
 }
 
 /** Several installed boards for the device's chip, and nothing choosing
@@ -270,39 +278,82 @@ function verifyBoardChip(port: string, board: BoardInfo, detected: Chip | undefi
  *   - neither: the image the board package ships, or else the generic
  *     prebuilt bundled with this CLI version
  */
-/** Whether two feature lists hold the same features. */
-function sameFeatures(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((feature) => b.includes(feature))
+/** `--features` as a list of features: comma-separated, where `min` asks for
+ *  none of them, so the leanest image. */
+export function parseFeatures(value: string): string[] {
+  return value
+    .split(',')
+    .map((f) => f.trim())
+    .filter((f) => f !== '' && f !== 'min')
+}
+
+/** A board's images, the full one first. */
+function boardImages(board: BoardInfo & {dir: string}) {
+  return [{name: FULL_IMAGE, dir: board.dir, features: board.features}, ...(board.images ?? [])]
 }
 
 /**
- * The image of `board` to flash: the one `requested` names (`full` is the
- * board's own), else the one whose features the device reports, so a reflash
- * keeps what the device runs, else the full image.
+ * The leanest of `images` (the full one first) with every feature in
+ * `wanted`; `full` asks for the full image. Undefined when none has them all.
+ */
+function leanestImage<I extends {name: string; features?: string[]}>(
+  images: I[],
+  wanted: string[],
+): I | undefined {
+  const full = images[0]!
+  if (wanted.includes(FULL_IMAGE)) return full
+  // A full image from before firmware.json listed features has them all
+  const has = (i: I) =>
+    i.features === undefined ? i === full : wanted.every((f) => i.features!.includes(f))
+  return images
+    .filter(has)
+    .sort((a, b) => (a.features?.length ?? Infinity) - (b.features?.length ?? Infinity))[0]
+}
+
+/**
+ * The image `--features` asks for: the leanest with them all. Each image is
+ * the full one without some features, so none fits only when the firmware
+ * lacks one of them, which is an error that names it.
+ */
+function imageWithFeatures<I extends {name: string; features?: string[]}>(
+  boardName: string,
+  images: I[],
+  wanted: string[],
+): I {
+  const leanest = leanestImage(images, wanted)
+  if (leanest !== undefined) return leanest
+  const known = images[0]!.features ?? []
+  const lacking = wanted.filter((f) => !known.includes(f))
+  const hint = lacking.length === 1 ? didYouMean(lacking[0]!, known) : undefined
+  throw new UserError(
+    `${boardName}'s firmware has no ${lacking.join(', ')}.` +
+      (hint === undefined ? '' : ` Did you mean ${hint}?`) +
+      `\nIts images: ` +
+      images.map((i) => `${i.name} (${i.features?.join(', ') ?? 'every feature'})`).join(', '),
+  )
+}
+
+/**
+ * The image of `board` to flash: the leanest with every feature in `wanted`
+ * (`--features`), else the leanest with every feature the device reports, so
+ * a reflash keeps what the device runs even when a new version's images gain a
+ * feature, else the full image.
  */
 export function chooseImage(
   board: BoardInfo & {dir: string},
-  requested: string | undefined,
+  wanted: string[] | undefined,
   deviceFeatures: string[] | undefined,
-): {dir: string; features?: {name: string; source: 'flag' | 'device'}} {
-  const images = [{name: 'full', dir: board.dir, features: board.features}, ...(board.images ?? [])]
-  if (requested !== undefined) {
-    const image = images.find((i) => i.name === requested)
-    if (image === undefined) {
-      throw new UserError(
-        `${board.name} has no ${requested} image. Its images: ` +
-          images.map((i) => i.name).join(', '),
-      )
-    }
-    return {dir: image.dir, features: {name: image.name, source: 'flag'}}
+): {dir: string; chosenImage?: ImageChoice} {
+  if (wanted !== undefined) {
+    const image = imageWithFeatures(board.name, boardImages(board), wanted)
+    return {dir: image.dir, chosenImage: {name: image.name, source: 'features'}}
   }
-  const running =
-    deviceFeatures === undefined
-      ? undefined
-      : board.images?.find((i) => sameFeatures(i.features, deviceFeatures))
-  return running === undefined
+  if (deviceFeatures === undefined || board.images === undefined) return {dir: board.dir}
+  // Undefined when the device has a feature none of these images has: the full image
+  const running = leanestImage(boardImages(board), deviceFeatures)
+  return running === undefined || running.name === FULL_IMAGE
     ? {dir: board.dir}
-    : {dir: running.dir, features: {name: running.name, source: 'device'}}
+    : {dir: running.dir, chosenImage: {name: running.name, source: 'device'}}
 }
 
 export async function resolveFlashPlan(
@@ -324,6 +375,12 @@ export async function resolveFlashPlan(
       getEsptoolPath(),
     ])
     return withFilesystemSize({esptoolPath, flasherArgs, image: 'build-dir', warnings: []})
+  }
+
+  if (from !== undefined && /^https?:\/\//.test(from) && opts.features !== undefined) {
+    throw new UserError(
+      '--features picks an image of a board; --from with a URL flashes that archive as it is.',
+    )
   }
 
   onProgress?.('Resolving esptool…')
@@ -377,7 +434,25 @@ export async function resolveFlashPlan(
       name: resolved?.board.name ?? `${resolvedChip}-generic`,
       source: resolved?.source ?? 'detected',
     }
-    const image = opts.features === 'full' ? undefined : opts.features
+    // The archive of the image --features picks, from the installed board's
+    // images: the release has no list of them
+    let image: string | undefined
+    if (opts.features !== undefined && !opts.features.includes(FULL_IMAGE)) {
+      const local =
+        resolved?.board ?? bundledBoards().find((b) => b.name === board.name && b.dir !== undefined)
+      if (local?.dir === undefined) {
+        throw new UserError(
+          `--features picks among the images of an installed board, and ${board.name} is not ` +
+            'installed. Without --features, --from flashes its full image.',
+        )
+      }
+      const picked = imageWithFeatures(
+        board.name,
+        boardImages({...local, dir: local.dir}),
+        opts.features,
+      )
+      image = picked.name === FULL_IMAGE ? undefined : picked.name
+    }
     const firmwareDir = await resolveFrom({
       from,
       chip: resolvedChip,
@@ -385,8 +460,10 @@ export async function resolveFlashPlan(
       image,
       onProgress: (message) => onProgress?.(message),
     })
-    const features =
-      opts.features === undefined ? undefined : {name: opts.features, source: 'flag' as const}
+    const chosenImage =
+      opts.features === undefined
+        ? undefined
+        : {name: image ?? FULL_IMAGE, source: 'features' as const}
     const flasherArgs = await fitToDeviceFlash(await readFlasherArgs(firmwareDir), device)
     // A release without the board's archive falls back to the chip's: report
     // what was downloaded, not what was asked for.
@@ -400,7 +477,7 @@ export async function resolveFlashPlan(
         flasherArgs,
         image: 'from',
         board: {name: archived.value.name, source: 'detected'},
-        features,
+        chosenImage,
         warnings,
         devicePartitionTable,
       })
@@ -410,7 +487,7 @@ export async function resolveFlashPlan(
       flasherArgs,
       image: 'from',
       board,
-      features,
+      chosenImage,
       warnings,
       devicePartitionTable,
     })
@@ -434,7 +511,7 @@ export async function resolveFlashPlan(
         `or fetch a CI artifact with --from=mikrojs/mikro@<sha>.`,
     )
   }
-  const {dir, features} = chooseImage(
+  const {dir, chosenImage} = chooseImage(
     {...resolved.board, dir: resolved.board.dir},
     opts.features,
     opts.deviceFeatures,
@@ -453,7 +530,7 @@ export async function resolveFlashPlan(
     flasherArgs,
     image: resolved.board.bundled ? 'bundled' : 'board',
     board: boardInfo,
-    features,
+    chosenImage,
     warnings,
     devicePartitionTable,
   })
