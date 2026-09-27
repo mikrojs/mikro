@@ -21,8 +21,9 @@ When this skill triggers, gather the required information from the user, then ge
 
 - `boards.config.ts` at the package root describes the board: `chip`, `sdkconfig` (fragments), `partitions`, and `nativeModules` (every native module the board's peripherals need; nothing is found from imports). There is no CMake project to write.
 - `pn mikro fw prepack` generates a firmware project from the config, builds it, and writes the image (`firmware.json`, `flasher_args.json` and the files it flashes) into the folder that the board's `firmware` export points at, then checks the package. The package's `prepack` script runs it, so a published package always has a fresh image.
-- The `firmware` condition on an export declares the board: `".": {"firmware": "./dist-fw/firmware.json"}`. It must match the config: `mikro fw prepack` and `mikro fw check` print the entries to add when it doesn't. Apps depend on the package, and `mikro flash` finds the board through that condition.
+- The `firmware` condition on an export declares the board: `".": {"firmware": "./dist-fw/full/firmware.json"}`. It must match the config: `mikro fw prepack` and `mikro fw check` print the entries to add when it doesn't. Apps depend on the package, and `mikro flash` finds the board through that condition.
 - The board names itself: the name is the export's specifier (the package name for `.`), or `name` in the config; the description is the package's, or `description`. The device reports the name as `sys.board.name`; `mikro flash --board` and `mikro.config.ts` use it.
+- `images: [{ble: false}]` on a board also builds leaner images (features `ble`, `wifi`), named `no-ble` and so on; apps pick one by what they need (`mikro flash --features wifi` gives the leanest with WiFi, `--features full` the full image). Add them only when the board's users need the flash or RAM back.
 - There is no extending: apps flash the image as it is. To change a board's firmware, fork the package.
 - The JS library (pins, peripherals, tsconfig preset) is ordinary exports that the tools ignore.
 
@@ -43,7 +44,7 @@ Single board:
 └── README.md
 ```
 
-Multi-board: one entry per board in `boards.config.ts`, keyed `./<board>`, each exported as `"./<board>": {"firmware": "./dist-fw/<board>/firmware.json"}`; the name defaults to `@acme/boards/<board>`. One `pn mikro fw prepack` in the package builds them all (each into `.mikro/build-fw-<board>`); `--board <board>` builds one. Variants that need different builds (octal PSRAM, say) are boards of their own that share a base object in the config; a variant with more flash needs none, since `mikro flash` gives the extra flash to the filesystem.
+Multi-board: one entry per board in `boards.config.ts`, keyed `./<board>`, each exported as `"./<board>": {"firmware": "./dist-fw/<board>/full/firmware.json"}`; the name defaults to `@acme/boards/<board>`. One `pn mikro fw prepack` in the package builds them all (each into `.mikro/build-fw-<board>`); `--board <board>` builds one. Variants that need different builds (octal PSRAM, say) are boards of their own that share a base object in the config; a variant with more flash needs none, since `mikro flash` gives the extra flash to the filesystem.
 
 ## Files to generate
 
@@ -57,7 +58,7 @@ Multi-board: one entry per board in `boards.config.ts`, keyed `./<board>`, each 
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": {"firmware": "./dist-fw/firmware.json"},
+    ".": {"firmware": "./dist-fw/full/firmware.json"},
     "./pins": "./dist/pins.js",
     "./display": "./dist/display.js",
     "./tsconfig": "./tsconfig.json"

@@ -43,7 +43,8 @@ WiFi + HTTPS is the biggest consumer. A simple blinky uses almost nothing, but a
 
 - Connect to WiFi once and stay connected, rather than reconnecting per request.
 - Talk to local endpoints over plain HTTP when RAM is scarce. TLS costs up to ~40 KB per handshake.
-- If your app never uses WiFi (it networks over a cellular modem, say), build [custom firmware](./develop/custom-firmware#change-esp-idf-settings) with `CONFIG_MIKROJS_WIFI=n`. The WiFi driver takes about 20 KB of RAM at boot even when the radio is never started.
+- If your app doesn't use BLE, flash the firmware's image without it: [`mikro flash --features wifi`](/cli#mikro-flash). On an ESP32-C6 that leaves about 26 KB more free heap, since the BLE stack takes RAM at boot even when the app never starts it.
+- If it uses neither BLE nor WiFi (it networks over a cellular modem, say), [`mikro flash --features min`](/cli#mikro-flash) flashes the leanest image, without either radio. On an ESP32-C6 that leaves about 57 KB more free heap than the full image.
 - Concatenating strings in a loop allocates a new string every iteration. Push to an array and `.join()` once.
 - Load modules only when you need them, with a dynamic import:
 

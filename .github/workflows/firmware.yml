@@ -55,6 +55,8 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.setup.outputs.chips) }}
+        # The generic boards' images, as in packages/mikro/boards.config.ts
+        image: [full, no-ble, no-ble+no-wifi]
     runs-on: ubuntu-24.04
     container: espressif/idf:v6.1
     steps:
@@ -65,5 +67,7 @@ jobs:
       - uses: ./.github/actions/firmware-build
         with:
           target: ${{ matrix.target }}
+          image: ${{ matrix.image }}
           pack-format: tarball
-          artifact-name: mikro-fw-${{ matrix.target }}-generic
+          # The names `mikro flash --from <sha> [--features <image>]` looks for
+          artifact-name: mikro-fw-${{ matrix.target }}-generic${{ matrix.image != 'full' && format('+{0}', matrix.image) || '' }}

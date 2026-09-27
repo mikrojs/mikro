@@ -4,7 +4,12 @@ import * as fs from 'node:fs/promises'
 import {stripTypeScriptTypes} from 'node:module'
 import * as path from 'node:path'
 
-import {type BoardProblem, checkBoardsConfig, type ConfiguredBoard} from '@mikrojs/firmware/boards'
+import {
+  type BoardProblem,
+  checkBoardsConfig,
+  type ConfiguredBoard,
+  type ConfiguredImage,
+} from '@mikrojs/firmware/boards'
 
 import {boardBuildDir, boardProjectDir} from './boards.js'
 import {UserError} from './errorMessage.js'
@@ -96,19 +101,21 @@ function targetIn(file: string, pattern: RegExp): string | undefined {
 }
 
 /**
- * Write the firmware project for `board` in `.mikro/fw-<board>` and return
- * its folder. ESP-IDF applies sdkconfig.defaults only to a new sdkconfig and
- * builds a build folder for one chip, so a changed setting, the board's or
- * @mikrojs/firmware's own (`firmwareDefaults`), drops the old sdkconfig, and a
- * changed chip the build folder too.
+ * Write the firmware project for `board`, or for one of its images, in
+ * `.mikro/fw-<board>` (`.mikro/fw-<board>+no-ble`) and return its folder. An
+ * image's settings come after the board's. ESP-IDF applies sdkconfig.defaults
+ * only to a new sdkconfig and builds a build folder for one chip, so a changed
+ * setting, the board's or @mikrojs/firmware's own (`firmwareDefaults`), drops
+ * the old sdkconfig, and a changed chip the build folder too.
  */
 export async function writeBoardProject(
   packageDir: string,
   board: ConfiguredBoard,
+  image?: ConfiguredImage,
   firmwareDefaults = '',
 ): Promise<string> {
-  const dir = boardProjectDir(packageDir, board.key)
-  const buildDir = boardBuildDir(packageDir, board.key)
+  const dir = boardProjectDir(packageDir, board.key, image?.name)
+  const buildDir = boardBuildDir(packageDir, board.key, image?.name)
   await fs.mkdir(dir, {recursive: true})
   const fragments = await Promise.all(
     board.sdkconfig.map(async (file) => `# ${file}\n${await fs.readFile(file, 'utf8')}\n`),
@@ -117,6 +124,7 @@ export async function writeBoardProject(
     const hash = createHash('sha256').update(firmwareDefaults).digest('hex').slice(0, 16)
     fragments.unshift(`# @mikrojs/firmware's defaults: ${hash}\n`)
   }
+  if (image) fragments.push(`# the ${image.name} image\n${image.settings.join('\n')}\n`)
   await writeIfChanged(path.join(dir, 'CMakeLists.txt'), projectCmake(board))
   const settingsChanged = await writeIfChanged(
     path.join(dir, 'sdkconfig.defaults'),
@@ -138,19 +146,21 @@ export async function writeBoardProject(
   return dir
 }
 
-/** idf.py arguments that build `board` from `projectDir` into its build
- *  folder, for the board's chip. A board's own project gets the board's name
- *  and description too, which the generated project already has. */
+/** idf.py arguments that build `board` (or one of its images) from
+ *  `projectDir` into its build folder, for the board's chip. A board's own
+ *  project gets the board's name and description too, which the generated
+ *  project already has. */
 export function boardBuildArgs(
   packageDir: string,
   board: ConfiguredBoard,
   projectDir: string,
+  image?: ConfiguredImage,
 ): string[] {
   return [
     '-C',
     projectDir,
     '-B',
-    boardBuildDir(packageDir, board.key),
+    boardBuildDir(packageDir, board.key, image?.name),
     `-DIDF_TARGET=${board.chip}`,
     ...(board.project === undefined
       ? []

@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -12,11 +13,18 @@ import * as pathlib from 'node:path'
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
-import {flashFirmware, type FlashPlan, resolveFlashPlan} from '../flashFirmware.js'
+import {
+  chooseImage,
+  flashFirmware,
+  type FlashPlan,
+  parseFeatures,
+  resolveFlashPlan,
+} from '../flashFirmware.js'
 
 // No real esptool: chip detection fails, which the plan treats as "unknown"
 // and falls back to the board's or --target's chip.
-vi.mock('@mikrojs/esptool', () => ({getEsptoolPath: async () => '/nonexistent/esptool'}))
+const esptool = vi.hoisted(() => ({path: '/nonexistent/esptool'}))
+vi.mock('@mikrojs/esptool', () => ({getEsptoolPath: async () => esptool.path}))
 
 // `--from` without the network: the download is the image in `downloaded.dir`.
 const downloaded = vi.hoisted(() => ({dir: '', calls: [] as unknown[]}))
@@ -79,9 +87,9 @@ function installBoards(dir: string) {
     const pkg = pathlib.join(dir, 'node_modules', name)
     write(
       pathlib.join(pkg, 'package.json'),
-      JSON.stringify({name, exports: {'.': {firmware: './dist-fw/firmware.json'}}}),
+      JSON.stringify({name, exports: {'.': {firmware: './dist-fw/full/firmware.json'}}}),
     )
-    writeImage(pathlib.join(pkg, 'dist-fw'), name)
+    writeImage(pathlib.join(pkg, 'dist-fw', 'full'), name)
   }
   return pathlib.join(dir, 'node_modules/ring')
 }
@@ -91,6 +99,83 @@ function plan_(result: FlashPlan | {choose: unknown}): FlashPlan {
   if ('choose' in result) throw new Error('expected a plan, got a choice of boards')
   return result
 }
+
+describe('chooseImage', () => {
+  const board = {
+    name: 'ring',
+    chip: 'esp32c6',
+    dir: '/ring',
+    features: ['wifi', 'ble'],
+    images: [{name: 'no-ble', features: ['wifi'], dir: '/ring/no-ble'}],
+  }
+
+  it('takes full by name, and without images or a match, the full image', () => {
+    expect(chooseImage(board, ['full'], ['wifi'])).toEqual({
+      dir: '/ring',
+      chosenImage: {name: 'full', source: 'features'},
+    })
+    expect(chooseImage(board, undefined, undefined)).toEqual({dir: '/ring'})
+    expect(chooseImage(board, undefined, ['ble'])).toEqual({dir: '/ring'})
+    expect(chooseImage({...board, images: undefined}, undefined, ['wifi'])).toEqual({
+      dir: '/ring',
+    })
+  })
+
+  it("keeps the device's image when this version's images have more features", () => {
+    const next = {
+      ...board,
+      features: ['wifi', 'ble', 'thread'],
+      images: [{name: 'no-ble', features: ['wifi', 'thread'], dir: '/ring/no-ble'}],
+    }
+    expect(chooseImage(next, undefined, ['wifi'])).toEqual({
+      dir: '/ring/no-ble',
+      chosenImage: {name: 'no-ble', source: 'device'},
+    })
+    // A feature no image has any more: the full image
+    expect(chooseImage(next, undefined, ['wifi', 'zigbee'])).toEqual({dir: '/ring'})
+  })
+
+  it('reads --features as a list, min as the leanest image', () => {
+    expect(parseFeatures('wifi, ble')).toEqual(['wifi', 'ble'])
+    expect(parseFeatures('min')).toEqual([])
+    expect(parseFeatures('')).toEqual([])
+    const lean = {
+      ...board,
+      images: [...board.images, {name: 'no-ble+no-wifi', features: [], dir: '/ring/none'}],
+    }
+    expect(chooseImage(lean, parseFeatures('min'), undefined).chosenImage).toEqual({
+      name: 'no-ble+no-wifi',
+      source: 'features',
+    })
+  })
+
+  it('takes the leanest image with the features asked for', () => {
+    const lean = {
+      ...board,
+      features: ['wifi', 'ble', 'i2s'],
+      images: [
+        {name: 'no-ble', features: ['wifi', 'i2s'], dir: '/ring/no-ble'},
+        {name: 'no-wifi', features: ['ble', 'i2s'], dir: '/ring/no-wifi'},
+        {name: 'no-ble+no-wifi', features: ['i2s'], dir: '/ring/none'},
+      ],
+    }
+    const pick = (features: string[]) => chooseImage(lean, features, undefined).chosenImage
+    expect(pick(['wifi'])).toEqual({name: 'no-ble', source: 'features'})
+    expect(pick(['ble'])).toEqual({name: 'no-wifi', source: 'features'})
+    expect(pick(['wifi', 'ble'])).toEqual({name: 'full', source: 'features'})
+    expect(pick(['i2s'])).toEqual({name: 'no-ble+no-wifi', source: 'features'})
+    // None fits only when the firmware lacks the feature altogether
+    const images =
+      'Its images: full (wifi, ble, i2s), no-ble (wifi, i2s), no-wifi (ble, i2s), ' +
+      'no-ble+no-wifi (i2s)'
+    expect(() => pick(['wifi', 'thread'])).toThrow(`ring's firmware has no thread.\n${images}`)
+    expect(() => pick(['wify'])).toThrow(`ring's firmware has no wify. Did you mean wifi?`)
+    // A full image that lists no features has them all
+    expect(chooseImage({...lean, features: undefined}, ['ble', 'wifi'], undefined)).toMatchObject({
+      chosenImage: {name: 'full'},
+    })
+  })
+})
 
 describe('resolveFlashPlan', () => {
   let originalCwd: string
@@ -107,6 +192,23 @@ describe('resolveFlashPlan', () => {
   afterEach(() => {
     process.chdir(originalCwd)
     rmSync(tempDir, {recursive: true, force: true})
+    esptool.path = '/nonexistent/esptool'
+  })
+
+  it("says why the chip wasn't detected, in esptool's words", async () => {
+    // What esptool prints when another program holds the port
+    const busy =
+      "A fatal error occurred: Could not open /dev/null, the port is busy or doesn't exist.\n" +
+      '([Errno 35] Could not exclusively lock port /dev/null: [Errno 35] Resource temporarily unavailable)'
+    esptool.path = pathlib.join(tempDir, 'esptool')
+    write(esptool.path, `#!/bin/sh\ncat >&2 <<'EOF'\n\n${busy}\n\nEOF\nexit 2\n`)
+    chmodSync(esptool.path, 0o755)
+
+    const error = await resolveFlashPlan({port: '/dev/null'}).catch((e: unknown) => e)
+    expect(error).toMatchObject({
+      message: 'Could not detect chip type',
+      cause: expect.objectContaining({message: busy}),
+    })
   })
 
   it('flashes the image a board package ships', async () => {
@@ -115,9 +217,81 @@ describe('resolveFlashPlan', () => {
     expect(plan.image).toBe('board')
     expect(plan.board).toEqual({name: 'ring', source: 'flag'})
     expect(plan.flasherArgs.files.map((f) => f.filename)).toEqual([
-      pathlib.join(ring, 'dist-fw/bootloader.bin'),
-      pathlib.join(ring, 'dist-fw/app.bin'),
+      pathlib.join(ring, 'dist-fw/full/bootloader.bin'),
+      pathlib.join(ring, 'dist-fw/full/app.bin'),
     ])
+  })
+
+  it("flashes the board's image --features asks for, else the one the device runs", async () => {
+    const ring = installBoards(tempDir)
+    // The no-ble image beside full/, found by its folder
+    const lean = pathlib.join(ring, 'dist-fw', 'no-ble')
+    writeImage(lean, 'ring')
+    const features = (dir: string, list: string[]) =>
+      write(
+        pathlib.join(dir, 'firmware.json'),
+        JSON.stringify({name: 'ring', chip: 'esp32c6', version: '0.21.0', features: list}),
+      )
+    features(pathlib.join(ring, 'dist-fw', 'full'), ['wifi', 'ble'])
+    features(lean, ['wifi'])
+    const app = (plan: FlashPlan) => plan.flasherArgs.files.map((f) => f.filename).at(-1)
+
+    const needs = plan_(
+      await resolveFlashPlan({port: '/dev/null', board: 'ring', features: ['wifi']}),
+    )
+    expect(needs.chosenImage).toEqual({name: 'no-ble', source: 'features'})
+    expect(app(needs)).toBe(pathlib.join(lean, 'app.bin'))
+
+    const kept = plan_(
+      await resolveFlashPlan({port: '/dev/null', board: 'ring', deviceFeatures: ['wifi']}),
+    )
+    expect(kept.chosenImage).toEqual({name: 'no-ble', source: 'device'})
+    expect(app(kept)).toBe(pathlib.join(lean, 'app.bin'))
+
+    const full = plan_(
+      await resolveFlashPlan({port: '/dev/null', board: 'ring', deviceFeatures: ['wifi', 'ble']}),
+    )
+    expect(full.chosenImage).toBeUndefined()
+    expect(app(full)).toBe(pathlib.join(ring, 'dist-fw', 'full', 'app.bin'))
+
+    const back = plan_(
+      await resolveFlashPlan({
+        port: '/dev/null',
+        board: 'ring',
+        features: ['full'],
+        deviceFeatures: ['wifi'],
+      }),
+    )
+    expect(back.chosenImage).toEqual({name: 'full', source: 'features'})
+    expect(app(back)).toBe(pathlib.join(ring, 'dist-fw', 'full', 'app.bin'))
+
+    // With --from, the installed board's images say which archive to fetch
+    downloaded.dir = pathlib.join(tempDir, 'download')
+    downloaded.calls = []
+    writeImage(downloaded.dir, 'ring')
+    const fetched = plan_(
+      await resolveFlashPlan({port: '/dev/null', board: 'ring', from: 'a/b', features: ['wifi']}),
+    )
+    expect(downloaded.calls).toEqual([expect.objectContaining({board: 'ring', image: 'no-ble'})])
+    expect(fetched.chosenImage).toEqual({name: 'no-ble', source: 'features'})
+    await expect(
+      resolveFlashPlan({
+        port: '/dev/null',
+        board: 'not-installed',
+        from: 'a/b',
+        features: ['wifi'],
+        target: 'esp32c6',
+      }),
+    ).rejects.toThrow('--features picks among the images of an installed board')
+    // A URL names one archive, so there is nothing to pick
+    await expect(
+      resolveFlashPlan({
+        port: '/dev/null',
+        board: 'ring',
+        from: 'https://example.com/mikro-fw-ring.tar.gz',
+        features: ['wifi'],
+      }),
+    ).rejects.toThrow('--from with a URL flashes that archive as it is')
   })
 
   it('flashes the bundled image of the chip', async () => {
@@ -150,7 +324,7 @@ describe('resolveFlashPlan', () => {
 
   it("flashes the only board for the device's chip", async () => {
     installBoards(tempDir)
-    writeImage(pathlib.join(tempDir, 'node_modules/plain/dist-fw'), 'plain', 'esp32s3')
+    writeImage(pathlib.join(tempDir, 'node_modules/plain/dist-fw/full'), 'plain', 'esp32s3')
     const plan = plan_(
       await resolveFlashPlan({port: '/dev/null', target: 'esp32c6', pickBoard: true}),
     )

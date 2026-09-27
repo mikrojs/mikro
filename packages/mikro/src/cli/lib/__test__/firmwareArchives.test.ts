@@ -55,6 +55,47 @@ describe('selectReleaseAsset', () => {
   })
 })
 
+describe("a board's other images", () => {
+  const release = assets(
+    'mikro-fw-acme-devboard-esp32c6.tar.gz',
+    'mikro-fw-acme-devboard-esp32c6+no-ble.tar.gz',
+  )
+
+  it('are found by name, and only by name', () => {
+    expect(
+      selectReleaseAsset(release, 'esp32c6', '@acme/devboard', 'org/repo', 'no-ble').name,
+    ).toBe('mikro-fw-acme-devboard-esp32c6+no-ble.tar.gz')
+    expect(() =>
+      selectReleaseAsset(release, 'esp32c6', '@acme/devboard', 'org/repo', 'no-wifi'),
+    ).toThrow('No mikro-fw-acme-devboard-esp32c6+no-wifi archive in the org/repo release.')
+    const run = artifacts('mikro-fw-acme-devboard-esp32c6+no-ble')
+    expect(
+      selectWorkflowArtifact(run, 'esp32c6', '@acme/devboard', 'org/repo', 'no-ble').name,
+    ).toBe('mikro-fw-acme-devboard-esp32c6+no-ble')
+    // As the release workflow names them
+    const released = artifacts('firmware-esp32c6-generic', 'firmware-esp32c6-generic+no-ble')
+    expect(
+      selectWorkflowArtifact(released, 'esp32c6', 'esp32c6-generic', 'org/repo', 'no-ble').name,
+    ).toBe('firmware-esp32c6-generic+no-ble')
+  })
+
+  it('never stand in for the full image', () => {
+    // No archive of the board: the chip's full image, never an image of another board's
+    const other = assets('mikro-fw-x-esp32c6.tar.gz', 'mikro-fw-x-esp32c6+no-ble.tar.gz')
+    expect(selectReleaseAsset(other, 'esp32c6', '@acme/devboard', 'org/repo').name).toBe(
+      'mikro-fw-x-esp32c6.tar.gz',
+    )
+    expect(() =>
+      selectWorkflowArtifact(
+        artifacts('mikro-fw-x-esp32c6+no-ble'),
+        undefined,
+        undefined,
+        'org/repo',
+      ),
+    ).toThrow('No firmware artifacts found')
+  })
+})
+
 describe('selectWorkflowArtifact', () => {
   it('takes the mikro-fw artifact, or the older names', () => {
     const run = artifacts('mikro-fw-esp32c6-generic', 'mikro-fw-acme-devboard-esp32s3')

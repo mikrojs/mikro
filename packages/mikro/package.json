@@ -61,19 +61,19 @@
       "import": "./dist/_exports/env.js"
     },
     "./esp32-generic": {
-      "firmware": "./dist-fw/esp32-generic/firmware.json"
+      "firmware": "./dist-fw/esp32-generic/full/firmware.json"
     },
     "./esp32c3-generic": {
-      "firmware": "./dist-fw/esp32c3-generic/firmware.json"
+      "firmware": "./dist-fw/esp32c3-generic/full/firmware.json"
     },
     "./esp32c5-generic": {
-      "firmware": "./dist-fw/esp32c5-generic/firmware.json"
+      "firmware": "./dist-fw/esp32c5-generic/full/firmware.json"
     },
     "./esp32c6-generic": {
-      "firmware": "./dist-fw/esp32c6-generic/firmware.json"
+      "firmware": "./dist-fw/esp32c6-generic/full/firmware.json"
     },
     "./esp32s3-generic": {
-      "firmware": "./dist-fw/esp32s3-generic/firmware.json"
+      "firmware": "./dist-fw/esp32s3-generic/full/firmware.json"
     },
     "./format": {
       "development": "./src/_exports/format.ts",
@@ -279,19 +279,19 @@
       "./runtime": "./runtime.d.ts",
       "./package.json": "./package.json",
       "./esp32-generic": {
-        "firmware": "./dist-fw/esp32-generic/firmware.json"
+        "firmware": "./dist-fw/esp32-generic/full/firmware.json"
       },
       "./esp32c3-generic": {
-        "firmware": "./dist-fw/esp32c3-generic/firmware.json"
+        "firmware": "./dist-fw/esp32c3-generic/full/firmware.json"
       },
       "./esp32c5-generic": {
-        "firmware": "./dist-fw/esp32c5-generic/firmware.json"
+        "firmware": "./dist-fw/esp32c5-generic/full/firmware.json"
       },
       "./esp32c6-generic": {
-        "firmware": "./dist-fw/esp32c6-generic/firmware.json"
+        "firmware": "./dist-fw/esp32c6-generic/full/firmware.json"
       },
       "./esp32s3-generic": {
-        "firmware": "./dist-fw/esp32s3-generic/firmware.json"
+        "firmware": "./dist-fw/esp32s3-generic/full/firmware.json"
       }
     }
   },

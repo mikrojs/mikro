@@ -11,6 +11,7 @@ import {
   checkBoardsConfig,
   CHIPS,
   firmwareExports,
+  imageName,
   isArchiveForChip,
   loadBoards,
 } from '../boards.ts'
@@ -215,8 +216,8 @@ test('a boards.config.ts board takes its defaults from the package and its expor
     {
       description: 'ACME boards',
       exports: {
-        './t-display': {firmware: './dist-fw/t-display/firmware.json', default: './dist/t.js'},
-        './devkit': {firmware: './dist-fw/devkit/firmware.json'},
+        './t-display': {firmware: './dist-fw/t-display/full/firmware.json', default: './dist/t.js'},
+        './devkit': {firmware: './dist-fw/devkit/full/firmware.json'},
       },
     },
     {
@@ -238,8 +239,9 @@ test('a boards.config.ts board takes its defaults from the package and its expor
       partitions: undefined,
       nativeModules: [],
       project: undefined,
-      target: './dist-fw/t-display/firmware.json',
-      imageDir: join(dir, 'dist-fw/t-display'),
+      target: './dist-fw/t-display/full/firmware.json',
+      boardDir: join(dir, 'dist-fw/t-display'),
+      images: [],
     },
     {
       key: './devkit',
@@ -251,16 +253,17 @@ test('a boards.config.ts board takes its defaults from the package and its expor
       partitions: undefined,
       nativeModules: ['@acme/drivers/a'],
       project: undefined,
-      target: './dist-fw/devkit/firmware.json',
-      imageDir: join(dir, 'dist-fw/devkit'),
+      target: './dist-fw/devkit/full/firmware.json',
+      boardDir: join(dir, 'dist-fw/devkit'),
+      images: [],
     },
   ])
 })
 
-test('a board at "." puts its image in the dist folder itself, and resolves its files', () => {
+test('a board at "." puts its images in the dist folder itself, and resolves its files', () => {
   const {dir, boards, problems} = configured(
     'devboard',
-    {exports: {'.': {firmware: './out/firmware.json'}}},
+    {exports: {'.': {firmware: './out/full/firmware.json'}}},
     {dist: 'out', boards: {'.': {chip: 'esp32s3', sdkconfig: 'a.defaults', partitions: 'p.csv'}}},
   )
   expect(problems).toEqual([
@@ -268,8 +271,8 @@ test('a board at "." puts its image in the dist folder itself, and resolves its 
     {specifier: 'devboard', message: 'boards.config.ts, board ".": p.csv does not exist'},
   ])
   expect(boards[0]).toMatchObject({
-    target: './out/firmware.json',
-    imageDir: join(dir, 'out'),
+    target: './out/full/firmware.json',
+    boardDir: join(dir, 'out'),
     sdkconfig: [join(dir, 'a.defaults')],
     partitions: join(dir, 'p.csv'),
   })
@@ -277,7 +280,7 @@ test('a board at "." puts its image in the dist folder itself, and resolves its 
 
 test('boards.config.ts problems name the board and the field', () => {
   const exports = {
-    '.': {firmware: './dist-fw/firmware.json'},
+    '.': {firmware: './dist-fw/full/firmware.json'},
   }
   const mixed = configured(
     'mixed',
@@ -292,8 +295,8 @@ test('boards.config.ts problems name the board and the field', () => {
     'bad',
     {
       exports: {
-        './a': {firmware: './dist-fw/a/firmware.json'},
-        './z': {firmware: './dist-fw/z/firmware.json'},
+        './a': {firmware: './dist-fw/a/full/firmware.json'},
+        './z': {firmware: './dist-fw/z/full/firmware.json'},
       },
     },
     {
@@ -315,7 +318,7 @@ test('boards.config.ts problems name the board and the field', () => {
     'bad/c: boards.config.ts, board "./c": fw/CMakeLists.txt does not exist',
     'bad/c: "exports" has no "firmware" condition for "./c"',
     'bad/z: "./z" has a "firmware" condition in "exports", but boards.config.ts has no board "./z"',
-    'bad: add these to "exports" in package.json (next to any other conditions of the same export):\n  "./c": {"firmware": "./dist-fw/c/firmware.json"}',
+    'bad: add these to "exports" in package.json (next to any other conditions of the same export):\n  "./c": {"firmware": "./dist-fw/c/full/firmware.json"}',
   ])
 })
 
@@ -325,8 +328,8 @@ test('boards.config.ts refuses names a device cannot take, and names used twice'
     long,
     {
       exports: {
-        './a': {firmware: './dist-fw/a/firmware.json'},
-        './b': {firmware: './dist-fw/b/firmware.json'},
+        './a': {firmware: './dist-fw/a/full/firmware.json'},
+        './b': {firmware: './dist-fw/b/full/firmware.json'},
       },
     },
     {boards: {'./a': {chip: 'esp32'}, './b': {chip: 'esp32', name: 'twin'}}},
@@ -338,8 +341,8 @@ test('boards.config.ts refuses names a device cannot take, and names used twice'
     'twins',
     {
       exports: {
-        './a': {firmware: './dist-fw/a/firmware.json'},
-        './b': {firmware: './dist-fw/b/firmware.json'},
+        './a': {firmware: './dist-fw/a/full/firmware.json'},
+        './b': {firmware: './dist-fw/b/full/firmware.json'},
       },
     },
     {boards: {'./a': {chip: 'esp32', name: 'twin'}, './b': {chip: 'esp32', name: 'twin'}}},
@@ -347,6 +350,89 @@ test('boards.config.ts refuses names a device cannot take, and names used twice'
   expect(twins.problems.map((p) => p.message)).toEqual([
     'boards.config.ts: boards "./a" and "./b" are both named "twin"',
   ])
+})
+
+test('an image is named by what it leaves out or adds, sorted', () => {
+  expect(imageName({ble: false})).toBe('no-ble')
+  expect(imageName({wifi: false, ble: false})).toBe('no-ble+no-wifi')
+  expect(imageName({wifi: true})).toBe('wifi')
+})
+
+test('images in boards.config.ts switch features off and on, beside the full image', () => {
+  const {dir, boards, problems} = configured(
+    'lean',
+    {exports: {'.': {firmware: './dist-fw/full/firmware.json'}}},
+    {boards: {'.': {chip: 'esp32c6', images: [{ble: false}, {wifi: false, ble: false}]}}},
+  )
+  expect(problems).toEqual([])
+  expect(boards[0]!.images).toEqual([
+    {
+      name: 'no-ble',
+      features: {ble: false},
+      settings: ['CONFIG_BT_ENABLED=n'],
+      dir: join(dir, 'dist-fw/no-ble'),
+    },
+    {
+      name: 'no-ble+no-wifi',
+      features: {wifi: false, ble: false},
+      settings: ['CONFIG_MIKROJS_WIFI=n', 'CONFIG_BT_ENABLED=n'],
+      dir: join(dir, 'dist-fw/no-ble+no-wifi'),
+    },
+  ])
+})
+
+test('boards.config.ts refuses images it cannot build', () => {
+  const exports = {'.': {firmware: './dist-fw/full/firmware.json'}}
+  const messages = (images: unknown, extra: Record<string, unknown> = {}) =>
+    configured(
+      'lean-bad',
+      {exports},
+      {boards: {'.': {chip: 'esp32', images, ...extra}}},
+    ).problems.map((p) => p.message.replace('boards.config.ts, board ".": ', ''))
+  const features =
+    'each image switches features off or on, like {ble: false}; the features are ble, wifi'
+  expect(messages([{}])).toEqual([features])
+  expect(messages([{ble: 'no'}])).toEqual([features])
+  expect(messages([{thread: false}])).toEqual([features])
+  expect(messages([{ble: false}, {ble: false}])).toEqual(['two images are no-ble'])
+  expect(messages({ble: false})).toEqual(['"images" must be a list, like [{ble: false}]'])
+})
+
+test("a board's other images are the folders beside full/ with an image of it", () => {
+  const dir = boardPackage('with-images', {
+    files: ['dist-fw'],
+    exports: {'.': {firmware: './dist-fw/full/firmware.json'}},
+  })
+  const board = {name: 'with-images', chip: 'esp32c6', version: '0.21.0'}
+  writeImage(join(dir, 'dist-fw/full'), {...board, features: ['wifi', 'ble', 'i2s']})
+  writeImage(join(dir, 'dist-fw/no-wifi'), {...board, features: ['ble', 'i2s']})
+  writeImage(join(dir, 'dist-fw/no-ble'), {...board, features: ['wifi', 'i2s']})
+  // Not images of this board: another board's, another chip's, not an image name
+  writeImage(join(dir, 'dist-fw/no-ble+no-wifi'), {...board, name: 'other'})
+  writeImage(join(dir, 'dist-fw/no-i2s'), {...board, chip: 'esp32s3'})
+  writeImage(join(dir, 'dist-fw/Backup'), board)
+  expect(loadBoards(dir).boards[0]).toMatchObject({
+    features: ['wifi', 'ble', 'i2s'],
+    images: [
+      {name: 'no-ble', features: ['wifi', 'i2s'], dir: join(dir, 'dist-fw/no-ble')},
+      {name: 'no-wifi', features: ['ble', 'i2s'], dir: join(dir, 'dist-fw/no-wifi')},
+    ],
+  })
+  // Each one is checked like the full image
+  rmSync(join(dir, 'dist-fw/no-ble/mikrojs.bin'))
+  expect(checkBoardPackage(dir).map((p) => p.message)).toEqual([
+    `${join(dir, 'dist-fw/no-ble/mikrojs.bin')} does not exist`,
+  ])
+})
+
+test('an image outside full/ has no other images', () => {
+  const dir = boardPackage('flat', {
+    files: ['dist-fw'],
+    exports: {'./a': {firmware: './dist-fw/a/firmware.json'}},
+  })
+  writeImage(join(dir, 'dist-fw/a'), {name: 'flat', chip: 'esp32c6', version: '0.21.0'})
+  writeImage(join(dir, 'dist-fw/no-ble'), {name: 'flat', chip: 'esp32c6', version: '0.21.0'})
+  expect(loadBoards(dir).boards[0]!.images).toBeUndefined()
 })
 
 test('boards.config.ts must export a config with boards', () => {
@@ -420,6 +506,8 @@ test('an archive is for the chip in the place archiveName puts it', () => {
   expect(isArchiveForChip('mikro-fw-acme-esp32-board-esp32s3', 'esp32')).toBe(false)
   expect(isArchiveForChip('mikro-fw-esp32c6-generic', 'esp32c6')).toBe(true)
   expect(isArchiveForChip('mikro-fw-esp32', 'esp32')).toBe(true)
+  // A board's other images are only ever asked for by name
+  expect(isArchiveForChip('mikro-fw-esp32c6-generic+no-ble', 'esp32c6')).toBe(false)
   expect(isArchiveForChip('mikrojs-firmware-esp32', 'esp32')).toBe(false)
 })
 

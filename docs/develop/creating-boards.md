@@ -16,7 +16,7 @@ Apps install board packages as a dependency, and `mikro flash` flashes the board
 ├── package.json
 ├── boards.config.ts      the board: chip, settings, native modules
 ├── sdkconfig.defaults    ESP-IDF settings for the board (optional)
-├── dist-fw/              the firmware image; written by mikro fw prepack, not in git
+├── dist-fw/full/         the firmware image; written by mikro fw prepack, not in git
 ├── pins.ts, display.ts   the JS library for apps (optional)
 └── dist/                 the library's build output
 ```
@@ -28,7 +28,7 @@ Apps install board packages as a dependency, and `mikro flash` flashes the board
   "description": "ACME DevBoard (ESP32-S3, 240x240 ST7789 display)",
   "type": "module",
   "exports": {
-    ".": {"firmware": "./dist-fw/firmware.json"},
+    ".": {"firmware": "./dist-fw/full/firmware.json"},
     "./pins": "./dist/pins.js",
     "./display": "./dist/display.js"
   },
@@ -81,8 +81,9 @@ Each key is the export that declares the board: `.` for a package with one board
 | `partitions`    | A partition table to use instead of the default one                                            |
 | `nativeModules` | The [native modules](./native-modules) to compile in, by the names apps import                 |
 | `project`       | A firmware project of your own to build instead (see [below](#a-firmware-project-of-your-own)) |
+| `images`        | Leaner images to build besides the full one (see [below](#leaner-images))                      |
 
-Next to `boards`, `dist` sets the folder for the images, `dist-fw` by default.
+Next to `boards`, `dist` sets the folder for the images, `dist-fw` by default. The full image goes in `full/` inside it.
 
 `sdkconfig.defaults` holds the ESP-IDF settings the board needs and the generic firmware doesn't set:
 
@@ -203,6 +204,22 @@ pn mikro flash
 
 When an app's dependencies include exactly one board, `mikro flash` flashes it. With several, it flashes the one for the connected chip, and asks when several are for that chip; `--board` and `board` in `mikro.config.ts` choose without asking. Before it writes anything, `mikro flash` checks that the connected chip matches the board.
 
+## Leaner images
+
+Leaving out a stack the board's users may not need, such as Bluetooth, frees flash and RAM. `images` lists images to build besides the full one, each switching features off (`false`) or on (`true`):
+
+```ts
+export default defineBoards({
+  boards: {
+    '.': {chip: 'esp32c6', images: [{ble: false}, {ble: false, wifi: false}]},
+  },
+})
+```
+
+The features are `ble` and `wifi`. Each image is named after what it changes (`no-ble`, `no-ble+no-wifi`), builds in `.mikro/build-fw+no-ble`, and goes in a folder of that name beside the full image (`dist-fw/no-ble/` next to `dist-fw/full/`), so each folder holds one image. Each image's `firmware.json` lists its features, and `mikro flash` finds a board's images by their folders. `mikro fw prepack --image no-ble` builds one image and keeps the others, for example to build the images in parallel CI jobs. `mikro fw prepack` checks that each image has the features it asks for and differs from the full image. `mikro fw pack` names the archive of each with its name as a suffix: `mikro-fw-acme-devboard-esp32c6+no-ble.tar.gz`.
+
+`mikro flash` flashes the full image. `mikro flash --features wifi` flashes the leanest image with the features listed (here `no-ble`), and `--features min` the leanest of all. From then on a reflash keeps the image the device runs, until `--features full` (`--force` and `--from` flash the full image). When no image has the features, the firmware lacks one of them altogether, and `mikro flash` says which.
+
 ## Multi-board packages
 
 A package can hold several boards, one entry each in `boards.config.ts`, keyed by the board's export:
@@ -225,14 +242,14 @@ export default defineBoards({
 
 ```json
 "exports": {
-  "./t-display": {"firmware": "./dist-fw/t-display/firmware.json"},
-  "./devkit-c6": {"firmware": "./dist-fw/devkit-c6/firmware.json"}
+  "./t-display": {"firmware": "./dist-fw/t-display/full/firmware.json"},
+  "./devkit-c6": {"firmware": "./dist-fw/devkit-c6/full/firmware.json"}
 }
 ```
 
 Each board's name is its export's specifier (`@acme/boards/t-display`) unless it sets `name`. A package has one board at `.` or boards at `./<board>`, not both. Name each export by its board: `mikro flash` can't list a `firmware` condition under a `./*` pattern.
 
-`mikro fw prepack` builds every board, each in `.mikro/build-fw-<board>`, and writes its image to `dist-fw/<board>/`. `mikro fw prepack --board t-display` builds one. The `prepack` script stays `npm run build && mikro fw prepack`.
+`mikro fw prepack` builds every board, each in `.mikro/build-fw-<board>`, and writes its image to `dist-fw/<board>/full/`. `mikro fw prepack --board t-display` builds one. The `prepack` script stays `npm run build && mikro fw prepack`.
 
 Variants of a board that need different builds, such as one with octal PSRAM, are boards of their own. The config is TypeScript, so they can share the rest:
 

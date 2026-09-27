@@ -104,6 +104,7 @@ export async function runAgentRepl<T extends {port?: string; recover?: boolean; 
       try {
         await flashFirmware({
           port: handles.devicePath,
+          deviceFeatures: err.features,
           onProgress: (m) => agentEmit({type: 'raw', text: m + '\n'}),
         })
       } catch (flashErr) {

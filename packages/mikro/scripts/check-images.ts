@@ -7,7 +7,7 @@ import {spawnSync} from 'node:child_process'
 import {readFileSync} from 'node:fs'
 import {join} from 'node:path'
 
-import {loadBoards} from '@mikrojs/firmware/boards'
+import {loadBoards, readFirmwareJson} from '@mikrojs/firmware/boards'
 
 if (process.env.MIKROJS_SKIP_PREBUILD_CHECK === '1') process.exit(0)
 
@@ -24,9 +24,14 @@ if (check.status !== 0) {
 const {version} = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as {
   version: string
 }
-const problems = loadBoards(packageDir)
-  .boards.filter((board) => board.version !== version)
-  .map((board) => `${board.name}: built with ${board.version}`)
+const problems: string[] = []
+for (const board of loadBoards(packageDir).boards) {
+  for (const image of [{name: 'full', dir: board.dir}, ...(board.images ?? [])]) {
+    const read = readFirmwareJson(join(image.dir, 'firmware.json'))
+    const built = read.ok ? read.value.version : read.message
+    if (built !== version) problems.push(`${board.name} ${image.name}: built with ${built}`)
+  }
+}
 
 if (problems.length > 0) {
   console.error(`mikro: refusing to publish ${version} with images of another version:`)

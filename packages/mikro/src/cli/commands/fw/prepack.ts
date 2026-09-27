@@ -5,6 +5,7 @@ import {
   type BoardImage,
   type BoardProblem,
   type ConfiguredBoard,
+  FULL_IMAGE,
   loadBoards,
 } from '@mikrojs/firmware/boards'
 import {findPackageRoot} from '@mikrojs/firmware/manifest'
@@ -19,7 +20,13 @@ import {boardProjectDir} from '../../lib/boards.js'
 import {BOARDS_CONFIG, loadBoardsConfig, selectBoards} from '../../lib/boardsConfig.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {UserError} from '../../lib/errorMessage.js'
-import {boardPackageProblems, configuredImageProblems, writeImage} from '../../lib/fwImage.js'
+import {
+  boardPackageProblems,
+  builtImageProblems,
+  configuredImageProblems,
+  writeBoardImage,
+  writeBoardImages,
+} from '../../lib/fwImage.js'
 import {buildBoard, failFw} from './shared.js'
 
 export const args = command(
@@ -29,6 +36,11 @@ export const args = command(
     board: optional(
       option('--board', string({metavar: 'BOARD'}), {
         description: message`Build only this board: its key in boards.config.ts (./t-display) or its name`,
+      }),
+    ),
+    image: optional(
+      option('--image', string({metavar: 'IMAGE'}), {
+        description: message`Build only this image of each board, full or one of its "images" (no-ble), and keep the others`,
       }),
     ),
   }),
@@ -65,6 +77,40 @@ export async function configuredPackage(
 }
 
 /**
+ * Build `image` of each of `boards` (`full`, or one of its `images`), write it
+ * where the config puts it, and check it. Undefined when a build failed (the
+ * process is exiting with its code).
+ */
+async function prepackImage(
+  packageDir: string,
+  boards: ConfiguredBoard[],
+  image: string,
+  commandName: string,
+  jsonOutput: boolean,
+): Promise<{name: string; chip: string; dir: string}[] | undefined> {
+  const written: {name: string; chip: string; dir: string}[] = []
+  for (const board of boards) {
+    const configured = board.images.find((i) => i.name === image)
+    if (image !== FULL_IMAGE && configured === undefined) {
+      throw new UserError(
+        `${board.name} has no ${image} image. Its images: ` +
+          [FULL_IMAGE, ...board.images.map((i) => i.name)].join(', '),
+      )
+    }
+    const buildDir = await buildBoard(packageDir, board, commandName, jsonOutput, configured)
+    if (buildDir === undefined) return undefined
+    const project = board.project ?? boardProjectDir(packageDir, board.key, configured?.name)
+    const dir = await writeBoardImage(board, image, buildDir, project)
+    written.push({name: board.name, chip: board.chip, dir})
+  }
+  const problems = boards.flatMap((board) => builtImageProblems(board, image))
+  if (problems.length > 0) {
+    throw new UserError(`The images in ${displayPath(packageDir)}:\n${problemLines(problems)}`)
+  }
+  return written
+}
+
+/**
  * Build `boards`, write each image where the config puts it, and check them.
  * Undefined when a build failed (the process is exiting with its code).
  */
@@ -77,9 +123,16 @@ export async function prepackBoards(
   for (const board of boards) {
     const buildDir = await buildBoard(packageDir, board, commandName, jsonOutput)
     if (buildDir === undefined) return undefined
-    await writeImage(
+    const imageBuilds: {name: string; buildDir: string}[] = []
+    for (const image of board.images) {
+      const imageBuild = await buildBoard(packageDir, board, commandName, jsonOutput, image)
+      if (imageBuild === undefined) return undefined
+      imageBuilds.push({name: image.name, buildDir: imageBuild})
+    }
+    await writeBoardImages(
+      board,
       buildDir,
-      board.imageDir,
+      imageBuilds,
       board.project ?? boardProjectDir(packageDir, board.key),
     )
   }
@@ -116,12 +169,11 @@ export async function run(config: Args): Promise<void> {
     const configured = await configuredPackage(process.cwd())
     if (configured === undefined) throw noBoardsConfig(process.cwd())
     const {packageDir, boards} = configured
-    const images = await prepackBoards(
-      packageDir,
-      selectBoards(boards, config.board),
-      'fw prepack',
-      jsonOutput,
-    )
+    const selected = selectBoards(boards, config.board)
+    const images =
+      config.image === undefined
+        ? await prepackBoards(packageDir, selected, 'fw prepack', jsonOutput)
+        : await prepackImage(packageDir, selected, config.image, 'fw prepack', jsonOutput)
     if (images === undefined) return
     if (jsonOutput) {
       agentResult('fw prepack', {

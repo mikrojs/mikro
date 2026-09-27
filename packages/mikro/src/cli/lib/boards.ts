@@ -3,7 +3,12 @@ import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
 import {chips} from '@mikrojs/firmware'
-import {type BoardImage, type BoardProblem, loadBoards} from '@mikrojs/firmware/boards'
+import {
+  type BoardImage,
+  type BoardProblem,
+  type ImageInfo,
+  loadBoards,
+} from '@mikrojs/firmware/boards'
 import {findPackageDir} from '@mikrojs/firmware/manifest'
 
 import {bundledBoardsDir, bundledImages} from './bundledImages.js'
@@ -27,24 +32,29 @@ export interface BoardInfo {
   /** Where `mikro fw prepack` builds the board, when that folder exists (a
    *  workspace, or the board author's own checkout). */
   buildDir?: string
+  /** The features of the full image, from its firmware.json. */
+  features?: string[]
+  /** The board's other images (`no-ble`), besides the full one in `dir`. */
+  images?: ImageInfo[]
 }
 
 /** The suffix of a board's folders in `.mikro/`: none for the board at `.`,
- *  `-t-display` for `./t-display`. */
-function boardSuffix(key: string): string {
-  return key === '.' ? '' : `-${key.replace(/^\.\//, '')}`
+ *  `-t-display` for `./t-display`, then `+no-ble` for one of its images. */
+function boardSuffix(key: string, image?: string): string {
+  return `${key === '.' ? '' : `-${key.replace(/^\.\//, '')}`}${image ? `+${image}` : ''}`
 }
 
 /** Where `mikro fw prepack` builds a board: `.mikro/build-fw` for the board at
- *  `.`, `.mikro/build-fw-t-display` for `./t-display`. */
-export function boardBuildDir(packageDir: string, key: string): string {
-  return path.join(packageDir, '.mikro', `build-fw${boardSuffix(key)}`)
+ *  `.`, `.mikro/build-fw-t-display` for `./t-display`, and
+ *  `.mikro/build-fw-t-display+no-ble` for one of its images. */
+export function boardBuildDir(packageDir: string, key: string, image?: string): string {
+  return path.join(packageDir, '.mikro', `build-fw${boardSuffix(key, image)}`)
 }
 
-/** The firmware project `mikro fw prepack` generates for a board: `.mikro/fw`,
- *  `.mikro/fw-t-display`. */
-export function boardProjectDir(packageDir: string, key: string): string {
-  return path.join(packageDir, '.mikro', `fw${boardSuffix(key)}`)
+/** The firmware project `mikro fw prepack` generates for a board or one of
+ *  its images: `.mikro/fw`, `.mikro/fw-t-display`, `.mikro/fw-t-display+no-ble`. */
+export function boardProjectDir(packageDir: string, key: string, image?: string): string {
+  return path.join(packageDir, '.mikro', `fw${boardSuffix(key, image)}`)
 }
 
 function fromImage(image: BoardImage, bundled?: boolean): BoardInfo {
@@ -55,6 +65,8 @@ function fromImage(image: BoardImage, bundled?: boolean): BoardInfo {
     description: image.description,
     specifier: image.specifier,
     dir: image.dir,
+    ...(image.features ? {features: image.features} : {}),
+    ...(image.images?.length ? {images: image.images} : {}),
     ...(bundled ? {bundled} : {}),
     ...(buildDir !== undefined && existsSync(buildDir) ? {buildDir} : {}),
   }

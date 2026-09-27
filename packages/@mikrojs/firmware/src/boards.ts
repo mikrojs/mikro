@@ -2,11 +2,13 @@
  * Board packages: prebuilt firmware images that a package declares with a
  * `firmware` condition on its exports, pointing at the image's firmware.json:
  *
- *   "./t-display": {"firmware": "./dist-fw/t-display/firmware.json", "default": "./dist/t-display/index.js"}
+ *   "./t-display": {"firmware": "./dist-fw/t-display/full/firmware.json", "default": "./dist/t-display/index.js"}
  *
  * The image folder holds what `mikro fw prepack` copies out of a build:
  * firmware.json (written by the mikrojs component's CMake), flasher_args.json
- * and the files it lists. A board names itself: the name in firmware.json is
+ * and the files it lists. When the image folder is `full/`, the board's other
+ * images (`no-ble`) sit in folders beside it, one image per folder, each with
+ * a firmware.json of its own. A board names itself: the name in firmware.json is
  * the name its firmware reports as sys.board.name. A `firmware` target counts
  * as a board only if its firmware.json parses, so another tool's `firmware`
  * condition is reported, not taken for a board.
@@ -16,10 +18,10 @@
  * The package's boards.config.ts says what `mikro fw prepack` builds; its
  * exports must match it (checkBoardsConfig). Apps never read the config.
  */
-import {existsSync, readFileSync} from 'node:fs'
-import {dirname, isAbsolute, join, relative, resolve, sep} from 'node:path'
+import {existsSync, readdirSync, readFileSync} from 'node:fs'
+import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path'
 
-import {enumOf, object, optional, string, validate} from '@mikrojs/schema'
+import {array, enumOf, object, optional, string, validate} from '@mikrojs/schema'
 
 import {chips} from './index.ts'
 
@@ -38,6 +40,20 @@ export interface BoardImage {
   packageName: string
   packageDir: string
   /** The image folder: firmware.json, flasher_args.json and the files it lists. */
+  dir: string
+  /** The features the image has (`wifi`, `ble`, …); absent in images from
+   *  before firmware.json listed them. */
+  features?: string[]
+  /** The board's other images, besides this full one: the folders beside
+   *  `dir` (when it is `full/`) whose firmware.json names the same board. */
+  images?: ImageInfo[]
+}
+
+/** One of a board's images besides the full one. */
+export interface ImageInfo {
+  /** `no-ble`, `no-ble+no-wifi`: what it leaves out or adds. */
+  name: string
+  features: string[]
   dir: string
 }
 
@@ -69,7 +85,14 @@ const FirmwareJson = object({
   description: optional(string()),
   chip: enumOf(chips.map((chip) => ({value: chip}))),
   version: string(),
+  features: optional(array(string())),
 })
+
+/** An image name: what it leaves out (`no-ble`) or adds, joined with `+`. */
+const IMAGE_NAME_RE = /^(no-)?[a-z0-9]+(\+(no-)?[a-z0-9]+)*$/
+
+/** The full image's folder in the board's, and its name for `--features`. */
+export const FULL_IMAGE = 'full'
 
 interface PackageJson {
   name?: string
@@ -100,11 +123,13 @@ export function archiveName(name: string | undefined, chip: string): string {
     : `mikro-fw-${fileName}-${chip}`
 }
 
-/** Whether an archive name (without `.tar.gz`) is for `chip`, by the place
- *  archiveName puts the chip. */
+/** Whether an archive name (without `.tar.gz`) is a full image for `chip`, by
+ *  the place archiveName puts the chip. A board's other images (`+no-ble`)
+ *  are only ever asked for by name. */
 export function isArchiveForChip(archive: string, chip: string): boolean {
   return (
     archive.startsWith('mikro-fw-') &&
+    !archive.includes('+') &&
     (archive.endsWith(`-${chip}`) || archive === `mikro-fw-${chip}-generic`)
   )
 }
@@ -168,10 +193,11 @@ export function firmwareExports(packageDir: string): {
 }
 
 /** What a firmware.json says, or why it can't describe a board. */
-export function readFirmwareJson(
-  file: string,
-):
-  | {ok: true; value: Pick<BoardImage, 'name' | 'description' | 'chip' | 'version'>}
+export function readFirmwareJson(file: string):
+  | {
+      ok: true
+      value: Pick<BoardImage, 'name' | 'description' | 'chip' | 'version' | 'features'>
+    }
   | {ok: false; message: string} {
   if (!existsSync(file)) return {ok: false, message: `not built: ${file} does not exist`}
   let json: unknown
@@ -185,7 +211,13 @@ export function readFirmwareJson(
     const {message, path} = invalid.error
     return {ok: false, message: `${file}${path ? ` (${path.slice(1)})` : ''}: ${message}`}
   }
-  const value = json as {name: string; description?: string; chip: string; version: string}
+  const value = json as {
+    name: string
+    description?: string
+    chip: string
+    version: string
+    features?: string[]
+  }
   if (!BOARD_NAME_RE.test(value.name) || value.name.length > MAX_BOARD_NAME_LENGTH) {
     return {
       ok: false,
@@ -199,8 +231,30 @@ export function readFirmwareJson(
       description: value.description,
       chip: value.chip,
       version: value.version,
+      features: value.features,
     },
   }
+}
+
+/** A board's other images: the folders beside its full image's `full/`
+ *  folder, named like an image, that hold an image of the same board. */
+function siblingImages(dir: string, name: string, chip: string): ImageInfo[] | undefined {
+  if (basename(dir) !== FULL_IMAGE) return undefined
+  const boardDir = dirname(dir)
+  const images: ImageInfo[] = []
+  for (const entry of readdirSync(boardDir, {withFileTypes: true})) {
+    if (!entry.isDirectory() || entry.name === FULL_IMAGE || !IMAGE_NAME_RE.test(entry.name)) {
+      continue
+    }
+    const read = readFirmwareJson(join(boardDir, entry.name, 'firmware.json'))
+    if (!read.ok || read.value.name !== name || read.value.chip !== chip) continue
+    images.push({
+      name: entry.name,
+      features: read.value.features ?? [],
+      dir: join(boardDir, entry.name),
+    })
+  }
+  return images.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** The boards a package declares, and the `firmware` exports that aren't one
@@ -213,7 +267,9 @@ export function loadBoards(packageDir: string): {boards: BoardImage[]; problems:
   for (const {key, specifier, file} of entries) {
     const read = readFirmwareJson(file)
     if (read.ok) {
-      boards.push({...read.value, specifier, key, packageName, packageDir, dir: dirname(file)})
+      const dir = dirname(file)
+      const images = siblingImages(dir, read.value.name, read.value.chip)
+      boards.push({...read.value, images, specifier, key, packageName, packageDir, dir})
     } else {
       problems.push({specifier, message: read.message})
     }
@@ -264,27 +320,26 @@ export function checkBoardPackage(packageDir: string): BoardProblem[] {
   }
 
   for (const board of boards) {
-    const flasherArgs = join(board.dir, 'flasher_args.json')
-    if (!existsSync(flasherArgs)) {
-      problems.push({specifier: board.specifier, message: `${flasherArgs} does not exist`})
-      continue
-    }
-    let flash: {flash_files?: Record<string, string>}
-    try {
-      flash = JSON.parse(readFileSync(flasherArgs, 'utf8')) as typeof flash
-    } catch (e) {
-      problems.push({
-        specifier: board.specifier,
-        message: `${flasherArgs} is not valid JSON: ${(e as Error).message}`,
-      })
-      continue
-    }
-    for (const file of Object.values(flash.flash_files ?? {})) {
-      if (!existsSync(join(board.dir, file))) {
+    for (const dir of [board.dir, ...(board.images ?? []).map((image) => image.dir)]) {
+      const flasherArgs = join(dir, 'flasher_args.json')
+      if (!existsSync(flasherArgs)) {
+        problems.push({specifier: board.specifier, message: `${flasherArgs} does not exist`})
+        continue
+      }
+      let flash: {flash_files?: Record<string, string>}
+      try {
+        flash = JSON.parse(readFileSync(flasherArgs, 'utf8')) as typeof flash
+      } catch (e) {
         problems.push({
           specifier: board.specifier,
-          message: `${join(board.dir, file)} does not exist`,
+          message: `${flasherArgs} is not valid JSON: ${(e as Error).message}`,
         })
+        continue
+      }
+      for (const file of Object.values(flash.flash_files ?? {})) {
+        if (!existsSync(join(dir, file))) {
+          problems.push({specifier: board.specifier, message: `${join(dir, file)} does not exist`})
+        }
       }
     }
   }
@@ -321,6 +376,26 @@ export function checkBoardPackage(packageDir: string): BoardProblem[] {
 export const CHIPS = ['esp32', 'esp32c3', 'esp32c5', 'esp32c6', 'esp32s3'] as const
 export type Chip = (typeof CHIPS)[number]
 
+/** The features an image can leave out or add, and the ESP-IDF setting that
+ *  switches each. */
+const FEATURE_SETTINGS = {ble: 'CONFIG_BT_ENABLED', wifi: 'CONFIG_MIKROJS_WIFI'} as const
+
+/** A feature an image can leave out or add. */
+export type Feature = keyof typeof FEATURE_SETTINGS
+
+/** An image of a board besides the full one: features switched off (`false`)
+ *  or on (`true`) compared with the full image. */
+export type ImageFeatures = Partial<Record<Feature, boolean>>
+
+/** An image's name: `{ble: false}` is `no-ble`, `{ble: false, wifi: false}`
+ *  is `no-ble+no-wifi`, a feature switched on is its own name. */
+export function imageName(features: ImageFeatures): string {
+  return Object.entries(features)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([feature, on]) => (on ? feature : `no-${feature}`))
+    .join('+')
+}
+
 /** A board in boards.config.ts. Paths are relative to the package. */
 export interface BoardConfig {
   /** The chip the board is built around. */
@@ -341,13 +416,17 @@ export interface BoardConfig {
    *  the one `mikro fw prepack` generates. It brings its own settings,
    *  partition table and native modules. */
   project?: string
+  /** Images to build besides the full one, each with features switched off
+   *  or on: `[{ble: false}, {ble: false, wifi: false}]`. */
+  images?: readonly ImageFeatures[]
 }
 
 /** boards.config.ts: the boards a package builds, keyed by the export that
  *  declares each, `.` or `./<board>`. */
 export interface BoardsConfig {
-  /** Where the images go, relative to the package: `<dist>/` for the board at
-   *  `.`, `<dist>/<board>/` for the others. Default: `dist-fw`. */
+  /** Where the images go, relative to the package: `<dist>/full/` for the
+   *  board at `.`, `<dist>/<board>/full/` for the others, and each other image
+   *  in a folder beside `full/`. Default: `dist-fw`. */
   dist?: string
   boards: Record<string, BoardConfig>
 }
@@ -365,10 +444,23 @@ export interface ConfiguredBoard {
   partitions?: string
   nativeModules: string[]
   project?: string
-  /** The `firmware` target the board's export must have: `./dist-fw/t-display/firmware.json`. */
+  /** The `firmware` target the board's export must have: `./dist-fw/t-display/full/firmware.json`. */
   target: string
-  /** The image folder. */
-  imageDir: string
+  /** The board's folder: the full image in `full/`, the others beside it.
+   *  `mikro fw prepack` replaces it whole. */
+  boardDir: string
+  /** The images besides the full one. */
+  images: ConfiguredImage[]
+}
+
+/** An image from `images` in boards.config.ts. */
+export interface ConfiguredImage {
+  /** `no-ble`: the image's folder in the board's, and its name everywhere else. */
+  name: string
+  features: ImageFeatures
+  /** The sdkconfig lines that switch its features. */
+  settings: string[]
+  dir: string
 }
 
 const DEFAULT_DIST = 'dist-fw'
@@ -380,6 +472,7 @@ const BOARD_KEYS = [
   'partitions',
   'nativeModules',
   'project',
+  'images',
 ]
 /** `./<board>`: one segment, in the form of a board name's last part. */
 const SUBPATH_RE = /^\.\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/
@@ -459,7 +552,7 @@ export function checkBoardsConfig(
     for (const field of Object.keys(board)) {
       if (!BOARD_KEYS.includes(field)) problem(`unknown field "${field}"`)
     }
-    const {chip, name, description, sdkconfig, partitions, nativeModules, project} = board
+    const {chip, name, description, sdkconfig, partitions, nativeModules, project, images} = board
     if (typeof chip !== 'string' || !chips.includes(chip)) {
       problem(`"chip" must be one of ${chips.join(', ')}`)
       continue
@@ -487,6 +580,43 @@ export function checkBoardsConfig(
           'that project; leave out "sdkconfig", "partitions" and "nativeModules"',
       )
     }
+    const configuredImages: ConfiguredImage[] = []
+    if (images !== undefined) {
+      if (!Array.isArray(images)) problem('"images" must be a list, like [{ble: false}]')
+      else if (typeof project === 'string') {
+        problem('a board with "project" builds one image; leave out "images"')
+      } else {
+        for (const features of images as unknown[]) {
+          const entries = isObject(features) ? Object.entries(features) : []
+          if (
+            entries.length === 0 ||
+            !entries.every(
+              ([f, on]) => Object.hasOwn(FEATURE_SETTINGS, f) && typeof on === 'boolean',
+            )
+          ) {
+            problem(
+              `each image switches features off or on, like {ble: false}; the features are ` +
+                `${Object.keys(FEATURE_SETTINGS).join(', ')}`,
+            )
+            continue
+          }
+          const imageFeatures = features as ImageFeatures
+          const image = imageName(imageFeatures)
+          if (configuredImages.some((other) => other.name === image)) {
+            problem(`two images are ${image}`)
+            continue
+          }
+          configuredImages.push({
+            name: image,
+            features: imageFeatures,
+            settings: entries.map(
+              ([f, on]) => `${FEATURE_SETTINGS[f as Feature]}=${on === true ? 'y' : 'n'}`,
+            ),
+            dir: '',
+          })
+        }
+      }
+    }
     const files = [
       ...(typeof sdkconfig === 'string' ? [sdkconfig] : isStringArray(sdkconfig) ? sdkconfig : []),
       ...(typeof partitions === 'string' ? [partitions] : []),
@@ -503,7 +633,8 @@ export function checkBoardsConfig(
           (typeof name === 'string' ? '' : '; set "name"'),
       )
     }
-    const target = `./${distPath}/${key === '.' ? '' : `${sub}/`}firmware.json`
+    const target = `./${distPath}/${key === '.' ? '' : `${sub}/`}${FULL_IMAGE}/firmware.json`
+    const boardDir = key === '.' ? distDir : join(distDir, sub)
     boards.push({
       key,
       specifier,
@@ -520,7 +651,8 @@ export function checkBoardsConfig(
       nativeModules: isStringArray(nativeModules) ? nativeModules : [],
       project: typeof project === 'string' ? resolve(packageDir, project) : undefined,
       target,
-      imageDir: dirname(resolve(packageDir, target)),
+      boardDir,
+      images: configuredImages.map((image) => ({...image, dir: join(boardDir, image.name)})),
     })
   }
 

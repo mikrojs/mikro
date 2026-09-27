@@ -220,6 +220,7 @@ set_property(SOURCE "${MIK_SRC_DIR}/mik_sys.cpp" APPEND PROPERTY COMPILE_DEFINIT
 
 # firmware.json next to flasher_args.json: what the image is, for the tools
 # that read it without a device (mikro flash, mikro fw pack and prepack).
+# Written below, once the feature list is known.
 set(_MIK_FW_JSON "{")
 if(NOT _MIK_NAME STREQUAL "")
     string(APPEND _MIK_FW_JSON "\"name\": \"${_MIK_NAME}\", ")
@@ -231,8 +232,7 @@ if(NOT _MIK_DESCRIPTION STREQUAL "")
     string(REGEX REPLACE "[\r\n\t]+" " " _MIK_DESCRIPTION "${_MIK_DESCRIPTION}")
     string(APPEND _MIK_FW_JSON "\"description\": \"${_MIK_DESCRIPTION}\", ")
 endif()
-string(APPEND _MIK_FW_JSON "\"chip\": \"${IDF_TARGET}\", \"version\": \"${_MIK_VERSION}\"}\n")
-file(WRITE "${CMAKE_BINARY_DIR}/firmware.json" "${_MIK_FW_JSON}")
+string(APPEND _MIK_FW_JSON "\"chip\": \"${IDF_TARGET}\", \"version\": \"${_MIK_VERSION}\", ")
 
 # ── Module lists derived from runtime/modules.json ───────────────────
 # Feature gating for the derived lists: ble-gated modules compile only when
@@ -261,6 +261,18 @@ endif()
 string(JSON _MIK_FEATURES GET "${_MIK_LISTS}" features)
 string(JSON _MIK_MODULES GET "${_MIK_LISTS}" native)
 string(JSON _MIK_BYTECODE_MODULES GET "${_MIK_LISTS}" bytecode)
+
+# The features in firmware.json too, so the tools can tell a board's images
+# apart and match the one a device runs.
+set(_MIK_FEATURES_JSON "")
+foreach(_mik_feature IN LISTS _MIK_FEATURES)
+    if(NOT _MIK_FEATURES_JSON STREQUAL "")
+        string(APPEND _MIK_FEATURES_JSON ", ")
+    endif()
+    string(APPEND _MIK_FEATURES_JSON "\"${_mik_feature}\"")
+endforeach()
+string(APPEND _MIK_FW_JSON "\"features\": [${_MIK_FEATURES_JSON}]}\n")
+file(WRITE "${CMAKE_BINARY_DIR}/firmware.json" "${_MIK_FW_JSON}")
 
 # Firmware feature list (e.g. "wifi,i2s,ble"), reported in MSG_READY so the
 # host knows which feature-gated builtins this firmware carries.

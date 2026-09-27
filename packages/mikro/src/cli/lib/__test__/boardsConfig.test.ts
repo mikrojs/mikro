@@ -14,7 +14,7 @@ import * as pathlib from 'node:path'
 import type {ConfiguredBoard} from '@mikrojs/firmware/boards'
 import {afterEach, beforeEach, describe, expect, it} from 'vitest'
 
-import {loadBoardsConfig, selectBoards, writeBoardProject} from '../boardsConfig.js'
+import {boardBuildArgs, loadBoardsConfig, selectBoards, writeBoardProject} from '../boardsConfig.js'
 
 let dir: string
 
@@ -35,7 +35,10 @@ describe('loadBoardsConfig', () => {
   it('loads boards.config.ts with defineBoards and relative imports', async () => {
     write(
       pathlib.join(dir, 'package.json'),
-      JSON.stringify({name: 'devboard', exports: {'.': {firmware: './dist-fw/firmware.json'}}}),
+      JSON.stringify({
+        name: 'devboard',
+        exports: {'.': {firmware: './dist-fw/full/firmware.json'}},
+      }),
     )
     write(pathlib.join(dir, 'chip.ts'), `export const chip: string = 'esp32c6'\n`)
     write(
@@ -67,8 +70,9 @@ function board(fields: Partial<ConfiguredBoard> = {}): ConfiguredBoard {
     chip: 'esp32',
     sdkconfig: [],
     nativeModules: [],
-    target: './dist-fw/t-display/firmware.json',
-    imageDir: pathlib.join(dir, 'dist-fw', 't-display'),
+    target: './dist-fw/t-display/full/firmware.json',
+    boardDir: pathlib.join(dir, 'dist-fw', 't-display'),
+    images: [],
     ...fields,
   }
 }
@@ -111,13 +115,13 @@ describe('writeBoardProject', () => {
   })
 
   it("drops sdkconfig when @mikrojs/firmware's own defaults change", async () => {
-    const project = await writeBoardProject(dir, board(), 'CONFIG_X=y')
+    const project = await writeBoardProject(dir, board(), undefined, 'CONFIG_X=y')
     const sdkconfig = pathlib.join(project, 'sdkconfig')
     write(sdkconfig, 'CONFIG_IDF_TARGET="esp32"\n')
 
-    await writeBoardProject(dir, board(), 'CONFIG_X=y')
+    await writeBoardProject(dir, board(), undefined, 'CONFIG_X=y')
     expect(existsSync(sdkconfig)).toBe(true)
-    await writeBoardProject(dir, board(), 'CONFIG_X=n')
+    await writeBoardProject(dir, board(), undefined, 'CONFIG_X=n')
     expect(existsSync(sdkconfig)).toBe(false)
   })
 
@@ -136,6 +140,26 @@ describe('writeBoardProject', () => {
     write(pathlib.join(dir, 'a.defaults'), 'CONFIG_A=n')
     await writeBoardProject(dir, withA)
     expect(existsSync(sdkconfig)).toBe(false)
+  })
+
+  it("builds an image in a project of its own, its settings after the board's", async () => {
+    write(pathlib.join(dir, 'a.defaults'), 'CONFIG_A=y')
+    const withA = board({sdkconfig: [pathlib.join(dir, 'a.defaults')]})
+    const image = {
+      name: 'no-ble',
+      features: {ble: false},
+      settings: ['CONFIG_BT_ENABLED=n'],
+      dir: pathlib.join(dir, 'dist-fw', 't-display', 'no-ble'),
+    }
+
+    const project = await writeBoardProject(dir, withA, image)
+
+    expect(project).toBe(pathlib.join(dir, '.mikro', 'fw-t-display+no-ble'))
+    const defaults = readFileSync(pathlib.join(project, 'sdkconfig.defaults'), 'utf8')
+    expect(defaults.indexOf('CONFIG_A=y')).toBeLessThan(defaults.indexOf('CONFIG_BT_ENABLED=n'))
+    expect(boardBuildArgs(dir, withA, project, image)).toContain(
+      pathlib.join(dir, '.mikro', 'build-fw-t-display+no-ble'),
+    )
   })
 
   it('starts over for a new chip: no sdkconfig, no build folder', async () => {

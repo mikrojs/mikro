@@ -109,9 +109,12 @@ export class FirmwareIncompatibleError extends UserError {
    *  when this is set: flashing the bundled build over custom firmware
    *  silently reverts its sdkconfig and drops its native modules. */
   readonly customFw: string | undefined
-  constructor(message: string, customFw?: string) {
+  /** The features the device's firmware reports, so the reflash keeps its image. */
+  readonly features: string[] | undefined
+  constructor(message: string, customFw?: string, features?: string[]) {
     super(message)
     this.customFw = customFw
+    this.features = features
   }
 }
 

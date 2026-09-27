@@ -153,6 +153,9 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(needs.firmware-setup.outputs.chips) }}
+        # The generic boards' images, as in packages/mikro/boards.config.ts;
+        # `fw check` below fails on one the config has and this list lacks.
+        image: [full, no-ble, no-ble+no-wifi]
     runs-on: ubuntu-24.04
     container: espressif/idf:v6.1
     steps:
@@ -163,8 +166,9 @@ jobs:
       - uses: ./.github/actions/firmware-build
         with:
           target: ${{ matrix.target }}
+          image: ${{ matrix.image }}
           pack-format: unpacked
-          artifact-name: firmware-${{ matrix.target }}-generic
+          artifact-name: firmware-${{ matrix.target }}-generic${{ matrix.image != 'full' && format('+{0}', matrix.image) || '' }}
           # Apply the planned version so sys.version embedded in the firmware
           # matches what we publish to npm.
           version: ${{ needs.plan.outputs.version }}
@@ -251,12 +255,19 @@ jobs:
           pattern: firmware-*
           merge-multiple: false
 
+      # Each artifact holds one image in a folder of its name
+      # (firmware-esp32c6-generic+no-ble/no-ble/); put the images of a board
+      # side by side in its folder (esp32c6-generic/no-ble/).
       - name: Normalize firmware layout
         run: |
           cd packages/mikro/dist-fw
           for dir in firmware-*; do
             if [ -d "$dir" ]; then
-              mv "$dir" "${dir#firmware-}"
+              board="${dir#firmware-}"
+              board="${board%%+*}"
+              mkdir -p "$board"
+              mv "$dir"/* "$board"/
+              rmdir "$dir"
             fi
           done
           find . -type f | sort

@@ -666,7 +666,7 @@ export function connectRepl(
             ? formatCustomIncompatibleError(compat, customFw, pm)
             : formatIncompatibleError(compat, pm)
         if (compatPolicy === 'enforce') {
-          throw new FirmwareIncompatibleError(incompatible, customFw)
+          throw new FirmwareIncompatibleError(incompatible, customFw, event.features)
         }
         // best-effort: warn once and proceed. report: stay silent (the
         // caller renders its own UI from the attached advisory).

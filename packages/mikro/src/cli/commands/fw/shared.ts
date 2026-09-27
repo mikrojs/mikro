@@ -1,4 +1,4 @@
-import type {ConfiguredBoard} from '@mikrojs/firmware/boards'
+import type {ConfiguredBoard, ConfiguredImage} from '@mikrojs/firmware/boards'
 
 import {agentError} from '../../lib/agent.js'
 import {boardBuildDir} from '../../lib/boards.js'
@@ -29,28 +29,31 @@ export function buildFirmware(
   return buildDir
 }
 
-/** Build a board from boards.config.ts, from the firmware project generated
- *  for it or its own, and return its build folder; undefined when idf.py
- *  failed and the process is exiting with its code. */
+/** Build a board from boards.config.ts, or one of its images, from the
+ *  firmware project generated for it (or the board's own), and return its
+ *  build folder; undefined when idf.py failed and the process is exiting with
+ *  its code. */
 export async function buildBoard(
   packageDir: string,
   board: ConfiguredBoard,
   command: string,
   jsonOutput: boolean,
+  image?: ConfiguredImage,
 ): Promise<string | undefined> {
   const projectDir =
     board.project ??
-    (await writeBoardProject(packageDir, board, firmwareDefaults(packageDir, board.chip)))
+    (await writeBoardProject(packageDir, board, image, firmwareDefaults(packageDir, board.chip)))
   const code = runIdf(
-    idfArgs(projectDir, boardBuildArgs(packageDir, board, projectDir)),
+    idfArgs(projectDir, boardBuildArgs(packageDir, board, projectDir, image)),
     jsonOutput ? ['inherit', 2, 2] : 'inherit',
   )
   if (code !== 0) {
-    if (jsonOutput) agentError(command, `idf.py build of ${board.name} exited with code ${code}`)
+    const what = image ? `${board.name}+${image.name}` : board.name
+    if (jsonOutput) agentError(command, `idf.py build of ${what} exited with code ${code}`)
     process.exit(code)
     return undefined
   }
-  return boardBuildDir(packageDir, board.key)
+  return boardBuildDir(packageDir, board.key, image?.name)
 }
 
 /** Report a failed `mikro fw` command and exit with 1. */
