@@ -37,7 +37,6 @@ set(MIKROJS_CORE_SOURCES
     src/fs.cpp
     src/mem.cpp
     src/utils.cpp
-    src/eval_bytecode.cpp
     src/mik_inspect.cpp
     src/mik_stdio.cpp
     src/mik_text_encoding.cpp
@@ -222,7 +221,6 @@ if(BUILD_TESTING)
         test/fs_test.cpp
         test/console_stdio_test.cpp
         test/cbor_js_test.cpp
-        test/eval_bytecode_test.cpp
         test/result_utils_test.cpp
         test/modules_fs_test.cpp
         test/sys_test.cpp

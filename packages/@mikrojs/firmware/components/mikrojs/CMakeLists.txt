@@ -56,7 +56,6 @@ idf_component_register(
     # Standalone library portable sources
     "${MIK_SRC_DIR}/cutils_compat.c"
     "${MIK_SRC_DIR}/builtins.cpp"
-    "${MIK_SRC_DIR}/eval_bytecode.cpp"
     "${MIK_SRC_DIR}/mik_abort.cpp"
     "${MIK_SRC_DIR}/mik_http_client.cpp"
     "${MIK_SRC_DIR}/mik_wifi_client.cpp"

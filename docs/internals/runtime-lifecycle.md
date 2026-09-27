@@ -17,7 +17,6 @@ struct MIKRuntime {
     MIKConfig config;
     JSRuntime* rt;              // QuickJS runtime
     JSContext* ctx;             // QuickJS context
-    bool is_worker;
     bool freeing;
     bool stop_requested;
 
@@ -28,7 +27,6 @@ struct MIKRuntime {
     MIKTimerRegistry* timers;   // Timer scheduling
 
     // Module registries
-    std::vector<MIKNativeModuleEntry> native_modules;
     std::vector<MIKLoopConsumerEntry> loop_consumers;
     std::unordered_map<std::string, std::string> virtual_modules;
 

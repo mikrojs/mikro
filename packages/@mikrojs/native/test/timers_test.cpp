@@ -246,6 +246,22 @@ TEST_CASE_FIXTURE(TimerFixture, "more than MIK_MAX_DUE_TIMERS due timers drain a
     CHECK(global_int("__count") == 20);
 }
 
+TEST_CASE_FIXTURE(TimerFixture, "intervals past MIK_MAX_DUE_TIMERS keep their deadline" *
+                                    doctest::test_suite("timers")) {
+    eval("for (let i = 0; i < 17; i++) setInterval(() => {}, 100)\n");
+    REQUIRE(rt->timers->entries.size() == 17);
+    advance_ms(100);
+    CHECK(MIK_Timer_CountDue(rt->timers, g_now_us) == 17);
+    MIK_Loop(rt); /* runs the first 16 and advances only their deadlines */
+    CHECK(MIK_Timer_CountDue(rt->timers, g_now_us) == 1);
+    CHECK(rt->timers->entries[16].next_deadline <= g_now_us);
+    for (size_t i = 0; i < MIK_MAX_DUE_TIMERS; i++) {
+        CHECK(rt->timers->entries[i].next_deadline > g_now_us);
+    }
+    MIK_Loop(rt); /* the 17th runs now, at its original deadline */
+    CHECK(MIK_Timer_CountDue(rt->timers, g_now_us) == 0);
+}
+
 namespace {
 
 static std::string g_timer_error;
