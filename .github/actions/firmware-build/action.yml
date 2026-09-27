@@ -72,6 +72,10 @@ runs:
         ccache --zero-stats
         ccache --set-config=max_size=500M
         ccache --set-config=cache_dir=$HOME/.cache/ccache
+        # ESP-IDF compiles with -specs=<build>/specs/picolibc.specs, copied at
+        # configure time. ccache hashes a specs file by mtime unless told to
+        # hash content, so a fresh build dir missed every object.
+        ccache --set-config=compiler_check=content
 
     # `mikro idf` tells CMake where @mikrojs/firmware is. MIKROJS_WORKSPACE runs
     # the CLI from its TypeScript source, as in a checkout, so it needs no build.
@@ -84,9 +88,13 @@ runs:
       run: |
         . $IDF_PATH/export.sh
         rm -f sdkconfig
+        start=$(date +%s)
         pnpm mikro idf -B build set-target $TARGET
         pnpm mikro idf -B build build
         ccache --show-stats
+        # Drop the entries this build did not use, so the saved cache stays
+        # the size of one build instead of growing towards max_size.
+        ccache --evict-older-than "$(( $(date +%s) - start + 1 ))s"
 
     - shell: bash
       working-directory: esp32
