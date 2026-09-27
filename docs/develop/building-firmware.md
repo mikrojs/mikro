@@ -19,9 +19,9 @@ eim install -i v6.1 -t all -n true
 
 The commands below use [`mikro idf`](/cli#mikro-idf), which runs ESP-IDF's `idf.py` through `eim run` when ESP-IDF is not active in the shell, so no manual activation is needed.
 
-## Building generic firmware
+## Building the firmware for development
 
-Generic firmware includes the core runtime without any board-specific configuration:
+`esp32/` builds the core runtime without any board-specific configuration:
 
 ```sh
 cd esp32
@@ -31,16 +31,19 @@ pn mikro idf build flash monitor
 
 Replace `esp32c6` with your chip. Press `Ctrl+]` to exit the serial monitor.
 
+The build reports its name as `@mikrojs/firmware-dev`, so the CLI treats it as custom firmware: it doesn't replace it with the generic image on its own, and `mikro flash --force` puts the generic image back.
+
 ## Building firmware for a board
 
-A [board package](./creating-boards) builds its firmware in its own firmware project, not in `esp32/`: a `CMakeLists.txt` in the package, whose `MIKROJS_NATIVE_MODULES` and `sdkconfig.defaults` hold what the board needs. The firmware takes the package's name. In the board's folder:
+A [board package](./creating-boards) builds its firmware from its `boards.config.ts`, not in `esp32/`: the config holds each board's chip, settings and native modules. In the package:
 
 ```sh
-pn mikro idf set-target esp32s3
 pn mikro fw prepack
 ```
 
-`mikro fw prepack` builds the firmware and writes the image into the folder that the package's `firmware` export points at. An app that depends on the package flashes that image with `mikro flash`.
+`mikro fw prepack` builds every board in the config and writes each image into the folder that the board's `firmware` export points at. An app that depends on the package flashes that image with `mikro flash`.
+
+The generic images ship with `mikro`, which is a board package too, built the same way: `pn mikro fw prepack --board esp32c6-generic` in `packages/mikro` builds the one for the C6 into its `dist-fw/`.
 
 ## Running on-device tests
 

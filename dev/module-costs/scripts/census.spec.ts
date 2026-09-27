@@ -26,8 +26,12 @@ function censusFile(specifier: string): string {
 }
 
 const pkg = JSON.parse(readFileSync(pathlib.join(root, 'packages/mikro/package.json'), 'utf-8'))
+// The generic boards are exports with only a `firmware` condition: images, not modules.
+const isBoard = (entry: unknown) =>
+  typeof entry === 'object' && entry !== null && Object.keys(entry).join() === 'firmware'
 const specifiers = Object.keys(pkg.exports).filter(
-  (k) => k !== '.' && !NOT_CENSUSED.has(k) && !k.startsWith('./tsconfig/'),
+  (k) =>
+    k !== '.' && !NOT_CENSUSED.has(k) && !k.startsWith('./tsconfig/') && !isBoard(pkg.exports[k]),
 )
 
 test('every public builtin has a census file', () => {

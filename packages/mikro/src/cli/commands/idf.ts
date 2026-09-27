@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 import {spawnSync, type SpawnSyncReturns, type StdioOptions} from 'node:child_process'
-import {existsSync} from 'node:fs'
+import {existsSync, readFileSync} from 'node:fs'
 import * as pathlib from 'node:path'
 import {fileURLToPath} from 'node:url'
 
@@ -90,6 +90,18 @@ function firmwareCmakeDir(projectDir: string): string {
     )
   }
   return pathlib.dirname(config)
+}
+
+/** The settings @mikrojs/firmware applies to a `chip` build before a
+ *  project's own (its sdkconfig.defaults and sdkconfig.defaults.<chip>), from
+ *  the package the firmware project in `projectDir` resolves. */
+export function firmwareDefaults(projectDir: string, chip: string): string {
+  const dir = firmwareCmakeDir(projectDir)
+  return ['sdkconfig.defaults', `sdkconfig.defaults.${chip}`]
+    .map((name) => pathlib.join(dir, name))
+    .filter((file) => existsSync(file))
+    .map((file) => readFileSync(file, 'utf8'))
+    .join('\n')
 }
 
 /** `args` for idf.py with what a firmware build needs in front: where CMake

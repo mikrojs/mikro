@@ -19,5 +19,5 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
   const {sub} = config
   if (sub.subcommand === 'pack') await packSub.run(sub)
   else if (sub.subcommand === 'prepack') await prepackSub.run(sub)
-  else checkSub.run(sub)
+  else await checkSub.run(sub)
 }

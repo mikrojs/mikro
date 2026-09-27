@@ -30,26 +30,24 @@ vi.mock('../firmware.js', async (importOriginal) => ({
 
 // The bundled esp32c6 image, whether or not the workspace has built one.
 const bundled = vi.hoisted(() => ({dir: ''}))
-vi.mock('@mikrojs/firmware/boards', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@mikrojs/firmware/boards')>()
-  return {
-    ...actual,
-    genericBoards: () => ({
-      boards: [
-        {
-          name: 'esp32c6-generic',
-          chip: 'esp32c6',
-          version: '0.21.0',
-          specifier: '@mikrojs/firmware/esp32c6-generic',
-          packageName: '@mikrojs/firmware',
-          packageDir: bundled.dir,
-          dir: bundled.dir,
-        },
-      ],
-      problems: [],
-    }),
-  }
-})
+vi.mock('../bundledImages.js', () => ({
+  bundledBoardsDir: () => bundled.dir,
+  bundledImages: () => ({
+    boards: [
+      {
+        name: 'esp32c6-generic',
+        chip: 'esp32c6',
+        version: '0.21.0',
+        specifier: 'mikro/esp32c6-generic',
+        key: './esp32c6-generic',
+        packageName: 'mikro',
+        packageDir: bundled.dir,
+        dir: bundled.dir,
+      },
+    ],
+    problems: [],
+  }),
+}))
 
 // The app binary is named after the firmware project's project(), not mikrojs.bin
 const FLASHER_ARGS = JSON.stringify({
@@ -179,13 +177,12 @@ describe('resolveFlashPlan', () => {
   })
 
   it("warns when a workspace board's image is older than its last build", async () => {
-    // The board package is in the workspace, with its firmware project
+    // The board package is in the workspace, with the build `mikro fw prepack` left
     const pkg = pathlib.join(tempDir, 'boards/ring')
     write(
       pathlib.join(pkg, 'package.json'),
       JSON.stringify({name: 'ring', exports: {'.': {firmware: './dist-fw/firmware.json'}}}),
     )
-    write(pathlib.join(pkg, 'CMakeLists.txt'), '')
     writeImage(pathlib.join(pkg, 'dist-fw'), 'ring')
     write(
       pathlib.join(tempDir, 'package.json'),
@@ -200,7 +197,7 @@ describe('resolveFlashPlan', () => {
 
     const plan = plan_(await resolveFlashPlan({port: '/dev/null'}))
     expect(plan.warnings).toEqual([
-      expect.stringMatching(/^the image of ring is older than the last build in /),
+      expect.stringMatching(/^the image of ring is older than its last build in /),
     ])
   })
 

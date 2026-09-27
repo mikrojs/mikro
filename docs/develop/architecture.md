@@ -29,7 +29,7 @@ This page explains how the parts of Mikro.js fit together, for people who build 
 - **Native drivers** are [native modules](./native-modules): C or C++ in an ESP-IDF component, compiled into the firmware. Apps import them by package name. None of their code is deployed with the app.
 - **Pure JS drivers** are normal modules that use core APIs like `mikro/spi`. They are bundled and deployed with the app.
 
-**Board packages** ship prebuilt firmware for a development board, built from a firmware project in the package, with the board's sdkconfig defaults and the native modules it needs. They can also give apps the board's pin names and its drivers wired to its pins. See [Creating Boards](./creating-boards) and [Creating Drivers](./creating-drivers).
+**Board packages** ship prebuilt firmware for a development board, built as the package's `boards.config.ts` describes, with the board's sdkconfig defaults and the native modules it needs. They can also give apps the board's pin names and its drivers wired to its pins. See [Creating Boards](./creating-boards) and [Creating Drivers](./creating-drivers).
 
 ## Native module registration
 

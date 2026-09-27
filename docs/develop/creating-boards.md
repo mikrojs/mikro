@@ -14,8 +14,8 @@ Apps install board packages as a dependency, and `mikro flash` flashes the board
 ```
 @acme/devboard/
 ├── package.json
-├── CMakeLists.txt        the firmware project
-├── sdkconfig.defaults    ESP-IDF settings for the board
+├── boards.config.ts      the board: chip, settings, native modules
+├── sdkconfig.defaults    ESP-IDF settings for the board (optional)
 ├── dist-fw/              the firmware image; written by mikro fw prepack, not in git
 ├── pins.ts, display.ts   the JS library for apps (optional)
 └── dist/                 the library's build output
@@ -52,25 +52,39 @@ Apps install board packages as a dependency, and `mikro flash` flashes the board
 
 The `firmware` condition on an export declares the board: it points at the image's `firmware.json`. `mikro flash` looks for it in the exports of an app's dependencies. The other exports are the JS library, which the tools ignore.
 
-## Step 1: The firmware project
+## Step 1: Configure the board
 
-The package is a [custom firmware](./custom-firmware) project. `CMakeLists.txt` lists the native modules the board needs:
+`boards.config.ts` says what goes into the board's firmware:
 
-```cmake
-cmake_minimum_required(VERSION 3.22)
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+```ts
+import {defineBoards} from 'mikro'
 
-set(MIKROJS_NATIVE_MODULES "@acme/drivers/panel")
-
-if(NOT DEFINED MikroFirmware_DIR)
-    message(FATAL_ERROR "Build with `mikro idf`, which tells CMake where @mikrojs/firmware is")
-endif()
-find_package(MikroFirmware REQUIRED COMPONENTS esp32 NO_DEFAULT_PATH)
-
-project(devboard)
+export default defineBoards({
+  boards: {
+    '.': {
+      chip: 'esp32s3',
+      sdkconfig: 'sdkconfig.defaults',
+      nativeModules: ['@acme/drivers/panel'],
+    },
+  },
+})
 ```
 
-`sdkconfig.defaults` configures the ESP-IDF settings the board needs and the generic firmware doesn't set:
+Each key is the export that declares the board: `.` for a package with one board. The package's `exports` must match the config. `mikro fw prepack` and `mikro fw check` stop when they don't, and print the entries to add.
+
+| Field           | Description                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| `chip`          | The chip the board is built around: `esp32`, `esp32c3`, `esp32c5`, `esp32c6` or `esp32s3`      |
+| `name`          | The name the firmware reports as `sys.board.name`. Default: the export's specifier             |
+| `description`   | Shown when `mikro flash` asks which board to flash. Default: the package's description         |
+| `sdkconfig`     | ESP-IDF settings, one file or a list, applied after the firmware's own                         |
+| `partitions`    | A partition table to use instead of the default one                                            |
+| `nativeModules` | The [native modules](./native-modules) to compile in, by the names apps import                 |
+| `project`       | A firmware project of your own to build instead (see [below](#a-firmware-project-of-your-own)) |
+
+Next to `boards`, `dist` sets the folder for the images, `dist-fw` by default.
+
+`sdkconfig.defaults` holds the ESP-IDF settings the board needs and the generic firmware doesn't set:
 
 ```ini
 # 16 MB flash, 8 MB octal PSRAM
@@ -79,22 +93,19 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 ```
 
-A `partitions.csv` next to `sdkconfig.defaults` replaces the default partition table (see [Use a bigger flash chip](./custom-firmware#use-a-bigger-flash-chip)). When `user` is the last partition, `mikro flash` stretches it to the end of the chip's flash, so one image serves variants of the board with more flash.
+A partition table replaces the default one (see [Use a bigger flash chip](./custom-firmware#use-a-bigger-flash-chip)). When `user` is the last partition, `mikro flash` stretches it to the end of the chip's flash, so one image serves variants of the board with more flash.
 
-The firmware takes the package's name and description. The device reports the name as `sys.board.name`, and `mikro flash --board`, `mikro.config.ts` and a registry use the same name.
+The device reports the board's name as `sys.board.name`, and `mikro flash --board`, `mikro.config.ts` and a registry use the same name.
 
-Add `.mikro/`, `dist-fw/`, `sdkconfig`, `sdkconfig.old`, `managed_components/` and `dependencies.lock` to `.gitignore`.
+Add `.mikro/` and `dist-fw/` to `.gitignore`. A board with its own `project` also gets `sdkconfig`, `sdkconfig.old`, `managed_components/` and `dependencies.lock` in that folder; ignore those too.
 
 ## Step 2: Build the image
 
-Set the chip once, then build:
-
 ```sh
-pn mikro idf set-target esp32s3
 pn mikro fw prepack
 ```
 
-`mikro fw prepack` builds the firmware and writes the image into the folder that the export's `firmware` condition points at. The export's key says which firmware project builds it: `.` is the project at the package root. The folder is yours to choose; `dist-fw/` is the convention. The package's `prepack` script runs it, so `npm pack` and `npm publish` always include a fresh image, and publishing needs ESP-IDF.
+`mikro fw prepack` generates a firmware project for the board in `.mikro/fw`, builds it into `.mikro/build-fw` for the board's chip, and writes the image into the folder that the export's `firmware` condition points at. The package's `prepack` script runs it, so `npm pack` and `npm publish` always include a fresh image, and publishing needs ESP-IDF.
 
 To try the image on a device before you publish, flash it from an app in the same workspace that depends on the package, or with `mikro flash --build-dir .mikro/build-fw`.
 
@@ -148,7 +159,7 @@ export function display() {
 
 Export a function rather than a peripheral object, so that the app claims the hardware when it calls `display()` and gets the driver's `Result` to handle.
 
-A native driver's module is in the firmware only if the firmware project lists it in `MIKROJS_NATIVE_MODULES`. Before `mikro deploy` uploads an app, it checks that the device's firmware has every native module the app imports, and stops with the module's name if one is missing. A pure JS driver needs nothing from the firmware.
+A native driver's module is in the firmware only if the board lists it in `nativeModules`. Before `mikro deploy` uploads an app, it checks that the device's firmware has every native module the app imports, and stops with the module's name if one is missing. A pure JS driver needs nothing from the firmware.
 
 ### tsconfig preset
 
@@ -194,19 +205,22 @@ When an app's dependencies include exactly one board, `mikro flash` flashes it. 
 
 ## Multi-board packages
 
-A package can hold several boards, each in a folder that is a firmware project of its own, with its own `CMakeLists.txt` and settings:
+A package can hold several boards, one entry each in `boards.config.ts`, keyed by the board's export:
 
-```
-@acme/boards/
-├── package.json
-├── t-display/
-│   ├── CMakeLists.txt
-│   └── sdkconfig.defaults
-├── devkit-c6/
-│   └── CMakeLists.txt
-└── dist-fw/              the images; written by mikro fw prepack, not in git
-    ├── t-display/
-    └── devkit-c6/
+```ts
+import {defineBoards} from 'mikro'
+
+export default defineBoards({
+  boards: {
+    './t-display': {
+      chip: 'esp32',
+      description: 'LILYGO T-Display (ESP32, 1.14" ST7789 display)',
+      sdkconfig: 't-display.defaults',
+      nativeModules: ['@acme/drivers/st7789'],
+    },
+    './devkit-c6': {chip: 'esp32c6'},
+  },
+})
 ```
 
 ```json
@@ -216,27 +230,33 @@ A package can hold several boards, each in a folder that is a firmware project o
 }
 ```
 
-An export's key is the folder of the firmware project that builds its image: `mikro fw prepack` in `t-display/` writes the image of `./t-display`.
+Each board's name is its export's specifier (`@acme/boards/t-display`) unless it sets `name`. A package has one board at `.` or boards at `./<board>`, not both. Name each export by its board: `mikro flash` can't list a `firmware` condition under a `./*` pattern.
 
-Each board's `CMakeLists.txt` sets the board's name and description, which would otherwise be the package's:
+`mikro fw prepack` builds every board, each in `.mikro/build-fw-<board>`, and writes its image to `dist-fw/<board>/`. `mikro fw prepack --board t-display` builds one. The `prepack` script stays `npm run build && mikro fw prepack`.
 
-```cmake
-set(MIKROJS_BOARD_NAME "@acme/boards/t-display")
-set(MIKROJS_BOARD_DESCRIPTION "LILYGO T-Display (ESP32, 1.14\" ST7789 display)")
+Variants of a board that need different builds, such as one with octal PSRAM, are boards of their own. The config is TypeScript, so they can share the rest:
+
+```ts
+const devkit = {chip: 'esp32s3', nativeModules: ['@acme/drivers/st7789']} as const
+
+export default defineBoards({
+  boards: {
+    './devkit-n8': devkit,
+    './devkit-n16r8': {...devkit, sdkconfig: 'octal-psram.defaults'},
+  },
+})
 ```
 
-Build each board in its folder. `mikro idf` keeps a build for each, in `.mikro/build-fw-<folder>` of the package:
+A variant with more flash needs no board of its own: `mikro flash` gives the extra flash to the app filesystem.
 
-```sh
-cd t-display
-pn mikro idf set-target esp32
-pn mikro fw prepack
+## A firmware project of your own
+
+A board that needs more than settings, a partition table and native modules, such as its own `main` or other ESP-IDF components, can point `project` at a [custom firmware](./custom-firmware) project in the package:
+
+```ts
+export default defineBoards({
+  boards: {'.': {chip: 'esp32s3', project: 'firmware'}},
+})
 ```
 
-The package's `prepack` script runs `mikro fw prepack` in each board's folder:
-
-```json
-"prepack": "npm run build && (cd t-display && mikro fw prepack) && (cd devkit-c6 && mikro fw prepack)"
-```
-
-Name each export by its folder: `mikro flash` can't list a `firmware` condition under a `./*` pattern.
+`mikro fw prepack` then builds that project and gives it the board's name, description and chip. The project's `CMakeLists.txt` lists its native modules in `MIKROJS_NATIVE_MODULES`, and its own `sdkconfig.defaults` and `partitions.csv` apply.

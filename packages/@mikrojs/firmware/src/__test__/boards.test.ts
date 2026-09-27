@@ -1,4 +1,4 @@
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs'
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {dirname, join} from 'node:path'
 
@@ -8,6 +8,8 @@ import {
   archiveName,
   boardFileName,
   checkBoardPackage,
+  checkBoardsConfig,
+  CHIPS,
   firmwareExports,
   isArchiveForChip,
   loadBoards,
@@ -202,15 +204,164 @@ test('a package without "files" does not publish its gitignored image', () => {
   ])
 })
 
-test('@mikrojs/firmware declares a generic image for every chip, the same when published', () => {
-  const pkg = JSON.parse(
-    readFileSync(join(import.meta.dirname, '..', '..', 'package.json'), 'utf8'),
-  ) as {exports: Record<string, unknown>; publishConfig: {exports: Record<string, unknown>}}
-  for (const chip of chips) {
-    const entry = {firmware: `./dist-fw/${chip}-generic/firmware.json`}
-    expect(pkg.exports[`./${chip}-generic`]).toEqual(entry)
-    expect(pkg.publishConfig.exports[`./${chip}-generic`]).toEqual(entry)
+function configured(name: string, pkg: Record<string, unknown>, config: unknown) {
+  const dir = boardPackage(name, pkg)
+  return {dir, ...checkBoardsConfig(dir, config)}
+}
+
+test('a boards.config.ts board takes its defaults from the package and its export', () => {
+  const {dir, boards, problems} = configured(
+    '@acme/boards',
+    {
+      description: 'ACME boards',
+      exports: {
+        './t-display': {firmware: './dist-fw/t-display/firmware.json', default: './dist/t.js'},
+        './devkit': {firmware: './dist-fw/devkit/firmware.json'},
+      },
+    },
+    {
+      boards: {
+        './t-display': {chip: 'esp32', name: 't-display', description: 'T-Display'},
+        './devkit': {chip: 'esp32c6', nativeModules: ['@acme/drivers/a']},
+      },
+    },
+  )
+  expect(problems).toEqual([])
+  expect(boards).toEqual([
+    {
+      key: './t-display',
+      specifier: '@acme/boards/t-display',
+      name: 't-display',
+      description: 'T-Display',
+      chip: 'esp32',
+      sdkconfig: [],
+      partitions: undefined,
+      nativeModules: [],
+      project: undefined,
+      target: './dist-fw/t-display/firmware.json',
+      imageDir: join(dir, 'dist-fw/t-display'),
+    },
+    {
+      key: './devkit',
+      specifier: '@acme/boards/devkit',
+      name: '@acme/boards/devkit',
+      description: 'ACME boards',
+      chip: 'esp32c6',
+      sdkconfig: [],
+      partitions: undefined,
+      nativeModules: ['@acme/drivers/a'],
+      project: undefined,
+      target: './dist-fw/devkit/firmware.json',
+      imageDir: join(dir, 'dist-fw/devkit'),
+    },
+  ])
+})
+
+test('a board at "." puts its image in the dist folder itself, and resolves its files', () => {
+  const {dir, boards, problems} = configured(
+    'devboard',
+    {exports: {'.': {firmware: './out/firmware.json'}}},
+    {dist: 'out', boards: {'.': {chip: 'esp32s3', sdkconfig: 'a.defaults', partitions: 'p.csv'}}},
+  )
+  expect(problems).toEqual([
+    {specifier: 'devboard', message: 'boards.config.ts, board ".": a.defaults does not exist'},
+    {specifier: 'devboard', message: 'boards.config.ts, board ".": p.csv does not exist'},
+  ])
+  expect(boards[0]).toMatchObject({
+    target: './out/firmware.json',
+    imageDir: join(dir, 'out'),
+    sdkconfig: [join(dir, 'a.defaults')],
+    partitions: join(dir, 'p.csv'),
+  })
+})
+
+test('boards.config.ts problems name the board and the field', () => {
+  const exports = {
+    '.': {firmware: './dist-fw/firmware.json'},
   }
+  const mixed = configured(
+    'mixed',
+    {exports},
+    {boards: {'.': {chip: 'esp32'}, './b': {chip: 'esp32'}}},
+  )
+  expect(mixed.problems.map((p) => p.message)).toEqual([
+    'boards.config.ts: a package has one board at "." or boards at "./<board>", not both',
+  ])
+
+  const bad = configured(
+    'bad',
+    {
+      exports: {
+        './a': {firmware: './dist-fw/a/firmware.json'},
+        './z': {firmware: './dist-fw/z/firmware.json'},
+      },
+    },
+    {
+      extra: 1,
+      boards: {
+        './a': {chip: 'esp99', typo: true},
+        './B': {chip: 'esp32'},
+        './c': {chip: 'esp32', project: 'fw', sdkconfig: 'x.defaults'},
+      },
+    },
+  )
+  expect(bad.problems.map((p) => `${p.specifier}: ${p.message}`)).toEqual([
+    'bad: boards.config.ts: unknown field "extra"',
+    'bad/a: boards.config.ts, board "./a": unknown field "typo"',
+    `bad/a: boards.config.ts, board "./a": "chip" must be one of ${chips.join(', ')}`,
+    'bad/B: boards.config.ts, board "./B": a board is "." or "./<board>", lowercase letters, digits, "." and "-"',
+    'bad/c: boards.config.ts, board "./c": a board with "project" takes its settings, partition table and native modules from that project; leave out "sdkconfig", "partitions" and "nativeModules"',
+    'bad/c: boards.config.ts, board "./c": x.defaults does not exist',
+    'bad/c: boards.config.ts, board "./c": fw/CMakeLists.txt does not exist',
+    'bad/c: "exports" has no "firmware" condition for "./c"',
+    'bad/z: "./z" has a "firmware" condition in "exports", but boards.config.ts has no board "./z"',
+    'bad: add these to "exports" in package.json (next to any other conditions of the same export):\n  "./c": {"firmware": "./dist-fw/c/firmware.json"}',
+  ])
+})
+
+test('boards.config.ts refuses names a device cannot take, and names used twice', () => {
+  const long = `@acme/${'x'.repeat(60)}`
+  const {problems} = configured(
+    long,
+    {
+      exports: {
+        './a': {firmware: './dist-fw/a/firmware.json'},
+        './b': {firmware: './dist-fw/b/firmware.json'},
+      },
+    },
+    {boards: {'./a': {chip: 'esp32'}, './b': {chip: 'esp32', name: 'twin'}}},
+  )
+  expect(problems.map((p) => p.message)).toEqual([
+    `boards.config.ts, board "./a": "${long}/a" is not a board name (at most 63 characters, the form of a package name with an optional /<board>); set "name"`,
+  ])
+  const twins = configured(
+    'twins',
+    {
+      exports: {
+        './a': {firmware: './dist-fw/a/firmware.json'},
+        './b': {firmware: './dist-fw/b/firmware.json'},
+      },
+    },
+    {boards: {'./a': {chip: 'esp32', name: 'twin'}, './b': {chip: 'esp32', name: 'twin'}}},
+  )
+  expect(twins.problems.map((p) => p.message)).toEqual([
+    'boards.config.ts: boards "./a" and "./b" are both named "twin"',
+  ])
+})
+
+test('boards.config.ts must export a config with boards', () => {
+  const dir = boardPackage('empty', {})
+  for (const config of [undefined, {}, {boards: {}}]) {
+    expect(checkBoardsConfig(dir, config).problems).toHaveLength(1)
+  }
+  expect(checkBoardsConfig(dir, {dist: '../out', boards: {'.': {chip: 'esp32'}}}).problems).toEqual(
+    [{specifier: 'empty', message: 'boards.config.ts: "dist" must be a folder in the package'}],
+  )
+  // The problems found before one that stops the check are kept
+  expect(checkBoardsConfig(dir, {typo: 1, dist: '../out', boards: {}}).problems).toEqual([
+    {specifier: 'empty', message: 'boards.config.ts: unknown field "typo"'},
+    {specifier: 'empty', message: 'boards.config.ts: "dist" must be a folder in the package'},
+  ])
 })
 
 test('file names drop the scope marker and turn slashes into dashes', () => {
@@ -270,4 +421,8 @@ test('an archive is for the chip in the place archiveName puts it', () => {
   expect(isArchiveForChip('mikro-fw-esp32c6-generic', 'esp32c6')).toBe(true)
   expect(isArchiveForChip('mikro-fw-esp32', 'esp32')).toBe(true)
   expect(isArchiveForChip('mikrojs-firmware-esp32', 'esp32')).toBe(false)
+})
+
+test('the Chip type lists the chips in chips.json', () => {
+  expect([...CHIPS]).toEqual(chips)
 })

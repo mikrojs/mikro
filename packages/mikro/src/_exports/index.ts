@@ -1,3 +1,4 @@
+import type {BoardsConfig} from '@mikrojs/firmware/boards'
 import type {Schema as MikroSchema} from '@mikrojs/native/runtime/schema/types'
 
 export type WifiCountryCode =
@@ -239,5 +240,21 @@ export type MikroEnv = 'development' | 'production' | 'test'
 export type MikroJSConfigOverride = Omit<MikroJSConfig, 'env'>
 
 export function defineConfig<T extends MikroJSConfig>(config: T) {
+  return config
+}
+
+export type {BoardConfig, BoardsConfig, Chip} from '@mikrojs/firmware/boards'
+
+/** A board package's boards.config.ts: the boards `mikro fw prepack` builds,
+ *  keyed by the export that declares each (`.` or `./<board>`).
+ *
+ * ```ts
+ * export default defineBoards({
+ *   boards: {
+ *     './t-display': {chip: 'esp32', nativeModules: ['@acme/drivers/st7789']},
+ *   },
+ * })
+ * ``` */
+export function defineBoards<const T extends BoardsConfig>(config: T): T {
   return config
 }

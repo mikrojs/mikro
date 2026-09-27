@@ -11,10 +11,13 @@
  * as a board only if its firmware.json parses, so another tool's `firmware`
  * condition is reported, not taken for a board.
  *
- * @mikrojs/firmware's own generic images are boards too (`./esp32c6-generic`).
+ * The generic images are boards too, in mikro (`mikro/esp32c6-generic`).
+ *
+ * The package's boards.config.ts says what `mikro fw prepack` builds; its
+ * exports must match it (checkBoardsConfig). Apps never read the config.
  */
 import {existsSync, readFileSync} from 'node:fs'
-import {dirname, join, relative, resolve, sep} from 'node:path'
+import {dirname, isAbsolute, join, relative, resolve, sep} from 'node:path'
 
 import {enumOf, object, optional, string, validate} from '@mikrojs/schema'
 
@@ -70,6 +73,7 @@ const FirmwareJson = object({
 
 interface PackageJson {
   name?: string
+  description?: string
   exports?: unknown
   publishConfig?: {exports?: unknown}
   files?: unknown
@@ -312,11 +316,259 @@ export function checkBoardPackage(packageDir: string): BoardProblem[] {
   return problems
 }
 
-/** The package root of @mikrojs/firmware: src/ or dist/ is one level down. */
-const firmwarePackageDir = join(import.meta.dirname, '..')
+/** The chips a board can be built for, as a type: chips.json's list, which a
+ *  test keeps this in step with. */
+export const CHIPS = ['esp32', 'esp32c3', 'esp32c5', 'esp32c6', 'esp32s3'] as const
+export type Chip = (typeof CHIPS)[number]
 
-/** The generic images @mikrojs/firmware ships, one per chip. In the
- *  repository they are not built; the release builds them. */
-export function genericBoards(): {boards: BoardImage[]; problems: BoardProblem[]} {
-  return loadBoards(firmwarePackageDir)
+/** A board in boards.config.ts. Paths are relative to the package. */
+export interface BoardConfig {
+  /** The chip the board is built around. */
+  chip: Chip
+  /** The name the firmware reports as sys.board.name. Default: the specifier
+   *  of the board's export (`@acme/devboard`, `@acme/boards/t-display`). */
+  name?: string
+  /** Shown when `mikro flash` asks which board to flash. Default: the
+   *  package's description. */
+  description?: string
+  /** ESP-IDF settings (sdkconfig fragments), applied after the firmware's own. */
+  sdkconfig?: string | readonly string[]
+  /** A partition table (CSV) to use instead of the firmware's. */
+  partitions?: string
+  /** Native modules to compile in, by the specifiers apps import. */
+  nativeModules?: readonly string[]
+  /** A firmware project (a folder with a CMakeLists.txt) to build instead of
+   *  the one `mikro fw prepack` generates. It brings its own settings,
+   *  partition table and native modules. */
+  project?: string
+}
+
+/** boards.config.ts: the boards a package builds, keyed by the export that
+ *  declares each, `.` or `./<board>`. */
+export interface BoardsConfig {
+  /** Where the images go, relative to the package: `<dist>/` for the board at
+   *  `.`, `<dist>/<board>/` for the others. Default: `dist-fw`. */
+  dist?: string
+  boards: Record<string, BoardConfig>
+}
+
+/** A board from boards.config.ts, with defaults filled in and paths resolved. */
+export interface ConfiguredBoard {
+  /** The export key: `.`, `./t-display`. */
+  key: string
+  specifier: string
+  name: string
+  description?: string
+  chip: Chip
+  /** Absolute paths. */
+  sdkconfig: string[]
+  partitions?: string
+  nativeModules: string[]
+  project?: string
+  /** The `firmware` target the board's export must have: `./dist-fw/t-display/firmware.json`. */
+  target: string
+  /** The image folder. */
+  imageDir: string
+}
+
+const DEFAULT_DIST = 'dist-fw'
+const BOARD_KEYS = [
+  'chip',
+  'name',
+  'description',
+  'sdkconfig',
+  'partitions',
+  'nativeModules',
+  'project',
+]
+/** `./<board>`: one segment, in the form of a board name's last part. */
+const SUBPATH_RE = /^\.\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string')
+}
+
+/** The exports block that declares `boards`, for messages. */
+function exportsSnippet(boards: ConfiguredBoard[]): string {
+  return boards.map((b) => `  "${b.key}": {"firmware": "${b.target}"}`).join(',\n')
+}
+
+/**
+ * The boards in a package's boards.config.ts (`config`, its default export),
+ * and everything wrong with it: fields that don't check out, files it names
+ * that don't exist, names a device can't take, and `exports` that don't match
+ * (a board without its `firmware` export, one pointing elsewhere, or a
+ * `firmware` export the config doesn't have).
+ */
+export function checkBoardsConfig(
+  packageDir: string,
+  config: unknown,
+): {boards: ConfiguredBoard[]; problems: BoardProblem[]} {
+  const read = readPackageJson(packageDir)
+  if (!read.ok) return {boards: [], problems: [{specifier: packageDir, message: read.message}]}
+  const pkg = read.value
+  const packageName = pkg.name ?? packageDir
+  const problems: BoardProblem[] = []
+  // Stops at a problem that leaves nothing to check, keeping the ones found so far
+  const fail = (message: string) => ({
+    boards: [],
+    problems: [...problems, {specifier: packageName, message}],
+  })
+  if (pkg.name === undefined) return fail('package.json has no "name"')
+  if (!isObject(config))
+    return fail('boards.config.ts must export default defineBoards({boards: {...}})')
+  for (const key of Object.keys(config)) {
+    if (key !== 'dist' && key !== 'boards') {
+      problems.push({specifier: packageName, message: `boards.config.ts: unknown field "${key}"`})
+    }
+  }
+  const dist = config.dist ?? DEFAULT_DIST
+  if (typeof dist !== 'string' || dist === '' || isAbsolute(dist)) {
+    return fail('boards.config.ts: "dist" must be a folder in the package')
+  }
+  const distDir = resolve(packageDir, dist)
+  const distInPackage = relative(packageDir, distDir)
+  if (distInPackage === '' || distInPackage.startsWith('..')) {
+    return fail('boards.config.ts: "dist" must be a folder in the package')
+  }
+  const distPath = distInPackage.split(sep).join('/')
+  if (!isObject(config.boards) || Object.keys(config.boards).length === 0) {
+    return fail('boards.config.ts: "boards" must name at least one board')
+  }
+  const keys = Object.keys(config.boards)
+  if (keys.includes('.') && keys.length > 1) {
+    return fail(
+      'boards.config.ts: a package has one board at "." or boards at "./<board>", not both',
+    )
+  }
+
+  const boards: ConfiguredBoard[] = []
+  for (const [key, board] of Object.entries(config.boards)) {
+    const sub = key.slice(2)
+    const specifier = key === '.' ? packageName : `${packageName}/${sub}`
+    const at = `boards.config.ts, board "${key}"`
+    const problem = (message: string) => problems.push({specifier, message: `${at}: ${message}`})
+    if (key !== '.' && !SUBPATH_RE.test(key)) {
+      problem('a board is "." or "./<board>", lowercase letters, digits, "." and "-"')
+      continue
+    }
+    if (!isObject(board)) {
+      problem('expected an object')
+      continue
+    }
+    for (const field of Object.keys(board)) {
+      if (!BOARD_KEYS.includes(field)) problem(`unknown field "${field}"`)
+    }
+    const {chip, name, description, sdkconfig, partitions, nativeModules, project} = board
+    if (typeof chip !== 'string' || !chips.includes(chip)) {
+      problem(`"chip" must be one of ${chips.join(', ')}`)
+      continue
+    }
+    if (name !== undefined && typeof name !== 'string') problem('"name" must be a string')
+    if (description !== undefined && typeof description !== 'string') {
+      problem('"description" must be a string')
+    }
+    if (sdkconfig !== undefined && typeof sdkconfig !== 'string' && !isStringArray(sdkconfig)) {
+      problem('"sdkconfig" must be a path or a list of paths')
+    }
+    if (partitions !== undefined && typeof partitions !== 'string') {
+      problem('"partitions" must be a path')
+    }
+    if (nativeModules !== undefined && !isStringArray(nativeModules)) {
+      problem('"nativeModules" must be a list of import specifiers')
+    }
+    if (project !== undefined && typeof project !== 'string') problem('"project" must be a path')
+    if (
+      typeof project === 'string' &&
+      (sdkconfig !== undefined || partitions !== undefined || nativeModules !== undefined)
+    ) {
+      problem(
+        'a board with "project" takes its settings, partition table and native modules from ' +
+          'that project; leave out "sdkconfig", "partitions" and "nativeModules"',
+      )
+    }
+    const files = [
+      ...(typeof sdkconfig === 'string' ? [sdkconfig] : isStringArray(sdkconfig) ? sdkconfig : []),
+      ...(typeof partitions === 'string' ? [partitions] : []),
+      ...(typeof project === 'string' ? [join(project, 'CMakeLists.txt')] : []),
+    ]
+    for (const file of files) {
+      if (!existsSync(resolve(packageDir, file))) problem(`${file} does not exist`)
+    }
+    const boardName = typeof name === 'string' ? name : specifier
+    if (!BOARD_NAME_RE.test(boardName) || boardName.length > MAX_BOARD_NAME_LENGTH) {
+      problem(
+        `"${boardName}" is not a board name (at most ${MAX_BOARD_NAME_LENGTH} characters, the ` +
+          'form of a package name with an optional /<board>)' +
+          (typeof name === 'string' ? '' : '; set "name"'),
+      )
+    }
+    const target = `./${distPath}/${key === '.' ? '' : `${sub}/`}firmware.json`
+    boards.push({
+      key,
+      specifier,
+      name: boardName,
+      description: typeof description === 'string' ? description : pkg.description,
+      chip: chip as Chip,
+      sdkconfig: (typeof sdkconfig === 'string'
+        ? [sdkconfig]
+        : isStringArray(sdkconfig)
+          ? sdkconfig
+          : []
+      ).map((file) => resolve(packageDir, file)),
+      partitions: typeof partitions === 'string' ? resolve(packageDir, partitions) : undefined,
+      nativeModules: isStringArray(nativeModules) ? nativeModules : [],
+      project: typeof project === 'string' ? resolve(packageDir, project) : undefined,
+      target,
+      imageDir: dirname(resolve(packageDir, target)),
+    })
+  }
+
+  const byName = new Map<string, ConfiguredBoard>()
+  for (const board of boards) {
+    const other = byName.get(board.name)
+    if (other) {
+      problems.push({
+        specifier: board.specifier,
+        message: `boards.config.ts: boards "${other.key}" and "${board.key}" are both named "${board.name}"`,
+      })
+    }
+    byName.set(board.name, board)
+  }
+
+  // The exports must declare exactly the configured boards, where the config
+  // puts their images.
+  const targets = firmwareTargets(pkg.exports)
+  const missing = boards.filter((board) => {
+    const target = targets.get(board.key)
+    return (
+      typeof target !== 'string' ||
+      resolve(packageDir, target) !== resolve(packageDir, board.target)
+    )
+  })
+  for (const board of missing) {
+    const target = targets.get(board.key)
+    problems.push({
+      specifier: board.specifier,
+      message:
+        target === undefined
+          ? `"exports" has no "firmware" condition for "${board.key}"`
+          : `the "firmware" condition of "${board.key}" is ${JSON.stringify(target)}, but boards.config.ts puts the image at "${board.target}"`,
+    })
+  }
+  for (const key of targets.keys()) {
+    if (!Object.hasOwn(config.boards, key)) {
+      problems.push({
+        specifier: key === '.' ? packageName : `${packageName}/${key.replace(/^\.\//, '')}`,
+        message: `"${key}" has a "firmware" condition in "exports", but boards.config.ts has no board "${key}"`,
+      })
+    }
+  }
+  if (missing.length > 0) {
+    problems.push({
+      specifier: packageName,
+      message: `add these to "exports" in package.json (next to any other conditions of the same export):\n${exportsSnippet(missing)}`,
+    })
+  }
+  return {boards, problems}
 }

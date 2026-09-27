@@ -7,18 +7,20 @@ import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import {option} from '@optique/core/primitives'
+import {string} from '@optique/core/valueparser'
 import {path} from '@optique/run'
 import {stat} from 'fs/promises'
 import {create as tarCreate} from 'tar'
 
 import {agentResult, isAgentMode} from '../../lib/agent.js'
+import {selectBoards} from '../../lib/boardsConfig.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {UserError} from '../../lib/errorMessage.js'
 import {readFlasherArgs} from '../../lib/esptool.js'
 import {formatSize} from '../../lib/formatSize.js'
-import {imageFiles, ownBoardExport} from '../../lib/fwImage.js'
+import {imageFiles} from '../../lib/fwImage.js'
 import {sha256File} from '../../lib/ota.js'
-import {prepackBoard} from './prepack.js'
+import {configuredPackage, prepackBoards} from './prepack.js'
 import {buildFirmware, failFw} from './shared.js'
 
 export const args = command(
@@ -30,8 +32,15 @@ export const args = command(
         description: message`Output path for the archive (default: ./mikro-fw-<name>-<chip>.tar.gz)`,
       }),
     ),
+    board: optional(
+      option('--board', string({metavar: 'BOARD'}), {
+        description: message`In a board package, pack only this board: its key in boards.config.ts (./t-display) or its name`,
+      }),
+    ),
   }),
-  {description: message`Build the firmware project and pack it for mikro flash --from`},
+  {
+    description: message`Build the firmware project, or a board package's boards, and pack them for mikro flash --from`,
+  },
 )
 
 type Args = InferValue<typeof args>
@@ -64,26 +73,66 @@ async function packImage(dir: string, name: string | undefined, out: string | un
   return {outPath, chip: flasherArgs.chip, name, checksum, size: info.size}
 }
 
+type Artifact = Awaited<ReturnType<typeof packImage>>
+
+function printArtifact(artifact: Artifact): void {
+  // eslint-disable-next-line no-console
+  console.log(`Packed firmware for ${artifact.name ?? artifact.chip}`)
+  // eslint-disable-next-line no-console
+  console.log(`  file      ${displayPath(artifact.outPath)}`)
+  // eslint-disable-next-line no-console
+  console.log(`  checksum  ${artifact.checksum}`)
+  // eslint-disable-next-line no-console
+  console.log(`  size      ${formatSize(artifact.size)}`)
+}
+
+/** A board package packs its boards' images as `fw prepack` writes them, so
+ *  the archives and the published package hold the same files. */
+async function packBoards(
+  configured: NonNullable<Awaited<ReturnType<typeof configuredPackage>>>,
+  config: Args,
+  jsonOutput: boolean,
+): Promise<void> {
+  const boards = selectBoards(configured.boards, config.board)
+  if (config.out !== undefined && boards.length > 1) {
+    throw new UserError('--out names one archive: pick a board with --board.')
+  }
+  const images = await prepackBoards(configured.packageDir, boards, 'fw pack', jsonOutput)
+  if (images === undefined) return
+  const artifacts: Artifact[] = []
+  for (const image of images) artifacts.push(await packImage(image.dir, image.name, config.out))
+  if (jsonOutput) {
+    agentResult('fw pack', {
+      archives: artifacts.map(({outPath, chip, name, checksum, size}) => ({
+        path: outPath,
+        chip,
+        name,
+        checksum,
+        size,
+      })),
+    })
+  } else {
+    artifacts.forEach(printArtifact)
+  }
+}
+
 export async function run(config: Args): Promise<void> {
   const jsonOutput = isAgentMode()
   try {
     const projectDir = process.cwd()
-    let dir: string
-    let name: string | undefined
-    // A board package's firmware project packs its image, as `fw prepack`
-    // writes it, so the archive and the published package hold the same files.
-    if (ownBoardExport(projectDir)) {
-      const board = await prepackBoard(projectDir, 'fw pack', jsonOutput)
-      if (board === undefined) return
-      dir = board.dir
-      name = board.name
-    } else {
-      const buildDir = buildFirmware(projectDir, 'fw pack', jsonOutput)
-      if (buildDir === undefined) return
-      dir = buildDir
-      name = await builtName(buildDir)
+    const configured = await configuredPackage(projectDir)
+    if (configured !== undefined) {
+      await packBoards(configured, config, jsonOutput)
+      return
     }
-    const artifact = await packImage(dir, name, config.out)
+    if (config.board !== undefined) {
+      throw new UserError(
+        '--board picks a board of a board package, and this has no boards.config.ts.',
+      )
+    }
+    const buildDir = buildFirmware(projectDir, 'fw pack', jsonOutput)
+    if (buildDir === undefined) return
+    const artifact = await packImage(buildDir, await builtName(buildDir), config.out)
     if (jsonOutput) {
       agentResult('fw pack', {
         path: artifact.outPath,
@@ -93,14 +142,7 @@ export async function run(config: Args): Promise<void> {
         size: artifact.size,
       })
     } else {
-      // eslint-disable-next-line no-console
-      console.log(`Packed firmware for ${artifact.name ?? artifact.chip}`)
-      // eslint-disable-next-line no-console
-      console.log(`  file      ${displayPath(artifact.outPath)}`)
-      // eslint-disable-next-line no-console
-      console.log(`  checksum  ${artifact.checksum}`)
-      // eslint-disable-next-line no-console
-      console.log(`  size      ${formatSize(artifact.size)}`)
+      printArtifact(artifact)
     }
   } catch (err) {
     failFw('fw pack', err, jsonOutput)

@@ -33,6 +33,16 @@ describe('rewriteConfigImports', () => {
     expect(out).toContain('const defineConfig = (c) => c;')
   })
 
+  it('shims every name imported from mikro, under its local name', () => {
+    const out = rewriteConfigImports(
+      `import {defineBoards, defineConfig as config} from 'mikro'\n`,
+      dir,
+      configPath,
+      SCHEMA_URL,
+    )
+    expect(out).toContain('const defineBoards = (c) => c; const config = (c) => c;')
+  })
+
   it('rewrites mikro/schema to the resolved host implementation', () => {
     const out = rewriteConfigImports(
       `import {object, number} from 'mikro/schema'\nexport default {otaConfigSchema: object({n: number()})}\n`,

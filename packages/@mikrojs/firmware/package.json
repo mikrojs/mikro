@@ -26,7 +26,6 @@
     "dist",
     "components",
     "default-app",
-    "dist-fw",
     "sdkconfig.defaults",
     "sdkconfig.defaults.*",
     "partitions.csv",
@@ -46,21 +45,6 @@
     "./boards": {
       "development": "./src/boards.ts",
       "import": "./dist/boards.js"
-    },
-    "./esp32-generic": {
-      "firmware": "./dist-fw/esp32-generic/firmware.json"
-    },
-    "./esp32c3-generic": {
-      "firmware": "./dist-fw/esp32c3-generic/firmware.json"
-    },
-    "./esp32c5-generic": {
-      "firmware": "./dist-fw/esp32c5-generic/firmware.json"
-    },
-    "./esp32c6-generic": {
-      "firmware": "./dist-fw/esp32c6-generic/firmware.json"
-    },
-    "./esp32s3-generic": {
-      "firmware": "./dist-fw/esp32s3-generic/firmware.json"
     },
     "./inputs": {
       "development": "./src/inputs.ts",
@@ -91,27 +75,11 @@
         "types": "./dist/boards.d.ts",
         "default": "./dist/boards.js"
       },
-      "./esp32-generic": {
-        "firmware": "./dist-fw/esp32-generic/firmware.json"
-      },
-      "./esp32c3-generic": {
-        "firmware": "./dist-fw/esp32c3-generic/firmware.json"
-      },
-      "./esp32c5-generic": {
-        "firmware": "./dist-fw/esp32c5-generic/firmware.json"
-      },
-      "./esp32c6-generic": {
-        "firmware": "./dist-fw/esp32c6-generic/firmware.json"
-      },
-      "./esp32s3-generic": {
-        "firmware": "./dist-fw/esp32s3-generic/firmware.json"
-      },
       "./package.json": "./package.json"
     }
   },
   "scripts": {
     "build:ts": "tsc -p tsconfig.build.json",
-    "prepublishOnly": "node --conditions=development scripts/check-images.ts",
     "publint": "publint",
     "typecheck": "tsc --noEmit",
     "watch": "tsc -p tsconfig.build.json --watch --preserveWatchOutput"

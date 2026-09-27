@@ -1,10 +1,21 @@
-import {mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync} from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import {tmpdir} from 'node:os'
 import * as pathlib from 'node:path'
 
+import {chips} from '@mikrojs/firmware'
 import {afterEach, beforeEach, describe, expect, it} from 'vitest'
 
 import {bundledBoards, discoverBoards, staleImage} from '../boards.js'
+import {loadBoardsConfig} from '../boardsConfig.js'
+import {bundledBoardsDir} from '../bundledImages.js'
 import {type BoardDiscovery, discoverBoard} from '../flashFirmware.js'
 
 describe('bundledBoards', () => {
@@ -16,6 +27,14 @@ describe('bundledBoards', () => {
       expect(board.bundled).toBe(true)
     }
     expect(boards.map((b) => b.name)).toContain('esp32c6-generic')
+  })
+
+  it("come from mikro's own boards.config.ts, one per chip, as its exports declare", async () => {
+    const loaded = await loadBoardsConfig(pathlib.join(import.meta.dirname, '..', '..', '..', '..'))
+    expect(loaded?.problems).toEqual([])
+    expect(loaded?.boards.map((b) => [b.key, b.name, b.chip])).toEqual(
+      chips.map((chip) => [`./${chip}-generic`, `${chip}-generic`, chip]),
+    )
   })
 })
 
@@ -40,7 +59,7 @@ function writeImage(dir: string, firmware: Record<string, unknown>) {
 }
 
 /** A single-board package `c6-neo` and a multi-board `@fx/boards` with two boards,
- *  the first with its firmware project. */
+ *  the first with the build `mikro fw prepack` leaves. */
 function installBoards(dir: string) {
   const neo = pathlib.join(dir, 'node_modules/c6-neo')
   write(
@@ -65,7 +84,7 @@ function installBoards(dir: string) {
     }),
   )
   writeImage(pathlib.join(fx, 'dist-fw/b1'), {name: '@fx/boards/b1', chip: 'esp32s3'})
-  write(pathlib.join(fx, 'b1/CMakeLists.txt'), '')
+  mkdirSync(pathlib.join(fx, '.mikro/build-fw-b1'), {recursive: true})
   writeImage(pathlib.join(fx, 'dist-fw/b2'), {name: '@fx/boards/b2', chip: 'esp32'})
 }
 
@@ -102,7 +121,7 @@ describe('discoverBoards', () => {
         description: undefined,
         specifier: '@fx/boards/b1',
         dir: pathlib.join(tempDir, 'node_modules/@fx/boards/dist-fw/b1'),
-        project: pathlib.join(tempDir, 'node_modules/@fx/boards/b1'),
+        buildDir: pathlib.join(tempDir, 'node_modules/@fx/boards/.mikro/build-fw-b1'),
       },
       {
         name: '@fx/boards/b2',
@@ -123,16 +142,10 @@ describe('discoverBoards', () => {
     expect((await discoverBoards(tempDir)).boards.map((b) => b.name)).toEqual(['c6-neo'])
   })
 
-  it('ignores installed board packages the project does not depend on', async () => {
-    write(pathlib.join(tempDir, 'package.json'), JSON.stringify({name: 'fixture'}))
-    installBoards(tempDir)
-    expect(await discoverBoards(tempDir)).toEqual({boards: [], problems: []})
-  })
-
-  it("leaves @mikrojs/firmware's generic images to the bundled boards", async () => {
+  it("skips an older @mikrojs/firmware's generic boards", async () => {
     write(
       pathlib.join(tempDir, 'package.json'),
-      JSON.stringify({name: 'app', dependencies: {'@mikrojs/firmware': '*'}}),
+      JSON.stringify({name: 'fixture', dependencies: {'@mikrojs/firmware': '*'}}),
     )
     const firmware = pathlib.join(tempDir, 'node_modules/@mikrojs/firmware')
     write(
@@ -148,20 +161,82 @@ describe('discoverBoards', () => {
     })
     expect(await discoverBoards(tempDir)).toEqual({boards: [], problems: []})
   })
+
+  it('ignores installed board packages the project does not depend on', async () => {
+    write(pathlib.join(tempDir, 'package.json'), JSON.stringify({name: 'fixture'}))
+    installBoards(tempDir)
+    expect(await discoverBoards(tempDir)).toEqual({boards: [], problems: []})
+  })
+
+  it("leaves the generic images of the app's mikro to the bundled boards", async () => {
+    write(
+      pathlib.join(tempDir, 'package.json'),
+      JSON.stringify({name: 'app', dependencies: {mikro: '*'}}),
+    )
+    const generic = pathlib.join(tempDir, 'node_modules/mikro')
+    write(
+      pathlib.join(generic, 'package.json'),
+      JSON.stringify({
+        name: 'mikro',
+        exports: {'./esp32c6-generic': {firmware: './dist-fw/esp32c6-generic/firmware.json'}},
+      }),
+    )
+    writeImage(pathlib.join(generic, 'dist-fw/esp32c6-generic'), {
+      name: 'esp32c6-generic',
+      chip: 'esp32c6',
+    })
+    expect(await discoverBoards(tempDir)).toEqual({boards: [], problems: []})
+  })
+})
+
+describe('bundledBoardsDir', () => {
+  let app: string
+
+  beforeEach(() => {
+    app = realpathSync(mkdtempSync(pathlib.join(tmpdir(), 'bundled-')))
+    write(pathlib.join(app, 'package.json'), JSON.stringify({name: 'app'}))
+  })
+
+  afterEach(() => {
+    rmSync(app, {recursive: true, force: true})
+  })
+
+  const cli = pathlib.join(import.meta.dirname, '..', '..', '..', '..')
+
+  it("takes the app's own mikro, when it has generic images", () => {
+    // pnpm's layout: node_modules/mikro links into the store
+    const store = pathlib.join(app, 'node_modules/.pnpm/mikro@1.0.0/node_modules/mikro')
+    write(
+      pathlib.join(store, 'package.json'),
+      JSON.stringify({
+        name: 'mikro',
+        exports: {'./esp32c6-generic': {firmware: './dist-fw/esp32c6-generic/firmware.json'}},
+      }),
+    )
+    symlinkSync(store, pathlib.join(app, 'node_modules/mikro'))
+
+    expect(bundledBoardsDir(pathlib.join(app, 'src'))).toBe(pathlib.join(app, 'node_modules/mikro'))
+  })
+
+  it("falls back to this CLI's own without a mikro with images in the app", () => {
+    expect(bundledBoardsDir(app)).toBe(cli)
+    write(pathlib.join(app, 'node_modules/mikro/package.json'), '{"name": "mikro"}')
+    expect(bundledBoardsDir(app)).toBe(cli)
+  })
 })
 
 describe('staleImage', () => {
-  it("reports an image older than its firmware project's last mikro idf build", () => {
+  it('reports an image older than its last build', () => {
     const pkg = realpathSync(mkdtempSync(pathlib.join(tmpdir(), 'stale-')))
     try {
       write(pathlib.join(pkg, 'package.json'), JSON.stringify({name: '@acme/devboard'}))
-      write(pathlib.join(pkg, 'CMakeLists.txt'), '')
       writeImage(pathlib.join(pkg, 'dist-fw'), {name: '@acme/devboard', chip: 'esp32s3'})
+      const buildDir = pathlib.join(pkg, '.mikro/build-fw')
       const board = {
         name: '@acme/devboard',
         chip: 'esp32s3',
         dir: pathlib.join(pkg, 'dist-fw'),
-        project: pkg,
+        buildDir,
       }
       expect(staleImage(board)).toBeUndefined()
 
@@ -170,7 +245,7 @@ describe('staleImage', () => {
       const later = new Date(Date.now() + 60_000)
       utimesSync(built, later, later)
       expect(staleImage(board)).toBe(
-        `the image of @acme/devboard is older than the last build in ${pkg}; run \`mikro fw prepack\` there`,
+        `the image of @acme/devboard is older than its last build in ${buildDir}; run \`mikro fw prepack\` in its package`,
       )
     } finally {
       rmSync(pkg, {recursive: true, force: true})
