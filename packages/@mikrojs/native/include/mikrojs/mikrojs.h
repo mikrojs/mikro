@@ -139,11 +139,6 @@ bool MIK_IsStopRequested(MIKRuntime* mik_rt);
 void MIK_SetEnvVar(MIKRuntime* mik_rt, const char* key, const char* value);
 void MIK_RebuildEnv(MIKRuntime* mik_rt);
 
-/* Native module registration */
-typedef void (*MIKNativeModuleInitFn)(JSContext* ctx);
-void MIK_RegisterNativeModuleInit(MIKRuntime* mik_rt, const char* name,
-                                  MIKNativeModuleInitFn init_fn);
-
 /* Loop consumer registration */
 typedef void (*MIKLoopConsumeFn)(JSContext* ctx);
 typedef void (*MIKLoopDestroyFn)(JSContext* ctx);

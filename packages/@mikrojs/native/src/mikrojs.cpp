@@ -379,11 +379,6 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
     mik__inspect_register(ctx);
     mik__pub_fs_register(ctx);
 
-    /* Call registered native module init functions */
-    for (const auto& mod : mik_rt->native_modules) {
-        mod.init_fn(ctx);
-    }
-
     JSModuleDef* stdio_mod = JS_NewCModule(ctx, "native:mikro/stdio", mik__stdio_module_init);
     CHECK_NOT_NULL(stdio_mod);
     mik__add_exports(ctx, stdio_mod, stdio_exports, countof(stdio_exports));
@@ -529,11 +524,6 @@ void MIK_SetErrorHandler(MIKRuntime* mik_rt, MIKErrorHandlerFn fn, void* opaque)
 void MIK_SetTestEmitHandler(MIKRuntime* mik_rt, MIKTestEmitHandlerFn fn, void* opaque) {
     mik_rt->test_emit_fn = fn;
     mik_rt->test_emit_opaque = opaque;
-}
-
-void MIK_RegisterNativeModuleInit(MIKRuntime* mik_rt, const char* name,
-                                  MIKNativeModuleInitFn init_fn) {
-    mik_rt->native_modules.push_back({name, init_fn});
 }
 
 void MIK_RegisterLoopConsumer(MIKRuntime* mik_rt, MIKLoopConsumeFn consume_fn,

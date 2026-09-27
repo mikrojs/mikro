@@ -234,12 +234,6 @@ void MIK_ClearPromise(JSContext* ctx, MIKPromise* p) {
     p->rfuncs[1] = JS_UNDEFINED;
 }
 
-void MIK_MarkPromise(JSRuntime* rt, MIKPromise* p, JS_MarkFunc* mark_func) {
-    JS_MarkValue(rt, p->p, mark_func);
-    JS_MarkValue(rt, p->rfuncs[0], mark_func);
-    JS_MarkValue(rt, p->rfuncs[1], mark_func);
-}
-
 void MIK_SettlePromise(JSContext* ctx, MIKPromise* p, bool is_reject, int argc, JSValue* argv) {
     JSValue ret = JS_Call(ctx, p->rfuncs[is_reject], JS_UNDEFINED, argc, argv);
     for (int i = 0; i < argc; i++) {

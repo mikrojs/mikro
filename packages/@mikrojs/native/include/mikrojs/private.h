@@ -36,12 +36,6 @@ typedef struct MIKTimers {
     uint32_t next_timer_id = 1;
 } MIKTimerRegistry;
 
-/* Registered native module init function */
-struct MIKNativeModuleEntry {
-    std::string name;
-    MIKNativeModuleInitFn init_fn;
-};
-
 /* Registered loop consumer */
 struct MIKLoopConsumerEntry {
     MIKLoopConsumeFn consume_fn;
@@ -65,7 +59,6 @@ struct MIKRuntime {
     MIKConfig config;
     JSRuntime* rt;
     JSContext* ctx;
-    bool is_worker;
     bool freeing;
     bool stop_requested;  /* Set by promise rejection tracker to stop the loop */
     /* Set by MIK_EnableTestHelpers — the test supervisor wants stop_requested
@@ -108,7 +101,6 @@ struct MIKRuntime {
      * this throw FSError(EFBIG); callers use open() for streaming. */
     size_t fs_read_max;
     MIKTimerRegistry* timers;
-    std::vector<MIKNativeModuleEntry> native_modules;
     std::vector<MIKLoopConsumerEntry> loop_consumers;
     /* Handles kept alive by MIK_KeepHandle; each entry owns a reference. */
     std::vector<JSValue> kept_handles;
@@ -244,16 +236,7 @@ bool mik__is_unloadable_namespace(JSContext* ctx, JSValueConst ns);
 
 int js_module_set_import_meta(JSContext* ctx, JSValue func_val, bool use_realpath, bool is_main);
 
-JSValue mik__get_args(JSContext* ctx);
-
-int mik__eval_bytecode(JSContext* ctx, const uint8_t* buf, size_t buf_len, bool check_promise);
-
-
-void mik__sab_free(void* opaque, void* ptr);
-void mik__sab_dup(void* opaque, void* ptr);
-
 MIKTimerRegistry* MIK_NewTimerRegistry(void);
-MIKRuntime* MIK_NewRuntimeWorker(void);
 MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options);
 JSValue MIK_EvalScript(JSContext* ctx, const char* filename);
 JSValue MIK_EvalModule(JSContext* ctx, const char* filename, bool is_main);

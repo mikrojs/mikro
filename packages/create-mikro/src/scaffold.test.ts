@@ -94,9 +94,9 @@ describe.each(TEMPLATES)('template: $name', ({name}) => {
     expect(pkg.engines).toBeUndefined()
   })
 
-  it('creates tsconfig.json extending the default chip preset', () => {
+  it('creates tsconfig.json extending the default preset, with no chip asked for', () => {
     const tsconfig = JSON.parse(readFileSync(path.join(targetDir, 'tsconfig.json'), 'utf-8'))
-    expect(tsconfig.extends).toBe('mikro/tsconfig/esp32c6-generic')
+    expect(tsconfig.extends).toBe('mikro/tsconfig')
     expect(tsconfig.include).toContain('app/**/*')
     expect(tsconfig.include).toContain('mikro.config.ts')
   })
@@ -199,6 +199,23 @@ describe('chip option', () => {
     })
     const tsconfig = JSON.parse(readFileSync(path.join(targetDir, 'tsconfig.json'), 'utf-8'))
     expect(tsconfig.extends).toBe('mikro/tsconfig/esp32s3-generic')
+  })
+
+  it('builds a firmware project for the default chip when none is given', () => {
+    scaffold({
+      targetDir,
+      template: 'blank',
+      projectName: 'test-project',
+      mikroVersion: '0.0.0',
+      templatesDir,
+      pkgManager: 'npm',
+      firmware: true,
+    })
+    const tsconfig = JSON.parse(readFileSync(path.join(targetDir, 'tsconfig.json'), 'utf-8'))
+    expect(tsconfig.extends).toBe('mikro/tsconfig/esp32c6-generic')
+    expect(readFileSync(path.join(targetDir, 'README.md'), 'utf-8')).toContain(
+      'idf set-target esp32c6',
+    )
   })
 })
 
