@@ -6,11 +6,7 @@ import {createInterface} from 'node:readline/promises'
 import {Writable} from 'node:stream'
 import {setTimeout as sleep} from 'node:timers/promises'
 
-import {command, constant, message, optional} from '@optique/core'
-import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
-import {flag, option} from '@optique/core/primitives'
-import {string} from '@optique/core/valueparser'
 import open from 'open'
 
 import {isAgentMode} from '../../lib/agent.js'
@@ -19,34 +15,7 @@ import {joinUrl} from '../../lib/otaPublish.js'
 import {readProjectApp} from '../../lib/projectApp.js'
 import {getMikroDir} from '../../lib/projectRoot.js'
 import {readRegistryFile, REGISTRY_FILE} from '../../lib/registryConfig.js'
-
-export const args = command(
-  'setup',
-  object({
-    subcommand: constant('setup' as const),
-    registry: optional(
-      option('--registry', string({metavar: 'URL'}), {
-        description: message`Registry base URL (skips the url prompt)`,
-      }),
-    ),
-    token: optional(
-      option('--token', string({metavar: 'TOKEN'}), {
-        description: message`Registry token (skips the token prompt; with --registry, setup runs without prompts)`,
-      }),
-    ),
-    user: optional(
-      flag('--user', {
-        description: message`Write ~/.mikro/registry.json (all projects) instead of the project's .mikro/registry.json`,
-      }),
-    ),
-    force: optional(
-      flag('--force', {
-        description: message`Configure the url even if it does not identify as a Mikro.js registry`,
-      }),
-    ),
-  }),
-  {description: message`Configure which update registry to use (url and token)`},
-)
+import type {args} from './setup.args.js'
 
 type Args = InferValue<typeof args>
 

@@ -1,8 +1,7 @@
-import {command, constant} from '@optique/core'
-import {object as objectConstruct, or as orConstruct} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 import {type ComponentType, createElement} from 'react'
 
+import type {args} from './sim.args.js'
 import * as cleanSub from './sim/clean.js'
 import * as deploySub from './sim/deploy.js'
 import * as devSub from './sim/dev.js'
@@ -12,24 +11,6 @@ import * as replSub from './sim/repl.js'
 import * as resetSub from './sim/reset.js'
 import * as scaffoldSub from './sim/scaffold.js'
 import * as testSub from './sim/test.js'
-
-export const args = command(
-  'sim',
-  objectConstruct({
-    action: constant('sim'),
-    sub: orConstruct(
-      devSub.args,
-      deploySub.args,
-      replSub.args,
-      testSub.args,
-      envSub.args,
-      cleanSub.args,
-      resetSub.args,
-      profileSub.args,
-      scaffoldSub.args,
-    ),
-  }),
-)
 
 type Args = InferValue<typeof args>
 

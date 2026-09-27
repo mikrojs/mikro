@@ -1,6 +1,3 @@
-import {command, constant, message, optional} from '@optique/core'
-import {object} from '@optique/core/constructs'
-import {flag} from '@optique/core/primitives'
 import {Text} from 'ink'
 import React, {useCallback, useEffect, useState} from 'react'
 
@@ -9,15 +6,6 @@ import {openSim, type OpenSimResult} from '../../lib/openSim.js'
 import {ReplConsole} from '../../lib/serial/ReplConsole.js'
 import {createRepl} from '../../lib/serial/replStateMachine.js'
 import {SimAlreadyRunningError} from '../../lib/simPid.js'
-
-export const args = command(
-  'repl',
-  object({
-    subcommand: constant('repl' as const),
-    agent: optional(flag('--agent', {description: message`NDJSON agent protocol over stdio`})),
-  }),
-  {description: message`Open an interactive REPL on the simulator`},
-)
 
 interface ReplConfig {
   agent?: boolean

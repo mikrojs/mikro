@@ -4,26 +4,13 @@ import {existsSync, readFileSync} from 'node:fs'
 import * as pathlib from 'node:path'
 import {fileURLToPath} from 'node:url'
 
-import {command, constant, message} from '@optique/core'
-import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
-import {passThrough} from '@optique/core/primitives'
 
 import {UserError} from '../lib/errorMessage.js'
 import {resolveProjectRoot} from '../lib/projectRoot.js'
+import type {args} from './idf.args.js'
 
 const EIM_DOCS = 'https://docs.espressif.com/projects/idf-im-ui/en/latest/'
-
-export const args = command(
-  'idf',
-  object({
-    action: constant('idf'),
-    args: passThrough({format: 'greedy', description: message`Arguments for idf.py`}),
-  }),
-  {
-    description: message`Run ESP-IDF's idf.py to build custom firmware, with the build in .mikro/build-fw (.mikro/build-fw-<folder> for a project in a folder of the package)`,
-  },
-)
 
 export async function run(config: InferValue<typeof args>): Promise<void> {
   const projectDir = pathlib.resolve(optionValue(config.args, '-C', '--project-dir') ?? '')

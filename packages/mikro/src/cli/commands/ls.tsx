@@ -1,6 +1,4 @@
-import {command, constant, message, object, optional} from '@optique/core'
 import type {InferValue} from '@optique/core/parser'
-import {flag} from '@optique/core/primitives'
 import {Box, Text} from 'ink'
 import {SerialPort} from 'serialport'
 
@@ -10,15 +8,7 @@ import {getCachedChip, getCachedDeviceId, getCachedName} from '../lib/deviceCach
 import {deviceIdFromSerial} from '../lib/deviceId.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
 import {deviceDisplayName, deviceGeneratedName} from '../lib/deviceName.js'
-
-export const args = command(
-  'ls',
-  object({
-    action: constant('list'),
-    json: optional(flag('--json', {description: message`Output as JSON`})),
-    agent: optional(flag('--agent', {description: message`Output as JSON (agent mode)`})),
-  }),
-)
+import type {args} from './ls.args.js'
 
 export async function run(config: InferValue<typeof args>) {
   const ports = (await SerialPort.list()).filter((p) => p.serialNumber)

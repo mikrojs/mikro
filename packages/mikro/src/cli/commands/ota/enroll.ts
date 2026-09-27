@@ -1,8 +1,4 @@
-import {command, constant, message, optional} from '@optique/core'
-import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
-import {flag, option} from '@optique/core/primitives'
-import {string} from '@optique/core/valueparser'
 import {firstValueFrom} from 'rxjs'
 
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
@@ -15,7 +11,6 @@ import {
 } from '../../lib/deviceName.js'
 import {enrollDevice, REGISTRY_KV, rotateUpdateKey, UPDATE_KEY_KV} from '../../lib/enroll.js'
 import {describeError} from '../../lib/errorMessage.js'
-import {port} from '../../lib/portValueParser.js'
 import {readProjectApp} from '../../lib/projectApp.js'
 import {
   requireRegistryToken,
@@ -23,51 +18,7 @@ import {
   resolveRegistryConnection,
 } from '../../lib/registryConfig.js'
 import {openSession} from '../../lib/serial/openSession.js'
-
-export const args = command(
-  'enroll',
-  object({
-    subcommand: constant('enroll' as const),
-    registry: optional(
-      option('--registry', string({metavar: 'URL'}), {
-        description: message`Registry base URL (default: .mikro/registry.json)`,
-      }),
-    ),
-    token: optional(
-      option('--token', string({metavar: 'TOKEN'}), {
-        description: message`Registry API token (default: MIKRO_OTA_TOKEN or .mikro/registry.json)`,
-      }),
-    ),
-    name: optional(
-      option('--name', string({metavar: 'NAME'}), {
-        description: message`Name for the device (default: derived from its device id)`,
-      }),
-    ),
-    channel: optional(
-      option('--channel', string({metavar: 'CHANNEL'}), {
-        description: message`Update channel the device follows (e.g. beta, stable); default main`,
-      }),
-    ),
-    reEnroll: optional(
-      flag('--re-enroll', {
-        description: message`Rotate the update key when the device is already enrolled (the old one stops working immediately)`,
-      }),
-    ),
-    updateKey: optional(
-      option('--update-key', string({metavar: 'SECRET'}), {
-        description: message`Write an externally issued update key to the device; the registry is not contacted`,
-      }),
-    ),
-    port: optional(
-      option('-p', '--port', port(), {
-        description: message`Serial port of device`,
-      }),
-    ),
-    json: optional(flag('--json', {description: message`Output as JSON`})),
-    agent: optional(flag('--agent', {description: message`Output as JSON (agent mode)`})),
-  }),
-  {description: message`Enroll the connected device with an update registry`},
-)
+import type {args} from './enroll.args.js'
 
 type Args = InferValue<typeof args>
 

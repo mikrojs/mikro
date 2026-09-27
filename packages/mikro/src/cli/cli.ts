@@ -4,38 +4,15 @@
 import '../suppressStripTypesWarning.js'
 
 import {run} from '@optique/run'
-import {render} from 'ink'
-import {type ComponentType, createElement} from 'react'
-import updateNotifier from 'update-notifier'
+import type {RenderOptions} from 'ink'
+import type {ComponentType} from 'react'
 
 import pkg from '../../package.json' with {type: 'json'}
 import {isAgentMode} from './lib/agent.js'
 import {bareOptions} from './lib/bareOptions.js'
 import {noticeLegacyAliases} from './lib/legacyAliases.js'
 import {runCommand} from './lib/runCommand.js'
-import {dispatchReplCommand} from './lib/serial/dispatchReplCommand.js'
-import {
-  buildCommand,
-  buildRuntimeCommand,
-  cleanCommand,
-  commands,
-  consoleCommand,
-  deployCommand,
-  devCommand,
-  docsCommand,
-  envCommand,
-  fwCommand,
-  homeCommand,
-  idfCommand,
-  listCommand,
-  logsCommand,
-  nameCommand,
-  otaCommand,
-  profileCommand,
-  prog,
-  simCommand,
-  testCommand,
-} from './program.js'
+import {prog} from './program.js'
 
 /* Global flag: --native-loglevel=<error|warn|info|debug|verbose>
  *
@@ -75,6 +52,7 @@ const config = await run(prog, {
 // Skip the update banner for non-interactive invocations (pipes, AI agents);
 // CI / NO_UPDATE_NOTIFIER are handled internally by update-notifier.
 if (process.stdout.isTTY && !isAgentMode()) {
+  const {default: updateNotifier} = await import('update-notifier')
   updateNotifier({pkg}).notify()
 }
 
@@ -83,8 +61,21 @@ if (process.stdout.isTTY && !isAgentMode()) {
 // sees it.
 if (!isAgentMode()) noticeLegacyAliases()
 
+// Command handlers are imported inside their case so a run loads only the
+// command it dispatches.
+async function renderInk<T>(
+  Component: ComponentType<{args: T}>,
+  args: T,
+  options: RenderOptions = {exitOnCtrlC: false, kittyKeyboard: {mode: 'enabled'}},
+): Promise<void> {
+  const [{render}, {createElement}] = await Promise.all([import('ink'), import('react')])
+  render(createElement(Component, {args}), options)
+}
+
 switch (config.command.action) {
   case 'dev': {
+    const {dispatchReplCommand} = await import('./lib/serial/dispatchReplCommand.js')
+    const devCommand = await import('./commands/dev.js')
     dispatchReplCommand({
       commandName: 'dev',
       config: config.command,
@@ -95,17 +86,17 @@ switch (config.command.action) {
     break
   }
   case 'env': {
+    const envCommand = await import('./commands/env.js')
     if (config.command.sub.subcommand === 'ui') {
-      const {default: Component} = envCommand
-      render(createElement(Component, {args: config.command}), {
-        exitOnCtrlC: false,
-      })
+      await renderInk(envCommand.default, config.command, {exitOnCtrlC: false})
     } else {
       runCommand(envCommand.run(config.command))
     }
     break
   }
   case 'deploy': {
+    const {dispatchReplCommand} = await import('./lib/serial/dispatchReplCommand.js')
+    const deployCommand = await import('./commands/deploy.js')
     dispatchReplCommand({
       commandName: 'deploy',
       config: config.command,
@@ -117,30 +108,26 @@ switch (config.command.action) {
     break
   }
   case 'list': {
+    const listCommand = await import('./commands/ls.js')
     if (config.command.json || isAgentMode(config.command.agent) || !process.stdin.isTTY) {
       runCommand(listCommand.run(config.command))
       break
     }
-    const {default: ListComponent} = listCommand
-    render(createElement(ListComponent, {args: config.command}), {
-      exitOnCtrlC: false,
-      kittyKeyboard: {mode: 'enabled'},
-    })
+    await renderInk(listCommand.default, config.command)
     break
   }
   case 'build': {
+    const buildCommand = await import('./commands/build.js')
     if (config.command.json || isAgentMode(config.command.agent) || !process.stdin.isTTY) {
       runCommand(buildCommand.run(config.command))
       break
     }
-    const {default: BuildComponent} = buildCommand
-    render(createElement(BuildComponent, {args: config.command}), {
-      exitOnCtrlC: false,
-      kittyKeyboard: {mode: 'enabled'},
-    })
+    await renderInk(buildCommand.default, config.command)
     break
   }
   case 'console': {
+    const {dispatchReplCommand} = await import('./lib/serial/dispatchReplCommand.js')
+    const consoleCommand = await import('./commands/console.js')
     dispatchReplCommand({
       commandName: 'console',
       config: config.command,
@@ -150,48 +137,53 @@ switch (config.command.action) {
     })
     break
   }
-  case 'build-runtime': {
-    const {default: buildRuntime} = buildRuntimeCommand
-    await buildRuntime(config.command)
-    break
-  }
   case 'clean': {
+    const cleanCommand = await import('./commands/clean.js')
     runCommand(cleanCommand.run(config.command))
     break
   }
   case 'docs': {
+    const docsCommand = await import('./commands/docs.js')
     runCommand(docsCommand.run())
     break
   }
   case 'home': {
+    const homeCommand = await import('./commands/home.js')
     runCommand(homeCommand.run())
     break
   }
   case 'name': {
+    const nameCommand = await import('./commands/name.js')
     runCommand(nameCommand.run(config.command))
     break
   }
   case 'logs': {
+    const logsCommand = await import('./commands/logs.js')
     runCommand(logsCommand.run(config.command))
     break
   }
   case 'test': {
+    const testCommand = await import('./commands/test.js')
     runCommand(testCommand.run(config.command))
     break
   }
   case 'ota': {
+    const otaCommand = await import('./commands/ota.js')
     runCommand(otaCommand.run(config.command))
     break
   }
   case 'profile': {
+    const profileCommand = await import('./commands/profile.js')
     runCommand(profileCommand.run(config.command))
     break
   }
   case 'idf': {
+    const idfCommand = await import('./commands/idf.js')
     runCommand(idfCommand.run(config.command))
     break
   }
   case 'fw': {
+    const fwCommand = await import('./commands/fw.js')
     runCommand(fwCommand.run(config.command))
     break
   }
@@ -202,35 +194,40 @@ switch (config.command.action) {
     // plain async runs.
     const isInkSub = sub.subcommand === 'dev' || sub.subcommand === 'repl'
     const wantsAgent = isInkSub && 'agent' in sub && isAgentMode(sub.agent)
-    if (isInkSub && !wantsAgent) {
-      if (!process.stdin.isTTY) {
-        console.error(
-          `Error: mikro sim ${sub.subcommand} requires an interactive terminal (use --agent for NDJSON mode)`,
-        )
-        process.exit(1)
-      }
-      const {default: SimComponent} = simCommand
-      render(createElement(SimComponent, {args: config.command}), {
-        exitOnCtrlC: false,
-        kittyKeyboard: {mode: 'enabled'},
-      })
+    const wantsInk = isInkSub && !wantsAgent
+    if (wantsInk && !process.stdin.isTTY) {
+      console.error(
+        `Error: mikro sim ${sub.subcommand} requires an interactive terminal (use --agent for NDJSON mode)`,
+      )
+      process.exit(1)
+    }
+    const simCommand = await import('./commands/sim.js')
+    if (wantsInk) {
+      await renderInk(simCommand.default, config.command)
     } else {
       runCommand(simCommand.run(config.command))
     }
     break
   }
-  default: {
+  case 'flash': {
     if (!process.stdin.isTTY) {
       console.error(`Error: ${config.command.action} requires an interactive terminal`)
       process.exit(1)
     }
-    const command = commands[config.command.action]
-    const {default: Component} = command
-    render(
-      createElement(Component as ComponentType<{args: any}>, {
-        args: config.command,
-      }),
-      {exitOnCtrlC: false, kittyKeyboard: {mode: 'enabled'}},
-    )
+    const flashCommand = await import('./commands/flash.js')
+    await renderInk(flashCommand.default, config.command)
+    break
   }
+  case 'erase': {
+    if (!process.stdin.isTTY) {
+      console.error(`Error: ${config.command.action} requires an interactive terminal`)
+      process.exit(1)
+    }
+    const eraseCommand = await import('./commands/erase.js')
+    await renderInk(eraseCommand.default, config.command)
+    break
+  }
+  default:
+    // A command in program.ts without a case here fails the type check
+    config.command satisfies never
 }

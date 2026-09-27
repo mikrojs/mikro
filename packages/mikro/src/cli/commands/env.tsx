@@ -1,84 +1,17 @@
 /* eslint-disable no-console */
-import {command, constant, message, optional} from '@optique/core'
-import {object as objectConstruct, or as orConstruct} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
-import {argument, flag, option} from '@optique/core/primitives'
-import {string} from '@optique/core/valueparser'
 import {useCallback, useMemo, useState} from 'react'
 import {catchError, map, of, shareReplay} from 'rxjs'
 
 import {DevicePicker} from '../components/DevicePicker.js'
 import {EnvEditor} from '../components/EnvEditor.js'
 import {agentError, agentResult, isAgentMode} from '../lib/agent.js'
-import {port} from '../lib/portValueParser.js'
 import {readSecretValue} from '../lib/secretInput.js'
 import {openSession} from '../lib/serial/openSession.js'
 import {connectRepl, type ReplSession} from '../lib/session.js'
 import {createSerialTransport, openSerial} from '../lib/transport.js'
 import {useObservable} from '../lib/useObservable.js'
-
-const portOption = optional(
-  option('-p', '--port', port(), {
-    description: message`Serial port of device`,
-  }),
-)
-
-const jsonFlag = optional(flag('--json', {description: message`Output as JSON`}))
-const agentFlag = optional(flag('--agent', {description: message`Output as JSON (agent mode)`}))
-
-const listArgs = command(
-  'list',
-  objectConstruct({
-    subcommand: constant('list' as const),
-    port: portOption,
-    json: jsonFlag,
-    agent: agentFlag,
-  }),
-)
-
-const setArgs = command(
-  'set',
-  objectConstruct({
-    subcommand: constant('set' as const),
-    noSecret: optional(
-      flag('--no-secret', {
-        description: message`Pass VALUE as an argument and store it as non-secret (visible in 'env list')`,
-      }),
-    ),
-    key: argument(string({metavar: 'KEY'})),
-    value: optional(argument(string({metavar: 'VALUE'}))),
-    port: portOption,
-    json: jsonFlag,
-    agent: agentFlag,
-  }),
-)
-
-const deleteArgs = command(
-  'delete',
-  objectConstruct({
-    subcommand: constant('delete' as const),
-    key: argument(string({metavar: 'KEY'})),
-    port: portOption,
-    json: jsonFlag,
-    agent: agentFlag,
-  }),
-)
-
-const uiArgs = command(
-  'ui',
-  objectConstruct({
-    subcommand: constant('ui' as const),
-    port: portOption,
-  }),
-)
-
-export const args = command(
-  'env',
-  objectConstruct({
-    action: constant('env'),
-    sub: orConstruct(listArgs, setArgs, deleteArgs, uiArgs),
-  }),
-)
+import type {args} from './env.args.js'
 
 async function withSession<T>(
   portArg: string | undefined,

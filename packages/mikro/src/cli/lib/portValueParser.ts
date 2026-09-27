@@ -1,8 +1,5 @@
 import {message} from '@optique/core'
 import type {ValueParser} from '@optique/core/valueparser'
-import {SerialPort} from 'serialport'
-
-import {deviceDisplayName} from './deviceName.js'
 
 /* A ValueParser for the `--port` option that suggests connected serial
  * devices on Tab. Only ports with a serialNumber are surfaced; the rest
@@ -20,6 +17,12 @@ export function port(): ValueParser<'async', string> {
       return value
     },
     async *suggest(_prefix: string) {
+      // Most command parsers hold a port(), so serialport and the device
+      // cache load here, on Tab, rather than on every CLI start.
+      const [{SerialPort}, {deviceDisplayName}] = await Promise.all([
+        import('serialport'),
+        import('./deviceName.js'),
+      ])
       // SerialPort.list() can throw on transient USB-subsystem errors or
       // permission failures. Yielding nothing is better than letting the
       // shell session see a stack trace mid-Tab.

@@ -1,21 +1,11 @@
-import {command, constant, message} from '@optique/core'
-import {object as objectConstruct, or as orConstruct} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
 
+import type {args} from './ota.args.js'
 import * as enrollSub from './ota/enroll.js'
 import * as packSub from './ota/pack.js'
 import * as pushSub from './ota/push.js'
 import * as releaseSub from './ota/release.js'
 import * as setupSub from './ota/setup.js'
-
-export const args = command(
-  'ota',
-  objectConstruct({
-    action: constant('ota'),
-    sub: orConstruct(packSub.args, pushSub.args, enrollSub.args, setupSub.args, releaseSub.args),
-  }),
-  {description: message`Build, publish, and release app builds for over-the-air updates`},
-)
 
 type Args = InferValue<typeof args>
 

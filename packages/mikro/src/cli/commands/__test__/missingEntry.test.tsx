@@ -9,9 +9,12 @@ import type {ReactElement} from 'react'
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
 import {UserError} from '../../lib/errorMessage.js'
-import Build, {args as buildArgs, run as buildRun} from '../build.js'
-import Dev, {args as devArgs} from '../dev.js'
-import SimDev, {args as simDevArgs} from '../sim/dev.js'
+import {args as buildArgs} from '../build.args.js'
+import Build, {run as buildRun} from '../build.js'
+import {args as devArgs} from '../dev.args.js'
+import Dev from '../dev.js'
+import {args as simDevArgs} from '../sim/dev.args.js'
+import SimDev from '../sim/dev.js'
 
 function parsed<T>(result: {success: true; value: T} | {success: false}): T {
   if (!result.success) throw new Error('Could not parse the command arguments')

@@ -3,97 +3,51 @@ import {object} from '@optique/core/constructs'
 import {defineProgram} from '@optique/core/program'
 
 import pkg from '../../package.json' with {type: 'json'}
-import * as buildCommand from './commands/build.js'
-import * as buildRuntimeCommand from './commands/build-runtime.js'
-import * as cleanCommand from './commands/clean.js'
-import * as consoleCommand from './commands/console.js'
-import * as deployCommand from './commands/deploy.js'
-import * as devCommand from './commands/dev.js'
-import * as docsCommand from './commands/docs.js'
-import * as envCommand from './commands/env.js'
-import * as eraseCommand from './commands/erase.js'
-import * as flashCommand from './commands/flash.js'
-import * as fwCommand from './commands/fw.js'
-import * as homeCommand from './commands/home.js'
-import * as idfCommand from './commands/idf.js'
-import * as logsCommand from './commands/logs.js'
-import * as listCommand from './commands/ls.js'
-import * as nameCommand from './commands/name.js'
-import * as otaCommand from './commands/ota.js'
-import * as profileCommand from './commands/profile.js'
-import * as simCommand from './commands/sim.js'
-import * as testCommand from './commands/test.js'
+import {args as buildArgs} from './commands/build.args.js'
+import {args as cleanArgs} from './commands/clean.args.js'
+import {args as consoleArgs} from './commands/console.args.js'
+import {args as deployArgs} from './commands/deploy.args.js'
+import {args as devArgs} from './commands/dev.args.js'
+import {args as docsArgs} from './commands/docs.args.js'
+import {args as envArgs} from './commands/env.args.js'
+import {args as eraseArgs} from './commands/erase.args.js'
+import {args as flashArgs} from './commands/flash.args.js'
+import {args as fwArgs} from './commands/fw.args.js'
+import {args as homeArgs} from './commands/home.args.js'
+import {args as idfArgs} from './commands/idf.args.js'
+import {args as logsArgs} from './commands/logs.args.js'
+import {args as listArgs} from './commands/ls.args.js'
+import {args as nameArgs} from './commands/name.args.js'
+import {args as otaArgs} from './commands/ota.args.js'
+import {args as profileArgs} from './commands/profile.args.js'
+import {args as simArgs} from './commands/sim.args.js'
+import {args as testArgs} from './commands/test.args.js'
 
-export {
-  buildCommand,
-  buildRuntimeCommand,
-  cleanCommand,
-  consoleCommand,
-  deployCommand,
-  devCommand,
-  docsCommand,
-  envCommand,
-  eraseCommand,
-  flashCommand,
-  fwCommand,
-  homeCommand,
-  idfCommand,
-  listCommand,
-  logsCommand,
-  nameCommand,
-  otaCommand,
-  profileCommand,
-  simCommand,
-  testCommand,
-}
-
-export const commands = {
-  name: nameCommand,
-  flash: flashCommand,
-  build: buildCommand,
-  'build-runtime': buildRuntimeCommand,
-  clean: cleanCommand,
-  docs: docsCommand,
-  erase: eraseCommand,
-  env: envCommand,
-  dev: devCommand,
-  deploy: deployCommand,
-  list: listCommand,
-  console: consoleCommand,
-  home: homeCommand,
-  logs: logsCommand,
-  test: testCommand,
-  sim: simCommand,
-  ota: otaCommand,
-  profile: profileCommand,
-  idf: idfCommand,
-  fw: fwCommand,
-}
-
+// Only the parsers load here; cli.ts imports each command's handler module
+// after parsing, so a run pays for one command's dependencies, not all.
 export const argsParser = or(
   or(
-    object({command: commands.dev.args}),
-    object({command: commands.deploy.args}),
-    object({command: commands.env.args}),
-    object({command: commands.build.args}),
-    object({command: commands.flash.args}),
-    object({command: commands.console.args}),
-    object({command: commands.name.args}),
-    object({command: commands.fw.args}),
+    object({command: devArgs}),
+    object({command: deployArgs}),
+    object({command: envArgs}),
+    object({command: buildArgs}),
+    object({command: flashArgs}),
+    object({command: consoleArgs}),
+    object({command: nameArgs}),
+    object({command: fwArgs}),
   ),
   or(
-    object({command: commands.list.args}),
-    object({command: commands.erase.args}),
-    object({command: commands.clean.args}),
-    object({command: commands['build-runtime'].args}),
-    object({command: commands.test.args}),
-    object({command: commands.sim.args}),
-    object({command: commands.docs.args}),
-    object({command: commands.home.args}),
-    object({command: commands.logs.args}),
-    object({command: commands.ota.args}),
-    object({command: commands.profile.args}),
-    object({command: commands.idf.args}),
+    object({command: listArgs}),
+    object({command: eraseArgs}),
+    object({command: cleanArgs}),
+    object({command: testArgs}),
+    object({command: simArgs}),
+    object({command: docsArgs}),
+    object({command: homeArgs}),
+    object({command: logsArgs}),
+    object({command: otaArgs}),
+    object({command: profileArgs}),
+    object({command: idfArgs}),
   ),
 )
 

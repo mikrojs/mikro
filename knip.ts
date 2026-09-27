@@ -50,7 +50,7 @@ const config = {
     },
     'packages/mikro': {
       // boards.config.ts: `mikro fw build` loads the generic boards' config.
-      entry: ['src/cli/cliWrapper.ts', 'src/cli/cli.ts', 'src/_exports/*.ts', 'boards.config.ts'],
+      entry: ['src/cli/cli.ts', 'src/_exports/*.ts', 'boards.config.ts'],
       project: ['src/**/*.{ts,tsx}'],
       // @mikrojs/quickjs: native addon resolved at runtime
       // terser, @swc/core: optional minifiers loaded dynamically via importOptional()
