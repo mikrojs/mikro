@@ -161,6 +161,14 @@ pn mikro fw build
 | `--parallel N`  | Build up to N images at once, from all the boards, instead of one after another (`--parallel 4`). Each build writes its output to a log beside its build folder (`.mikro/build-fw+no-ble.log`), and a line per image says how it went. After a failure, no more builds start |
 | `--flash`       | Then flash the image it built, as [`mikro flash`](#mikro-flash) does. It needs one board (`--board` in a package with several) and, for a board with leaner images, `--image`                                                                                                |
 
+### mikro fw list
+
+List the boards in a [board package](/develop/creating-boards)'s `boards.config.ts` and their images, one line per board. With `--json`, it prints them as JSON, for example to build each image in a CI job of its own with `mikro fw build --board <board> --image <image>`.
+
+```sh
+pn mikro fw list
+```
+
 ### mikro fw check
 
 Check a board package's `boards.config.ts`, its `firmware` exports and their images: that the exports match the config, and that each image is built, complete, named correctly, from a Mikro.js version the CLI accepts, not older than its last build, and included in `files`. It exits with an error if anything is wrong.

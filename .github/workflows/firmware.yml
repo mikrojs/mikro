@@ -6,16 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'ESP32 target (leave empty to build all)'
-        type: choice
+        description: 'Only the boards for this chip, like esp32c6 (all builds every board)'
+        type: string
         default: 'all'
-        options:
-          - all
-          - esp32
-          - esp32c3
-          - esp32c5
-          - esp32c6
-          - esp32s3
 
 concurrency:
   group: firmware-${{ github.ref }}
@@ -25,6 +18,9 @@ concurrency:
 # composite action and bundles the binaries into the published mikro
 # npm package. This workflow only produces artifacts for ad-hoc / PR / dispatch
 # builds, consumed via `mikro flash --from=mikrojs/mikro@<sha>`.
+#
+# The boards and their images come from packages/mikro/boards.config.ts
+# (`mikro fw list`), one job per image.
 
 permissions:
   contents: read
@@ -36,27 +32,32 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'firmware')
     runs-on: ubuntu-24.04
     outputs:
-      chips: ${{ steps.read.outputs.chips }}
+      images: ${{ steps.read.outputs.images }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-pnpm
       - id: read
+        shell: bash
+        working-directory: packages/mikro
         env:
+          MIKROJS_WORKSPACE: '1'
           TARGET: ${{ inputs.target }}
         run: |
-          if [ -n "$TARGET" ] && [ "$TARGET" != "all" ]; then
-            echo "chips=[\"$TARGET\"]" >> "$GITHUB_OUTPUT"
-          else
-            echo "chips=$(jq -c .chips packages/@mikrojs/firmware/chips.json)" >> "$GITHUB_OUTPUT"
+          images=$(node bin/mikrojs.js fw list --json | jq -c --arg chip "${TARGET:-all}" \
+            '[.result.boards[] | select($chip == "all" or .chip == $chip) | {board: .name, image: .images[]}]')
+          if [ "$images" = '[]' ]; then
+            echo "::error::No board in packages/mikro/boards.config.ts is for the chip \"$TARGET\"."
+            exit 1
           fi
+          echo "images=$images" >> "$GITHUB_OUTPUT"
 
   build:
     needs: setup
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.setup.outputs.chips) }}
-        # The generic boards' images, as in packages/mikro/boards.config.ts
-        image: [full, no-ble, no-ble+no-wifi]
+        include: ${{ fromJSON(needs.setup.outputs.images) }}
+    name: build (${{ matrix.board }}, ${{ matrix.image }})
     runs-on: ubuntu-24.04
     container: espressif/idf:v6.1
     steps:
@@ -66,8 +67,8 @@ jobs:
 
       - uses: ./.github/actions/firmware-build
         with:
-          target: ${{ matrix.target }}
+          board: ${{ matrix.board }}
           image: ${{ matrix.image }}
           pack-format: tarball
           # The names `mikro flash --from <sha> [--features <image>]` looks for
-          artifact-name: mikro-fw-${{ matrix.target }}-generic${{ matrix.image != 'full' && format('+{0}', matrix.image) || '' }}
+          artifact-name: mikro-fw-${{ matrix.board }}${{ matrix.image != 'full' && format('+{0}', matrix.image) || '' }}

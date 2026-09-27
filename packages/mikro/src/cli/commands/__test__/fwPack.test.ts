@@ -35,6 +35,7 @@ vi.mock('../fw/shared.js', async (importOriginal) => ({
 const {run} = await import('../fw/pack.js')
 const {run: runBuild} = await import('../fw/build.js')
 const {run: runCheck} = await import('../fw/check.js')
+const {run: runList} = await import('../fw/list.js')
 
 /* `mikro fw pack`, `build` and `check` against a fake idf.py that writes a
  * finished build into -B. */
@@ -995,6 +996,43 @@ describe('mikro fw check', () => {
     expect(error).toHaveBeenCalledWith(
       expect.stringContaining('has no export with a "firmware" condition'),
     )
+    expect(exit).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('mikro fw list', () => {
+  it("lists each board's images, the full one first", async () => {
+    process.chdir(board)
+    write(
+      pathlib.join(board, 'boards.config.ts'),
+      BOARD_CONFIG.replace(`{chip: 'esp32c6'}`, `{chip: 'esp32c6', images: [{ble: false}]}`),
+    )
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await runList({subcommand: 'list', json: undefined})
+
+    expect(log).toHaveBeenCalledWith('@acme/devboard (esp32c6): full, no-ble')
+  })
+
+  it('prints them as JSON with --json', async () => {
+    process.chdir(board)
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+
+    await runList({subcommand: 'list', json: true})
+
+    expect(JSON.parse(String(stdout.mock.calls[0]?.[0]))).toMatchObject({
+      command: 'fw list',
+      result: {boards: [{name: '@acme/devboard', chip: 'esp32c6', images: ['full']}]},
+    })
+  })
+
+  it('fails in a package without boards.config.ts', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+
+    await runList({subcommand: 'list', json: undefined})
+
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('boards.config.ts does not exist'))
     expect(exit).toHaveBeenCalledWith(1)
   })
 })

@@ -46,6 +46,7 @@ jobs:
       npm_tag: ${{ steps.plan.outputs.npm_tag }}
       pr: ${{ steps.plan.outputs.pr }}
       version: ${{ steps.plan.outputs.version }}
+      images: ${{ steps.images.outputs.images }}
     steps:
       # `releaser plan` computes the version too — it needs git history for
       # conventional-recommended-bump. fetch-depth: 0 is required.
@@ -58,6 +59,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm --silent releaser plan --context release >> "$GITHUB_OUTPUT"
+
+      # The generic boards and their images, from packages/mikro/boards.config.ts:
+      # build-firmware builds each in a job of its own.
+      - id: images
+        if: steps.plan.outputs.should_run == 'true'
+        shell: bash
+        working-directory: packages/mikro
+        env:
+          MIKROJS_WORKSPACE: '1'
+        run: |
+          images=$(node bin/mikrojs.js fw list --json |
+            jq -c '[.result.boards[] | {board: .name, image: .images[]}]')
+          echo "images=$images" >> "$GITHUB_OUTPUT"
 
       # Mint mikrodroid App token only for the label-triggered preview modes
       # (pr-preview, release-preview), where we need to remove the trigger
@@ -134,28 +148,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  firmware-setup:
-    needs: plan
-    if: needs.plan.outputs.should_run == 'true'
-    runs-on: ubuntu-24.04
-    outputs:
-      chips: ${{ steps.read.outputs.chips }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - id: read
-        run: echo "chips=$(jq -c .chips packages/@mikrojs/firmware/chips.json)" >>
-          "$GITHUB_OUTPUT"
-
   build-firmware:
-    needs: [plan, firmware-setup]
+    needs: plan
     if: needs.plan.outputs.should_run == 'true'
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(needs.firmware-setup.outputs.chips) }}
-        # The generic boards' images, as in packages/mikro/boards.config.ts;
-        # `fw check` below fails on one the config has and this list lacks.
-        image: [full, no-ble, no-ble+no-wifi]
+        include: ${{ fromJSON(needs.plan.outputs.images) }}
+    name: build-firmware (${{ matrix.board }}, ${{ matrix.image }})
     runs-on: ubuntu-24.04
     container: espressif/idf:v6.1
     steps:
@@ -165,10 +165,10 @@ jobs:
 
       - uses: ./.github/actions/firmware-build
         with:
-          target: ${{ matrix.target }}
+          board: ${{ matrix.board }}
           image: ${{ matrix.image }}
           pack-format: unpacked
-          artifact-name: firmware-${{ matrix.target }}-generic${{ matrix.image != 'full' && format('+{0}', matrix.image) || '' }}
+          artifact-name: firmware-${{ matrix.board }}${{ matrix.image != 'full' && format('+{0}', matrix.image) || '' }}
           # Apply the planned version so sys.version embedded in the firmware
           # matches what we publish to npm.
           version: ${{ needs.plan.outputs.version }}
