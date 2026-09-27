@@ -22,7 +22,7 @@ import {
 } from '../flashFirmware.js'
 
 // No real esptool: chip detection fails, which the plan treats as "unknown"
-// and falls back to the board's or --target's chip.
+// and falls back to the board's chip or the one --chip names.
 const esptool = vi.hoisted(() => ({path: '/nonexistent/esptool'}))
 vi.mock('@mikrojs/esptool', () => ({getEsptoolPath: async () => esptool.path}))
 
@@ -280,7 +280,7 @@ describe('resolveFlashPlan', () => {
         board: 'not-installed',
         from: 'a/b',
         features: ['wifi'],
-        target: 'esp32c6',
+        chip: 'esp32c6',
       }),
     ).rejects.toThrow('--features picks among the images of an installed board')
     // A URL names one archive, so there is nothing to pick
@@ -295,7 +295,7 @@ describe('resolveFlashPlan', () => {
   })
 
   it('flashes the bundled image of the chip', async () => {
-    const plan = plan_(await resolveFlashPlan({port: '/dev/null', target: 'esp32c6'}))
+    const plan = plan_(await resolveFlashPlan({port: '/dev/null', chip: 'esp32c6'}))
     expect(plan.image).toBe('bundled')
     expect(plan.board).toEqual({name: 'esp32c6-generic', source: 'detected'})
     expect(plan.flasherArgs.files.map((f) => f.filename)).toContain(
@@ -304,20 +304,20 @@ describe('resolveFlashPlan', () => {
   })
 
   it('says so when this CLI has no bundled image for the chip', async () => {
-    await expect(resolveFlashPlan({port: '/dev/null', target: 'esp32s3'})).rejects.toThrow(
+    await expect(resolveFlashPlan({port: '/dev/null', chip: 'esp32s3'})).rejects.toThrow(
       'No bundled firmware for esp32s3.',
     )
   })
 
   it('asks which board only when a picker can answer', async () => {
     installBoards(tempDir)
-    const choice = await resolveFlashPlan({port: '/dev/null', target: 'esp32c6', pickBoard: true})
+    const choice = await resolveFlashPlan({port: '/dev/null', chip: 'esp32c6', pickBoard: true})
     expect('choose' in choice && choice.choose.map((b) => b.name)).toEqual(['plain', 'ring'])
   })
 
   it('stops and lists the boards for the chip without a picker', async () => {
     installBoards(tempDir)
-    await expect(resolveFlashPlan({port: '/dev/null', target: 'esp32c6'})).rejects.toThrow(
+    await expect(resolveFlashPlan({port: '/dev/null', chip: 'esp32c6'})).rejects.toThrow(
       /^Several boards for esp32c6 are installed; choose one:\n {2}mikro flash --board plain\n {2}mikro flash --board ring\n/,
     )
   })
@@ -326,7 +326,7 @@ describe('resolveFlashPlan', () => {
     installBoards(tempDir)
     writeImage(pathlib.join(tempDir, 'node_modules/plain/dist-fw/full'), 'plain', 'esp32s3')
     const plan = plan_(
-      await resolveFlashPlan({port: '/dev/null', target: 'esp32c6', pickBoard: true}),
+      await resolveFlashPlan({port: '/dev/null', chip: 'esp32c6', pickBoard: true}),
     )
     expect(plan.image).toBe('board')
     expect(plan.board).toEqual({name: 'ring', source: 'chip'})
@@ -334,7 +334,7 @@ describe('resolveFlashPlan', () => {
 
   it("stops when none of the boards is for the device's chip", async () => {
     installBoards(tempDir)
-    await expect(resolveFlashPlan({port: '/dev/null', target: 'esp32s3'})).rejects.toThrow(
+    await expect(resolveFlashPlan({port: '/dev/null', chip: 'esp32s3'})).rejects.toThrow(
       'None of the installed boards is for the esp32s3 on /dev/null:\n  plain (esp32c6)\n  ring (esp32c6)\n' +
         'Pass --board esp32s3-generic to flash the generic firmware.',
     )
@@ -342,7 +342,7 @@ describe('resolveFlashPlan', () => {
 
   it('leaves every board to choose from when the chip is unknown', async () => {
     installBoards(tempDir)
-    // No --target, and chip detection fails without esptool
+    // No --chip, and chip detection fails without esptool
     const choice = await resolveFlashPlan({port: '/dev/null', pickBoard: true})
     expect('choose' in choice && choice.choose.map((b) => b.name)).toEqual(['plain', 'ring'])
     await expect(resolveFlashPlan({port: '/dev/null'})).rejects.toThrow(
@@ -386,7 +386,7 @@ describe('resolveFlashPlan', () => {
       JSON.stringify({name: 'other-tool', exports: {firmware: './fw.json'}}),
     )
     write(pathlib.join(other, 'fw.json'), JSON.stringify({target: 'nrf52'}))
-    const plan = plan_(await resolveFlashPlan({port: '/dev/null', target: 'esp32c6'}))
+    const plan = plan_(await resolveFlashPlan({port: '/dev/null', chip: 'esp32c6'}))
     expect(plan.image).toBe('bundled')
     expect(plan.warnings).toEqual([expect.stringMatching(/^skipped other-tool: .*\(name\)/)])
   })
@@ -400,7 +400,7 @@ describe('resolveFlashPlan', () => {
         port: '/dev/null',
         from: 'my-org/my-firmware',
         board: 'my-firmware',
-        target: 'esp32c6',
+        chip: 'esp32c6',
       }),
     )
     expect(plan.image).toBe('from')
@@ -415,7 +415,7 @@ describe('resolveFlashPlan', () => {
         port: '/dev/null',
         from: 'mikrojs/mikro',
         board: 'my-firmware',
-        target: 'esp32c6',
+        chip: 'esp32c6',
       }),
     )
     expect(fallback.board).toEqual({name: 'esp32c6-generic', source: 'detected'})
@@ -424,7 +424,7 @@ describe('resolveFlashPlan', () => {
     ])
     // Without --from, the name must be an installed board
     await expect(
-      resolveFlashPlan({port: '/dev/null', board: 'my-firmware', target: 'esp32c6'}),
+      resolveFlashPlan({port: '/dev/null', board: 'my-firmware', chip: 'esp32c6'}),
     ).rejects.toThrow("Unknown board 'my-firmware'.")
   })
 

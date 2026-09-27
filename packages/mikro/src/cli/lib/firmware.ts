@@ -190,7 +190,7 @@ export function selectReleaseAsset(
   }
 
   throw new UserError(
-    `Multiple firmware assets found in ${repo} release. Use --target or --board to select one:\n` +
+    `Multiple firmware assets found in ${repo} release. Use --board to select one:\n` +
       firmwareAssets.map((a) => `  ${a.name}`).join('\n'),
   )
 }
@@ -297,7 +297,7 @@ export function selectWorkflowArtifact(
   }
 
   throw new UserError(
-    `Multiple firmware artifacts found in ${repo} build. Use --target or --board to select one:\n` +
+    `Multiple firmware artifacts found in ${repo} build. Use --board to select one:\n` +
       firmwareArtifacts.map((a) => `  ${a.name}`).join('\n'),
   )
 }

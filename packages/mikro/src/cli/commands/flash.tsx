@@ -70,9 +70,9 @@ export const args = command(
         description: message`Flash the leanest of the board's images with these features, comma-separated (wifi, or wifi,ble), min for the leanest image, or full for the full image. Without it, a reflash keeps the image the device runs.`,
       }),
     ),
-    target: optional(
-      option('--target', string({metavar: 'CHIP'}), {
-        description: message`Target chip (e.g. esp32c6). Auto-detected from the connected device if omitted.`,
+    chip: optional(
+      option('--chip', string({metavar: 'CHIP'}), {
+        description: message`The device's chip (e.g. esp32c6). Detected from the connected device if omitted.`,
       }),
     ),
     port: optional(
@@ -151,7 +151,7 @@ export default function FlashCmd(props: Props) {
       firmware: firmwareSource,
       board: boardFlag,
       features,
-      target,
+      chip,
       port,
       baud,
       yes,
@@ -247,7 +247,7 @@ export default function FlashCmd(props: Props) {
         configBoard: config?.board,
         features: features === undefined ? undefined : parseFeatures(features),
         deviceFeatures,
-        target,
+        chip,
         // Only an interactive run without --yes can answer the picker.
         pickBoard: process.stdin.isTTY && yes !== true,
         onProgress: (message) => setInitState({status: 'loading', message}),
@@ -277,7 +277,7 @@ export default function FlashCmd(props: Props) {
     boardFlag,
     pickedBoard,
     features,
-    target,
+    chip,
     yes,
     force,
     deviceDiscovery.status,
