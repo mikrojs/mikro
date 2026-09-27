@@ -58,8 +58,8 @@
   "publishConfig": {
     "exports": {
       ".": {
-        "cmake": "./MikroFirmwareConfig.cmake",
         "types": "./dist/index.d.ts",
+        "cmake": "./MikroFirmwareConfig.cmake",
         "default": "./dist/index.js"
       },
       "./inputs": {
