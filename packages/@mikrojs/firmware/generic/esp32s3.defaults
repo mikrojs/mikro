@@ -1,0 +1,2 @@
+# The generic ESP32-S3 image: octal PSRAM, as on the XIAO ESP32-S3.
+CONFIG_SPIRAM_MODE_OCT=y

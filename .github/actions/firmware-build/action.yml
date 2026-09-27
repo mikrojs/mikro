@@ -77,60 +77,51 @@ runs:
         # hash content, so a fresh build dir missed every object.
         ccache --set-config=compiler_check=content
 
-    # `mikro idf` tells CMake where @mikrojs/firmware is. MIKROJS_WORKSPACE runs
-    # the CLI from its TypeScript source, as in a checkout, so it needs no build.
+    # The target's generic board, from @mikrojs/firmware's boards.config.ts:
+    # `mikro fw prepack` builds it into .mikro/build-fw-<target>-generic and
+    # writes the image to dist-fw/<target>-generic, firmware.json included
+    # (name <target>-generic, chip, version). MIKROJS_WORKSPACE runs the CLI
+    # from its TypeScript source, as in a checkout, so it needs no build.
     - shell: bash
-      working-directory: esp32
+      working-directory: packages/@mikrojs/firmware
       env:
         IDF_CCACHE_ENABLE: '1'
         MIKROJS_WORKSPACE: '1'
         TARGET: ${{ inputs.target }}
       run: |
         . $IDF_PATH/export.sh
-        rm -f sdkconfig
         start=$(date +%s)
-        pnpm mikro idf -B build set-target $TARGET
-        pnpm mikro idf -B build build
+        node ../../mikro/bin/mikrojs.js fw prepack --board "$TARGET-generic"
         ccache --show-stats
         # Drop the entries this build did not use, so the saved cache stays
         # the size of one build instead of growing towards max_size.
         ccache --evict-older-than "$(( $(date +%s) - start + 1 ))s"
 
     - shell: bash
-      working-directory: esp32
+      working-directory: packages/@mikrojs/firmware
       env:
         MIKROJS_WORKSPACE: '1'
+        TARGET: ${{ inputs.target }}
       run: |
         . $IDF_PATH/export.sh
-        pnpm mikro idf -B build size
-
-    # esp32/build/firmware.json comes from the build (the mikrojs component
-    # writes it): the image's name (<chip>-generic), chip and version. The CLI
-    # compares the name with a device's before an auto-reflash.
+        node ../../mikro/bin/mikrojs.js idf -C ".mikro/fw-$TARGET-generic" -B ".mikro/build-fw-$TARGET-generic" size
 
     - if: inputs.pack-format == 'unpacked'
       shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
       run: |
-        mkdir -p firmware-out/bootloader firmware-out/partition_table
-        cp esp32/build/flasher_args.json firmware-out/
-        cp esp32/build/firmware.json firmware-out/
-        cp esp32/build/bootloader/bootloader.bin firmware-out/bootloader/
-        cp esp32/build/partition_table/partition-table.bin firmware-out/partition_table/
-        cp esp32/build/mikrojs.bin firmware-out/
+        mkdir -p firmware-out
+        cp -R "packages/@mikrojs/firmware/dist-fw/$TARGET-generic/." firmware-out/
 
     - if: inputs.pack-format == 'tarball'
       shell: bash
-      working-directory: esp32/build
+      working-directory: packages/@mikrojs/firmware/dist-fw/${{ inputs.target }}-generic
       env:
         ARTIFACT_NAME: ${{ inputs.artifact-name }}
       run: |
-        mkdir -p ../../firmware-out
-        tar czf "../../firmware-out/${ARTIFACT_NAME}.tar.gz" \
-          flasher_args.json \
-          firmware.json \
-          bootloader/bootloader.bin \
-          partition_table/partition-table.bin \
-          mikrojs.bin
+        mkdir -p "$GITHUB_WORKSPACE/firmware-out"
+        tar czf "$GITHUB_WORKSPACE/firmware-out/${ARTIFACT_NAME}.tar.gz" *
 
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # ratchet:actions/upload-artifact@v7
       with:

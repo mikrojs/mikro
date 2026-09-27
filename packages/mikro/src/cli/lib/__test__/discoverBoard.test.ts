@@ -40,7 +40,7 @@ function writeImage(dir: string, firmware: Record<string, unknown>) {
 }
 
 /** A single-board package `c6-neo` and a multi-board `@fx/boards` with two boards,
- *  the first with its firmware project. */
+ *  the first with the build `mikro fw prepack` leaves. */
 function installBoards(dir: string) {
   const neo = pathlib.join(dir, 'node_modules/c6-neo')
   write(
@@ -65,7 +65,7 @@ function installBoards(dir: string) {
     }),
   )
   writeImage(pathlib.join(fx, 'dist-fw/b1'), {name: '@fx/boards/b1', chip: 'esp32s3'})
-  write(pathlib.join(fx, 'b1/CMakeLists.txt'), '')
+  mkdirSync(pathlib.join(fx, '.mikro/build-fw-b1'), {recursive: true})
   writeImage(pathlib.join(fx, 'dist-fw/b2'), {name: '@fx/boards/b2', chip: 'esp32'})
 }
 
@@ -102,7 +102,7 @@ describe('discoverBoards', () => {
         description: undefined,
         specifier: '@fx/boards/b1',
         dir: pathlib.join(tempDir, 'node_modules/@fx/boards/dist-fw/b1'),
-        project: pathlib.join(tempDir, 'node_modules/@fx/boards/b1'),
+        buildDir: pathlib.join(tempDir, 'node_modules/@fx/boards/.mikro/build-fw-b1'),
       },
       {
         name: '@fx/boards/b2',
@@ -151,17 +151,17 @@ describe('discoverBoards', () => {
 })
 
 describe('staleImage', () => {
-  it("reports an image older than its firmware project's last mikro idf build", () => {
+  it('reports an image older than its last build', () => {
     const pkg = realpathSync(mkdtempSync(pathlib.join(tmpdir(), 'stale-')))
     try {
       write(pathlib.join(pkg, 'package.json'), JSON.stringify({name: '@acme/devboard'}))
-      write(pathlib.join(pkg, 'CMakeLists.txt'), '')
       writeImage(pathlib.join(pkg, 'dist-fw'), {name: '@acme/devboard', chip: 'esp32s3'})
+      const buildDir = pathlib.join(pkg, '.mikro/build-fw')
       const board = {
         name: '@acme/devboard',
         chip: 'esp32s3',
         dir: pathlib.join(pkg, 'dist-fw'),
-        project: pkg,
+        buildDir,
       }
       expect(staleImage(board)).toBeUndefined()
 
@@ -170,7 +170,7 @@ describe('staleImage', () => {
       const later = new Date(Date.now() + 60_000)
       utimesSync(built, later, later)
       expect(staleImage(board)).toBe(
-        `the image of @acme/devboard is older than the last build in ${pkg}; run \`mikro fw prepack\` there`,
+        `the image of @acme/devboard is older than its last build in ${buildDir}; run \`mikro fw prepack\` in its package`,
       )
     } finally {
       rmSync(pkg, {recursive: true, force: true})

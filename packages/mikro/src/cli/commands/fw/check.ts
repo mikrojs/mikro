@@ -8,30 +8,32 @@ import type {InferValue} from '@optique/core/parser'
 import figures from 'figures'
 
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
+import {loadBoardsConfig} from '../../lib/boardsConfig.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {UserError} from '../../lib/errorMessage.js'
 import {boardPackageProblems} from '../../lib/fwImage.js'
 import {failFw} from './shared.js'
 
 export const args = command('check', object({subcommand: constant('check' as const)}), {
-  description: message`Check a board package's "firmware" exports and their images before it is published`,
+  description: message`Check a board package's boards.config.ts, its "firmware" exports and their images before it is published`,
 })
 
 type Args = InferValue<typeof args>
 
-export function run(_config: Args): void {
+export async function run(_config: Args): Promise<void> {
   const jsonOutput = isAgentMode()
   try {
     const packageDir = findPackageRoot(process.cwd())
     if (packageDir === undefined)
       throw new UserError(`No package.json at or above ${process.cwd()}.`)
     const packageJson = pathlib.join(packageDir, 'package.json')
+    const config = await loadBoardsConfig(packageDir)
     const {entries, problems: exportProblems} = firmwareExports(packageDir)
-    if (entries.length === 0 && exportProblems.length === 0) {
+    if (config === undefined && entries.length === 0 && exportProblems.length === 0) {
       throw new UserError(`${packageJson} has no export with a "firmware" condition.`)
     }
 
-    const problems = boardPackageProblems(packageDir)
+    const problems = [...(config?.problems ?? []), ...boardPackageProblems(packageDir)]
     const failing = new Set(problems.map((p) => p.specifier))
     const boards = loadBoards(packageDir).boards.filter((b) => !failing.has(b.specifier))
     if (jsonOutput) {

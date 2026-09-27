@@ -131,27 +131,32 @@ In a firmware project (a folder with a `CMakeLists.txt`), it also tells CMake wh
 
 ### mikro fw pack
 
-Build a [custom firmware](/develop/custom-firmware) project and pack it into an archive that [`mikro flash --from`](#mikro-flash) can flash: `flasher_args.json`, the files it lists, and `firmware.json`. Run it in the project folder. In a [board package](/develop/creating-boards), it runs `mikro fw prepack` first and packs the board's image.
+Build a [custom firmware](/develop/custom-firmware) project and pack it into an archive that [`mikro flash --from`](#mikro-flash) can flash: `flasher_args.json`, the files it lists, and `firmware.json`. Run it in the project folder. In a [board package](/develop/creating-boards), it runs `mikro fw prepack` first and packs each board's image.
 
 ```sh
 pn mikro fw pack
 ```
 
-| Option       | Description                                                                                                                                                                                                     |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--out FILE` | Output path for the archive (default: `./mikro-fw-<name>-<chip>.tar.gz`, without the chip when the name already ends with it or is `<chip>-generic`, or `./mikro-fw-<chip>.tar.gz` for firmware without a name) |
+| Option          | Description                                                                                                                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--out FILE`    | Output path for the archive (default: `./mikro-fw-<name>-<chip>.tar.gz`, without the chip when the name already ends with it or is `<chip>-generic`, or `./mikro-fw-<chip>.tar.gz` for firmware without a name) |
+| `--board BOARD` | In a board package, pack only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name                                                                                             |
 
 ### mikro fw prepack
 
-Build a [board package](/develop/creating-boards)'s firmware and write its image into the folder that the package's `firmware` export points at, then check the package as `mikro fw check` does. Run it in the board's firmware project. A board package runs it from npm's `prepack` script, so `npm pack` and `npm publish` always include a fresh image.
+Build the boards in a [board package](/develop/creating-boards)'s `boards.config.ts` and write each image into the folder that the board's `firmware` export points at, then check the package as `mikro fw check` does. Run it in the package. Each board builds from a firmware project generated in `.mikro/fw-<board>`, into `.mikro/build-fw-<board>` (`.mikro/fw` and `.mikro/build-fw` for the board at `.`). A board package runs it from npm's `prepack` script, so `npm pack` and `npm publish` always include fresh images.
 
 ```sh
 pn mikro fw prepack
 ```
 
+| Option          | Description                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| `--board BOARD` | Build only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name |
+
 ### mikro fw check
 
-Check a board package's `firmware` exports and their images: that each image is built, complete, named correctly, from a Mikro.js version the CLI accepts, not older than the last build of its firmware project, and included in `files`. It exits with an error if anything is wrong.
+Check a board package's `boards.config.ts`, its `firmware` exports and their images: that the exports match the config, and that each image is built, complete, named correctly, from a Mikro.js version the CLI accepts, not older than its last build, and included in `files`. It exits with an error if anything is wrong.
 
 ```sh
 pn mikro fw check

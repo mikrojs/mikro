@@ -179,13 +179,12 @@ describe('resolveFlashPlan', () => {
   })
 
   it("warns when a workspace board's image is older than its last build", async () => {
-    // The board package is in the workspace, with its firmware project
+    // The board package is in the workspace, with the build `mikro fw prepack` left
     const pkg = pathlib.join(tempDir, 'boards/ring')
     write(
       pathlib.join(pkg, 'package.json'),
       JSON.stringify({name: 'ring', exports: {'.': {firmware: './dist-fw/firmware.json'}}}),
     )
-    write(pathlib.join(pkg, 'CMakeLists.txt'), '')
     writeImage(pathlib.join(pkg, 'dist-fw'), 'ring')
     write(
       pathlib.join(tempDir, 'package.json'),
@@ -200,7 +199,7 @@ describe('resolveFlashPlan', () => {
 
     const plan = plan_(await resolveFlashPlan({port: '/dev/null'}))
     expect(plan.warnings).toEqual([
-      expect.stringMatching(/^the image of ring is older than the last build in /),
+      expect.stringMatching(/^the image of ring is older than its last build in /),
     ])
   })
 

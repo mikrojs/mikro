@@ -25,7 +25,8 @@ export function resolveConfig(config: MikroJSConfig | null, env: MikroEnv): Mikr
  * Prepare stripped config code for evaluation from a data: URL, which has no
  * module-resolution context of its own:
  *
- * - The bare `mikro` import becomes a local `defineConfig` shim.
+ * - Each name imported from the bare `mikro` (`defineConfig`, `defineBoards`)
+ *   becomes a local function that returns its argument, as they do.
  * - `mikro/schema` (the one importable device module: it has a host
  *   implementation, so a config can build its `configSchema`) is rewritten to
  *   `schemaUrl`, the CLI's resolved location of that implementation.
@@ -51,9 +52,18 @@ export function rewriteConfigImports(
         `Only 'mikro' and 'mikro/schema' are importable here; other mikro/* subpaths are device-only.`,
     )
   }
-  code = code.replace(
-    /import\s*\{[^}]*\}\s*from\s*['"]mikro['"]\s*;?/,
-    'const defineConfig = (c) => c;',
+  code = code.replace(/import\s*\{([^}]*)\}\s*from\s*['"]mikro['"]\s*;?/, (_match, names: string) =>
+    names
+      .split(',')
+      .map((name) =>
+        name
+          .trim()
+          .split(/\s+as\s+/)
+          .pop()!,
+      )
+      .filter(Boolean)
+      .map((local) => `const ${local} = (c) => c;`)
+      .join(' '),
   )
   code = code.replaceAll("'mikro/schema'", `'${schemaUrl}'`)
   code = code.replaceAll('"mikro/schema"', `'${schemaUrl}'`)

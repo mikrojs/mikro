@@ -33,14 +33,15 @@ Replace `esp32c6` with your chip. Press `Ctrl+]` to exit the serial monitor.
 
 ## Building firmware for a board
 
-A [board package](./creating-boards) builds its firmware in its own firmware project, not in `esp32/`: a `CMakeLists.txt` in the package, whose `MIKROJS_NATIVE_MODULES` and `sdkconfig.defaults` hold what the board needs. The firmware takes the package's name. In the board's folder:
+A [board package](./creating-boards) builds its firmware from its `boards.config.ts`, not in `esp32/`: the config holds each board's chip, settings and native modules. In the package:
 
 ```sh
-pn mikro idf set-target esp32s3
 pn mikro fw prepack
 ```
 
-`mikro fw prepack` builds the firmware and writes the image into the folder that the package's `firmware` export points at. An app that depends on the package flashes that image with `mikro flash`.
+`mikro fw prepack` builds every board in the config and writes each image into the folder that the board's `firmware` export points at. An app that depends on the package flashes that image with `mikro flash`.
+
+The generic images that `@mikrojs/firmware` ships are built the same way, from its own `boards.config.ts`: `pn mikro fw prepack --board esp32c6-generic` in `packages/@mikrojs/firmware` builds the one for the C6 into its `dist-fw/`.
 
 ## Running on-device tests
 

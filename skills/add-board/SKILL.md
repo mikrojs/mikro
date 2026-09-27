@@ -19,10 +19,10 @@ When this skill triggers, gather the required information from the user, then ge
 
 ## How a board package works
 
-- The package is a custom firmware project: `CMakeLists.txt`, `sdkconfig.defaults`, and optionally `partitions.csv`. `MIKROJS_NATIVE_MODULES` lists every native module the board's peripherals need; nothing is found from imports.
-- `pn mikro fw prepack` builds the firmware and writes the image (`firmware.json`, `flasher_args.json` and the files it flashes) into the folder that the package's `firmware` export points at, then checks the package. The package's `prepack` script runs it, so a published package always has a fresh image.
-- The `firmware` condition on an export declares the board: `".": {"firmware": "./dist-fw/firmware.json"}`. Apps depend on the package, and `mikro flash` finds the board through that condition.
-- The board names itself: the firmware takes the package's name and description, or `MIKROJS_BOARD_NAME` and `MIKROJS_BOARD_DESCRIPTION` in `CMakeLists.txt`. The device reports the name as `sys.board.name`; `mikro flash --board` and `mikro.config.ts` use it.
+- `boards.config.ts` at the package root describes the board: `chip`, `sdkconfig` (fragments), `partitions`, and `nativeModules` (every native module the board's peripherals need; nothing is found from imports). There is no CMake project to write.
+- `pn mikro fw prepack` generates a firmware project from the config, builds it, and writes the image (`firmware.json`, `flasher_args.json` and the files it flashes) into the folder that the board's `firmware` export points at, then checks the package. The package's `prepack` script runs it, so a published package always has a fresh image.
+- The `firmware` condition on an export declares the board: `".": {"firmware": "./dist-fw/firmware.json"}`. It must match the config: `mikro fw prepack` and `mikro fw check` print the entries to add when it doesn't. Apps depend on the package, and `mikro flash` finds the board through that condition.
+- The board names itself: the name is the export's specifier (the package name for `.`), or `name` in the config; the description is the package's, or `description`. The device reports the name as `sys.board.name`; `mikro flash --board` and `mikro.config.ts` use it.
 - There is no extending: apps flash the image as it is. To change a board's firmware, fork the package.
 - The JS library (pins, peripherals, tsconfig preset) is ordinary exports that the tools ignore.
 
@@ -33,8 +33,8 @@ Single board:
 ```
 @acme/devboard/
 ├── package.json
-├── CMakeLists.txt         the firmware project
-├── sdkconfig.defaults
+├── boards.config.ts       the board: chip, settings, native modules
+├── sdkconfig.defaults     only if the board needs settings of its own
 ├── pins.ts
 ├── display.ts             one module per pre-wired peripheral
 ├── tsconfig.json          the preset apps extend
@@ -43,7 +43,7 @@ Single board:
 └── README.md
 ```
 
-Multi-board: one folder per board, each a firmware project with its own `CMakeLists.txt` (setting `MIKROJS_BOARD_NAME "@acme/boards/<board>"`) and `sdkconfig.defaults`, exported as `"./<board>": {"firmware": "./dist-fw/<board>/firmware.json"}`. The export's key must be the board's folder: that is how `mikro fw prepack` knows which export a folder's build is for. Run `pn mikro fw prepack` in each board's folder; `mikro idf` builds each into `.mikro/build-fw-<board>` of the package.
+Multi-board: one entry per board in `boards.config.ts`, keyed `./<board>`, each exported as `"./<board>": {"firmware": "./dist-fw/<board>/firmware.json"}`; the name defaults to `@acme/boards/<board>`. One `pn mikro fw prepack` in the package builds them all (each into `.mikro/build-fw-<board>`); `--board <board>` builds one. Variants that need different builds (octal PSRAM, say) are boards of their own that share a base object in the config; a variant with more flash needs none, since `mikro flash` gives the extra flash to the filesystem.
 
 ## Files to generate
 
@@ -82,28 +82,30 @@ Multi-board: one folder per board, each a firmware project with its own `CMakeLi
 
 Key points:
 
-- `image` must be in `files`: it is gitignored, and `mikro fw check` fails without it.
-- `@mikrojs/firmware` is a direct devDependency: `mikro idf` resolves it from the project, and pnpm lets a project resolve only its own dependencies.
+- `dist-fw` must be in `files`: it is gitignored, and `mikro fw check` fails without it.
+- `@mikrojs/firmware` is a direct devDependency: the build resolves it from the package, and pnpm lets a package resolve only its own dependencies.
 - `mikro` is a plain required peer for the JS library; driver packages are dependencies. No `peerDependenciesMeta`.
 - The package's description becomes the board's description, shown when `mikro flash` asks which board to flash.
 - In this monorepo, use `"private": true`, `"version": "0.0.0"` and `workspace:*` ranges, and put the package under `packages/@mikrojs/`.
 
-### 2. CMakeLists.txt
+### 2. boards.config.ts
 
-```cmake
-cmake_minimum_required(VERSION 3.22)
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+```ts
+import {defineBoards} from 'mikro'
 
-# Every native module the board's peripherals need, by the names apps import
-set(MIKROJS_NATIVE_MODULES "@acme/drivers/panel")
-
-if(NOT DEFINED MikroFirmware_DIR)
-    message(FATAL_ERROR "Build with `mikro idf`, which tells CMake where @mikrojs/firmware is")
-endif()
-find_package(MikroFirmware REQUIRED COMPONENTS esp32 NO_DEFAULT_PATH)
-
-project(devboard)
+export default defineBoards({
+  boards: {
+    '.': {
+      chip: 'esp32s3',
+      sdkconfig: 'sdkconfig.defaults',
+      // Every native module the board's peripherals need, by the names apps import
+      nativeModules: ['@acme/drivers/panel'],
+    },
+  },
+})
 ```
+
+Leave out `sdkconfig` when the generic firmware's settings are enough. `partitions` names a partition table to use instead of the default one; `project` points at a firmware project of the package's own, for the rare board that needs its own `main` or ESP-IDF components.
 
 ### 3. sdkconfig.defaults
 
@@ -158,7 +160,7 @@ export function display() {
 }
 ```
 
-A native driver imported here must also be in `MIKROJS_NATIVE_MODULES`; `mikro deploy` stops an app that imports a native module the firmware lacks.
+A native driver imported here must also be in the board's `nativeModules`; `mikro deploy` stops an app that imports a native module the firmware lacks.
 
 ### 6. tsconfig.json and tsconfig.build.json
 
@@ -176,17 +178,12 @@ Extend the preset for the board's chip. No `include`: paths in an extended confi
 dist
 dist-fw
 .mikro
-sdkconfig
-sdkconfig.old
-managed_components/
-dependencies.lock
 ```
 
 ## Building and testing
 
-1. Set the chip and build the image:
+1. Build the image (the chip comes from the config):
    ```sh
-   pn mikro idf set-target {chip}
    pn mikro fw prepack
    ```
 2. `pn mikro fw check` reports anything that would stop the image from flashing or publishing.
@@ -194,6 +191,6 @@ dependencies.lock
 
 ## Important notes
 
-- `sdkconfig.defaults` applies only when `sdkconfig` doesn't exist. Delete `sdkconfig` and run `set-target` again after changing it.
+- `mikro fw prepack` keeps the generated project in `.mikro/fw` and starts its `sdkconfig` over when the board's settings or chip change.
 - A board name has at most 63 characters and the form of a package name, optionally followed by `/<board>`; the build stops otherwise.
 - Board modules are bundled and deployed with the app, like any other dependency.

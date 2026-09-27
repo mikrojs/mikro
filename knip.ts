@@ -21,6 +21,8 @@ const config = {
       // (gitignored); knip still walks it once the test has run, so the ignore
       // is only redundant on a clean checkout.
       ignore: ['components/mikrojs/test/ota_host/.build/**'],
+      // `mikro fw prepack` loads the generic boards' config; nothing imports it.
+      entry: ['boards.config.ts'],
     },
     'examples/sleep': {
       // Each app/*.ts file is a stand-alone entry — users pick one with
