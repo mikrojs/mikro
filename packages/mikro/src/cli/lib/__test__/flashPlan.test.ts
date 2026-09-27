@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -16,7 +17,8 @@ import {chooseImage, flashFirmware, type FlashPlan, resolveFlashPlan} from '../f
 
 // No real esptool: chip detection fails, which the plan treats as "unknown"
 // and falls back to the board's or --target's chip.
-vi.mock('@mikrojs/esptool', () => ({getEsptoolPath: async () => '/nonexistent/esptool'}))
+const esptool = vi.hoisted(() => ({path: '/nonexistent/esptool'}))
+vi.mock('@mikrojs/esptool', () => ({getEsptoolPath: async () => esptool.path}))
 
 // `--from` without the network: the download is the image in `downloaded.dir`.
 const downloaded = vi.hoisted(() => ({dir: '', calls: [] as unknown[]}))
@@ -127,6 +129,23 @@ describe('resolveFlashPlan', () => {
   afterEach(() => {
     process.chdir(originalCwd)
     rmSync(tempDir, {recursive: true, force: true})
+    esptool.path = '/nonexistent/esptool'
+  })
+
+  it("says why the chip wasn't detected, in esptool's words", async () => {
+    // What esptool prints when another program holds the port
+    const busy =
+      "A fatal error occurred: Could not open /dev/null, the port is busy or doesn't exist.\n" +
+      '([Errno 35] Could not exclusively lock port /dev/null: [Errno 35] Resource temporarily unavailable)'
+    esptool.path = pathlib.join(tempDir, 'esptool')
+    write(esptool.path, `#!/bin/sh\ncat >&2 <<'EOF'\n\n${busy}\n\nEOF\nexit 2\n`)
+    chmodSync(esptool.path, 0o755)
+
+    const error = await resolveFlashPlan({port: '/dev/null'}).catch((e: unknown) => e)
+    expect(error).toMatchObject({
+      message: 'Could not detect chip type',
+      cause: expect.objectContaining({message: busy}),
+    })
   })
 
   it('flashes the image a board package ships', async () => {

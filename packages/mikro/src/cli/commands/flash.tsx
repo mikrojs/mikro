@@ -14,6 +14,7 @@ import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import type {BoardInfo} from '../lib/boards.js'
 import {customFirmwareOf} from '../lib/bundledFirmware.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
+import {describeError} from '../lib/errorMessage.js'
 import {type FlasherArgs, getWriteFlashMultiArgs} from '../lib/esptool.js'
 import {
   assertFilesystemKept,
@@ -309,7 +310,7 @@ export default function FlashCmd(props: Props) {
     return (
       <RenderAndExit exitCode={1}>
         <Text color="red">
-          {figures.cross} {initState.error.message}
+          {figures.cross} {describeError(initState.error)}
         </Text>
       </RenderAndExit>
     )

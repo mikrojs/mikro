@@ -113,11 +113,13 @@ interface DeviceFlash {
 }
 
 /** Read the partition table of the device on `port` with `esptool read-flash`,
- *  which also reports the chip type and flash size. Undefined when esptool fails. */
+ *  which also reports the chip type and flash size. No `device` when esptool
+ *  fails; `error` is then what esptool printed, such as a port another program
+ *  holds. */
 async function readDeviceFlash(
   esptoolPath: string,
   port: string,
-): Promise<DeviceFlash | undefined> {
+): Promise<{device?: DeviceFlash; error?: Error}> {
   const {execFile} = await import('node:child_process')
   const {promisify} = await import('node:util')
   const execFileAsync = promisify(execFile)
@@ -137,16 +139,24 @@ async function readDeviceFlash(
     ])
     // esptool's connect output contains "Detecting chip type... ESP32-C6" or similar
     const match = stdout.match(/Detecting chip type\.\.\.\s*(\S+)/i)
-    if (!match) return undefined
+    if (!match) return {}
     // Absent when esptool falls back to 4MB ("Could not auto-detect flash size")
     const size = stdout.match(/Auto-detected flash size:\s*(\S+)/i)
     return {
-      chip: match[1]!.toLowerCase().replace(/-/g, ''),
-      partitionTable: await fs.readFile(file),
-      flashSize: size ? flashSizeBytes(size[1]!) : undefined,
+      device: {
+        chip: match[1]!.toLowerCase().replace(/-/g, ''),
+        partitionTable: await fs.readFile(file),
+        flashSize: size ? flashSizeBytes(size[1]!) : undefined,
+      },
     }
-  } catch {
-    return undefined
+  } catch (e) {
+    const stderr = (e as {stderr?: unknown}).stderr
+    return {
+      error:
+        typeof stderr === 'string' && stderr.trim()
+          ? new Error(stderr.trim(), {cause: e})
+          : (e as Error),
+    }
   } finally {
     await fs.rm(dir, {recursive: true, force: true})
   }
@@ -324,7 +334,7 @@ export async function resolveFlashPlan(
   // One esptool session gives the chip, the partition table for
   // assertFilesystemKept, and the flash size for fitToDeviceFlash.
   onProgress?.(target ? 'Reading device flash…' : 'Detecting chip…')
-  const device = await readDeviceFlash(esptoolPath, port)
+  const {device, error: deviceError} = await readDeviceFlash(esptoolPath, port)
   let resolved: {board: BoardInfo; source: BoardSource} | undefined
   // With --from, --board only picks an archive of the release or build, so it
   // needs no installed board of that name (custom firmware has none).
@@ -353,7 +363,10 @@ export async function resolveFlashPlan(
   const resolvedChip = target ?? resolved?.board.chip ?? device?.chip
   if (!resolvedChip) {
     throw new UserError(
-      `Could not detect chip type. Use --target to specify the chip (e.g. --target esp32c6).`,
+      deviceError
+        ? 'Could not detect chip type'
+        : 'Could not detect chip type. Use --target to specify the chip (e.g. --target esp32c6).',
+      {cause: deviceError},
     )
   }
   const devicePartitionTable = device?.partitionTable
@@ -503,7 +516,8 @@ export async function assertFilesystemKept(
   const next = plan.flasherArgs.files.find((f) => f.address === PARTITION_TABLE_OFFSET)
   if (!next) return
   const current =
-    plan.devicePartitionTable ?? (await readDeviceFlash(plan.esptoolPath, port))?.partitionTable
+    plan.devicePartitionTable ??
+    (await readDeviceFlash(plan.esptoolPath, port)).device?.partitionTable
   if (!current) return
   const loss = filesystemLoss(current, await fs.readFile(next.filename))
   if (!loss) return
