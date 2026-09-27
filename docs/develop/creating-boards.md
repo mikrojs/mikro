@@ -108,7 +108,7 @@ pn mikro fw build
 
 `mikro fw build` generates a firmware project for the board in `.mikro/fw`, builds it into `.mikro/build-fw` for the board's chip, and writes the image into the folder that the export's `firmware` condition points at. The package's `prepack` script runs it, so `npm pack` and `npm publish` always include a fresh image, and publishing needs ESP-IDF.
 
-To try the image on a device before you publish, flash it from an app in the same workspace that depends on the package, or with `mikro flash --build-dir .mikro/build-fw`.
+To try the image on a device before you publish, run `mikro fw build --flash`, which builds the image and flashes it (with `--image` for a board with leaner images, and `--board` in a package with several). `mikro flash` in the package flashes its own boards too, as an app in the same workspace that depends on the package does.
 
 `mikro fw build` then checks the package and stops if the image wouldn't flash or publish. `mikro fw check` runs the same checks without building, for example in CI.
 

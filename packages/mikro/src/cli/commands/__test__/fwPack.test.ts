@@ -22,6 +22,16 @@ vi.mock('../../lib/agent.js', async (importOriginal) => ({
   isAgentMode: () => agent.mode,
 }))
 
+// `fw build --flash` runs `mikro flash`, which needs a device: record the call
+const flashed = vi.hoisted(() => ({calls: [] as string[][], code: 0}))
+vi.mock('../fw/shared.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../fw/shared.js')>()),
+  flashBuiltImage: (...args: string[]) => {
+    flashed.calls.push(args)
+    return flashed.code
+  },
+}))
+
 const {run} = await import('../fw/pack.js')
 const {run: runBuild} = await import('../fw/build.js')
 const {run: runCheck} = await import('../fw/check.js')
@@ -330,6 +340,7 @@ describe('mikro fw build', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
 
     expect(
@@ -367,6 +378,7 @@ describe('mikro fw build', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
 
     for (const name of ['t-display', 'devkit']) {
@@ -394,6 +406,7 @@ describe('mikro fw build', () => {
       board: '@acme/boards/devkit',
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
     expect(idfCalls()).toHaveLength(1)
     expect(idfCalls()[0]).toContain('build-fw-devkit')
@@ -410,6 +423,7 @@ describe('mikro fw build', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
 
     expect(error).toHaveBeenCalledWith(
@@ -431,6 +445,7 @@ describe('mikro fw build', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
 
     expect(error).toHaveBeenCalledWith(
@@ -461,6 +476,7 @@ describe('mikro fw build', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
     expect(error).toHaveBeenLastCalledWith(expect.stringContaining('holds more than the images'))
 
@@ -469,12 +485,24 @@ describe('mikro fw build', () => {
     write(pathlib.join(board, 'package.json'), JSON.stringify(BOARD_PACKAGE))
     write(pathlib.join(board, 'dist-fw', '.DS_Store'), '')
     error.mockClear()
-    await runBuild({subcommand: 'build', board: undefined, image: undefined, parallel: undefined})
+    await runBuild({
+      subcommand: 'build',
+      board: undefined,
+      image: undefined,
+      parallel: undefined,
+      flash: undefined,
+    })
     expect(error).not.toHaveBeenCalled()
     // An image folder with only that in it counts as empty
     rmSync(pathlib.join(board, 'dist-fw', 'full'), {recursive: true})
     write(pathlib.join(board, 'dist-fw', 'full', '.DS_Store'), '')
-    await runBuild({subcommand: 'build', board: undefined, image: 'full', parallel: undefined})
+    await runBuild({
+      subcommand: 'build',
+      board: undefined,
+      image: 'full',
+      parallel: undefined,
+      flash: undefined,
+    })
     expect(error).not.toHaveBeenCalled()
     expect(existsSync(pathlib.join(board, 'dist-fw', 'full', 'firmware.json'))).toBe(true)
     rmSync(pathlib.join(board, 'dist-fw'), {recursive: true})
@@ -487,6 +515,7 @@ describe('mikro fw build', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
     expect(error).toHaveBeenLastCalledWith(
       expect.stringContaining('dist-fw holds more than images (index.js)'),
@@ -502,6 +531,7 @@ describe('mikro fw build', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
     expect(error).toHaveBeenLastCalledWith(
       expect.stringContaining('dist-fw holds an image in the layout from before full/'),
@@ -515,6 +545,7 @@ describe('mikro fw build', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
     expect(error).toHaveBeenLastCalledWith(
       expect.stringContaining('holds the images of other boards (t-display)'),
@@ -534,6 +565,7 @@ describe('mikro fw build', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
 
     expect(error).toHaveBeenCalledWith(expect.stringContaining('(name): missing required field'))
@@ -555,6 +587,7 @@ describe("a board's other images", () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
 
     const firmwareJson = (image: string) =>
@@ -574,6 +607,42 @@ describe("a board's other images", () => {
     expect(idfCalls()[1]).toContain(`-B ${pathlib.join(board, '.mikro', 'build-fw+no-ble')}`)
   })
 
+  it('lists the images for a bare --image without a terminal to ask in', async () => {
+    process.chdir(board)
+    write(pathlib.join(board, 'boards.config.ts'), withImages('[{ble: false}]'))
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+
+    await runBuild({
+      subcommand: 'build',
+      board: undefined,
+      image: '',
+      parallel: undefined,
+      flash: undefined,
+    })
+
+    expect(error).toHaveBeenLastCalledWith(
+      expect.stringContaining('--image needs an image. The images of @acme/devboard: full, no-ble'),
+    )
+    expect(idfCalls()).toEqual([])
+  })
+
+  it('takes the parts of an image name in any order', async () => {
+    process.chdir(board)
+    write(pathlib.join(board, 'boards.config.ts'), withImages('[{ble: false, wifi: false}]'))
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await runBuild({
+      subcommand: 'build',
+      board: undefined,
+      image: 'no-wifi+no-ble',
+      parallel: undefined,
+      flash: undefined,
+    })
+
+    expect(existsSync(pathlib.join(board, 'dist-fw', 'no-ble+no-wifi', 'firmware.json'))).toBe(true)
+  })
+
   it('builds one image with --image and keeps the others', async () => {
     process.chdir(board)
     write(pathlib.join(board, 'boards.config.ts'), withImages('[{ble: false}]'))
@@ -583,6 +652,7 @@ describe("a board's other images", () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
     const full = pathlib.join(board, 'dist-fw', 'full', 'firmware.json')
     const before = statSync(full).mtimeMs
@@ -593,6 +663,7 @@ describe("a board's other images", () => {
       board: undefined,
       image: 'no-ble',
       parallel: undefined,
+      flash: undefined,
     })
 
     expect(idfCalls()).toHaveLength(1)
@@ -607,7 +678,13 @@ describe("a board's other images", () => {
     write(pathlib.join(board, 'dist-fw', 'full', 'index.js'), 'export {}\n')
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
-    await runBuild({subcommand: 'build', board: undefined, image: 'full', parallel: undefined})
+    await runBuild({
+      subcommand: 'build',
+      board: undefined,
+      image: 'full',
+      parallel: undefined,
+      flash: undefined,
+    })
     expect(error).toHaveBeenLastCalledWith(
       expect.stringContaining('holds something other than an image of @acme/devboard'),
     )
@@ -617,6 +694,7 @@ describe("a board's other images", () => {
       board: undefined,
       image: 'no-wifi',
       parallel: undefined,
+      flash: undefined,
     })
     expect(error).toHaveBeenLastCalledWith(
       expect.stringContaining('@acme/devboard has no no-wifi image. Its images: full, no-ble'),
@@ -629,7 +707,13 @@ describe("a board's other images", () => {
     write(pathlib.join(board, 'boards.config.ts'), withImages('[{ble: false}]'))
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
 
-    await runBuild({subcommand: 'build', board: undefined, image: undefined, parallel: 4})
+    await runBuild({
+      subcommand: 'build',
+      board: undefined,
+      image: undefined,
+      parallel: 4,
+      flash: undefined,
+    })
 
     expect(idfCalls()).toHaveLength(2)
     for (const build of ['build-fw', 'build-fw+no-ble']) {
@@ -644,7 +728,13 @@ describe("a board's other images", () => {
     // A failed build names its log and exits with its code
     vi.stubEnv('FAKE_IDF_EXIT', '2')
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
-    await runBuild({subcommand: 'build', board: undefined, image: undefined, parallel: 4})
+    await runBuild({
+      subcommand: 'build',
+      board: undefined,
+      image: undefined,
+      parallel: 4,
+      flash: undefined,
+    })
     expect(log).toHaveBeenCalledWith(
       `  @acme/devboard+no-ble failed with exit code 2, see ${pathlib.join('.mikro', 'build-fw+no-ble.log')}`,
     )
@@ -680,7 +770,13 @@ describe("a board's other images", () => {
     process.chdir(boards)
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
 
-    await runBuild({subcommand: 'build', board: undefined, image: undefined, parallel: 4})
+    await runBuild({
+      subcommand: 'build',
+      board: undefined,
+      image: undefined,
+      parallel: 4,
+      flash: undefined,
+    })
 
     expect(log).toHaveBeenCalledWith('Building 2 images, 2 at a time')
     for (const name of ['t-display', 'devkit']) {
@@ -688,8 +784,78 @@ describe("a board's other images", () => {
       expect(existsSync(pathlib.join(boards, 'dist-fw', name, 'full', 'firmware.json'))).toBe(true)
     }
 
-    await runBuild({subcommand: 'build', board: undefined, image: undefined, parallel: 1})
+    await runBuild({
+      subcommand: 'build',
+      board: undefined,
+      image: undefined,
+      parallel: 1,
+      flash: undefined,
+    })
     expect(log).toHaveBeenCalledWith('Building 2 images, 1 at a time')
+  })
+
+  it('lists the boards for a bare --board without a terminal to ask in', async () => {
+    process.chdir(boards)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    rmSync(idfLog, {force: true})
+
+    await runBuild({
+      subcommand: 'build',
+      board: '',
+      image: undefined,
+      parallel: undefined,
+      flash: undefined,
+    })
+
+    expect(error).toHaveBeenLastCalledWith(
+      expect.stringContaining(
+        '--board needs a board. The boards in boards.config.ts:\n' +
+          '  @acme/boards/t-display (esp32c6)\n  @acme/boards/devkit (esp32c6)',
+      ),
+    )
+    expect(idfCalls()).toEqual([])
+  })
+
+  it('flashes the one image it built with --flash', async () => {
+    process.chdir(board)
+    write(pathlib.join(board, 'boards.config.ts'), withImages('[{ble: false}]'))
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    const build = (image: string | undefined) =>
+      runBuild({subcommand: 'build', board: undefined, image, parallel: undefined, flash: true})
+    flashed.calls = []
+
+    // As mikro flash picks it: by its features
+    await build('no-ble')
+    await build('full')
+    expect(flashed.calls).toEqual([
+      [board, '@acme/devboard', 'wifi,i2s'],
+      [board, '@acme/devboard', 'full'],
+    ])
+
+    // Only one image, known before anything builds
+    rmSync(idfLog, {force: true})
+    await build(undefined)
+    expect(error).toHaveBeenLastCalledWith(
+      expect.stringContaining(
+        "--flash flashes one image: pick one of @acme/devboard's with --image (full, no-ble)",
+      ),
+    )
+    process.chdir(boards)
+    await build('full')
+    expect(error).toHaveBeenLastCalledWith(
+      expect.stringContaining('--flash flashes one image: pick the board with --board'),
+    )
+    expect(idfCalls()).toEqual([])
+
+    // A failed flash fails the command with its code
+    process.chdir(board)
+    flashed.code = 3
+    await build('full')
+    expect(exit).toHaveBeenLastCalledWith(3)
+    flashed.code = 0
   })
 
   it('packs each, the others with their name as a suffix', async () => {
@@ -718,6 +884,7 @@ describe("a board's other images", () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
     expect(error).toHaveBeenLastCalledWith(
       expect.stringContaining(
@@ -731,6 +898,7 @@ describe("a board's other images", () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
     write(pathlib.join(board, 'boards.config.ts'), BOARD_CONFIG)
     await runCheck({subcommand: 'check'})
@@ -751,6 +919,7 @@ describe('mikro fw check', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
@@ -782,6 +951,7 @@ describe('mikro fw check', () => {
       board: undefined,
       image: undefined,
       parallel: undefined,
+      flash: undefined,
     })
     write(pathlib.join(board, 'boards.config.ts'), BOARD_CONFIG.replace('esp32c6', 'esp32s3'))
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})

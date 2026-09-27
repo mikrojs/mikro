@@ -396,6 +396,16 @@ export function imageName(features: ImageFeatures): string {
     .join('+')
 }
 
+/** `name` with its parts in imageName's order, so `no-wifi+no-ble` is
+ *  `no-ble+no-wifi`. */
+export function sortImageName(name: string): string {
+  const feature = (part: string) => part.replace(/^no-/, '')
+  return name
+    .split('+')
+    .sort((a, b) => feature(a).localeCompare(feature(b)))
+    .join('+')
+}
+
 /** A board in boards.config.ts. Paths are relative to the package. */
 export interface BoardConfig {
   /** The chip the board is built around. */

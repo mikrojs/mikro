@@ -10,6 +10,7 @@ import updateNotifier from 'update-notifier'
 
 import pkg from '../../package.json' with {type: 'json'}
 import {isAgentMode} from './lib/agent.js'
+import {bareOptions} from './lib/bareOptions.js'
 import {noticeLegacyAliases} from './lib/legacyAliases.js'
 import {runCommand} from './lib/runCommand.js'
 import {dispatchReplCommand} from './lib/serial/dispatchReplCommand.js'
@@ -68,7 +69,7 @@ const config = await run(prog, {
   help: 'both',
   version: {value: pkg.version, command: true, option: true},
   completion: 'both',
-  args: filteredArgs,
+  args: bareOptions(filteredArgs),
 })
 
 // Skip the update banner for non-interactive invocations (pipes, AI agents);

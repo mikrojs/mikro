@@ -21,7 +21,7 @@ import {formatSize} from '../../lib/formatSize.js'
 import {imageFiles} from '../../lib/fwImage.js'
 import {sha256File} from '../../lib/ota.js'
 import {buildBoardImages, configuredPackage} from './build.js'
-import {buildFirmware, failFw} from './shared.js'
+import {buildFirmware, failFw, pickBoard} from './shared.js'
 
 export const args = command(
   'pack',
@@ -34,7 +34,7 @@ export const args = command(
     ),
     board: optional(
       option('--board', string({metavar: 'BOARD'}), {
-        description: message`In a board package, pack only this board: its key in boards.config.ts (./t-display) or its name`,
+        description: message`In a board package, pack only this board: its key in boards.config.ts (./t-display) or its name. Without a name, it asks`,
       }),
     ),
     parallel: optional(
@@ -105,7 +105,10 @@ async function packBoards(
   config: Args,
   jsonOutput: boolean,
 ): Promise<void> {
-  const boards = selectBoards(configured.boards, config.board)
+  const boards = selectBoards(
+    configured.boards,
+    config.board === '' ? await pickBoard(configured.boards) : config.board,
+  )
   if (config.out !== undefined && boards.reduce((n, b) => n + 1 + b.images.length, 0) > 1) {
     throw new UserError('--out names one archive: pick a board without other images with --board.')
   }

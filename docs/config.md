@@ -199,7 +199,7 @@ Options that tell the CLI which board and firmware the project is for. They are 
 
 ### `board` {#board}
 
-`mikro flash` picks the board in this order: the `--board` flag, then `board` from the config, then the board in the project's dependencies when there is exactly one. With several, it takes the one for the connected chip; when several are for that chip, it asks which one, or stops and lists them without a terminal. Without board dependencies, the CLI detects the chip and uses its generic board, `<chip>-generic`.
+`mikro flash` picks the board in this order: the `--board` flag, then `board` from the config, then the board in the project itself or its dependencies when there is exactly one, so a board package flashes its own board. With several, it takes the one for the connected chip; when several are for that chip, it asks which one, or stops and lists them without a terminal. Without board dependencies, the CLI detects the chip and uses its generic board, `<chip>-generic`.
 
 A board's name is the name its firmware reports, usually the name of its [board package](/develop/creating-boards) (`@acme/devboard`), or `@acme/boards/t-display` for one board of several in a package. A generic board is `<chip>-generic`. Before it writes anything, `mikro flash` checks that the connected chip matches the board and stops if it does not.
 

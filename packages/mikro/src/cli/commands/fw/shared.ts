@@ -1,13 +1,17 @@
+import {spawnSync} from 'node:child_process'
 import {closeSync, openSync} from 'node:fs'
 import {mkdir} from 'node:fs/promises'
 import * as path from 'node:path'
 
-import type {ConfiguredBoard, ConfiguredImage} from '@mikrojs/firmware/boards'
+import {type ConfiguredBoard, type ConfiguredImage, FULL_IMAGE} from '@mikrojs/firmware/boards'
+import {SerialPort} from 'serialport'
 
-import {agentError} from '../../lib/agent.js'
+import {agentError, isAgentMode} from '../../lib/agent.js'
 import {boardBuildDir} from '../../lib/boards.js'
 import {boardBuildArgs, writeBoardProject} from '../../lib/boardsConfig.js'
+import {getCachedChip} from '../../lib/deviceCache.js'
 import {describeError, UserError} from '../../lib/errorMessage.js'
+import {pickOne} from '../../lib/pickOne.js'
 import {firmwareBuildDir, firmwareDefaults, idfArgs, runIdf, runIdfAsync} from '../idf.js'
 
 /** Build the firmware project in `projectDir` where `mikro idf` builds it,
@@ -84,6 +88,75 @@ export async function buildBoardLogged(
   } finally {
     closeSync(fd)
   }
+}
+
+/** Flash an image `mikro fw build` wrote by running `mikro flash` in its
+ *  package, which picks it by its features, so it flashes as any image of the
+ *  board does: fitted to the device's flash, with that command's prompts and
+ *  checks. Returns its exit code. */
+export function flashBuiltImage(packageDir: string, board: string, features: string): number {
+  const cli = process.argv[1]!
+  const flash = spawnSync(
+    process.execPath,
+    [cli, 'flash', '--board', board, '--features', features],
+    {stdio: 'inherit', cwd: packageDir},
+  )
+  return flash.status ?? 1
+}
+
+/** The key of a board of `boards`, asked for in the terminal for a bare
+ *  `--board`. Without a terminal, an error that lists them. */
+export async function pickBoard(boards: ConfiguredBoard[]): Promise<string> {
+  if (!process.stdin.isTTY || isAgentMode()) {
+    throw new UserError(
+      '--board needs a board. The boards in boards.config.ts:\n' +
+        boards.map((b) => `  ${b.name} (${b.chip})`).join('\n'),
+    )
+  }
+  if (boards.length === 1) return boards[0]!.key
+  // The boards for a connected chip first, marked
+  const connected = await connectedChips()
+  const ordered = [
+    ...boards.filter((b) => connected.has(b.chip)),
+    ...boards.filter((b) => !connected.has(b.chip)),
+  ]
+  return pickOne(
+    'Which board?',
+    ordered.map((b) => ({
+      label: `${b.name} (${b.chip})${connected.has(b.chip) ? '  connected' : ''}`,
+      value: b.key,
+    })),
+  )
+}
+
+/** An image of each of `boards` (`full`, or one they all have), asked for in
+ *  the terminal for a bare `--image`. Without a terminal, an error that lists
+ *  them. */
+export async function pickImage(boards: ConfiguredBoard[]): Promise<string> {
+  const names = [FULL_IMAGE, ...(boards[0]?.images ?? []).map((i) => i.name)].filter(
+    (name) => name === FULL_IMAGE || boards.every((b) => b.images.some((i) => i.name === name)),
+  )
+  if (!process.stdin.isTTY || isAgentMode()) {
+    const whose = boards.length === 1 ? `of ${boards[0]!.name}` : 'all the boards have'
+    throw new UserError(`--image needs an image. The images ${whose}: ${names.join(', ')}`)
+  }
+  if (names.length === 1) return names[0]!
+  return pickOne(
+    'Which image?',
+    names.map((name) => ({label: name, value: name})),
+  )
+}
+
+/** The chips of the connected devices, as `mikro ls` shows them: from the
+ *  device cache, so a device the CLI has not talked to yet has none. */
+async function connectedChips(): Promise<Set<string>> {
+  const ports = await SerialPort.list()
+  return new Set(
+    ports.flatMap((p) => {
+      const chip = p.serialNumber === undefined ? undefined : getCachedChip(p.serialNumber)
+      return chip === undefined ? [] : [chip]
+    }),
+  )
 }
 
 /** Report a failed `mikro fw` command and exit with 1. */

@@ -45,6 +45,7 @@
     "flash": "mikro flash",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
+    "fw": "MIKROJS_WORKSPACE=1 pnpm --filter mikro exec mikro fw build --flash --image full --board",
     "knip": "knip",
     "lint": "eslint",
     "lint:workflows": "if command -v zizmor >/dev/null 2>&1; then zizmor .github --min-severity high; else echo 'zizmor not found. Install it: https://docs.zizmor.sh/installation/'; exit 1; fi",

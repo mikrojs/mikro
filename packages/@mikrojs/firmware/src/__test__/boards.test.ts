@@ -14,6 +14,7 @@ import {
   imageName,
   isArchiveForChip,
   loadBoards,
+  sortImageName,
 } from '../boards.ts'
 import {chips} from '../index.ts'
 
@@ -356,6 +357,13 @@ test('an image is named by what it leaves out or adds, sorted', () => {
   expect(imageName({ble: false})).toBe('no-ble')
   expect(imageName({wifi: false, ble: false})).toBe('no-ble+no-wifi')
   expect(imageName({wifi: true})).toBe('wifi')
+})
+
+test('an image name in any order sorts to the name imageName gives', () => {
+  expect(sortImageName('no-wifi+no-ble')).toBe('no-ble+no-wifi')
+  expect(sortImageName('wifi+no-ble')).toBe('no-ble+wifi')
+  expect(sortImageName('no-ble')).toBe('no-ble')
+  expect(sortImageName('full')).toBe('full')
 })
 
 test('images in boards.config.ts switch features off and on, beside the full image', () => {

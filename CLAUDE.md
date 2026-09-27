@@ -143,6 +143,7 @@ pnpm precommit                  # Runs lint + fmt:check
 pnpm check                      # Full check: build:cpp + build:ts + typecheck + lint + fmt:check + knip + tests
 pnpm knip                       # Check for unused code/exports
 pnpm vitest                     # Run JS/TS tests
+pnpm fw esp32c6-generic        # Build the full generic image for one chip and flash it (fw build --flash)
 ```
 
 ### ESP-IDF / C++ side

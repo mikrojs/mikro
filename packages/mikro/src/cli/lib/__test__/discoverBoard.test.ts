@@ -162,6 +162,18 @@ describe('discoverBoards', () => {
     expect(await discoverBoards(tempDir)).toEqual({boards: [], problems: []})
   })
 
+  it("reads a board package's own boards, so it can flash them itself", async () => {
+    write(
+      pathlib.join(tempDir, 'package.json'),
+      JSON.stringify({
+        name: '@acme/devboard',
+        exports: {'.': {firmware: './dist-fw/full/firmware.json'}},
+      }),
+    )
+    writeImage(pathlib.join(tempDir, 'dist-fw/full'), {name: '@acme/devboard', chip: 'esp32c6'})
+    expect((await discoverBoards(tempDir)).boards.map((b) => b.name)).toEqual(['@acme/devboard'])
+  })
+
   it('ignores installed board packages the project does not depend on', async () => {
     write(pathlib.join(tempDir, 'package.json'), JSON.stringify({name: 'fixture'}))
     installBoards(tempDir)

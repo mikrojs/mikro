@@ -143,7 +143,7 @@ pn mikro fw pack
 | Option          | Description                                                                                                                                                                                                     |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--out FILE`    | Output path for the archive (default: `./mikro-fw-<name>-<chip>.tar.gz`, without the chip when the name already ends with it or is `<chip>-generic`, or `./mikro-fw-<chip>.tar.gz` for firmware without a name) |
-| `--board BOARD` | In a board package, pack only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name                                                                                             |
+| `--board BOARD` | In a board package, pack only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name. A bare `--board` asks which, or without a terminal lists the boards                        |
 | `--parallel N`  | In a board package, build up to N images at once, as [`mikro fw build --parallel`](#mikro-fw-build) does                                                                                                        |
 
 ### mikro fw build
@@ -156,9 +156,10 @@ pn mikro fw build
 
 | Option          | Description                                                                                                                                                                                                                                                                  |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--board BOARD` | Build only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name                                                                                                                                                                             |
-| `--image IMAGE` | Build only this image of each board, `full` or one of its [leaner images](/develop/creating-boards#leaner-images), and keep the others                                                                                                                                       |
+| `--board BOARD` | Build only this board: its key in `boards.config.ts` (`./t-display`, or `t-display`) or its name. A bare `--board` asks which, or without a terminal lists the boards                                                                                                        |
+| `--image IMAGE` | Build only this image of each board, `full` or one of its [leaner images](/develop/creating-boards#leaner-images), and keep the others. A bare `--image` asks which, or without a terminal lists the images                                                                  |
 | `--parallel N`  | Build up to N images at once, from all the boards, instead of one after another (`--parallel 4`). Each build writes its output to a log beside its build folder (`.mikro/build-fw+no-ble.log`), and a line per image says how it went. After a failure, no more builds start |
+| `--flash`       | Then flash the image it built, as [`mikro flash`](#mikro-flash) does. It needs one board (`--board` in a package with several) and, for a board with leaner images, `--image`                                                                                                |
 
 ### mikro fw check
 

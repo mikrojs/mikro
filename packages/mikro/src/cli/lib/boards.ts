@@ -113,6 +113,12 @@ export async function discoverBoards(
   assertNoLegacyMikroConfig(pkg, 'package.json')
 
   const bundled = path.resolve(bundledBoardsDir(projectDir))
+  // A board package's own boards, so it can flash them from its own folder
+  if (path.resolve(projectDir) !== bundled) {
+    const own = loadBoards(projectDir)
+    boards.push(...own.boards.map((image) => fromImage(image)))
+    problems.push(...own.problems)
+  }
   for (const depName of Object.keys({...pkg.dependencies, ...pkg.devDependencies})) {
     if (depName === '@mikrojs/firmware') continue
     const depDir = findPackageDir(depName, projectDir)

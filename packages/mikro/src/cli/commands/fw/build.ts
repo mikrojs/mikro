@@ -8,12 +8,14 @@ import {
   type ConfiguredImage,
   FULL_IMAGE,
   loadBoards,
+  readFirmwareJson,
+  sortImageName,
 } from '@mikrojs/firmware/boards'
 import {findPackageRoot} from '@mikrojs/firmware/manifest'
 import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
 import type {InferValue} from '@optique/core/parser'
-import {option} from '@optique/core/primitives'
+import {flag, option} from '@optique/core/primitives'
 import {integer, string} from '@optique/core/valueparser'
 
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
@@ -30,7 +32,14 @@ import {
   writeBoardImage,
   writeBoardImages,
 } from '../../lib/fwImage.js'
-import {buildBoard, buildBoardLogged, failFw} from './shared.js'
+import {
+  buildBoard,
+  buildBoardLogged,
+  failFw,
+  flashBuiltImage,
+  pickBoard,
+  pickImage,
+} from './shared.js'
 
 export const args = command(
   'build',
@@ -38,17 +47,22 @@ export const args = command(
     subcommand: constant('build' as const),
     board: optional(
       option('--board', string({metavar: 'BOARD'}), {
-        description: message`Build only this board: its key in boards.config.ts (./t-display) or its name`,
+        description: message`Build only this board: its key in boards.config.ts (./t-display) or its name. Without a name, it asks`,
       }),
     ),
     image: optional(
       option('--image', string({metavar: 'IMAGE'}), {
-        description: message`Build only this image of each board, full or one of its "images" (no-ble), and keep the others`,
+        description: message`Build only this image of each board, full or one of its "images" (no-ble), and keep the others. Without a name, it asks`,
       }),
     ),
     parallel: optional(
       option('--parallel', integer({metavar: 'N', min: 1}), {
         description: message`Build up to N images at once, across boards, each with its output in a log beside its build folder`,
+      }),
+    ),
+    flash: optional(
+      flag('--flash', {
+        description: message`Then flash the image it built, as mikro flash does. Needs one board and, for a board with other images, --image`,
       }),
     ),
   }),
@@ -275,6 +289,37 @@ export async function buildBoardImages(
   return images
 }
 
+/** The one image `--flash` flashes: of the only board selected, the one
+ *  `--image` names, or the full image of a board without others. */
+function imageToFlash(
+  boards: ConfiguredBoard[],
+  image: string | undefined,
+): {board: ConfiguredBoard; image: string} {
+  const [board, ...others] = boards
+  if (board === undefined || others.length > 0) {
+    throw new UserError('--flash flashes one image: pick the board with --board.')
+  }
+  if (image === undefined && board.images.length > 0) {
+    throw new UserError(
+      `--flash flashes one image: pick one of ${board.name}'s with --image (` +
+        [FULL_IMAGE, ...board.images.map((i) => i.name)].join(', ') +
+        ').',
+    )
+  }
+  return {board, image: image ?? FULL_IMAGE}
+}
+
+/** The `--features` that make `mikro flash` pick `image` of `board`: `full`,
+ *  the features the image has, whose leanest image it is, or `min` for an
+ *  image with none. */
+function featuresOf(board: ConfiguredBoard, image: string): string {
+  if (image === FULL_IMAGE) return FULL_IMAGE
+  const read = readFirmwareJson(pathlib.join(board.boardDir, image, 'firmware.json'))
+  if (!read.ok) throw new UserError(read.message)
+  const features = read.value.features ?? []
+  return features.length === 0 ? 'min' : features.join(',')
+}
+
 /** The error for a package without boards.config.ts. */
 export function noBoardsConfig(dir: string): UserError {
   const packageDir = findPackageRoot(dir)
@@ -296,16 +341,25 @@ export async function run(config: Args): Promise<void> {
     const configured = await configuredPackage(process.cwd())
     if (configured === undefined) throw noBoardsConfig(process.cwd())
     const {packageDir, boards} = configured
-    const selected = selectBoards(boards, config.board)
     if (config.image !== undefined && config.parallel !== undefined) {
       throw new UserError(
         "--parallel builds each board's images at once, and --image builds one of them.",
       )
     }
-    const images =
+    const selected = selectBoards(
+      boards,
+      config.board === '' ? await pickBoard(boards) : config.board,
+    )
+    const image =
       config.image === undefined
+        ? undefined
+        : sortImageName(config.image === '' ? await pickImage(selected) : config.image)
+    // Before any build, so a --flash that can't pick one image stops at once
+    const toFlash = config.flash === true ? imageToFlash(selected, image) : undefined
+    const images =
+      image === undefined
         ? await buildBoardImages(packageDir, selected, 'fw build', jsonOutput, config.parallel)
-        : await buildOneImage(packageDir, selected, config.image, 'fw build', jsonOutput)
+        : await buildOneImage(packageDir, selected, image, 'fw build', jsonOutput)
     if (images === undefined) return
     if (jsonOutput) {
       agentResult('fw build', {
@@ -316,6 +370,14 @@ export async function run(config: Args): Promise<void> {
         // eslint-disable-next-line no-console
         console.log(`Wrote the image of ${image.name} (${image.chip}) to ${displayPath(image.dir)}`)
       }
+    }
+    if (toFlash !== undefined) {
+      const code = flashBuiltImage(
+        packageDir,
+        toFlash.board.name,
+        featuresOf(toFlash.board, toFlash.image),
+      )
+      if (code !== 0) process.exit(code)
     }
   } catch (err) {
     failFw('fw build', err, jsonOutput)
