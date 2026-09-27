@@ -66,7 +66,12 @@ export interface ReplMachineState {
   contextHint: string | null
   pendingTiming: string | null
   overlay: null | 'env'
+  /** Events the console has not printed yet; printed ones live in the scrollback */
   events: ReplLogEvent[]
+  /** Printed events dropped so far, so `eventsDropped + i` numbers `events[i]` */
+  eventsDropped: number
+  /** Number of the first event the console has not printed */
+  printedUpTo: number
 }
 
 // ── Actions ────────────────────────────────────────────────
@@ -97,6 +102,7 @@ export type ReplAction =
   | {type: 'ctrlCTimeout'}
   | {type: 'returnResolve'}
   | {type: 'closeOverlay'}
+  | {type: 'printed'; upTo: number}
 
 // ── Effects ────────────────────────────────────────────────
 
@@ -238,12 +244,33 @@ export function createInitialState(port?: string, history: string[] = []): ReplM
     pendingTiming: null,
     overlay: null,
     events: [{type: 'connecting', port}],
+    eventsDropped: 0,
+    printedUpTo: 0,
   }
 }
 
 // ── Reducer ────────────────────────────────────────────────
 
 export function reduce(
+  state: ReplMachineState,
+  action: ReplAction,
+): [ReplMachineState, ReplEffect[]] {
+  const [next, effects] = reduceAction(state, action)
+  return [trimEvents(next), effects]
+}
+
+/** Drop the events the console has printed */
+function trimEvents(state: ReplMachineState): ReplMachineState {
+  const drop = state.printedUpTo - state.eventsDropped
+  if (drop <= 0) return state
+  return {
+    ...state,
+    events: state.events.slice(drop),
+    eventsDropped: state.eventsDropped + drop,
+  }
+}
+
+function reduceAction(
   state: ReplMachineState,
   action: ReplAction,
 ): [ReplMachineState, ReplEffect[]] {
@@ -287,6 +314,8 @@ export function reduce(
       return reduceReturnResolve(state, action)
     case 'closeOverlay':
       return [{...state, overlay: null}, []]
+    case 'printed':
+      return [{...state, printedUpTo: Math.max(state.printedUpTo, action.upTo)}, []]
   }
 }
 
@@ -786,6 +815,9 @@ export interface ReplHandle {
    *  stderr) that must survive Ink's patched stdout/stderr. */
   logEvent(event: ReplLogEvent): void
   closeOverlay(): void
+  /** The console has printed every event numbered below `upTo`, so the
+   *  state may drop them. */
+  printed(upTo: number): void
 }
 
 const CONNECTION_TIMEOUT_MS = 15_000
@@ -1034,6 +1066,9 @@ export function createRepl(options: {
     },
     closeOverlay() {
       actions$.next({type: 'closeOverlay'})
+    },
+    printed(upTo: number) {
+      actions$.next({type: 'printed', upTo})
     },
   }
 }

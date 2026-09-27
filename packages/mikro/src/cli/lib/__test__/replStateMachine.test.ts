@@ -45,6 +45,27 @@ function typeChars(state: ReplMachineState, text: string): ReplMachineState {
 }
 
 describe('replStateMachine', () => {
+  describe('events window', () => {
+    test('keeps unprinted events and drops the printed ones', () => {
+      let state = createInitialState('/dev/ttyUSB0')
+      for (let i = 0; i < 5; i++) {
+        ;[state] = reduce(state, deviceEvent({type: 'log', text: `line ${i}`}))
+      }
+      // Nothing is printed yet, so nothing may be dropped
+      expect(state.events).toHaveLength(6)
+      expect(state.eventsDropped).toBe(0)
+
+      // The connecting event and the first two lines are printed
+      ;[state] = reduce(state, {type: 'printed', upTo: 3})
+      expect(state.eventsDropped).toBe(3)
+      expect(state.events[0]).toEqual({type: 'log', text: 'line 2'})
+
+      ;[state] = reduce(state, {type: 'printed', upTo: 6})
+      expect(state.events).toEqual([])
+      expect(state.eventsDropped).toBe(6)
+    })
+  })
+
   describe('createInitialState', () => {
     test('creates initial state with connecting event', () => {
       const state = createInitialState('/dev/ttyUSB0')

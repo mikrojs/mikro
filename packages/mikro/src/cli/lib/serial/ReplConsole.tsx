@@ -1,7 +1,8 @@
 import spinners from 'cli-spinners'
 import figures from 'figures'
-import {Box, Static, Text, useInput} from 'ink'
-import React, {useCallback, useEffect, useState} from 'react'
+import {Box, Text, useInput} from 'ink'
+import React, {useCallback, useEffect, useLayoutEffect, useMemo, useState} from 'react'
+import {auditTime} from 'rxjs'
 
 import type {LogLevel} from '../../../_exports/index.js'
 import {EnvEditor, type EnvEditorConfig} from '../../components/EnvEditor.js'
@@ -211,6 +212,45 @@ function shouldRender(event: ReplLogEvent, logLevel: LogLevel): boolean {
 
 const INITIAL_STATE = createInitialState()
 
+/** Coalesce state updates so a burst of device lines costs one render */
+const RENDER_AUDIT_MS = 16
+
+// ── Scrollback ─────────────────────────────────────────────
+
+/** Prints each event once by session-wide number through Ink's `Static` node
+ *  (`ink-box internal_static`), since `events` drops what was printed. */
+function EventLog({
+  events,
+  firstNumber,
+  onPrinted,
+  children: render,
+}: {
+  events: ReplLogEvent[]
+  /** Session-wide number of `events[0]` */
+  firstNumber: number
+  /** Called after a commit with the number the log is now printed up to */
+  onPrinted: (upTo: number) => void
+  children: (event: ReplLogEvent, number: number) => React.ReactNode
+}) {
+  // Number of the next event to print
+  const [next, setNext] = useState(firstNumber)
+  const end = firstNumber + events.length
+  const start = Math.max(next, firstNumber)
+  const fresh = useMemo(() => events.slice(start - firstNumber), [events, firstNumber, start])
+  useLayoutEffect(() => {
+    // Advance after the commit that printed, so the next render prints nothing
+    // again; Ink writes the static box's output on every render it is not empty.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- same pattern as Ink's Static
+    setNext(end)
+    onPrinted(end)
+  }, [end, onPrinted])
+  return React.createElement(
+    'ink-box',
+    {internal_static: true, style: {position: 'absolute', flexDirection: 'column'}},
+    fresh.map((event, i) => render(event, start + i)),
+  )
+}
+
 // ── Component ──────────────────────────────────────────────
 
 export function ReplConsole({
@@ -220,9 +260,11 @@ export function ReplConsole({
   watch,
   serialNumber,
 }: ReplConsoleProps) {
-  const state = useObservable(repl.state$, INITIAL_STATE)
+  const state$ = useMemo(() => repl.state$.pipe(auditTime(RENDER_AUDIT_MS)), [repl])
+  const state = useObservable(state$, INITIAL_STATE)
 
   const handleCloseOverlay = useCallback(() => repl.closeOverlay(), [repl])
+  const handlePrinted = useCallback((upTo: number) => repl.printed(upTo), [repl])
 
   useInput((ch, key) => {
     if (!state.overlay) repl.keyInput(ch, key)
@@ -315,14 +357,13 @@ export function ReplConsole({
                   ? {message: 'File watching off. Press Ctrl+S to redeploy', tone: 'idle'}
                   : null
 
-  const renderableEvents = state.events.filter((event) => shouldRender(event, logLevel))
-
   const prompt = '❯ '
 
   return (
     <>
-      <Static items={renderableEvents}>
+      <EventLog events={state.events} firstNumber={state.eventsDropped} onPrinted={handlePrinted}>
         {(event, index) => {
+          if (!shouldRender(event, logLevel)) return null
           const text = eventText(event, deviceName)
           const color = eventColor(event)
           const isResult = event.type === 'result'
@@ -351,7 +392,7 @@ export function ReplConsole({
             </Text>
           )
         }}
-      </Static>
+      </EventLog>
 
       <Box flexDirection="column" marginTop={1}>
         {footer && (

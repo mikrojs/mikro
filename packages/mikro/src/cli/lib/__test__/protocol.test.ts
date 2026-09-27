@@ -576,6 +576,43 @@ describe('protocol', () => {
       expect(result.frames.map((f) => f.type)).to.deep.equal([MSG_MANIFEST_DONE, MSG_PROMPT])
       expect(result.raw).to.be.null
     })
+
+    it('returns a long raw run in one piece, then the frame after it', () => {
+      const parser = new FrameParser()
+      // `\r` is a message type byte, so every line also exercises the length guard
+      const bootLog = Buffer.from('I (12345) boot: segment ok\r\n'.repeat(4000) + 'done\n', 'utf-8')
+      const frame = buildFrame(MSG_READY, '{}')
+
+      const result = parser.feed(Buffer.concat([bootLog, frame]))
+      expect(result.frames.length).to.equal(1)
+      expect(result.frames[0]!.type).to.equal(MSG_READY)
+      expect(result.raw!.equals(bootLog)).to.be.true
+    })
+
+    it('parses a frame split across chunks after raw bytes', () => {
+      const parser = new FrameParser()
+      const bootLog = Buffer.from('boot log\n', 'utf-8')
+      const frame = buildFrame(MSG_LOG, 'hello')
+
+      // The first chunk ends inside the frame header
+      const first = parser.feed(Buffer.concat([bootLog, frame.subarray(0, 3)]))
+      expect(first.frames.length).to.equal(0)
+      const second = parser.feed(frame.subarray(3))
+      expect(second.frames.length).to.equal(1)
+      expect(second.frames[0]!.payload.toString('utf-8')).to.equal('hello')
+      const raw = Buffer.concat([first.raw ?? Buffer.alloc(0), second.raw ?? Buffer.alloc(0)])
+      expect(raw.toString('utf-8')).to.equal('boot log\n')
+    })
+
+    it('returns a long raw run ending in \\r\\n in one piece, then a tiny frame', () => {
+      const parser = new FrameParser()
+      const bootLog = Buffer.from('I (12345) boot: segment ok\r\n'.repeat(4000), 'utf-8')
+      const stream = Buffer.concat([bootLog, buildFrame(MSG_OK), buildFrame(MSG_PROMPT, '1.2ms')])
+
+      const result = parser.feed(stream)
+      expect(result.frames.map((f) => f.type)).to.deep.equal([MSG_OK, MSG_PROMPT])
+      expect(result.raw!.equals(bootLog)).to.be.true
+    })
   })
 
   describe('isIncomplete', () => {

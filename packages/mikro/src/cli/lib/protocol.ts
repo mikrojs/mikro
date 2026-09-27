@@ -155,7 +155,8 @@ export function buildFrame(type: number, payload: string | Buffer = Buffer.alloc
 }
 
 /** Parse a single TLV frame from a buffer at the given offset.
- *  Returns null if the buffer doesn't contain a complete frame. */
+ *  Returns null if the buffer doesn't contain a complete frame. The payload
+ *  is a view into `buf`, so the caller must not write to `buf` afterwards. */
 export function parseFrame(buf: Buffer, offset = 0): {frame: Frame; bytesConsumed: number} | null {
   if (offset + HEADER_SIZE > buf.length) return null
 
@@ -164,7 +165,7 @@ export function parseFrame(buf: Buffer, offset = 0): {frame: Frame; bytesConsume
 
   if (offset + HEADER_SIZE + length > buf.length) return null
 
-  const payload = Buffer.from(buf.subarray(offset + HEADER_SIZE, offset + HEADER_SIZE + length))
+  const payload = buf.subarray(offset + HEADER_SIZE, offset + HEADER_SIZE + length)
   return {frame: {type, payload}, bytesConsumed: HEADER_SIZE + length}
 }
 
@@ -466,35 +467,42 @@ export interface ParseResult {
 }
 
 /** Accumulates incoming data and yields complete frames.
- *  Bytes with unknown type values are collected as raw output. */
+ *  Bytes with unknown type values are collected as raw output.
+ *  The buffer is only ever replaced, never written to, so the frame payloads
+ *  handed out (views into it) stay valid. */
 export class FrameParser {
-  private buf = Buffer.alloc(0)
-  private rawAccum = Buffer.alloc(0)
+  private buf: Buffer = Buffer.alloc(0)
 
-  /** Feed data and return complete frames + any raw bytes that were skipped */
+  /** Feed data and return complete frames + any raw bytes that were skipped.
+   *  The chunk is used in place: the caller must not reuse it. */
   feed(data: Buffer | Uint8Array): ParseResult {
-    const incoming = Buffer.from(data)
+    const incoming = Buffer.isBuffer(data)
+      ? data
+      : Buffer.from(data.buffer, data.byteOffset, data.byteLength)
     this.buf = this.buf.length > 0 ? Buffer.concat([this.buf, incoming]) : incoming
     const frames: Frame[] = []
+    const rawRuns: Buffer[] = []
 
     let offset = 0
+    // Start of the current run of raw bytes, or -1 outside one
+    let rawStart = -1
     for (;;) {
       if (offset + HEADER_SIZE > this.buf.length) break
 
       const type = this.buf[offset]!
-      if (!VALID_MSG_TYPES.has(type)) {
-        // Not a known message type: accumulate as raw bytes (boot logs, stray bytes)
-        this.rawAccum = Buffer.concat([this.rawAccum, this.buf.subarray(offset, offset + 1)])
+      if (
+        !VALID_MSG_TYPES.has(type) ||
+        this.buf.readUInt32LE(offset + 1) > (MAX_PAYLOAD_BY_TYPE[type] ?? MAX_FRAME_PAYLOAD)
+      ) {
+        // Not a frame start (an unknown type, or a length over the type's cap as
+        // in boot-log text): the run of such bytes goes out as raw output in one piece.
+        if (rawStart < 0) rawStart = offset
         offset++
         continue
       }
-
-      const length = this.buf.readUInt32LE(offset + 1)
-      if (length > (MAX_PAYLOAD_BY_TYPE[type] ?? MAX_FRAME_PAYLOAD)) {
-        // Corrupted frame: skip byte and resync
-        this.rawAccum = Buffer.concat([this.rawAccum, this.buf.subarray(offset, offset + 1)])
-        offset++
-        continue
+      if (rawStart >= 0) {
+        rawRuns.push(this.buf.subarray(rawStart, offset))
+        rawStart = -1
       }
 
       const result = parseFrame(this.buf, offset)
@@ -502,30 +510,23 @@ export class FrameParser {
       frames.push(result.frame)
       offset += result.bytesConsumed
     }
+    if (rawStart >= 0) rawRuns.push(this.buf.subarray(rawStart, offset))
 
     // Keep unconsumed bytes
-    if (offset > 0) {
-      this.buf = Buffer.from(this.buf.subarray(offset))
-    }
+    if (offset > 0) this.buf = this.buf.subarray(offset)
 
-    // Return accumulated raw bytes (if any) and reset
-    const raw = this.rawAccum.length > 0 ? this.rawAccum : null
-    this.rawAccum = Buffer.alloc(0)
-
-    return {frames, raw}
+    return {frames, raw: rawRuns.length > 0 ? Buffer.concat(rawRuns) : null}
   }
 
   /** Drain and return the internal buffer (for displaying stale data) */
   flush(): Buffer {
-    const data = Buffer.concat([this.rawAccum, this.buf])
-    this.rawAccum = Buffer.alloc(0)
+    const data = this.buf
     this.buf = Buffer.alloc(0)
     return data
   }
 
   /** Reset internal buffer */
   reset(): void {
-    this.rawAccum = Buffer.alloc(0)
     this.buf = Buffer.alloc(0)
   }
 }

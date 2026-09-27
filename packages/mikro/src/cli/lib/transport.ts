@@ -62,9 +62,6 @@ export function serialOpenError(path: string, err: Error): UserError {
   return new UserError(message, {cause: err})
 }
 
-/** Chunk size for serial writes (avoids overflowing device UART FIFO) */
-const WRITE_CHUNK_SIZE = 64
-
 /**
  * Create a transport backed by a SerialPort instance.
  * The caller owns the SerialPort lifecycle; `close()` removes listeners
@@ -116,12 +113,9 @@ export function createSerialTransport(serialPort: SerialPort): Transport {
           `[serial tx ${chunk.length}B] ${Buffer.from(chunk.subarray(0, Math.min(chunk.length, 64))).toString('hex')}${chunk.length > 64 ? '...' : ''}`,
         )
       }
-      // Write in small chunks with drain to avoid overflowing the device FIFO.
-      // serialport's write() queues internally, so sequential calls are safe.
-      for (let offset = 0; offset < chunk.length; offset += WRITE_CHUNK_SIZE) {
-        const slice = chunk.subarray(offset, offset + WRITE_CHUNK_SIZE)
-        serialPort.write(Buffer.from(slice))
-      }
+      // One write: serialport queued the old 64-byte slices back to back, so
+      // they never paced anything. Only deploy waits for MSG_OK per 2 KB chunk.
+      serialPort.write(chunk)
       return new Promise<void>((resolve, reject) => {
         serialPort.drain((err) => {
           if (err) {
