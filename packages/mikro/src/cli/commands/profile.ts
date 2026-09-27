@@ -10,7 +10,12 @@ import {firstValueFrom, lastValueFrom} from 'rxjs'
 
 import {agentResult, isAgentMode} from '../lib/agent.js'
 import {UserError} from '../lib/errorMessage.js'
-import {applyBootSnapshot, type BootFigures, DEFAULT_MEM_RESERVED} from '../lib/heapSnapshots.js'
+import {
+  applyBootSnapshot,
+  type BootFigures,
+  DEFAULT_MEM_RESERVED,
+  defaultMemReserved,
+} from '../lib/heapSnapshots.js'
 import {loadMikroConfig} from '../lib/loadMikroConfig.js'
 import {parseSize} from '../lib/parseSize.js'
 import {port} from '../lib/portValueParser.js'
@@ -94,11 +99,12 @@ async function confirmDeploy(
   return false
 }
 
-/** A missing config is the default reserve; a broken one throws rather than
- *  quietly comparing the device against 64KB. */
-async function projectMemReserved(root: string): Promise<number> {
+/** A missing config is the firmware's default reserve, which depends on its
+ *  features; a broken one throws rather than quietly comparing the device
+ *  against a default. */
+async function projectMemReserved(root: string, features: string[] | undefined): Promise<number> {
   const config = await loadMikroConfig(root, 'production')
-  return typeof config?.memReserved === 'number' ? config.memReserved : DEFAULT_MEM_RESERVED
+  return typeof config?.memReserved === 'number' ? config.memReserved : defaultMemReserved(features)
 }
 
 export async function run(config: InferValue<typeof args>): Promise<void> {
@@ -139,7 +145,7 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
     // reaches it through a deploy. A local edit to mikro.config.ts changes
     // nothing until then, so the reading would quietly describe the old
     // reserve. Offer to fix it rather than record something misleading.
-    const wanted = await projectMemReserved(root)
+    const wanted = await projectMemReserved(root, ready.features)
     if (measured.memReserved !== wanted) {
       const detail = `device booted with memReserved ${formatBytes(measured.memReserved)}, project config says ${formatBytes(wanted)}`
       if (!(await confirmDeploy(detail, jsonOutput, log))) {

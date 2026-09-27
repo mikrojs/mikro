@@ -43,8 +43,8 @@ WiFi + HTTPS is the biggest consumer. A simple blinky uses almost nothing, but a
 
 - Connect to WiFi once and stay connected, rather than reconnecting per request.
 - Talk to local endpoints over plain HTTP when RAM is scarce. TLS costs up to ~40 KB per handshake.
-- If your app doesn't use BLE, flash the firmware's image without it: [`mikro flash --features wifi`](/cli#mikro-flash). On an ESP32-C6 that leaves about 26 KB more free heap, since the BLE stack takes RAM at boot even when the app never starts it.
-- If it uses neither BLE nor WiFi (it networks over a cellular modem, say), [`mikro flash --features min`](/cli#mikro-flash) flashes the leanest image, without either radio. On an ESP32-C6 that leaves about 57 KB more free heap than the full image.
+- If your app doesn't use BLE, flash the firmware's image without it: [`mikro flash --features wifi`](/cli#mikro-flash). On an ESP32-C6 that gives JavaScript about 26 KB more memory, since the BLE stack takes RAM at boot even when the app never starts it.
+- If it uses neither BLE nor WiFi (it networks over a cellular modem, say), [`mikro flash --features min`](/cli#mikro-flash) flashes the leanest image, without either radio. On an ESP32-C6 that gives JavaScript about 105 KB more memory than the full image: the radios' RAM (about 57 KB), and a smaller default [`memReserved`](#configuring-memreserved), since there is no network stack to keep memory for.
 - Concatenating strings in a loop allocates a new string every iteration. Push to an array and `.join()` once.
 - Load modules only when you need them, with a dynamic import:
 
@@ -102,7 +102,7 @@ export default defineConfig({
 ```
 
 - **64 KB** (default): good for WiFi + HTTPS apps.
-- **16-32 KB**: if your app doesn't use the network stack (for example a sensor logger over UART, or a BLE-only app).
+- **16-32 KB**: if your app doesn't use the network stack (for example a sensor logger over UART, or a BLE-only app). Firmware built without WiFi and BLE defaults to 16 KB.
 - **Don't go below ~8 KB.** Native subsystems always need some room.
 
 If JavaScript runs out of memory, you get an `InternalError`. It's catchable, but the handler runs with almost no memory left, so the realistic options are logging a short pre-built message and restarting. If the system heap runs out (native code), you get a hard reset. The reserve keeps these from happening at the same time.

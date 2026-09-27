@@ -278,6 +278,12 @@ file(WRITE "${CMAKE_BINARY_DIR}/firmware.json" "${_MIK_FW_JSON}")
 # host knows which feature-gated builtins this firmware carries.
 string(REPLACE ";" "," _MIK_FEATURES "${_MIK_FEATURES}")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_FW_FEATURES=\"${_MIK_FEATURES}\"")
+# Without radios there is no WiFi, lwIP or TLS demand to hold heap back for, so
+# the default memReserved drops from 64 KB to 16 KB (mik_app_config.cpp). The
+# CLI's defaultMemReserved follows the same rule.
+if(NOT CONFIG_BT_ENABLED AND NOT CONFIG_MIKROJS_WIFI)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE "MIK_DEFAULT_MEM_RESERVED=16384")
+endif()
 # The lists are read at configure time, so configure must re-run when the
 # table or the script changes.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
