@@ -513,7 +513,7 @@ export function connectRepl(
   const messages$: Observable<ReplEvent> = transport.data
     .pipe(
       mergeMap((chunk) => {
-        const {frames, raw} = frameParser.feed(Buffer.from(chunk))
+        const {frames, raw} = frameParser.feed(chunk)
         const events: ReplEvent[] = []
 
         if (raw) {
