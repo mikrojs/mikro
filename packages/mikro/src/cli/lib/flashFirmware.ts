@@ -42,8 +42,8 @@ export interface FlashPlanOptions {
   board?: string
   /** Board from mikro.config.ts, used when no `board` flag is given. */
   configBoard?: string
-  /** Target chip; auto-detected via esptool if omitted. */
-  target?: Chip
+  /** The device's chip (`--chip`); detected via esptool if omitted. */
+  chip?: Chip
   /** Let several installed boards for the device's chip come back as a
    *  BoardChoice, for a picker. Otherwise (headless) the plan stops and lists
    *  them. */
@@ -362,7 +362,7 @@ export async function resolveFlashPlan(
     boardSource?: BoardSource
   },
 ): Promise<FlashPlan | BoardChoice> {
-  const {port, buildDir, from, board: boardFlag, configBoard, target, onProgress} = opts
+  const {port, buildDir, from, board: boardFlag, configBoard, chip, onProgress} = opts
 
   if (buildDir) {
     if (opts.features !== undefined) {
@@ -390,7 +390,7 @@ export async function resolveFlashPlan(
   if (found.kind === 'unknown' && !from) throw unknownBoardError(found)
   // One esptool session gives the chip, the partition table for
   // assertFilesystemKept, and the flash size for fitToDeviceFlash.
-  onProgress?.(target ? 'Reading device flash…' : 'Detecting chip…')
+  onProgress?.(chip ? 'Reading device flash…' : 'Detecting chip…')
   const {device, error: deviceError} = await readDeviceFlash(esptoolPath, port)
   let resolved: {board: BoardInfo; source: BoardSource} | undefined
   // With --from, --board only picks an archive of the release or build, so it
@@ -399,17 +399,17 @@ export async function resolveFlashPlan(
   if (found.kind === 'board') {
     resolved = {board: found.board, source: found.source}
   } else if (found.kind === 'choose') {
-    const chosen = boardForChip(found.boards, target ?? device?.chip, opts)
+    const chosen = boardForChip(found.boards, chip ?? device?.chip, opts)
     if ('choose' in chosen) return chosen
     resolved = chosen
   } else if (found.kind === 'unknown') {
     archiveBoard = {name: found.name, source: found.source}
   }
 
-  if (resolved && target && target !== resolved.board.chip) {
+  if (resolved && chip && chip !== resolved.board.chip) {
     throw new UserError(
-      `${resolved.board.name} is an ${resolved.board.chip} board, but --target is ${target}. ` +
-        `Drop --target, or pass a board for that chip.`,
+      `${resolved.board.name} is an ${resolved.board.chip} board, but --chip is ${chip}. ` +
+        `Drop --chip, or pass a board for that chip.`,
     )
   }
   // esptool refuses firmware for another chip by itself, but only after the
@@ -417,12 +417,12 @@ export async function resolveFlashPlan(
   // Checking first names the board that is wrong.
   if (resolved && resolved.source !== 'chip') verifyBoardChip(port, resolved.board, device?.chip)
 
-  const resolvedChip = target ?? resolved?.board.chip ?? device?.chip
+  const resolvedChip = chip ?? resolved?.board.chip ?? device?.chip
   if (!resolvedChip) {
     throw new UserError(
       deviceError
         ? 'Could not detect chip type'
-        : 'Could not detect chip type. Use --target to specify the chip (e.g. --target esp32c6).',
+        : 'Could not detect chip type. Use --chip to name it (e.g. --chip esp32c6).',
       {cause: deviceError},
     )
   }
@@ -493,7 +493,7 @@ export async function resolveFlashPlan(
     })
   }
 
-  // No board selected: the detected (or --target) chip's bundled board.
+  // No board selected: the bundled board for the chip --chip names, or the detected one.
   resolved ??= {
     board: bundledBoards().find((b) => b.chip === resolvedChip) ?? {
       name: `${resolvedChip}-generic`,
