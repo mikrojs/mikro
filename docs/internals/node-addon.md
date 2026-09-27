@@ -15,7 +15,7 @@ The Node.js addon (`packages/@mikrojs/native/addon/`) allows the Mikro.js runtim
  │  MikroRuntime (TypeScript)             │
  │    │                                   │
  │    ├── evalModule() / evalScript()     │
- │    ├── loop()  ──► LoopWorker (async)  │
+ │    ├── loopOnce()                      │
  │    ├── postMessage() ──┐               │
  │    └── drainMessages() │               │
  │                        │               │
@@ -43,14 +43,8 @@ class MikroRuntime {
   // Execute a script (not a module) and return the result
   evalScript(code: string): string | undefined
 
-  // Run the event loop asynchronously (resolves when stopped)
-  loop(): Promise<void>
-
   // Run a single loop iteration synchronously
   loopOnce(): number
-
-  // Stop the event loop
-  stop(): void
 
   // Clean up all resources
   dispose(): void
@@ -71,24 +65,6 @@ class MikroRuntime {
   setRpcHandler(handler: (method: string, argsJson: string) => string | Promise<string>): void
 }
 ```
-
-## Async loop
-
-The event loop runs on a separate thread via `LoopWorker` (a `Napi::AsyncWorker`):
-
-```cpp
-class LoopWorker : public Napi::AsyncWorker {
-    void Execute() override {
-        while (!stopped_) {
-            int rc = MIK_Loop(mik_rt_);
-            if (rc != 0) break;
-            MIK_GetPlatform()->yield();
-        }
-    }
-};
-```
-
-`loop()` returns a `Promise<void>` that resolves when the loop exits. This keeps Node.js's event loop free while the QuickJS runtime runs.
 
 ## Host bridge
 

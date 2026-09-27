@@ -94,7 +94,6 @@ void mik__console_set_tap(mik_console_tap_fn fn);
 typedef struct MIKConfig MIKConfig;
 void mik_logfile_init(const MIKConfig* config);
 void mik_logfile_close(void);
-void mik_logfile_flush(void);
 /* Release/restore the underlying FILE* so the host can read the file
  * without contention. Output between suspend/resume is dropped. No-op
  * when file logging is disabled. */
@@ -140,8 +139,6 @@ void mik__serial_io_attach_usb(void);
 extern const char* MIK__NVS_NS_ENV;  /* env var values */
 extern const char* MIK__NVS_NS_SEC;  /* secret-flag markers (u8) */
 /* ENV_FLAG_SECRET is defined in mikrojs/private.h as MIK_ENV_FLAG_SECRET */
-void mik__nvs_clear_namespace(const char* ns);
-bool mik__nvs_put_string(const char* ns, const char* key, const char* value);
 bool mik__nvs_put_string_if_diff(const char* ns, const char* key, const char* value,
                                  bool* out_changed);
 bool mik__nvs_is_secret(const char* key);

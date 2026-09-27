@@ -59,17 +59,9 @@ export class MikroRuntime {
     return this.native.evalForRepl(code, depth)
   }
 
-  loop(): Promise<void> {
-    return this.native.loop()
-  }
-
   /** Run one iteration of the event loop synchronously. Returns 0 on success. */
   loopOnce(): number {
     return this.native.loopOnce()
-  }
-
-  stop(): void {
-    this.native.stop()
   }
 
   dispose(): void {

@@ -1,7 +1,5 @@
 #include "runtime_wrap.h"
 
-#include <atomic>
-
 #include <quickjs.h>
 
 #include "mikrojs/private.h"
@@ -16,46 +14,6 @@ extern "C" const MIKPlatform* MIK_NodePlatform(void);
 
 /* Dynamic module data slot for the host bridge, set during RuntimeWrap construction */
 static int s_host_slot = -1;
-
-/* ── AsyncWorker for MIK_Loop ────────────────────────────────────── */
-
-class LoopWorker : public Napi::AsyncWorker {
-   public:
-    LoopWorker(Napi::Env env, MIKRuntime* mik_rt)
-        : Napi::AsyncWorker(env),
-          deferred_(Napi::Promise::Deferred::New(env)),
-          mik_rt_(mik_rt) {}
-
-    Napi::Promise::Deferred& Deferred() { return deferred_; }
-
-    void Execute() override {
-        while (!stopped_.load()) {
-            int rc = MIK_Loop(mik_rt_);
-            if (rc != 0) {
-                SetError("MIK_Loop returned error");
-                break;
-            }
-            MIK_GetPlatform()->yield();
-        }
-    }
-
-    void OnOK() override {
-        Napi::HandleScope scope(Env());
-        deferred_.Resolve(Env().Undefined());
-    }
-
-    void OnError(const Napi::Error& err) override {
-        Napi::HandleScope scope(Env());
-        deferred_.Reject(err.Value());
-    }
-
-    void SignalStop() { stopped_.store(true); }
-
-   private:
-    Napi::Promise::Deferred deferred_;
-    MIKRuntime* mik_rt_;
-    std::atomic<bool> stopped_{false};
-};
 
 /* ── native:mikro/host C module ──────────────────────────────────────────── */
 
@@ -300,9 +258,7 @@ Napi::Object RuntimeWrap::Init(Napi::Env env, Napi::Object exports) {
                                           InstanceMethod("evalModuleContent", &RuntimeWrap::EvalModuleContent),
                                           InstanceMethod("evalScript", &RuntimeWrap::EvalScript),
                                           InstanceMethod("evalForRepl", &RuntimeWrap::EvalForRepl),
-                                          InstanceMethod("loop", &RuntimeWrap::Loop),
                                           InstanceMethod("loopOnce", &RuntimeWrap::LoopOnce),
-                                          InstanceMethod("stop", &RuntimeWrap::Stop),
                                           InstanceMethod("dispose", &RuntimeWrap::Dispose),
                                           InstanceMethod("registerModuleSource", &RuntimeWrap::RegisterModuleSource),
                                           InstanceMethod("drainMessages", &RuntimeWrap::DrainMessages),
@@ -815,30 +771,12 @@ Napi::Value RuntimeWrap::EvalForRepl(const Napi::CallbackInfo& info) {
     return Napi::String::New(env, inspected);
 }
 
-Napi::Value RuntimeWrap::Loop(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    auto* worker = new LoopWorker(env, mik_rt_);
-    loop_worker_ = worker;
-    auto deferred = worker->Deferred();
-    worker->Queue();
-
-    return deferred.Promise();
-}
-
 Napi::Value RuntimeWrap::LoopOnce(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     current_env_ = env;
     if (host_bridge_) host_bridge_->current_env = env;
     int rc = MIK_Loop(mik_rt_);
     return Napi::Number::New(env, rc);
-}
-
-void RuntimeWrap::Stop(const Napi::CallbackInfo& info) {
-    if (loop_worker_) {
-        loop_worker_->SignalStop();
-        loop_worker_ = nullptr;
-    }
 }
 
 void RuntimeWrap::Dispose(const Napi::CallbackInfo& info) {

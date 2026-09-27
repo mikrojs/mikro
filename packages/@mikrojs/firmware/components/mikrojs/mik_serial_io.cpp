@@ -329,28 +329,6 @@ void mik__serial_io_attach_usb(void) {
 const char* MIK__NVS_NS_ENV = "mik.env";
 const char* MIK__NVS_NS_SEC = "mik.sec";
 
-void mik__nvs_clear_namespace(const char* ns) {
-    nvs_handle_t handle;
-    if (nvs_open(ns, NVS_READWRITE, &handle) == ESP_OK) {
-        nvs_erase_all(handle);
-        nvs_commit(handle);
-        nvs_close(handle);
-    }
-}
-
-bool mik__nvs_put_string(const char* ns, const char* key, const char* value) {
-    nvs_handle_t handle;
-    esp_err_t err = nvs_open(ns, NVS_READWRITE, &handle);
-    if (err != ESP_OK) return false;
-
-    err = nvs_set_str(handle, key, value);
-    if (err == ESP_OK) {
-        err = nvs_commit(handle);
-    }
-    nvs_close(handle);
-    return err == ESP_OK;
-}
-
 /* Write only if the value differs from what's already stored. `out_changed`
  * is set to true when the stored value ends up different than before, false
  * if the existing value already matched. Returns false on I/O failure. */

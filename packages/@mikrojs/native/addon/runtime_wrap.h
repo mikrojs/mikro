@@ -39,9 +39,7 @@ class RuntimeWrap : public Napi::ObjectWrap<RuntimeWrap> {
     Napi::Value EvalModuleContent(const Napi::CallbackInfo& info);
     Napi::Value EvalScript(const Napi::CallbackInfo& info);
     Napi::Value EvalForRepl(const Napi::CallbackInfo& info);
-    Napi::Value Loop(const Napi::CallbackInfo& info);
     Napi::Value LoopOnce(const Napi::CallbackInfo& info);
-    void Stop(const Napi::CallbackInfo& info);
     void Dispose(const Napi::CallbackInfo& info);
 
     /* Virtual module registration */
@@ -96,7 +94,4 @@ class RuntimeWrap : public Napi::ObjectWrap<RuntimeWrap> {
      * as `test` messages, replacing the JS-side globalThis.__testEmit shim
      * the simulator used to install. */
     static void TestEmitHandlerCallback(const char* json, size_t len, void* opaque);
-
-    /* Forward declare — defined in runtime_wrap.cpp */
-    class LoopWorker* loop_worker_ = nullptr;
 };

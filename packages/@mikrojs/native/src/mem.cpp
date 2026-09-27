@@ -152,10 +152,6 @@ void mik__set_quickjs_heap_psram(bool enable) {
     g_quickjs_heap_psram = enable;
 }
 
-bool mik__is_quickjs_heap_psram(void) {
-    return g_quickjs_heap_psram;
-}
-
 void* mik__js_malloc(size_t size) {
     if (OOM_INJECT_FAIL()) return nullptr;
     size_t hdr = hdr_size();

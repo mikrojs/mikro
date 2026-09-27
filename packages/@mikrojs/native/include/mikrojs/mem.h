@@ -25,7 +25,6 @@ void* mik__js_realloc(void* ptr, size_t size);
  * mik__js_realloc relies on the flag staying consistent with the heap
  * the original pointer came from. */
 void mik__set_quickjs_heap_psram(bool enable);
-bool mik__is_quickjs_heap_psram(void);
 
 #ifdef MIK_OOM_INJECT
 #include <stdint.h>

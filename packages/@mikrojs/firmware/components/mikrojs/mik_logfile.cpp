@@ -281,13 +281,6 @@ void mik_logfile_reset(void) {
     xSemaphoreGive(s_mtx);
 }
 
-void mik_logfile_flush(void) {
-    if (!s_mtx || !s_file) return;
-    if (xSemaphoreTake(s_mtx, pdMS_TO_TICKS(50)) != pdTRUE) return;
-    flush_to_flash();
-    xSemaphoreGive(s_mtx);
-}
-
 void mik_logfile_close(void) {
     if (!s_mtx) return;
     if (xSemaphoreTake(s_mtx, pdMS_TO_TICKS(100)) != pdTRUE) return;

@@ -152,9 +152,9 @@ void mik__timers_consume(JSContext* ctx) {
 
     for (auto& entry : timers->entries) {
         if (entry.next_deadline <= now) {
-            if (due_count < MIK_MAX_DUE_TIMERS) {
-                due_ids[due_count++] = entry.id;
-            }
+            // Past the cap, a timer stays due and runs on the next pass.
+            if (due_count == MIK_MAX_DUE_TIMERS) break;
+            due_ids[due_count++] = entry.id;
             // Drift-free: advance from the previous deadline, not from now, so the rate
             // stays exact. After a stall of a whole period, resume from now; never burst.
             if (entry.is_interval) {

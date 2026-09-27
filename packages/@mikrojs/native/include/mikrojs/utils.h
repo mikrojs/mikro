@@ -110,7 +110,6 @@ bool MIK_IsPromisePending(JSContext* ctx, MIKPromise* p);
 void MIK_FreePromise(JSContext* ctx, MIKPromise* p);
 void MIK_FreePromiseRT(JSRuntime* rt, MIKPromise* p);
 void MIK_ClearPromise(JSContext* ctx, MIKPromise* p);
-void MIK_MarkPromise(JSRuntime* rt, MIKPromise* p, JS_MarkFunc* mark_func);
 void MIK_SettlePromise(JSContext* ctx, MIKPromise* p, bool is_reject, int argc, JSValue* argv);
 void MIK_ResolvePromise(JSContext* ctx, MIKPromise* p, int argc, JSValue* argv);
 void MIK_RejectPromise(JSContext* ctx, MIKPromise* p, int argc, JSValue* argv);
