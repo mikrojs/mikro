@@ -35,4 +35,4 @@ RAM is determined by the chip and module: 384-520 KB of internal SRAM, shared by
 
 Any board with a supported chip and at least 4 MB flash should work, regardless of manufacturer: Adafruit, SparkFun, Waveshare, LILYGO, WeAct, generic DevKits. If you try one, [let us know](https://github.com/mikrojs/mikro/issues).
 
-ESP32-S3 boards with octal PSRAM (N8R8, N16R8) need a custom firmware setting to use their PSRAM; see [Troubleshooting](/troubleshooting#psram-board-reports-board-psram-as-0).
+The generic ESP32-S3 firmware is built for octal PSRAM (N8R8, N16R8). S3 boards with quad PSRAM, such as N8R2, run without their PSRAM on it and need a [board package](/develop/creating-boards) or [custom firmware](/develop/custom-firmware) to use it; see [Troubleshooting](/troubleshooting#psram-board-reports-board-psram-as-0).

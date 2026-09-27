@@ -105,12 +105,14 @@ Enable [`logFile: true`](/config#logfile) in your production `mikro.config.ts`. 
 
 ## PSRAM board reports `board.psram` as 0
 
-The ESP32-S3 firmware defaults enable quad-mode PSRAM with `CONFIG_SPIRAM_IGNORE_NOTFOUND=y`. A board with an octal PSRAM module (N8R8, N16R8, and similar variants) boots without any error but runs with no PSRAM: `board.psram` from `mikro/sys` is `0`, and allocations fall back to internal SRAM.
+ESP32-S3 modules have either quad or octal PSRAM, and the firmware must be built for the right one. When it isn't, the board boots without any error but runs with no PSRAM: `board.psram` from `mikro/sys` is `0`, and allocations fall back to internal SRAM.
 
-For custom firmware builds, add this to your project's `sdkconfig.defaults`:
+The generic ESP32-S3 firmware is built for octal PSRAM (N8R8, N16R8, the XIAO ESP32S3). A board with quad PSRAM, such as an N8R2 module, runs without its PSRAM on the generic firmware. To use it, flash a [board package](/develop/creating-boards) or [custom firmware](/develop/custom-firmware) built for that board. Those builds start from the Mikro.js chip defaults, which use quad mode.
+
+A board package or custom firmware for an octal PSRAM board sets the mode in the project's `sdkconfig.defaults`:
 
 ```
 CONFIG_SPIRAM_MODE_OCT=y
 ```
 
-Then delete the generated `sdkconfig` and re-run `pn mikro idf set-target esp32s3`. `sdkconfig.defaults` is only read when `sdkconfig` does not exist, so editing the defaults alone has no effect on an already configured build.
+Then delete the generated `sdkconfig`, re-run `pn mikro idf set-target esp32s3` and build again (`pn mikro fw prepack` for a board package). `sdkconfig.defaults` is only read when `sdkconfig` does not exist, so editing the defaults alone has no effect on an already configured build.
