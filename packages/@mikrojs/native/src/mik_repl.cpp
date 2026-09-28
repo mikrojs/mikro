@@ -917,9 +917,10 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
 /* ── Protocol-mode REPL ──────────────────────────────────────────── */
 
 /* Fills ready_buf/ready_len with CBOR device info:
- * {"chip": tstr, "id": tstr, "v": tstr, "board": tstr, "fw": tstr (when built
- * with MIK_BOARD_NAME), "name": tstr (only when named), "features": [tstr] (when
- * built with MIK_FW_FEATURES; host builds omit it), "natives": [tstr]}.
+ * {"chip": tstr, "id": tstr, "v": tstr, "board": tstr, "proto": uint
+ * (MIK_PROTO_REV), "fw": tstr (when built with MIK_BOARD_NAME), "name": tstr
+ * (only when named), "features": [tstr] (when built with MIK_FW_FEATURES; host
+ * builds omit it), "natives": [tstr]}.
  * `board` is mik__board_name(). `features` lists the firmware features the
  * build compiled in (from the comma-separated MIK_FW_FEATURES define), so the
  * host knows which feature-gated builtins this firmware carries. `natives`
@@ -963,7 +964,7 @@ static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const cha
     static uint8_t measure_base;
     nanocbor_encoder_t enc;
     nanocbor_encoder_init(&enc, buf ? buf : &measure_base, buf ? cap : 0);
-    nanocbor_fmt_map(&enc, 4 + (fw ? 1 : 0) + (name ? 1 : 0) + (features ? 1 : 0) +
+    nanocbor_fmt_map(&enc, 5 + (fw ? 1 : 0) + (name ? 1 : 0) + (features ? 1 : 0) +
                                (natives ? 1 : 0) + (mem ? 3 : 0));
     nanocbor_put_tstr(&enc, "chip");
     nanocbor_put_tstr(&enc, chip);
@@ -973,6 +974,8 @@ static size_t encode_ready(uint8_t* buf, size_t cap, const char* chip, const cha
     nanocbor_put_tstr(&enc, version);
     nanocbor_put_tstr(&enc, "board");
     nanocbor_put_tstr(&enc, board);
+    nanocbor_put_tstr(&enc, "proto");
+    nanocbor_fmt_uint(&enc, MIK_PROTO_REV);
     if (fw) {
         nanocbor_put_tstr(&enc, "fw");
         nanocbor_put_tstr(&enc, fw);

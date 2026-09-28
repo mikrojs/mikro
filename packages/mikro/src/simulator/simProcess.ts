@@ -43,9 +43,11 @@ import {
   CMD_DEPLOY_ABORT,
   CMD_DEPLOY_BUILD,
   CMD_DEPLOY_CHECKSUM,
+  CMD_DEPLOY_CHECKSUM_LIST,
   CMD_DEPLOY_DONE,
   CMD_DEPLOY_ERASE,
   CMD_DEPLOY_KEEP,
+  CMD_DEPLOY_KEEP_MANY,
   CMD_DEPLOY_PUT,
   CMD_DEPLOY_PUT_CHUNK,
   CMD_DEPLOY_RESULT,
@@ -81,6 +83,7 @@ import {
   MSG_TEST,
   MSG_WARN,
   parseFrame,
+  PROTOCOL_REV,
 } from '../cli/lib/protocol.js'
 import {createDevRunner, DEFAULT_FS_LIMIT, type DevRunner} from './devRunner.js'
 import {loadSimStubs} from './loadSimStubs.js'
@@ -615,11 +618,9 @@ function handleDeployPutChunk(payload: Buffer): void {
   sendOk()
 }
 
-function handleDeployKeep(payload: Buffer): void {
-  const nameLen = payload.readUInt16LE(0)
-  const name = payload.subarray(2, 2 + nameLen).toString('utf-8')
-
-  // Firmware uses FS_BASE + name as source (e.g. /appfs + /app/main.bjs)
+/** Stage a live file for the next DONE. Firmware uses FS_BASE + name as the
+ *  source (e.g. /appfs + /app/main.bjs). */
+function keepFile(name: string): void {
   const src = resolveSandboxPath(fsRoot, name)
   const dst = resolveSandboxPath(stagingDir, name)
   ensureDir(pathlib.dirname(dst))
@@ -627,16 +628,50 @@ function handleDeployKeep(payload: Buffer): void {
   if (existsSync(src)) {
     copyFileSync(src, dst)
   }
+}
+
+function handleDeployKeep(payload: Buffer): void {
+  const nameLen = payload.readUInt16LE(0)
+  keepFile(payload.subarray(2, 2 + nameLen).toString('utf-8'))
   sendOk()
+}
+
+function handleDeployKeepMany(payload: Buffer): void {
+  // Payload: repeated u16le name_len | name
+  let offset = 0
+  while (offset < payload.length) {
+    const nameLen = payload.readUInt16LE(offset)
+    offset += 2
+    keepFile(payload.subarray(offset, offset + nameLen).toString('utf-8'))
+    offset += nameLen
+  }
+  sendOk()
+}
+
+/** Lines of the deployed `.checksums` manifest that name a file. */
+function manifestEntries(): string[] {
+  const manifestPath = pathlib.join(appDir, '.checksums')
+  const lines = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf-8').split('\n') : []
+  return lines.filter((line) => line.length >= 67 && !line.startsWith('#'))
 }
 
 /** File entries in the deployed `.checksums` manifest, as u16le. Mirrors firmware. */
 function manifestFileCount(): Buffer {
-  const manifestPath = pathlib.join(appDir, '.checksums')
-  const lines = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf-8').split('\n') : []
   const count = Buffer.alloc(2)
-  count.writeUInt16LE(lines.filter((line) => line.length >= 67 && !line.startsWith('#')).length)
+  count.writeUInt16LE(manifestEntries().length)
   return count
+}
+
+function handleDeployChecksumList(): void {
+  // Reply: u16le file_count | the manifest lines whose file is on disk. Like
+  // the firmware, this trusts the manifest rather than hashing each file.
+  const present = manifestEntries().filter((line) =>
+    existsSync(resolveSandboxPath(fsRoot, line.slice(66))),
+  )
+  send(
+    MSG_OK,
+    Buffer.concat([manifestFileCount(), Buffer.from(present.map((l) => `${l}\n`).join(''))]),
+  )
 }
 
 function handleDeployChecksum(payload: Buffer): void {
@@ -1219,6 +1254,12 @@ async function handleFrame(frame: Frame): Promise<void> {
       // to clear. Surface a clear error instead of timing out.
       sendErr('log reset: not supported in simulator')
       break
+    case CMD_DEPLOY_CHECKSUM_LIST:
+      handleDeployChecksumList()
+      break
+    case CMD_DEPLOY_KEEP_MANY:
+      handleDeployKeepMany(payload)
+      break
     case CMD_DEPLOY_BUILD:
       handleDeployBuild(payload)
       break
@@ -1262,6 +1303,7 @@ function sendReady(): void {
       id: null,
       v: cliVersion,
       board: 'generic',
+      proto: PROTOCOL_REV,
       features: allFeatures(),
     }),
   )

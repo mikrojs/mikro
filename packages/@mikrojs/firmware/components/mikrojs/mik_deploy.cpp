@@ -265,6 +265,16 @@ static const char* copy_file(const char* src, const char* dst) {
     return failed;
 }
 
+/* Stage a live file for the next commit. Returns NULL on success, otherwise
+ * the step that failed, with errno set. */
+static const char* keep_file(const char* name) {
+    char src_path[512], dst_path[512];
+    snprintf(src_path, sizeof(src_path), "%s%s", FS_BASE, name);
+    snprintf(dst_path, sizeof(dst_path), "%s%s", DEPLOY_TMP, name);
+    if (!make_parent_dir(dst_path)) return "create directory failed";
+    return copy_file(src_path, dst_path);
+}
+
 /* ── Deploy recovery ─────────────────────────────────────────────── */
 
 void MIK_DeployRecover(void) {
@@ -414,21 +424,93 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
             if (!mik__proto_read_exact(transport, name, name_len)) return false;
             name[name_len] = '\0';
 
-            char src_path[512], dst_path[512];
-            snprintf(src_path, sizeof(src_path), "%s%s", FS_BASE, name);
-            snprintf(dst_path, sizeof(dst_path), "%s%s", DEPLOY_TMP, name);
-
-            if (!make_parent_dir(dst_path)) {
-                send_errno(transport, "create directory failed", errno);
-                return true;
-            }
-
-            const char* failed = copy_file(src_path, dst_path);
+            const char* failed = keep_file(name);
             if (failed) {
                 send_errno(transport, failed, errno);
             } else {
                 mik__proto_send_ok(transport);
             }
+            return true;
+        }
+
+        case MIK_CMD_DEPLOY_KEEP_MANY: {
+            /* Payload: repeated u16le name_len | name. Each file is staged as
+             * KEEP stages it. The first failure ends the batch: the rest of
+             * the payload is dropped and the error names the file. */
+            uint32_t consumed = 0;
+            while (consumed < payload_len) {
+                if (payload_len - consumed < 2) {
+                    mik__proto_drain(transport, payload_len - consumed);
+                    mik__proto_send_err(transport, "keep list truncated");
+                    return true;
+                }
+                uint8_t nl[2];
+                if (!mik__proto_read_exact(transport, nl, 2)) return false;
+                consumed += 2;
+                uint16_t name_len = nl[0] | (nl[1] << 8);
+
+                char name[256];
+                if (name_len >= sizeof(name) || name_len > payload_len - consumed) {
+                    mik__proto_drain(transport, payload_len - consumed);
+                    mik__proto_send_err(transport, "keep filename too long");
+                    return true;
+                }
+                if (!mik__proto_read_exact(transport, name, name_len)) return false;
+                consumed += name_len;
+                name[name_len] = '\0';
+
+                const char* failed = keep_file(name);
+                if (failed) {
+                    int err = errno;
+                    mik__proto_drain(transport, payload_len - consumed);
+                    char msg[384];
+                    snprintf(msg, sizeof(msg), "%s: %s: %s", name, failed, strerror(err));
+                    mik__proto_send_err(transport, msg);
+                    return true;
+                }
+            }
+            mik__proto_send_ok(transport);
+            return true;
+        }
+
+        case MIK_CMD_DEPLOY_CHECKSUM_LIST: {
+            /* Reply: u16le file_count | the manifest lines whose file is on
+             * disk, so the host never KEEPs a file a stale manifest still
+             * names (see CHECKSUM). file_count counts every manifest entry. */
+            mik__proto_drain(transport, payload_len);
+            const ChecksumsManifest& m = s_deploy_manifest;
+            auto* reply = static_cast<uint8_t*>(malloc(2 + m.len));
+            if (!reply) {
+                mik__proto_send_err(transport, "out of memory");
+                return true;
+            }
+            reply[0] = static_cast<uint8_t>(s_deploy_manifest_files & 0xff);
+            reply[1] = static_cast<uint8_t>(s_deploy_manifest_files >> 8);
+            size_t out = 2;
+            if (m.data) {
+                const char* p = m.data;
+                const char* end = m.data + m.len;
+                while (p < end) {
+                    const char* nl = static_cast<const char*>(memchr(p, '\n', end - p));
+                    const char* next = nl ? nl + 1 : end;
+                    size_t entry_len = static_cast<size_t>((nl ? nl : end) - p);
+                    /* "<64 hex>  <name>", the name no longer than KEEP accepts. */
+                    if (entry_len >= 67 && entry_len < 66 + 256 && p[0] != '#') {
+                        char path[512];
+                        snprintf(path, sizeof(path), "%s%.*s", FS_BASE,
+                                 static_cast<int>(entry_len - 66), p + 66);
+                        feed_watchdog();
+                        if (path_exists(path)) {
+                            size_t line_len = static_cast<size_t>(next - p);
+                            memcpy(reply + out, p, line_len);
+                            out += line_len;
+                        }
+                    }
+                    p = next;
+                }
+            }
+            mik__proto_send(transport, MIK_MSG_OK, reply, out);
+            free(reply);
             return true;
         }
 
