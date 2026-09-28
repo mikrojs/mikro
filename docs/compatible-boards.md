@@ -14,13 +14,13 @@ RAM is determined by the chip and module: 384-520 KB of internal SRAM, shared by
 
 ## Chip support
 
-| Chip     | Notes                                                                                                                                                                                  |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ESP32‑C6 | **Recommended.** Primary development chip. WiFi 6, BLE 5, Thread/Zigbee.                                                                                                               |
-| ESP32‑S3 | **Recommended.** PSRAM variants fit larger apps.                                                                                                                                       |
-| ESP32‑C5 | **Recommended.** Dual-band WiFi 6 and BLE 5. Requires PSRAM for the standard Mikro.js configuration (WiFi + BLE concurrently); 5 GHz needs [`wifi.country`](/config#wifi-country) set. |
-| ESP32    | **Supported.** Prefer WROVER variants (4-8 MB PSRAM) over WROOM.                                                                                                                       |
-| ESP32‑C3 | **Limited support.** Good fit for GPIO, timers, sensors, and BLE. Not enough RAM for HTTPS or memory intensive applications.                                                           |
+| Chip     | Notes                                                                                                                                                                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ESP32‑C6 | **Recommended.** Primary development chip. WiFi 6, BLE 5, Thread/Zigbee.                                                                                                                                                                       |
+| ESP32‑S3 | **Recommended.** PSRAM variants fit larger apps.                                                                                                                                                                                               |
+| ESP32‑C5 | **Recommended.** Dual-band WiFi 6 and BLE 5. Requires PSRAM for the standard Mikro.js configuration (WiFi + BLE concurrently); 5 GHz needs [`wifi.country`](/config#wifi-country) set.                                                         |
+| ESP32    | **Supported.** Prefer WROVER variants (4-8 MB PSRAM) over WROOM. On a board without PSRAM, flash the image without BLE (`mikro flash --features wifi`): Bluetooth reserves more than 50 KB of RAM at startup, even when the app never uses it. |
+| ESP32‑C3 | **Limited support.** Good fit for GPIO, timers, sensors, and BLE. Not enough RAM for HTTPS or memory intensive applications.                                                                                                                   |
 
 ## Tested
 
