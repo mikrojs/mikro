@@ -35,7 +35,10 @@ jobs:
       images: ${{ steps.read.outputs.images }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # fw list only reads boards.config.ts: no native builds, no qjsc
       - uses: ./.github/actions/setup-pnpm
+        with:
+          ignore-scripts: 'true'
       - id: read
         shell: bash
         working-directory: packages/mikro
