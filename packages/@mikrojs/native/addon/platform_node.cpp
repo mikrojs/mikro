@@ -183,6 +183,7 @@ static const MIKPlatform node_platform = {
     .random = node_random,
     .restart = node_restart,
     .yield = node_yield,
+    .wait = nullptr, /* the addon never enters the serve loop */
     .get_free_system_mem = node_get_free_system_mem,
     .get_min_free_system_mem = node_get_min_free_system_mem,
     .get_total_system_mem = node_get_total_system_mem,

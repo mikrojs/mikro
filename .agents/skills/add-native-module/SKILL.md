@@ -256,7 +256,9 @@ static inline MIKAdcState*& mik__adc_st(MIKRuntime* rt) {
     return reinterpret_cast<MIKAdcState*&>(rt->module_data[mik__adc_slot]);
 }
 
-// Called every tick of the event loop — check for completed async operations
+// Called on every pass of the event loop — check for completed async operations.
+// Whatever fills result_queue calls MIK_Wake() after each send (MIK_WakeFromISR()
+// from an ISR); otherwise the loop can sleep up to 100 ms before this runs.
 void mik__adc_consume(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     if (!mik__adc_st(mik_rt)) return;

@@ -120,8 +120,9 @@ static IRAM_ATTR bool mik__pwm_fade_cb(const ledc_cb_param_t* param, void* user_
     auto* pending = static_cast<MIKPwmFadePending*>(user_arg);
     if (param->event == LEDC_FADE_END_EVT) {
         pending->complete.store(true, std::memory_order_release);
+        MIK_WakeFromISR();
     }
-    return false;  // no high-priority task woken
+    return false;  // the wake yields itself when it unblocks the main task
 }
 
 /* The channel's fade that is still running, or nullptr. */

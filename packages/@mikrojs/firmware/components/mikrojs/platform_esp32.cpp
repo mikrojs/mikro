@@ -1,6 +1,7 @@
 #include "mikrojs/platform.h"
 #include "mikrojs_esp32.h"
 
+#include <esp_attr.h>
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 #include <esp_mac.h>
@@ -64,13 +65,72 @@ static void esp32_feed_watchdog(void) {
 }
 #endif
 
+/* When the loop task last blocked. A wake already pending ends a wait at once,
+ * so a producer that wakes faster than a pass (a fast GPIO signal) could keep
+ * the task from blocking, and IDLE, which the task watchdog checks, would
+ * starve. Like mik__maybe_yield, sleep one tick per second of that. */
+static int64_t s_last_block_us = 0;
+
 static void esp32_yield(void) {
-    /* Every cooperative yield feeds the TWDT: between jobs, in the serve
-     * loop's wait, and while the app is paused. */
+    /* Every cooperative yield feeds the TWDT: between jobs and when the
+     * serve loop has work due now. */
 #if CONFIG_ESP_TASK_WDT_EN
     esp_task_wdt_reset();
 #endif
     vTaskDelay(1);
+    s_last_block_us = esp_timer_get_time();
+}
+
+/* The task that blocks in esp32_wait (the main task), bound on its first
+ * wait. Producers on other tasks and in ISRs notify it. */
+static TaskHandle_t s_loop_task = nullptr;
+
+/* Wakes use notification index 1. Index 0 is the one ulTaskNotifyTake, driver
+ * code and pthread_join use, and native code on the JS task may block on it. */
+#define MIK__WAKE_INDEX 1
+static_assert(configTASK_NOTIFICATION_ARRAY_ENTRIES > MIK__WAKE_INDEX,
+              "the loop's wake needs a second task notification: set "
+              "CONFIG_FREERTOS_TASK_NOTIFICATION_ARRAY_ENTRIES=2 in sdkconfig, or delete sdkconfig "
+              "and re-run `mikro idf set-target` so sdkconfig.defaults applies");
+
+static void esp32_wait(int64_t timeout_us) {
+    if (!s_loop_task) {
+        /* Bind and return: a wake that raced this first call is not lost. */
+        s_loop_task = xTaskGetCurrentTaskHandle();
+        return;
+    }
+#if CONFIG_ESP_TASK_WDT_EN
+    esp_task_wdt_reset();
+#endif
+    /* Whole ticks, rounded up; FreeRTOS counts from the current partial tick,
+     * so the wait can still end up to one tick early and the next pass waits
+     * the remainder. */
+    TickType_t ticks = (TickType_t)((timeout_us + portTICK_PERIOD_MS * 1000 - 1) /
+                                    (portTICK_PERIOD_MS * 1000));
+    if (ticks == 0) ticks = 1;
+    if (ulTaskNotifyTakeIndexed(MIK__WAKE_INDEX, pdTRUE, 0) == 0) {
+        ulTaskNotifyTakeIndexed(MIK__WAKE_INDEX, pdTRUE, ticks);
+        s_last_block_us = esp_timer_get_time();
+    } else if (esp_timer_get_time() - s_last_block_us >= 1000 * 1000) {
+        vTaskDelay(1);
+        s_last_block_us = esp_timer_get_time();
+    }
+#if CONFIG_ESP_TASK_WDT_EN
+    esp_task_wdt_reset();
+#endif
+}
+
+static void esp32_wake(void) {
+    if (s_loop_task) xTaskNotifyGiveIndexed(s_loop_task, MIK__WAKE_INDEX);
+}
+
+/* IRAM: called from handlers that run while the flash cache is off (the
+ * GPIO and UART ISRs are installed with ESP_INTR_FLAG_IRAM). */
+void IRAM_ATTR MIK_WakeFromISR(void) {
+    if (!s_loop_task) return;
+    BaseType_t woken = pdFALSE;
+    vTaskNotifyGiveIndexedFromISR(s_loop_task, MIK__WAKE_INDEX, &woken);
+    portYIELD_FROM_ISR(woken);
 }
 
 static size_t esp32_get_free_system_mem(void) {
@@ -337,6 +397,8 @@ static const MIKPlatform esp32_platform = {
     .restart = esp32_restart,
     .deep_sleep_us = esp32_deep_sleep_us,
     .yield = esp32_yield,
+    .wait = esp32_wait,
+    .wake = esp32_wake,
 #if CONFIG_ESP_TASK_WDT_EN
     .feed_watchdog = esp32_feed_watchdog,
 #else

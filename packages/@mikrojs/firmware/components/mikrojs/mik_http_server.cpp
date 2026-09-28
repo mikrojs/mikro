@@ -110,6 +110,7 @@ static void mik__hs_free_exchange(MIKHsExchange* ex) {
 static void mik__hs_post_ack(QueueHandle_t q, MIKHsExchange* ex, bool ok) {
     MIKHsAck a = {ex, ok};
     xQueueSend(q, &a, portMAX_DELAY);
+    MIK_Wake();
 }
 
 static void mik__hs_set_head(httpd_req_t* req, MIKHsExchange* ex) {
@@ -183,6 +184,7 @@ static esp_err_t mik__hs_handler(httpd_req_t* req) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, nullptr);
         return ESP_OK;
     }
+    MIK_Wake();
 
     /* Drive the response from JS commands. httpd_stop() can't complete until
      * this handler returns, so stop() sets `stopping` before calling it. */

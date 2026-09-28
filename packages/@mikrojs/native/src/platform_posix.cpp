@@ -1,5 +1,7 @@
 #include "mikrojs/platform.h"
 
+#include <errno.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +29,38 @@ static void posix_restart(void) {
 
 static void posix_yield(void) {
     usleep(1000);
+}
+
+/* One waiter (the serve loop's thread); wakes are latched so one that lands
+ * before the wait is not lost. */
+static pthread_mutex_t posix_wake_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t posix_wake_cond = PTHREAD_COND_INITIALIZER;
+static bool posix_wake_pending = false;
+
+static void posix_wait(int64_t timeout_us) {
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += timeout_us / 1000000;
+    deadline.tv_nsec += (timeout_us % 1000000) * 1000;
+    if (deadline.tv_nsec >= 1000000000L) {
+        deadline.tv_sec += 1;
+        deadline.tv_nsec -= 1000000000L;
+    }
+    pthread_mutex_lock(&posix_wake_mutex);
+    while (!posix_wake_pending) {
+        if (pthread_cond_timedwait(&posix_wake_cond, &posix_wake_mutex, &deadline) == ETIMEDOUT) {
+            break;
+        }
+    }
+    posix_wake_pending = false;
+    pthread_mutex_unlock(&posix_wake_mutex);
+}
+
+static void posix_wake(void) {
+    pthread_mutex_lock(&posix_wake_mutex);
+    posix_wake_pending = true;
+    pthread_cond_signal(&posix_wake_cond);
+    pthread_mutex_unlock(&posix_wake_mutex);
 }
 
 static size_t posix_get_free_system_mem(void) {
@@ -152,6 +186,8 @@ static const MIKPlatform posix_platform = {
     .random = posix_random,
     .restart = posix_restart,
     .yield = posix_yield,
+    .wait = posix_wait,
+    .wake = posix_wake,
     .get_free_system_mem = posix_get_free_system_mem,
     .get_min_free_system_mem = posix_get_min_free_system_mem,
     .get_total_system_mem = posix_get_total_system_mem,

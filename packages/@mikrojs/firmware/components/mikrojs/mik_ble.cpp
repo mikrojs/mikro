@@ -577,7 +577,9 @@ static int mik__ble_gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                 evt.attr_handle = attr_handle;
                 evt.write_data = pool_buf;
                 evt.write_data_len = len;
-                if (xQueueSend(s_ble_event_queue, &evt, 0) != pdTRUE) {
+                if (xQueueSend(s_ble_event_queue, &evt, 0) == pdTRUE) {
+                    MIK_Wake();
+                } else {
                     /* Queue full — return the buffer to the pool. */
                     mik__ble_pool_free(pool_buf);
                     ESP_LOGW(MIK_BLE_TAG, "event queue full, dropping write event");
@@ -641,7 +643,10 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
             evt.mtu = mtu;
             /* Connection formed — NimBLE stopped advertising automatically. */
             s_advertising = false;
-            if (s_ble_event_queue) xQueueSend(s_ble_event_queue, &evt, 0);
+            if (s_ble_event_queue) {
+                xQueueSend(s_ble_event_queue, &evt, 0);
+                MIK_Wake();
+            }
             return 0;
         }
         case BLE_GAP_EVENT_DISCONNECT: {
@@ -669,7 +674,10 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
             memcpy(evt.peer_addr, peer_addr, 6);
             evt.mtu = cached_mtu;
             evt.disconnect_reason = static_cast<uint8_t>(event->disconnect.reason & 0xff);
-            if (s_ble_event_queue) xQueueSend(s_ble_event_queue, &evt, 0);
+            if (s_ble_event_queue) {
+                xQueueSend(s_ble_event_queue, &evt, 0);
+                MIK_Wake();
+            }
             return 0;
         }
         case BLE_GAP_EVENT_MTU: {
@@ -684,7 +692,10 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
             evt.type = MIK_BLE_EVT_MTU;
             evt.conn_handle = event->mtu.conn_handle;
             evt.mtu = event->mtu.value;
-            if (s_ble_event_queue) xQueueSend(s_ble_event_queue, &evt, 0);
+            if (s_ble_event_queue) {
+                xQueueSend(s_ble_event_queue, &evt, 0);
+                MIK_Wake();
+            }
             return 0;
         }
         case BLE_GAP_EVENT_SUBSCRIBE: {

@@ -111,7 +111,7 @@ Apps can import the native module directly, so check the input in C, even if a J
 
 - `MIK_REGISTER_PUBLIC_MODULE` registers the module when the firmware starts, so `main.cpp` doesn't change. The module initializes on its first import.
 - The second argument is the name that apps import. The compiler makes sure that it starts with the `MIK_PACKAGE_NAME` that the component's `CMakeLists.txt` sets.
-- The last two arguments are optional hooks. The runtime calls the first on every iteration of the event loop once the module is imported. Use it to hand results from interrupts or background tasks to JavaScript. The runtime calls the second when it shuts down. Pass `nullptr` for a hook you don't need.
+- The last two arguments are optional hooks. The runtime calls the first on every iteration of the event loop once the module is imported. Use it to hand results from interrupts or background tasks to JavaScript. After queuing work for it, call `MIK_Wake()`, or `MIK_WakeFromISR()` (`mikrojs_esp32.h`) from an interrupt handler; otherwise the event loop can sleep for up to 100 ms before the hook runs. The runtime calls the second when it shuts down. Pass `nullptr` for a hook you don't need.
 - Each export needs two calls: `JS_AddModuleExport` in the init function, and `JS_SetModuleExport` when the module is evaluated. Without the second, the export is `undefined`.
 - Follow the conventions of the public API: a PascalCase factory that returns a `Result`, handle methods that return `Result`s, and an `end()` that is safe to call twice. `mikrojs/mikrojs.h` has `MIK_ResultOk(ctx, value)`, `MIK_ResultOkVoid(ctx)` and `MIK_ResultErrNamed(ctx, "EpaperError", "reset failed: %s", reason)` for this.
 

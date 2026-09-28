@@ -39,6 +39,7 @@ static void mik__sntp_sync_cb(struct timeval* tv) {
     if (!s_event_queue) return;
     struct timeval evt = *tv;
     xQueueSend(s_event_queue, &evt, 0);
+    MIK_Wake();
 }
 
 /* ── Test helper: inject a fake sync event ─────────────────────────── */
@@ -47,6 +48,7 @@ void mik__sntp_inject_sync(int64_t epoch_sec) {
     if (!s_event_queue) return;
     struct timeval tv = {.tv_sec = static_cast<time_t>(epoch_sec), .tv_usec = 0};
     xQueueSend(s_event_queue, &tv, 0);
+    MIK_Wake();
 }
 
 /* ── JS functions ──────────────────────────────────────────────────── */

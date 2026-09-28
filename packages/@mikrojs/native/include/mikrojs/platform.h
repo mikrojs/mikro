@@ -19,6 +19,13 @@ typedef struct MIKPlatform {
      *  deep sleep (hosts), where callers fall back to restart(). */
     void (*deep_sleep_us)(uint64_t us);
     void (*yield)(void);
+    /** Block the calling task until wake() is called or `timeout_us` elapses.
+     *  A wake that arrives before the wait is kept: the next wait returns at
+     *  once. NULL where the platform has no blocking primitive; the serve
+     *  loop then falls back to yield() between passes. */
+    void (*wait)(int64_t timeout_us);
+    /** End a wait in progress, from task context. NULL when wait is NULL. */
+    void (*wake)(void);
     /** Feed the hardware task watchdog for the calling task. NULL where the
      *  platform has none (hosts) or the watchdog is compiled out. */
     void (*feed_watchdog)(void);

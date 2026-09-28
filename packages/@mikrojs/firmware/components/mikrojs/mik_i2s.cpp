@@ -2,6 +2,7 @@
 #include <cstring>
 
 #include "driver/i2s_std.h"
+#include "esp_attr.h"
 /* soc_caps.h has no I2S controller count in IDF 6.1; the HAL header does. */
 #include "hal/i2s_ll.h"
 #include "soc/soc_caps.h"
@@ -229,6 +230,16 @@ static void mik__i2s_del_channels(MIKI2sState* s) {
     }
 }
 
+/* I2S ISR: a DMA buffer went out. With a chunk queued, the loop consumer can
+ * push the next piece now instead of at its wait's cap. */
+static bool IRAM_ATTR mik__i2s_on_sent(i2s_chan_handle_t handle, i2s_event_data_t* event,
+                                       void* user_ctx) {
+    (void)handle;
+    (void)event;
+    if (static_cast<MIKI2sState*>(user_ctx)->tx_count > 0) MIK_WakeFromISR();
+    return false;  // the wake yields itself
+}
+
 /* Creates, configures and enables the channels. */
 static esp_err_t mik__i2s_start(MIKI2sState* s, uint32_t sample_rate, int dma_frames,
                                 int dma_buffers) {
@@ -291,6 +302,12 @@ static esp_err_t mik__i2s_start(MIKI2sState* s, uint32_t sample_rate, int dma_fr
             return err;
     }
 
+    if (s->tx_chan) {
+        i2s_event_callbacks_t cbs = {};
+        cbs.on_sent = mik__i2s_on_sent;
+        if ((err = i2s_channel_register_event_callback(s->tx_chan, &cbs, s)) != ESP_OK)
+            return err;
+    }
     if (s->tx_chan && (err = i2s_channel_enable(s->tx_chan)) != ESP_OK) return err;
     if (s->rx_chan && (err = i2s_channel_enable(s->rx_chan)) != ESP_OK) return err;
     return ESP_OK;

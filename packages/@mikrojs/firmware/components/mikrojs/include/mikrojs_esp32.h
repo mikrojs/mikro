@@ -78,6 +78,10 @@ void mik__console_init(void);
 /* Read from the active console.  Returns bytes read, 0 if no data, or -1. */
 int mik__console_read(void* buf, size_t len);
 
+/* MIK_Wake for interrupt handlers (platform_esp32.cpp). IRAM-resident, so a
+ * handler installed with ESP_INTR_FLAG_IRAM may call it with the flash cache off. */
+void MIK_WakeFromISR(void);
+
 /* Write to the active console.  Returns bytes written. */
 int mik__console_write(const void* buf, size_t len);
 

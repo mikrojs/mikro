@@ -22,6 +22,8 @@ typedef struct MIKPlatform {
     void (*restart)(void);                 // Reboot
     const char* (*get_reset_reason)(void); // Why the chip last reset
     void (*yield)(void);                   // Cooperative yield
+    void (*wait)(int64_t timeout_us);      // Block until wake() or the timeout (optional)
+    void (*wake)(void);                    // End a wait, from a task (optional)
 
     // Memory info
     size_t (*get_free_system_mem)(void);
@@ -64,6 +66,7 @@ MIKRuntime* rt = MIK_NewRuntime();
 | `get_rtc_us`          | Same as `get_boot_us` (no deep sleep on desktop) |
 | `random`              | `arc4random()`                                   |
 | `yield`               | `usleep(1000)` (1ms)                             |
+| `wait` / `wake`       | Condition variable with a latched wake           |
 | `restart`             | `exit(1)`                                        |
 | `get_reset_reason`    | Returns `"unknown"` (no chip reset concept)      |
 | `get_free_system_mem` | Returns 0 (not applicable)                       |
@@ -71,7 +74,7 @@ MIKRuntime* rt = MIK_NewRuntime();
 | `stdin_read`          | Non-blocking `read(fileno(stdin), ...)`          |
 | `get_device_id`       | FNV-1a hash of hostname (stable across restarts) |
 
-The POSIX platform is used by both the standalone library tests and the Node.js addon.
+The standalone library tests use the POSIX platform. The Node.js addon has its own (`addon/platform_node.cpp`) without `wait`, since the simulator sleeps between ticks in JavaScript.
 
 ## ESP32 implementation
 
@@ -83,6 +86,7 @@ The POSIX platform is used by both the standalone library tests and the Node.js 
 | `get_rtc_us`          | RTC timer (persists across deep sleep)        |
 | `random`              | `esp_random()` (hardware RNG)                 |
 | `yield`               | `vTaskDelay(1)` (yields FreeRTOS task)        |
+| `wait` / `wake`       | Task notification index 1 on the main task    |
 | `restart`             | `esp_restart()`                               |
 | `get_reset_reason`    | `esp_reset_reason()` mapped to a string       |
 | `get_free_system_mem` | `esp_get_free_heap_size()`                    |
@@ -102,9 +106,11 @@ The POSIX platform is used by both the standalone library tests and the Node.js 
 
 `random()` seeds QuickJS's `Math.random()` implementation. On microcontrollers, this should be a hardware RNG for cryptographic quality. On desktop, `arc4random()` suffices.
 
-### Yield
+### Yield, wait and wake
 
-`yield()` is called between loop iterations to prevent busy-waiting. On FreeRTOS, this lets the WiFi stack, Bluetooth, and other tasks run. On POSIX, a short sleep avoids burning CPU.
+`yield()` is called between loop iterations that have work due now. On FreeRTOS, this lets the WiFi stack, Bluetooth, and other tasks run. On POSIX, a short sleep avoids burning CPU.
+
+`wait(timeout_us)` blocks the loop's task when nothing is due, until the timeout or a `wake()`. A wake that lands before the wait is kept, so a producer never has to know whether the loop is asleep. Both are optional; without them the loop yields between passes. Code outside the runtime calls `wake()` through `MIK_Wake()`. An interrupt handler needs the port's own variant, such as the ESP32 port's `MIK_WakeFromISR()` in `mikrojs_esp32.h`. See [Event loop](event-loop.md#waiting-between-passes).
 
 ### Memory and filesystem info
 

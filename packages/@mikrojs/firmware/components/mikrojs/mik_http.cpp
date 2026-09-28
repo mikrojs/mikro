@@ -118,6 +118,12 @@ static esp_err_t mik__http_event_handler(esp_http_client_event_t* evt) {
     return ESP_OK;
 }
 
+/* Queues a message for the loop consumer and wakes the loop to take it. */
+static void mik__post(QueueHandle_t q, const MIKHttpMsg* m) {
+    xQueueSend(q, m, portMAX_DELAY);
+    MIK_Wake();
+}
+
 static void mik__post_headers(QueueHandle_t q, uint32_t id, int status,
                               MIKHttpHeader* headers, size_t header_count) {
     MIKHttpMsg m = {};
@@ -126,7 +132,7 @@ static void mik__post_headers(QueueHandle_t q, uint32_t id, int status,
     m.status = status;
     m.headers = headers;
     m.header_count = header_count;
-    xQueueSend(q, &m, portMAX_DELAY);
+    mik__post(q, &m);
 }
 
 static void mik__post_chunk(QueueHandle_t q, uint32_t id, uint8_t* data, size_t len) {
@@ -135,14 +141,14 @@ static void mik__post_chunk(QueueHandle_t q, uint32_t id, uint8_t* data, size_t 
     m.kind = MIK_HTTP_MSG_CHUNK;
     m.chunk_data = data;
     m.chunk_len = len;
-    xQueueSend(q, &m, portMAX_DELAY);
+    mik__post(q, &m);
 }
 
 static void mik__post_end(QueueHandle_t q, uint32_t id) {
     MIKHttpMsg m = {};
     m.id = id;
     m.kind = MIK_HTTP_MSG_END;
-    xQueueSend(q, &m, portMAX_DELAY);
+    mik__post(q, &m);
 }
 
 static void mik__post_error(QueueHandle_t q, uint32_t id, const char* msg, bool cancelled) {
@@ -154,7 +160,7 @@ static void mik__post_error(QueueHandle_t q, uint32_t id, const char* msg, bool 
     /* If strdup fails under OOM, the downstream consumer treats NULL as "" but
      * the JS side then sees an empty error message. Leave NULL here — the
      * empty-string fallback in mik__error_msg_value keeps the flow intact. */
-    xQueueSend(q, &m, portMAX_DELAY);
+    mik__post(q, &m);
 }
 
 static bool mik__task_cancelled(MIKHttpTaskArgs* args) {
