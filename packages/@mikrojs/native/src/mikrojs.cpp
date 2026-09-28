@@ -316,6 +316,7 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
     mik_rt->result_proto = JS_UNDEFINED;
     mik_rt->result_ok_void_singleton = JS_UNDEFINED;
     mik_rt->http_body_consumed_ctor = JS_UNDEFINED;
+    mik_rt->inspect_cache.object_proto = JS_UNDEFINED;
 
     /* Default fs read cap: 64 KiB. Large enough for typical config/JSON
      * payloads on MCU; small enough that a runaway readFile() can't
@@ -450,7 +451,16 @@ void MIK_FreeRuntime(MIKRuntime* mik_rt) {
     mik_rt->http_body_consumed_ctor = JS_UNDEFINED;
     JS_FreeValue(mik_rt->ctx, mik_rt->result_proto);
     mik_rt->result_proto = JS_UNDEFINED;
+    MIKInspectCache& ic = mik_rt->inspect_cache;
+    JS_FreeValue(mik_rt->ctx, ic.object_proto);
+    ic.object_proto = JS_UNDEFINED;
     JS_FreeContext(mik_rt->ctx);
+    MIKResultAtoms& ra = mik_rt->result_atoms;
+    JS_FreeAtomsRT(mik_rt->rt, ra.ok, ra.value, ra.error, ra.err, ra.code, ra.message, ra.name);
+    ra = {};
+    JS_FreeAtomsRT(mik_rt->rt, ic.inspect_symbol, ic.to_string_tag);
+    ic.inspect_symbol = JS_ATOM_NULL;
+    ic.to_string_tag = JS_ATOM_NULL;
     JS_FreeRuntime(mik_rt->rt);
 
     /* Call destructor for C++ members, then free */

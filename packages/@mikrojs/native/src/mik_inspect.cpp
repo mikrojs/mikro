@@ -20,6 +20,7 @@ struct InspectOpts {
     std::vector<void*> seen;
     /* Nesting of [cause] rendering, capped like mik__report_uncaught */
     int cause_level = 0;
+    const MIKInspectCache* cache = nullptr;
 };
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -106,23 +107,10 @@ static JSValue mik__custom_inspect_cb(JSContext* ctx, JSValue /*this_val*/, int 
  * Returns true and sets `out` if custom inspect was used. */
 static bool try_custom_inspect(JSContext* ctx, JSValue value, InspectOpts& opts, int depth,
                                std::string& out) {
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue symbol_ctor = JS_GetPropertyStr(ctx, global, "Symbol");
-    JSValue for_fn = JS_GetPropertyStr(ctx, symbol_ctor, "for");
-
-    JSValue key_str = JS_NewString(ctx, "mikrojs.inspect");
-    JSValue inspect_sym = JS_Call(ctx, for_fn, symbol_ctor, 1, &key_str);
-    JS_FreeValue(ctx, key_str);
-    JS_FreeValue(ctx, for_fn);
-
     bool used = false;
 
-    if (JS_IsException(inspect_sym)) {
-        drain_exception(ctx);
-    } else {
-        JSAtom sym_atom = JS_ValueToAtom(ctx, inspect_sym);
-        JSValue custom_fn = JS_GetProperty(ctx, value, sym_atom);
-        JS_FreeAtom(ctx, sym_atom);
+    if (opts.cache->inspect_symbol != JS_ATOM_NULL) {
+        JSValue custom_fn = JS_GetProperty(ctx, value, opts.cache->inspect_symbol);
         if (JS_IsException(custom_fn)) drain_exception(ctx);
 
         if (JS_IsFunction(ctx, custom_fn)) {
@@ -153,9 +141,6 @@ static bool try_custom_inspect(JSContext* ctx, JSValue value, InspectOpts& opts,
         }
         JS_FreeValue(ctx, custom_fn);
     }
-    JS_FreeValue(ctx, inspect_sym);
-    JS_FreeValue(ctx, symbol_ctor);
-    JS_FreeValue(ctx, global);
 
     return used;
 }
@@ -206,16 +191,11 @@ static std::string escape_string(const char* str, size_t len) {
     return out;
 }
 
-/* ── Type detection via Object.prototype.toString ────────────────── */
+/* ── Type detection ──────────────────────────────────────────────── */
 
-static std::string get_object_type(JSContext* ctx, JSValue value) {
-    /* Call Object.prototype.toString.call(value) */
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue object_ctor = JS_GetPropertyStr(ctx, global, "Object");
-    JSValue prototype = JS_GetPropertyStr(ctx, object_ctor, "prototype");
-    JSValue to_string = JS_GetPropertyStr(ctx, prototype, "toString");
-
-    JSValue result = JS_Call(ctx, to_string, value, 0, nullptr);
+/* Tag from the engine's Object.prototype.toString, "Foo" out of "[object Foo]" */
+static std::string to_string_type(JSContext* ctx, JSValue value) {
+    JSValue result = JS_ToObjectString(ctx, value);
 
     std::string type;
     if (JS_IsException(result)) {
@@ -236,11 +216,47 @@ static std::string get_object_type(JSContext* ctx, JSValue value) {
     }
 
     JS_FreeValue(ctx, result);
-    JS_FreeValue(ctx, to_string);
-    JS_FreeValue(ctx, prototype);
-    JS_FreeValue(ctx, object_ctor);
-    JS_FreeValue(ctx, global);
+    return type;
+}
 
+/* Class checks plus one Symbol.toStringTag read give toString's tag; other
+ * classes go through toString. */
+static std::string get_object_type(JSContext* ctx, JSValue value, const MIKInspectCache& cache) {
+    const char* builtin = nullptr;
+    if (JS_IsError(value)) {
+        builtin = "Error";
+    } else if (JS_IsDate(value)) {
+        builtin = "Date";
+    } else if (JS_IsRegExp(value)) {
+        builtin = "RegExp";
+    } else if (JS_GetClassID(value) == cache.object_class_id || JS_IsMap(value) ||
+               JS_IsSet(value) || JS_IsWeakMap(value) || JS_IsWeakSet(value) ||
+               JS_IsWeakRef(value) || JS_IsPromise(value) || JS_IsArrayBuffer(value) ||
+               JS_IsDataView(value) || JS_GetTypedArrayType(value) >= 0) {
+        builtin = "Object";
+    }
+    if (!builtin || cache.to_string_tag == JS_ATOM_NULL) {
+        return to_string_type(ctx, value);
+    }
+
+    JSValue tag = JS_GetProperty(ctx, value, cache.to_string_tag);
+    std::string type;
+    if (JS_IsException(tag)) {
+        /* A throwing Symbol.toStringTag getter or proxy trap */
+        drain_exception(ctx);
+    } else if (JS_IsString(tag)) {
+        const char* str = JS_ToCString(ctx, tag);
+        if (str) {
+            /* An empty tag gives "[object ]", which to_string_type keeps whole */
+            type = str[0] ? str : "[object ]";
+            JS_FreeCString(ctx, str);
+        } else {
+            drain_exception(ctx);
+        }
+    } else {
+        type = builtin;
+    }
+    JS_FreeValue(ctx, tag);
     return type;
 }
 
@@ -275,28 +291,31 @@ static std::string inspect_array_items(JSContext* ctx, JSValue arr, uint32_t len
 
 /* ── Inspect object properties ───────────────────────────────────── */
 
-static std::string inspect_properties(JSContext* ctx, JSValue obj, InspectOpts& opts, int depth,
-                                      const char* const* skip_keys = nullptr,
-                                      size_t skip_count = 0) {
-    JSPropertyEnum* ptab = nullptr;
-    uint32_t plen = 0;
-
+/* Own string keys to render (enumerable only unless showHidden). On failure
+ * drains the exception and returns false. Free with JS_FreePropertyEnum. */
+static bool get_own_keys(JSContext* ctx, JSValue obj, const InspectOpts& opts,
+                         JSPropertyEnum** ptab, uint32_t* plen) {
     int flags = JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY;
     if (opts.show_hidden) {
         flags = JS_GPN_STRING_MASK;
     }
 
-    if (JS_GetOwnPropertyNames(ctx, &ptab, &plen, obj, flags) != 0) {
+    if (JS_GetOwnPropertyNames(ctx, ptab, plen, obj, flags) != 0) {
         drain_exception(ctx);
-        return "";
+        return false;
     }
+    return true;
+}
 
+static std::string inspect_properties(JSContext* ctx, JSValue obj, const JSPropertyEnum* ptab,
+                                      uint32_t plen, InspectOpts& opts, int depth,
+                                      const char* const* skip_keys = nullptr,
+                                      size_t skip_count = 0) {
     std::string out;
     bool first = true;
     for (uint32_t i = 0; i < plen; i++) {
         const char* key = JS_AtomToCString(ctx, ptab[i].atom);
         if (!key) {
-            JS_FreeAtom(ctx, ptab[i].atom);
             continue;
         }
 
@@ -315,7 +334,7 @@ static std::string inspect_properties(JSContext* ctx, JSValue obj, InspectOpts& 
             if (!first) out += ", ";
             first = false;
 
-            JSValue val = JS_GetPropertyStr(ctx, obj, key);
+            JSValue val = JS_GetProperty(ctx, obj, ptab[i].atom);
             out += quote_key(key);
             out += ": ";
             if (JS_IsException(val)) {
@@ -327,9 +346,7 @@ static std::string inspect_properties(JSContext* ctx, JSValue obj, InspectOpts& 
         }
 
         JS_FreeCString(ctx, key);
-        JS_FreeAtom(ctx, ptab[i].atom);
     }
-    js_free(ctx, ptab);
     return out;
 }
 
@@ -375,12 +392,8 @@ static std::string inspect_function(JSContext* ctx, JSValue value, InspectOpts& 
 
     /* Check for Symbol.toStringTag */
     std::string func_type = "Function";
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue symbol_ctor = JS_GetPropertyStr(ctx, global, "Symbol");
-    JSValue tag_sym = JS_GetPropertyStr(ctx, symbol_ctor, "toStringTag");
-    if (!JS_IsUndefined(tag_sym)) {
-        JSAtom tag_atom = JS_ValueToAtom(ctx, tag_sym);
-        JSValue tag_val = JS_GetProperty(ctx, value, tag_atom);
+    if (opts.cache->to_string_tag != JS_ATOM_NULL) {
+        JSValue tag_val = JS_GetProperty(ctx, value, opts.cache->to_string_tag);
         if (JS_IsException(tag_val)) drain_exception(ctx);
         if (JS_IsString(tag_val)) {
             const char* tag = JS_ToCString(ctx, tag_val);
@@ -390,11 +403,7 @@ static std::string inspect_function(JSContext* ctx, JSValue value, InspectOpts& 
             }
         }
         JS_FreeValue(ctx, tag_val);
-        JS_FreeAtom(ctx, tag_atom);
     }
-    JS_FreeValue(ctx, tag_sym);
-    JS_FreeValue(ctx, symbol_ctor);
-    JS_FreeValue(ctx, global);
 
     if (name && name[0]) {
         result = "[" + func_type + " " + name + "]";
@@ -554,8 +563,14 @@ static std::string inspect_error(JSContext* ctx, JSValue value, InspectOpts& opt
     static const char* const error_keys[] = {"stack",     "line",       "column",     "name",
                                              "message",   "fileName",   "lineNumber", "columnNumber",
                                              "number",    "description", "cause"};
-    std::string props =
-        inspect_properties(ctx, value, opts, depth, error_keys, countof(error_keys));
+    std::string props;
+    JSPropertyEnum* ptab = nullptr;
+    uint32_t plen = 0;
+    if (get_own_keys(ctx, value, opts, &ptab, &plen)) {
+        props = inspect_properties(ctx, value, ptab, plen, opts, depth, error_keys,
+                                   countof(error_keys));
+        JS_FreePropertyEnum(ctx, ptab, plen);
+    }
     if (!props.empty()) {
         result += " { " + props + " }";
     }
@@ -708,15 +723,10 @@ static std::string inspect_set(JSContext* ctx, JSValue value, InspectOpts& opts,
     if (is_seen(opts, value)) return "[Circular]";
     opts.seen.push_back(JS_VALUE_GET_PTR(value));
 
-    /* Get values via forEach */
-    JSValue for_each_fn = JS_GetPropertyStr(ctx, value, "forEach");
-
-    /* Build array of values to inspect */
     std::string items;
     JSValue values_fn = JS_GetPropertyStr(ctx, value, "values");
     JSValue iterator = JS_Call(ctx, values_fn, value, 0, nullptr);
     JS_FreeValue(ctx, values_fn);
-    JS_FreeValue(ctx, for_each_fn);
 
     if (JS_IsException(iterator)) {
         drain_exception(ctx);
@@ -799,30 +809,20 @@ static std::string inspect_typed_array(JSContext* ctx, JSValue value, const std:
 static std::string inspect_object(JSContext* ctx, JSValue value, InspectOpts& opts, int depth) {
     if (is_seen(opts, value)) return "[Circular]";
 
-    /* Check for empty object */
     JSPropertyEnum* ptab = nullptr;
     uint32_t plen = 0;
-    int flags = JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY;
-    if (opts.show_hidden) {
-        flags = JS_GPN_STRING_MASK;
-    }
-
-    if (JS_GetOwnPropertyNames(ctx, &ptab, &plen, value, flags) != 0) {
-        drain_exception(ctx);
+    if (!get_own_keys(ctx, value, opts, &ptab, &plen)) return "{}";
+    if (plen == 0) {
+        JS_FreePropertyEnum(ctx, ptab, plen);
         return "{}";
     }
-    for (uint32_t i = 0; i < plen; i++) {
-        JS_FreeAtom(ctx, ptab[i].atom);
-    }
-    js_free(ctx, ptab);
-
-    if (plen == 0) return "{}";
 
     /* A cause field chains below the braces like an Error's, so a Result
      * error wrapped around another keeps its whole chain readable */
     static const char* const cause_key[] = {"cause"};
     opts.seen.push_back(JS_VALUE_GET_PTR(value));
-    std::string props = inspect_properties(ctx, value, opts, depth, cause_key, 1);
+    std::string props = inspect_properties(ctx, value, ptab, plen, opts, depth, cause_key, 1);
+    JS_FreePropertyEnum(ctx, ptab, plen);
     std::string result = props.empty() ? "{}" : "{ " + props + " }";
     result += inspect_cause(ctx, value, opts, depth);
     opts.seen.pop_back();
@@ -915,9 +915,12 @@ static std::string inspect_value(JSContext* ctx, JSValue value, InspectOpts& opt
     }
 
     /* Objects — detect type */
-    std::string type = get_object_type(ctx, value);
+    if (JS_IsArray(value)) {
+        return inspect_array(ctx, value, opts, depth - 1);
+    }
+    std::string type = get_object_type(ctx, value, *opts.cache);
 
-    if (JS_IsArray(value) || type == "Array") {
+    if (type == "Array") {
         return inspect_array(ctx, value, opts, depth - 1);
     }
     if (JS_IsError(value) || type == "Error") {
@@ -955,16 +958,8 @@ static std::string inspect_value(JSContext* ctx, JSValue value, InspectOpts& opt
     /* Plain object vs class instance */
     JSValue proto = JS_GetPrototype(ctx, value);
     if (JS_IsException(proto)) drain_exception(ctx);
-    JSValue global = JS_GetGlobalObject(ctx);
-    JSValue obj_ctor = JS_GetPropertyStr(ctx, global, "Object");
-    JSValue obj_proto = JS_GetPropertyStr(ctx, obj_ctor, "prototype");
-
     bool is_plain = JS_IsNull(proto) ||
-                    (JS_VALUE_GET_PTR(proto) == JS_VALUE_GET_PTR(obj_proto));
-
-    JS_FreeValue(ctx, obj_proto);
-    JS_FreeValue(ctx, obj_ctor);
-    JS_FreeValue(ctx, global);
+                    (JS_VALUE_GET_PTR(proto) == JS_VALUE_GET_PTR(opts.cache->object_proto));
     JS_FreeValue(ctx, proto);
 
     if (is_plain) {
@@ -982,6 +977,7 @@ std::string mik_inspect(JSContext* ctx, JSValue value, int depth, bool colors, b
     opts.truncate = 0;  /* 0 = unlimited */
     opts.colors = colors;
     opts.show_hidden = show_hidden;
+    opts.cache = &MIK_GetRuntime(ctx)->inspect_cache;
     return inspect_value(ctx, value, opts, depth);
 }
 
@@ -1026,6 +1022,25 @@ int mik__inspect_module_init(JSContext* ctx, JSModuleDef* m) {
 }
 
 void mik__inspect_register(JSContext* ctx) {
+    MIKInspectCache& cache = MIK_GetRuntime(ctx)->inspect_cache;
+    /* is_global makes this the registered symbol Symbol.for returns */
+    JSValue sym = JS_NewSymbol(ctx, "mikrojs.inspect", true);
+    if (!JS_IsException(sym)) cache.inspect_symbol = JS_ValueToAtom(ctx, sym);
+    JS_FreeValue(ctx, sym);
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue symbol_ctor = JS_GetPropertyStr(ctx, global, "Symbol");
+    JSValue tag_sym = JS_GetPropertyStr(ctx, symbol_ctor, "toStringTag");
+    if (JS_IsSymbol(tag_sym)) cache.to_string_tag = JS_ValueToAtom(ctx, tag_sym);
+    JS_FreeValue(ctx, tag_sym);
+    JS_FreeValue(ctx, symbol_ctor);
+
+    JSValue object_ctor = JS_GetPropertyStr(ctx, global, "Object");
+    cache.object_proto = JS_GetPropertyStr(ctx, object_ctor, "prototype");
+    cache.object_class_id = JS_GetClassID(cache.object_proto);
+    JS_FreeValue(ctx, object_ctor);
+    JS_FreeValue(ctx, global);
+
     JSModuleDef* m = JS_NewCModule(ctx, "mikro/inspect", mik__inspect_module_init);
     if (m) {
         JS_AddModuleExport(ctx, m, "inspect");

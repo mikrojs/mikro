@@ -45,10 +45,42 @@ static inline JSValue new_result_obj(JSContext* ctx) {
     return JS_NewObjectProto(ctx, proto);
 }
 
-JSValue mik__result_ok(JSContext* ctx, JSValue value) {
+static const MIKResultAtoms kNoAtoms = {};
+
+static inline const MIKResultAtoms& result_atoms(JSContext* ctx) {
+    MIKRuntime* rt = MIK_GetRuntime(ctx);
+    return rt ? rt->result_atoms : kNoAtoms;
+}
+
+/* Defines `name` through its cached atom, or by string before mik__result_init. */
+static inline void define_prop(JSContext* ctx, JSValue obj, JSAtom atom, const char* name,
+                               JSValue val) {
+    if (atom != JS_ATOM_NULL) {
+        JS_DefinePropertyValue(ctx, obj, atom, val, JS_PROP_C_W_E);
+    } else {
+        JS_DefinePropertyValueStr(ctx, obj, name, val, JS_PROP_C_W_E);
+    }
+}
+
+static inline JSValue get_prop(JSContext* ctx, JSValue obj, JSAtom atom, const char* name) {
+    return atom != JS_ATOM_NULL ? JS_GetProperty(ctx, obj, atom)
+                                : JS_GetPropertyStr(ctx, obj, name);
+}
+
+/* {ok: false, error} on the shared prototype; consumes `error` */
+static JSValue new_err_result(JSContext* ctx, JSValue error) {
+    const MIKResultAtoms& a = result_atoms(ctx);
     JSValue obj = new_result_obj(ctx);
-    JS_DefinePropertyValueStr(ctx, obj, "ok", JS_TRUE, JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, obj, "value", value, JS_PROP_C_W_E);
+    define_prop(ctx, obj, a.ok, "ok", JS_FALSE);
+    define_prop(ctx, obj, a.error, "error", error);
+    return obj;
+}
+
+JSValue mik__result_ok(JSContext* ctx, JSValue value) {
+    const MIKResultAtoms& a = result_atoms(ctx);
+    JSValue obj = new_result_obj(ctx);
+    define_prop(ctx, obj, a.ok, "ok", JS_TRUE);
+    define_prop(ctx, obj, a.value, "value", value);
     return obj;
 }
 
@@ -70,18 +102,15 @@ JSValue mik__result_err(JSContext* ctx, int code, int platform_errno, const char
     vsnprintf(msg, sizeof(msg), fmt, ap);
     va_end(ap);
 
+    const MIKResultAtoms& a = result_atoms(ctx);
     JSValue error = JS_NewObject(ctx);
-    JS_DefinePropertyValueStr(ctx, error, "code", JS_NewInt32(ctx, code), JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, error, "message", JS_NewString(ctx, msg), JS_PROP_C_W_E);
+    define_prop(ctx, error, a.code, "code", JS_NewInt32(ctx, code));
+    define_prop(ctx, error, a.message, "message", JS_NewString(ctx, msg));
     if (platform_errno) {
         JS_DefinePropertyValueStr(ctx, error, "errno", JS_NewInt32(ctx, platform_errno),
                                   JS_PROP_C_W_E);
     }
-
-    JSValue obj = new_result_obj(ctx);
-    JS_DefinePropertyValueStr(ctx, obj, "ok", JS_FALSE, JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, obj, "error", error, JS_PROP_C_W_E);
-    return obj;
+    return new_err_result(ctx, error);
 }
 
 static JSValue result_err_named_v(JSContext* ctx, const char* name, const char* fmt,
@@ -91,14 +120,11 @@ static JSValue result_err_named_v(JSContext* ctx, const char* name, const char* 
     char msg[384];
     vsnprintf(msg, sizeof(msg), fmt, ap);
 
+    const MIKResultAtoms& a = result_atoms(ctx);
     JSValue error = JS_NewObject(ctx);
-    JS_DefinePropertyValueStr(ctx, error, "name", JS_NewString(ctx, name), JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, error, "message", JS_NewString(ctx, msg), JS_PROP_C_W_E);
-
-    JSValue obj = new_result_obj(ctx);
-    JS_DefinePropertyValueStr(ctx, obj, "ok", JS_FALSE, JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, obj, "error", error, JS_PROP_C_W_E);
-    return obj;
+    define_prop(ctx, error, a.name, "name", JS_NewString(ctx, name));
+    define_prop(ctx, error, a.message, "message", JS_NewString(ctx, msg));
+    return new_err_result(ctx, error);
 }
 
 JSValue mik__result_err_named(JSContext* ctx, const char* name, const char* fmt, ...) {
@@ -123,19 +149,12 @@ JSValue MIK_ResultErrNamed(JSContext* ctx, const char* name, const char* fmt, ..
 
 JSValue mik__result_err_tag(JSContext* ctx, const char* name) {
     JSValue error = JS_NewObject(ctx);
-    JS_DefinePropertyValueStr(ctx, error, "name", JS_NewString(ctx, name), JS_PROP_C_W_E);
-
-    JSValue obj = new_result_obj(ctx);
-    JS_DefinePropertyValueStr(ctx, obj, "ok", JS_FALSE, JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, obj, "error", error, JS_PROP_C_W_E);
-    return obj;
+    define_prop(ctx, error, result_atoms(ctx).name, "name", JS_NewString(ctx, name));
+    return new_err_result(ctx, error);
 }
 
 JSValue mik__result_err_obj(JSContext* ctx, JSValue error_obj) {
-    JSValue obj = new_result_obj(ctx);
-    JS_DefinePropertyValueStr(ctx, obj, "ok", JS_FALSE, JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, obj, "error", error_obj, JS_PROP_C_W_E);
-    return obj;
+    return new_err_result(ctx, error_obj);
 }
 
 /* ── Factory functions exported as `ok` / `err` ─────────────────── */
@@ -148,29 +167,24 @@ static JSValue js_result_ok(JSContext* ctx, JSValue this_val, int argc, JSValue*
 }
 
 static JSValue js_result_err(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    JSValue obj = new_result_obj(ctx);
-    JS_DefinePropertyValueStr(ctx, obj, "ok", JS_FALSE, JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, obj, "error",
-                              argc > 0 ? JS_DupValue(ctx, argv[0]) : JS_UNDEFINED,
-                              JS_PROP_C_W_E);
-    return obj;
+    return new_err_result(ctx, argc > 0 ? JS_DupValue(ctx, argv[0]) : JS_UNDEFINED);
 }
 
 /* ── Prototype method helpers ───────────────────────────────────── */
 
 static inline bool result_is_ok(JSContext* ctx, JSValue this_val) {
-    JSValue ok_val = JS_GetPropertyStr(ctx, this_val, "ok");
+    JSValue ok_val = get_prop(ctx, this_val, result_atoms(ctx).ok, "ok");
     bool is_ok = JS_ToBool(ctx, ok_val) != 0;
     JS_FreeValue(ctx, ok_val);
     return is_ok;
 }
 
 static JSValue result_get_value(JSContext* ctx, JSValue this_val) {
-    return JS_GetPropertyStr(ctx, this_val, "value");
+    return get_prop(ctx, this_val, result_atoms(ctx).value, "value");
 }
 
 static JSValue result_get_error(JSContext* ctx, JSValue this_val) {
-    return JS_GetPropertyStr(ctx, this_val, "error");
+    return get_prop(ctx, this_val, result_atoms(ctx).error, "error");
 }
 
 /* ── Prototype methods ──────────────────────────────────────────── */
@@ -202,10 +216,7 @@ static JSValue js_result_map_err(JSContext* ctx, JSValue this_val, int argc, JSV
     JSValue mapped = JS_Call(ctx, argv[0], JS_UNDEFINED, 1, &error);
     JS_FreeValue(ctx, error);
     if (JS_IsException(mapped)) return JS_EXCEPTION;
-    JSValue obj = new_result_obj(ctx);
-    JS_DefinePropertyValueStr(ctx, obj, "ok", JS_FALSE, JS_PROP_C_W_E);
-    JS_DefinePropertyValueStr(ctx, obj, "error", mapped, JS_PROP_C_W_E);
-    return obj;
+    return new_err_result(ctx, mapped);
 }
 
 /* .andThen(fn) — if ok, call fn(value) and return its result; else pass through */
@@ -227,14 +238,15 @@ static JSValue js_result_match(JSContext* ctx, JSValue this_val, int argc, JSVal
     if (argc < 1 || !JS_IsObject(argv[0])) {
         return JS_ThrowTypeError(ctx, "Result.match: expected {ok, err} handlers");
     }
-    const char* key = result_is_ok(ctx, this_val) ? "ok" : "err";
-    JSValue handler = JS_GetPropertyStr(ctx, argv[0], key);
+    const MIKResultAtoms& a = result_atoms(ctx);
+    bool is_ok = result_is_ok(ctx, this_val);
+    const char* key = is_ok ? "ok" : "err";
+    JSValue handler = get_prop(ctx, argv[0], is_ok ? a.ok : a.err, key);
     if (!JS_IsFunction(ctx, handler)) {
         JS_FreeValue(ctx, handler);
         return JS_ThrowTypeError(ctx, "Result.match: missing '%s' handler", key);
     }
-    JSValue payload =
-        result_is_ok(ctx, this_val) ? result_get_value(ctx, this_val) : result_get_error(ctx, this_val);
+    JSValue payload = is_ok ? result_get_value(ctx, this_val) : result_get_error(ctx, this_val);
     JSValue ret = JS_Call(ctx, handler, JS_UNDEFINED, 1, &payload);
     JS_FreeValue(ctx, payload);
     JS_FreeValue(ctx, handler);
@@ -345,6 +357,15 @@ static int mik__result_module_init(JSContext* ctx, JSModuleDef* m) {
 JSModuleDef* mik__result_init(JSContext* ctx) {
     MIKRuntime* rt = MIK_GetRuntime(ctx);
     if (rt && JS_IsUndefined(rt->result_proto)) {
+        MIKResultAtoms& a = rt->result_atoms;
+        a.ok = JS_NewAtom(ctx, "ok");
+        a.value = JS_NewAtom(ctx, "value");
+        a.error = JS_NewAtom(ctx, "error");
+        a.err = JS_NewAtom(ctx, "err");
+        a.code = JS_NewAtom(ctx, "code");
+        a.message = JS_NewAtom(ctx, "message");
+        a.name = JS_NewAtom(ctx, "name");
+
         JSValue proto = JS_NewObject(ctx);
         mik__result_install_methods(ctx, proto);
         rt->result_proto = proto;

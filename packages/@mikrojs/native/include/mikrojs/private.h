@@ -54,6 +54,27 @@ struct MIKRejectedPromise {
 /* Observable dispatch queue (defined in mik_observable.cpp). */
 struct MIKObservableDispatch;
 
+/* Result property names, atomized once so building a Result skips hashing
+ * the C string. JS_ATOM_NULL until mik__result_init has run. */
+struct MIKResultAtoms {
+    JSAtom ok;
+    JSAtom value;
+    JSAtom error;
+    JSAtom err;
+    JSAtom code;
+    JSAtom message;
+    JSAtom name;
+};
+
+/* Lookups mik_inspect would otherwise repeat for every value; filled by
+ * mik__inspect_register. */
+struct MIKInspectCache {
+    JSAtom inspect_symbol;     /* Symbol.for('mikrojs.inspect') */
+    JSAtom to_string_tag;      /* Symbol.toStringTag */
+    JSValue object_proto;      /* Object.prototype */
+    JSClassID object_class_id; /* class of plain objects */
+};
+
 struct MIKRuntime {
     MIKRunOptions options;
     MIKConfig config;
@@ -124,6 +145,10 @@ struct MIKRuntime {
      * mik__result_ok_void. Safe to share because Result is immutable by
      * convention, and the singleton is frozen + non-extensible. */
     JSValue result_ok_void_singleton;
+    /* Freed in MIK_FreeRuntime after JS_FreeContext, once nothing can build a Result. */
+    MIKResultAtoms result_atoms;
+    /* Values freed before JS_FreeContext, atoms after it. */
+    MIKInspectCache inspect_cache;
     /* Shared BodyConsumedError constructor for the native mikro/http/helpers
      * module. Created lazily on first http module init, freed in
      * MIK_FreeRuntime. */

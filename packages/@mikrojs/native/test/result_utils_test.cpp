@@ -166,6 +166,42 @@ TEST_CASE_FIXTURE(RtFixture, "results render as Ok<> and Err<> via inspect" *
     CHECK(read_global_string(ctx, "__errBare") == "Err<?>");
 }
 
+TEST_CASE_FIXTURE(RtFixture, "Results built before the atom cache match cached ones" *
+                                 doctest::test_suite("result")) {
+    /* Cleared atoms take the string fallback used before mik__result_init */
+    auto build = [&](JSValue* out) {
+        out[0] = mik__result_ok(ctx, JS_NewInt32(ctx, 1));
+        out[1] = mik__result_err(ctx, 3, 5, "failed %d", 1);
+        out[2] = mik__result_err_named(ctx, "PanelError", "reset");
+        out[3] = mik__result_err_tag(ctx, "Timeout");
+    };
+    JSValue pre[4];
+    JSValue post[4];
+    MIKResultAtoms saved = rt->result_atoms;
+    rt->result_atoms = {};
+    build(pre);
+    rt->result_atoms = saved;
+    build(post);
+
+    JSValue g = JS_GetGlobalObject(ctx);
+    JSValue pre_arr = JS_NewArray(ctx);
+    JSValue post_arr = JS_NewArray(ctx);
+    for (uint32_t i = 0; i < 4; i++) {
+        CHECK(mik_inspect(ctx, pre[i]) == mik_inspect(ctx, post[i]));
+        JS_SetPropertyUint32(ctx, pre_arr, i, pre[i]);
+        JS_SetPropertyUint32(ctx, post_arr, i, post[i]);
+    }
+    JS_SetPropertyStr(ctx, g, "__pre", pre_arr);
+    JS_SetPropertyStr(ctx, g, "__post", post_arr);
+    JS_FreeValue(ctx, g);
+    run(ctx,
+        "const d = (o) => JSON.stringify(Object.getOwnPropertyDescriptors(o))\n"
+        "const fields = (r) => d(r) + (r.error ? d(r.error) : '')\n"
+        "globalThis.__pre = __pre.map(fields).join('|')\n"
+        "globalThis.__post = __post.map(fields).join('|')\n");
+    CHECK(read_global_string(ctx, "__pre") == read_global_string(ctx, "__post"));
+}
+
 /* ── utils.cpp C helpers ────────────────────────────────────────── */
 
 TEST_CASE_FIXTURE(RtFixture, "errno errors carry message and errno" *
