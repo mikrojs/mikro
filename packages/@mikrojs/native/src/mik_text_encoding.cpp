@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "mikrojs/mikrojs.h"
+#include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 
 /* ---- TextEncoder ---- */
@@ -136,11 +137,38 @@ static bool utf8_seq_valid(const uint8_t* p, int len) {
     return false;
 }
 
-/* Append U+FFFD (EF BF BD) to buffer. */
-static void append_replacement(uint8_t* out, size_t* out_len) {
-    out[(*out_len)++] = 0xEF;
-    out[(*out_len)++] = 0xBF;
-    out[(*out_len)++] = 0xBD;
+/* Copy `n` bytes to the output when there is one; always count them. */
+static void utf8_put(uint8_t* out, size_t* out_len, const uint8_t* src, size_t n) {
+    if (out) memcpy(out + *out_len, src, n);
+    *out_len += n;
+}
+
+size_t mik__utf8_replace(const uint8_t* in, size_t len, bool hold_tail, uint8_t* out,
+                         size_t* tail) {
+    static const uint8_t replacement[3] = {0xEF, 0xBF, 0xBD};
+    size_t out_len = 0;
+    size_t i = 0;
+    *tail = 0;
+    while (i < len) {
+        int seq = utf8_seq_len(in[i]);
+        if (seq > 0 && i + seq > len) {
+            /* Incomplete trailing sequence: hold it, or one U+FFFD per byte. */
+            if (hold_tail) {
+                *tail = len - i;
+                break;
+            }
+            for (; i < len; i++) utf8_put(out, &out_len, replacement, 3);
+            break;
+        }
+        if (seq == 0 || !utf8_seq_valid(in + i, seq)) {
+            utf8_put(out, &out_len, replacement, 3);
+            i++;
+            continue;
+        }
+        utf8_put(out, &out_len, in + i, seq);
+        i += seq;
+    }
+    return out_len;
 }
 
 static JSValue mik__text_decoder_decode(JSContext* ctx, JSValue this_val, int argc,
@@ -186,53 +214,28 @@ static JSValue mik__text_decoder_decode(JSContext* ctx, JSValue this_val, int ar
         memcpy(heap_input + state->pending_len, data, len);
         input = heap_input;
     }
-    state->pending_len = 0;
 
-    /* Worst case output: every byte becomes U+FFFD (3 bytes). */
-    size_t out_cap = total * 3;
-    if (out_cap == 0) out_cap = 1;
-    uint8_t* out = static_cast<uint8_t*>(js_malloc(ctx, out_cap));
-    if (!out) {
-        if (heap_input) js_free(ctx, heap_input);
-        return JS_EXCEPTION;
+    /* Valid input (the usual case) becomes a string as is; only invalid input
+     * pays for a repaired copy, sized by the counting pass. */
+    size_t tail = 0;
+    size_t out_len = mik__utf8_replace(input, total, stream, nullptr, &tail);
+    size_t used = total - tail;
+    JSValue ret;
+    if (out_len == used) {
+        ret = JS_NewStringLen(ctx, (const char*)input, used);
+    } else {
+        uint8_t* out = static_cast<uint8_t*>(js_malloc(ctx, out_len));
+        if (!out) {
+            if (heap_input) js_free(ctx, heap_input);
+            return JS_EXCEPTION;
+        }
+        mik__utf8_replace(input, total, stream, out, &tail);
+        ret = JS_NewStringLen(ctx, (const char*)out, out_len);
+        js_free(ctx, out);
     }
-    size_t out_len = 0;
-
-    size_t i = 0;
-    while (i < total) {
-        uint8_t b = input[i];
-        int seq = utf8_seq_len(b);
-        if (seq == 0) {
-            append_replacement(out, &out_len);
-            i++;
-            continue;
-        }
-        if (i + seq > total) {
-            /* Incomplete trailing sequence. */
-            if (stream) {
-                size_t held = total - i;
-                for (size_t k = 0; k < held; k++) state->pending[k] = input[i + k];
-                state->pending_len = (uint8_t)held;
-                break;
-            }
-            /* Flush: one U+FFFD per held byte. */
-            for (size_t k = i; k < total; k++) append_replacement(out, &out_len);
-            i = total;
-            break;
-        }
-        if (!utf8_seq_valid(input + i, seq)) {
-            append_replacement(out, &out_len);
-            i++;
-            continue;
-        }
-        memcpy(out + out_len, input + i, seq);
-        out_len += seq;
-        i += seq;
-    }
-
+    if (tail) memcpy(state->pending, input + used, tail);
+    state->pending_len = (uint8_t)tail;
     if (heap_input) js_free(ctx, heap_input);
-    JSValue ret = JS_NewStringLen(ctx, (const char*)out, out_len);
-    js_free(ctx, out);
     return ret;
 }
 
@@ -354,55 +357,41 @@ static size_t b64_decode(const char* src, size_t len, uint8_t* dst, int* err) {
 
 /* btoa: encode a binary string to base64.
  * Per the web spec, the argument is first coerced to a string (ToString), then
- * each character's code point is treated as a raw byte. We iterate by code
- * point, not by UTF-8 bytes, since JS_ToCStringLen would turn e.g. U+0080 into
- * two bytes (\xC2\x80). */
+ * each character's code point is treated as a raw byte. The string arrives as
+ * UTF-8, so a code point is one byte (ASCII), two bytes (U+0080..U+00FF), or
+ * out of range. */
 static JSValue mik__btoa(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
-    JSValue str_val = JS_ToString(ctx, argv[0]);
-    if (JS_IsException(str_val)) return JS_EXCEPTION;
+    size_t str_len = 0;
+    const char* str = JS_ToCStringLen(ctx, &str_len, argv[0]);
+    if (!str) return JS_EXCEPTION;
 
-    JSValue len_val = JS_GetPropertyStr(ctx, str_val, "length");
-    int64_t len;
-    if (JS_ToInt64(ctx, &len, len_val)) {
-        JS_FreeValue(ctx, len_val);
-        JS_FreeValue(ctx, str_val);
-        return JS_EXCEPTION;
-    }
-    JS_FreeValue(ctx, len_val);
-
-    /* Extract code points into a byte buffer, validating latin1 range */
-    uint8_t* bytes = static_cast<uint8_t*>(js_malloc(ctx, len > 0 ? len : 1));
+    /* Never more code points than UTF-8 bytes. */
+    uint8_t* bytes = static_cast<uint8_t*>(js_malloc(ctx, str_len > 0 ? str_len : 1));
     if (!bytes) {
-        JS_FreeValue(ctx, str_val);
+        JS_FreeCString(ctx, str);
         return JS_EXCEPTION;
     }
-
-    JSAtom charCodeAt_atom = JS_NewAtom(ctx, "charCodeAt");
-    for (int64_t i = 0; i < len; i++) {
-        JSValue idx = JS_NewInt64(ctx, i);
-        JSValue code = JS_Invoke(ctx, str_val, charCodeAt_atom, 1, &idx);
-        JS_FreeValue(ctx, idx);
-        if (JS_IsException(code)) {
-            JS_FreeAtom(ctx, charCodeAt_atom);
-            js_free(ctx, bytes);
-            JS_FreeValue(ctx, str_val);
-            return JS_EXCEPTION;
+    size_t len = 0;
+    for (size_t i = 0; i < str_len;) {
+        uint8_t b = (uint8_t)str[i];
+        uint32_t cp = 0x100;
+        if (b < 0x80) {
+            cp = b;
+            i += 1;
+        } else if ((b & 0xE0) == 0xC0 && i + 1 < str_len) {
+            cp = ((b & 0x1Fu) << 6) | ((uint8_t)str[i + 1] & 0x3Fu);
+            i += 2;
         }
-        int32_t cp;
-        JS_ToInt32(ctx, &cp, code);
-        JS_FreeValue(ctx, code);
         if (cp > 0xFF) {
-            JS_FreeAtom(ctx, charCodeAt_atom);
             js_free(ctx, bytes);
-            JS_FreeValue(ctx, str_val);
+            JS_FreeCString(ctx, str);
             return JS_ThrowRangeError(ctx,
                                       "The string to be encoded contains characters outside of the "
                                       "Latin1 range");
         }
-        bytes[i] = (uint8_t)cp;
+        bytes[len++] = (uint8_t)cp;
     }
-    JS_FreeAtom(ctx, charCodeAt_atom);
-    JS_FreeValue(ctx, str_val);
+    JS_FreeCString(ctx, str);
 
     size_t out_len = 4 * ((len + 2) / 3);
     char* out = static_cast<char*>(js_malloc(ctx, out_len + 1));
@@ -412,7 +401,7 @@ static JSValue mik__btoa(JSContext* ctx, JSValue this_val, int argc, JSValue* ar
     }
 
     size_t j = 0;
-    for (int64_t i = 0; i < len; i += 3) {
+    for (size_t i = 0; i < len; i += 3) {
         uint32_t a = bytes[i];
         uint32_t b = (i + 1 < len) ? bytes[i + 1] : 0;
         uint32_t c = (i + 2 < len) ? bytes[i + 2] : 0;

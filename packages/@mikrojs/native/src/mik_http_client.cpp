@@ -382,6 +382,8 @@ void hc_iterator_close(JSContext* ctx, JSValue it) {
 void hc_drain_finalize(JSContext* ctx, JSValue st) {
     JSValue resolve = JS_GetPropertyStr(ctx, st, "res");
     JSValue arr = JS_GetPropertyStr(ctx, st, "arr");
+    /* The state stops keeping the chunks alive: freeing `arr` after the copy frees them. */
+    JS_SetPropertyStr(ctx, st, "arr", JS_UNDEFINED);
     JSValue mode_v = JS_GetPropertyStr(ctx, st, "mode");
     int32_t mode = 0;
     JS_ToInt32(ctx, &mode, mode_v);
@@ -401,7 +403,8 @@ void hc_drain_finalize(JSContext* ctx, JSValue st) {
         return;
     }
 
-    /* Merge chunks into one contiguous buffer. */
+    /* Merge chunks into one contiguous buffer. The spare byte NUL-terminates
+     * the buffer for the JSON parser. */
     size_t total = 0;
     for (uint32_t i = 0; i < nchunks; i++) {
         JSValue chunk = JS_GetPropertyUint32(ctx, arr, i);
@@ -414,7 +417,7 @@ void hc_drain_finalize(JSContext* ctx, JSValue st) {
         }
         JS_FreeValue(ctx, chunk);
     }
-    uint8_t* buf = static_cast<uint8_t*>(js_malloc(ctx, total ? total : 1));
+    uint8_t* buf = static_cast<uint8_t*>(js_malloc(ctx, total + 1));
     if (!buf) {
         JS_FreeValue(ctx, arr);
         JS_FreeValue(ctx, resolve);
@@ -439,44 +442,58 @@ void hc_drain_finalize(JSContext* ctx, JSValue st) {
 
     JSValue settled = JS_UNDEFINED;
     if (mode == DRAIN_BYTES) {
-        settled = mik__result_ok(ctx, JS_NewUint8ArrayCopy(ctx, buf, total));
-    } else {
-        /* Decode through the runtime's TextDecoder for exact TS parity
-         * (invalid-sequence replacement included). */
-        JSValue g = JS_GetGlobalObject(ctx);
-        JSValue td_ctor = JS_GetPropertyStr(ctx, g, "TextDecoder");
-        JS_FreeValue(ctx, g);
-        JSValue td = JS_CallConstructor(ctx, td_ctor, 0, nullptr);
-        JS_FreeValue(ctx, td_ctor);
-        JSValue u8 = JS_NewUint8ArrayCopy(ctx, buf, total);
-        JSValue text = hc_invoke(ctx, td, "decode", 1, &u8);
-        JS_FreeValue(ctx, u8);
-        JS_FreeValue(ctx, td);
-        if (JS_IsException(text)) {
+        /* MIK_NewUint8Array takes ownership of buf, also on failure. */
+        JSValue u8 = MIK_NewUint8Array(ctx, buf, total);
+        if (JS_IsException(u8)) {
+            JS_FreeValue(ctx, resolve);
+            hc_drain_reject_exception(ctx, st);
+            return;
+        }
+        hc_settle(ctx, resolve, mik__result_ok(ctx, u8));
+        JS_FreeValue(ctx, resolve);
+        return;
+    }
+
+    /* Invalid UTF-8 is repaired the way this runtime's TextDecoder does it (U+FFFD per bad
+     * byte), so text() and json() match TextDecoder.decode(). */
+    size_t tail = 0;
+    size_t fixed_len = mik__utf8_replace(buf, total, false, nullptr, &tail);
+    if (fixed_len != total) {
+        uint8_t* fixed = static_cast<uint8_t*>(js_malloc(ctx, fixed_len + 1));
+        if (!fixed) {
             js_free(ctx, buf);
             JS_FreeValue(ctx, resolve);
             hc_drain_reject_exception(ctx, st);
             return;
         }
-        if (mode == DRAIN_TEXT) {
-            settled = mik__result_ok(ctx, text);
+        mik__utf8_replace(buf, total, false, fixed, &tail);
+        js_free(ctx, buf);
+        buf = fixed;
+        total = fixed_len;
+    }
+
+    if (mode == DRAIN_TEXT) {
+        JSValue text = JS_NewStringLen(ctx, reinterpret_cast<const char*>(buf), total);
+        js_free(ctx, buf);
+        if (JS_IsException(text)) {
+            JS_FreeValue(ctx, resolve);
+            hc_drain_reject_exception(ctx, st);
+            return;
+        }
+        settled = mik__result_ok(ctx, text);
+    } else {
+        buf[total] = 0;
+        JSValue parsed = JS_ParseJSON(ctx, reinterpret_cast<const char*>(buf), total, "<json>");
+        js_free(ctx, buf);
+        if (JS_IsException(parsed)) {
+            JSValue exc = JS_GetException(ctx);
+            std::string msg = hc_error_message(ctx, exc);
+            JS_FreeValue(ctx, exc);
+            settled = mik__result_err_named(ctx, "InvalidJson", "%s", msg.c_str());
         } else {
-            size_t tlen = 0;
-            const char* ts = JS_ToCStringLen(ctx, &tlen, text);
-            JSValue parsed = JS_ParseJSON(ctx, ts ? ts : "", tlen, "<json>");
-            JS_FreeCString(ctx, ts);
-            JS_FreeValue(ctx, text);
-            if (JS_IsException(parsed)) {
-                JSValue exc = JS_GetException(ctx);
-                std::string msg = hc_error_message(ctx, exc);
-                JS_FreeValue(ctx, exc);
-                settled = mik__result_err_named(ctx, "InvalidJson", "%s", msg.c_str());
-            } else {
-                settled = mik__result_ok(ctx, parsed);
-            }
+            settled = mik__result_ok(ctx, parsed);
         }
     }
-    js_free(ctx, buf);
     hc_settle(ctx, resolve, settled);
     JS_FreeValue(ctx, resolve);
 }

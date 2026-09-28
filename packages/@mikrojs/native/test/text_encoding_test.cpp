@@ -442,13 +442,51 @@ TEST_CASE("invalid UTF-8 becomes replacement characters" * doctest::test_suite("
            "globalThis.__truncated = d([0xE2, 0x9C])\n"    /* incomplete at end */
            "globalThis.__valid4 = d([0xF0, 0x9F, 0x98, 0x80])\n" /* 😀 */);
     CHECK(te_global("__cont") == "�A");
-    CHECK(te_global("__overlong2").find("�") == 0);
-    CHECK(te_global("__overlong3").find("�") == 0);
-    CHECK(te_global("__surrogate").find("�") == 0);
-    CHECK(te_global("__tooBig").find("�") == 0);
+    CHECK(te_global("__overlong2") == "��");
+    CHECK(te_global("__overlong3") == "���");
+    CHECK(te_global("__surrogate") == "���");
+    CHECK(te_global("__tooBig") == "����");
     CHECK(te_global("__badLead") == "�B");
     CHECK(te_global("__truncated") == "��"); /* one U+FFFD per consumed byte */
     CHECK(te_global("__valid4") == "😀");
+    teardown();
+}
+
+TEST_CASE("decode keeps valid sequences next to replaced bytes" *
+          doctest::test_suite("text_encoding")) {
+    setup();
+    te_run("const d = (bytes) => new TextDecoder().decode(new Uint8Array(bytes))\n"
+           /* valid 3-byte, invalid byte, ASCII: the repaired copy keeps both sides */
+           "globalThis.__mixed = d([0xE2, 0x9C, 0x93, 0xFF, 0x41])\n"
+           /* an invalid byte before a held tail: repaired, then completed */
+           "const dec = new TextDecoder()\n"
+           "let s = dec.decode(new Uint8Array([0xFF, 0xE2, 0x9C]), {stream: true})\n"
+           "s += dec.decode(new Uint8Array([0x93]))\n"
+           "globalThis.__streamed = s\n");
+    CHECK(te_global("__mixed") == "✓�A");
+    CHECK(te_global("__streamed") == "�✓");
+    teardown();
+}
+
+TEST_CASE("large multi-byte text round-trips through encode and decode" *
+          doctest::test_suite("text_encoding")) {
+    setup();
+    /* 2-, 3- and 4-byte sequences, ~64 KB, in one call and in 1000-byte
+     * chunks with stream: true so sequences get split at arbitrary points. */
+    te_run("const src = 'héllo ✓ 😀 '.repeat(5000)\n"
+           "const bytes = new TextEncoder().encode(src)\n"
+           "globalThis.__byteLen = bytes.length\n"
+           "globalThis.__whole = new TextDecoder().decode(bytes) === src\n"
+           "const dec = new TextDecoder()\n"
+           "let out = ''\n"
+           "for (let i = 0; i < bytes.length; i += 1000) {\n"
+           "  out += dec.decode(bytes.subarray(i, i + 1000), {stream: true})\n"
+           "}\n"
+           "out += dec.decode()\n"
+           "globalThis.__chunked = out === src\n");
+    CHECK(te_global("__byteLen") == "80000");
+    CHECK(te_global("__whole") == "true");
+    CHECK(te_global("__chunked") == "true");
     teardown();
 }
 
@@ -463,6 +501,7 @@ TEST_CASE("btoa and atob round-trip and reject bad input" * doctest::test_suite(
            "globalThis.__latin1 = atob(btoa('\\xff\\x00\\x7f')).split('')"
            ".map((c) => c.charCodeAt(0)).join(',')\n"
            "globalThis.__nonLatin = attempt(() => btoa('smile 😀'))\n"
+           "globalThis.__twoByteHigh = attempt(() => btoa('\\u0100'))\n"
            "globalThis.__badB64 = attempt(() => atob('!!!not-base64!!!'))\n"
            "globalThis.__oddLen = attempt(() => atob('abcde'))\n");
     CHECK(te_global("__b64") == "aGVsbG8=");
@@ -471,6 +510,7 @@ TEST_CASE("btoa and atob round-trip and reject bad input" * doctest::test_suite(
     CHECK(te_global("__emptyA") == "");
     CHECK(te_global("__latin1") == "255,0,127");
     CHECK(te_global("__nonLatin") == "RangeError");
+    CHECK(te_global("__twoByteHigh") == "RangeError");
     CHECK(te_global("__badB64") == "SyntaxError");
     CHECK(te_global("__oddLen") == "SyntaxError");
     teardown();
