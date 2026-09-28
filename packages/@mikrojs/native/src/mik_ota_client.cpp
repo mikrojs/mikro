@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "mikrojs/cbor_helpers.h"
+#include "mikrojs/mikrojs.h"
 #include "mikrojs/ota_config.h"
 #include "mikrojs/ota_slots.h"
 #include "mikrojs/platform.h"
@@ -388,6 +389,8 @@ void MIKOtaClient::Check(const MIKOtaCheckOptions& options, MIKOtaCheckSink sink
         return;
     }
     queue_.push_back(std::move(round));
+    /* Poll runs from the loop consumer, which may have run already this pass. */
+    MIK_Wake();
 }
 
 /* Floor for the check-in cadence: each round's TLS session leaves heap and

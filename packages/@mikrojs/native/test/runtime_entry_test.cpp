@@ -540,6 +540,7 @@ TEST_CASE("The serve loop waits out the grace window and takes the panic action"
     fake.get_boot_us = grace_boot_us;
     fake.restart = grace_restart;
     fake.deep_sleep_us = grace_deep_sleep;
+    fake.wait = nullptr; /* the clock is stepped per read; a real wait would only add time */
     PlatformGuard guard(&fake);
     g_grace_now_us = 1000;
     g_grace_restarts = 0;

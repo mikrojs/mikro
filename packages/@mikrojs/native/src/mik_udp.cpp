@@ -650,6 +650,13 @@ static JSValue mik__udp_bind(JSContext* ctx, JSValue this_val, int argc, JSValue
 
 /* ── Loop consumer ───────────────────────────────────────────────────*/
 
+bool mik__udp_has_open_sockets(JSContext* ctx) {
+    for (UdpSocketState* s : g_open_sockets) {
+        if (s && !s->dead && !s->closed && s->ctx == ctx) return true;
+    }
+    return false;
+}
+
 static void mik__udp_consume(JSContext* ctx) {
     g_iteration_depth++;
 

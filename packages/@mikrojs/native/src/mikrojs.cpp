@@ -758,22 +758,49 @@ int MIK_Loop(MIKRuntime* mik_rt) {
     return mik_rt->stop_requested ? 1 : 0;
 }
 
+/* The nearer of a wake (-1 = none) and a deadline `delay` us away. */
+static int64_t mik__nearer_wake(int64_t wake, int64_t delay) {
+    if (delay <= 0) return 0;
+    return (wake < 0 || delay < wake) ? delay : wake;
+}
+
+/* The UDP consumer polls recvfrom: bound sockets get this poll period. */
+static constexpr int64_t MIK__UDP_POLL_US = 10 * 1000;
+
 int64_t mik__next_wake_us(MIKRuntime* mik_rt) {
     int64_t now = MIK_GetPlatform()->get_boot_us();
-    /* In the grace window MIK_Loop does nothing until the restart deadline */
+    /* The grace window has one job, the restart, and MIK_Loop takes it at
+     * the deadline; nothing else runs meanwhile. */
     if (mik_rt->restart_at_us > 0) {
-        return mik_rt->restart_at_us > now ? mik_rt->restart_at_us - now : 0;
+        return mik__nearer_wake(-1, mik_rt->restart_at_us - now);
     }
     if (mik_rt->stop_requested || JS_IsJobPending(mik_rt->rt)) {
         return 0;
     }
     int64_t wake = -1;
     for (const auto& entry : mik_rt->timers->entries) {
-        int64_t delay = entry.next_deadline - now;
-        if (delay <= 0) return 0;
-        if (wake < 0 || delay < wake) wake = delay;
+        wake = mik__nearer_wake(wake, entry.next_deadline - now);
+        if (wake == 0) return 0;
+    }
+    /* The feed and awake checks run at the top of the pass, so a wait must
+     * end by their deadlines for them to fire on time. */
+    if (mik_rt->feed_armed) {
+        wake = mik__nearer_wake(
+            wake, mik_rt->feed_last_us + (int64_t)mik_rt->config.feed_timeout_ms * 1000 - now);
+    }
+    if (mik_rt->awake_armed) {
+        wake = mik__nearer_wake(wake, mik_rt->awake_pause_offset_us +
+                                          (int64_t)mik_rt->config.awake_timeout_ms * 1000 - now);
+    }
+    if (mik__udp_has_open_sockets(mik_rt->ctx)) {
+        wake = mik__nearer_wake(wake, MIK__UDP_POLL_US);
     }
     return wake;
+}
+
+void MIK_Wake(void) {
+    const MIKPlatform* platform = MIK_GetPlatform();
+    if (platform->wake) platform->wake();
 }
 
 void MIK_SetConfig(MIKRuntime* mik_rt, const MIKConfig* config) {

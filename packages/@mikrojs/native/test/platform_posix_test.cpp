@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <string>
+#include <thread>
 
 #include <mikrojs/mikrojs.h>
 #include <mikrojs/platform.h>
@@ -45,6 +46,39 @@ TEST_CASE("POSIX platform clocks, entropy, and memory stubs" *
     CHECK_FALSE(p->get_fs_info("user", &total, &used));
 
     CHECK(std::string(p->get_reset_reason()) == "unknown");
+}
+
+TEST_CASE("POSIX wait ends on the timeout, on a wake, or at once after an earlier wake" *
+          doctest::test_suite("platform")) {
+    const MIKPlatform* p = MIK_DefaultPOSIXPlatform();
+    REQUIRE(p->wait != nullptr);
+    REQUIRE(p->wake != nullptr);
+    /* The wake is process-wide: drop one an earlier test left behind. */
+    p->wake();
+    p->wait(0);
+
+    int64_t t0 = p->get_boot_us();
+    p->wait(20000);
+    CHECK(p->get_boot_us() - t0 >= 20000);
+
+    /* a wake from another thread ends a long wait early */
+    t0 = p->get_boot_us();
+    std::thread waker([p] {
+        usleep(5000);
+        p->wake();
+    });
+    p->wait(2000000);
+    waker.join();
+    CHECK(p->get_boot_us() - t0 < 1000000);
+
+    /* a wake that lands before the wait is kept, once */
+    p->wake();
+    t0 = p->get_boot_us();
+    p->wait(2000000);
+    CHECK(p->get_boot_us() - t0 < 1000000);
+    t0 = p->get_boot_us();
+    p->wait(20000);
+    CHECK(p->get_boot_us() - t0 >= 20000);
 }
 
 TEST_CASE("POSIX device id is stable and the name round-trips" *

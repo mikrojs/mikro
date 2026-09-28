@@ -207,8 +207,9 @@ JSValue mik_throw_errno(JSContext* ctx, int err);
 void mik__execute_jobs(JSContext* ctx);
 /* End-of-turn unhandled-rejection check; called after each microtask drain. */
 void mik__flush_unhandled_rejections(JSContext* ctx);
-/* Microseconds until MIK_Loop next has work: 0 now, -1 none. Loop consumers
- * (UDP) and watchdog deadlines are not counted, so a caller must cap its sleep. */
+/* Microseconds until MIK_Loop next has work: 0 now, -1 none. Counts timers, the
+ * restart, feed and awake deadlines and the UDP poll. Code that queues work for a
+ * loop consumer calls MIK_Wake; a consumer's own deadlines wait for the caller's cap. */
 int64_t mik__next_wake_us(MIKRuntime* mik_rt);
 JSModuleDef* mik__load_builtin(JSContext* ctx, const char* name);
 int mik__load_file(JSContext* ctx, DynBuf* dbuf, const char* filename);
@@ -297,6 +298,9 @@ JSModuleDef* mik__result_init(JSContext* ctx);
 
 /* UDP module (mik_udp.cpp) */
 JSModuleDef* mik__udp_init(JSContext* ctx);
+/* True while a bound socket is open on ctx. Its datagrams are polled with
+ * recvfrom once per loop pass, so mik__next_wake_us caps the wait meanwhile. */
+bool mik__udp_has_open_sockets(JSContext* ctx);
 
 /* Observable module (mik_observable.cpp) */
 JSModuleDef* mik__observable_init(JSContext* ctx);

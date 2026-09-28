@@ -476,7 +476,11 @@ static JSValue js_digital_out_write(JSContext* ctx, JSValueConst this_val, int a
 /* ── DigitalIn ───────────────────────────────────────────────────── */
 
 static IRAM_ATTR void mik__gpio_isr(void* arg) {
-    static_cast<MIKGpioState*>(arg)->pending.store(true, std::memory_order_relaxed);
+    auto* s = static_cast<MIKGpioState*>(arg);
+    /* One wake per batch of edges: the consumer reads the level once for them all. */
+    if (s->pending.load(std::memory_order_relaxed)) return;
+    s->pending.store(true, std::memory_order_relaxed);
+    MIK_WakeFromISR();
 }
 
 static JSValue js_digital_in_read(JSContext* ctx, JSValueConst this_val, int argc,
@@ -681,6 +685,7 @@ void mik__gpio_wake_done(int gpio) {
         gpio_set_intr_type(num, GPIO_INTR_ANYEDGE);
         /* The level may have changed while edges were off; let the consumer compare. */
         s->pending.store(true, std::memory_order_relaxed);
+        MIK_Wake();
         /* Re-adding re-enables the interrupt on the service's core. */
         gpio_isr_handler_add(num, mik__gpio_isr, s);
         return;

@@ -2,6 +2,7 @@
 
 #include <map>
 
+#include "mikrojs/mikrojs.h"
 #include "mikrojs/utils.h"
 
 namespace mikrojs {
@@ -178,6 +179,8 @@ JSValue MIKOtaJsHooks::OnFulfilled(JSContext* ctx, JSValueConst this_val, int ar
     (void)this_val;
     MIKOtaJsHooks* hooks = take_self(ctx, func_data);
     if (!hooks) return JS_UNDEFINED;
+    /* A job settled the hook; the OTA consumer that polls it has run this pass. */
+    MIK_Wake();
     if (magic == 0) {
         /* Rejected: a failed hook, whichever half was running. */
         hooks->state_ = MIKOtaHookState::kFailed;

@@ -37,7 +37,7 @@ static_assert(MIK_WATCHDOG_BLOCKING_DEFAULT_MS / 1000 + MIK_TWDT_MARGIN_S <
                   CONFIG_ESP_TASK_WDT_TIMEOUT_S,
               "watchdog.blocking default (30 s) must fire before the task watchdog: set "
               "CONFIG_ESP_TASK_WDT_TIMEOUT_S=60 in sdkconfig, or delete sdkconfig and re-run "
-              "`idf.py set-target` so sdkconfig.defaults applies");
+              "`mikro idf set-target` so sdkconfig.defaults applies");
 #endif
 
 /* Error handler armed during a normal boot: when the app hits a fatal JS error
@@ -407,7 +407,8 @@ void MIK_Main(void) {
 
 #if CONFIG_ESP_TASK_WDT_EN
     /* Watch the main task: a hang in native code below JS now resets the
-     * chip instead of sitting forever. Fed from MIK_Loop and platform->yield. */
+     * chip instead of sitting forever. Fed from MIK_Loop, platform->yield and
+     * platform->wait. */
     {
         esp_err_t err = esp_task_wdt_add(NULL);
         if (err != ESP_OK) {

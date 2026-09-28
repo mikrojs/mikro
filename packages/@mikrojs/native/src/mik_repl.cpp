@@ -62,6 +62,30 @@ bool mik__repl_is_protocol_mode(void) {
     return repl_protocol_mode && repl_active;
 }
 
+/* Longest sleep between passes: a backstop against a producer that forgot
+ * MIK_Wake, not a poll period. */
+static constexpr int64_t LOOP_WAIT_CAP_US = 100 * 1000;
+
+/* Sleep until the next deadline, a wake, or the cap. Work due now yields
+ * instead; a paused or absent runtime waits for the cap (console RX wakes it). */
+static void repl_wait_for_work(void) {
+    const MIKPlatform* platform = MIK_GetPlatform();
+    int64_t wake_us = LOOP_WAIT_CAP_US;
+    if (repl_mik_rt && !repl_paused) {
+        wake_us = mik__next_wake_us(repl_mik_rt);
+        if (wake_us == 0) {
+            platform->yield();
+            return;
+        }
+        if (wake_us < 0 || wake_us > LOOP_WAIT_CAP_US) wake_us = LOOP_WAIT_CAP_US;
+    }
+    if (platform->wait) {
+        platform->wait(wake_us);
+    } else {
+        platform->yield();
+    }
+}
+
 /* ── TLV frame helpers ───────────────────────────────────────────── */
 
 /* Plain bool, not atomic — relies on the assumption that mik__proto_send
@@ -124,7 +148,6 @@ void mik__repl_proto_send_output(uint8_t msg_type, const void* data, size_t len)
  * reports the attached runtime has halted without a panic grace window
  * (e.g. an unhandled rejection in a test that crashed mid-execution). */
 bool mik__proto_read_exact(MIKReplTransport* transport, void* buf, size_t n) {
-    const MIKPlatform* platform = MIK_GetPlatform();
     uint8_t* p = static_cast<uint8_t*>(buf);
     size_t total = 0;
     while (total < n) {
@@ -143,19 +166,12 @@ bool mik__proto_read_exact(MIKReplTransport* transport, void* buf, size_t n) {
                     return false;
                 }
             }
-            /* Microtasks are deferred user JS: settling them re-enters .then
-             * handlers that can write to the transport (console.log → MSG_LOG)
-             * or touch the filesystem mid-deploy. Gate on pause too — and
-             * on a pending panic-restart, since the runtime is on its way
-             * out and no further user JS should fire on it. */
-            if (repl_ctx && !repl_paused &&
-                (!repl_mik_rt || repl_mik_rt->restart_at_us == 0)) {
-                mik__execute_jobs(repl_ctx);
-            }
+            /* Microtasks drain inside MIK_Loop, so none run while paused or
+             * while a panic-restart is pending. */
             /* A pumped job (e.g. the test runtime's __testFileDone) may
-             * have signalled exit. Bail before yielding another time slice. */
+             * have signalled exit. Bail before sleeping again. */
             if (s_exit_serve_loop) return false;
-            platform->yield();
+            repl_wait_for_work();
         }
     }
     return true;
@@ -264,8 +280,6 @@ static JSValue repl_eval_and_pump(JSContext* ctx, const char* code, size_t len) 
         return result;
     }
 
-    const MIKPlatform* platform = MIK_GetPlatform();
-
     for (;;) {
         JSPromiseStateEnum state = JS_PromiseState(ctx, result);
         if (state == JS_PROMISE_FULFILLED) {
@@ -296,8 +310,8 @@ static JSValue repl_eval_and_pump(JSContext* ctx, const char* code, size_t len) 
         }
 
         MIK_Loop(repl_mik_rt);
-        mik__execute_jobs(ctx);
-        platform->yield();
+        /* The pass may have settled it (a job or a due timer): report now. */
+        if (JS_PromiseState(ctx, result) == JS_PROMISE_PENDING) repl_wait_for_work();
     }
 }
 
@@ -1323,9 +1337,6 @@ void MIK_ProtocolServeLoop(void) {
          * or race the staged-file swap. */
         if (repl_mik_rt && !repl_paused) {
             MIK_Loop(repl_mik_rt);
-        }
-        if (ctx && !repl_paused) {
-            mik__execute_jobs(ctx);
         }
     }
 }

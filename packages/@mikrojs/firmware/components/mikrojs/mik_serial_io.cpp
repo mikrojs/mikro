@@ -3,6 +3,8 @@
 #include <string.h>
 
 #include "driver/uart.h"
+#include "driver/uart_select.h"
+#include "esp_attr.h"
 #include "esp_intr_alloc.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -17,6 +19,7 @@
 
 #if SOC_USB_SERIAL_JTAG_SUPPORTED
 #include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_select.h"
 #include "esp_rom_sys.h"
 #include "hal/usb_serial_jtag_ll.h"
 #include "soc/io_mux_reg.h"
@@ -66,6 +69,24 @@
 #define MIK_CONSOLE_HAS_UART 0
 #endif
 
+/* RX data wakes the sleeping serve loop through each driver's select-notify
+ * hook, its only ISR-level RX signal; the VFS layer that would own it is unused. */
+#if SOC_USB_SERIAL_JTAG_SUPPORTED
+static void mik__usj_rx_notify(usj_select_notif_t notif, int* task_woken) {
+    (void)task_woken;  // the wake yields itself
+    if (notif == USJ_SELECT_READ_NOTIF) MIK_WakeFromISR();
+}
+#endif
+#if MIK_CONSOLE_HAS_UART
+/* UART0's ISR is in IRAM and runs with the flash cache off. */
+static void IRAM_ATTR mik__uart0_rx_notify(uart_port_t port, uart_select_notif_t notif,
+                                           BaseType_t* task_woken) {
+    (void)port;
+    (void)task_woken;
+    if (notif == UART_SELECT_READ_NOTIF) MIK_WakeFromISR();
+}
+#endif
+
 static enum { CONSOLE_UART, CONSOLE_USB_SERIAL_JTAG } s_console =
 #if SOC_USB_SERIAL_JTAG_SUPPORTED
     CONSOLE_USB_SERIAL_JTAG;
@@ -105,7 +126,11 @@ static bool mik__usj_install_with_default_config(void) {
     usb_serial_jtag_driver_config_t usj_cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     usj_cfg.rx_buffer_size = 4096;
     usj_cfg.tx_buffer_size = 2048;
-    return usb_serial_jtag_driver_install(&usj_cfg) == ESP_OK;
+    if (usb_serial_jtag_driver_install(&usj_cfg) != ESP_OK) return false;
+    /* Per install: the driver object that holds the hook is freed on uninstall
+     * (light sleep detaches and re-attaches). */
+    usb_serial_jtag_set_select_notif_callback(mik__usj_rx_notify);
+    return true;
 }
 #endif
 
@@ -137,6 +162,7 @@ void mik__console_init(void) {
                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     /* IRAM ISR keeps UART alive during flash writes (LittleFS deploys). */
     if (uart_driver_install(UART_NUM_0, 4096, 0, 0, NULL, ESP_INTR_FLAG_IRAM) == ESP_OK) {
+        uart_set_select_notif_callback(UART_NUM_0, mik__uart0_rx_notify);
         MIK_ClaimGpio(U0TXD_GPIO_NUM, "console");
         MIK_ClaimGpio(U0RXD_GPIO_NUM, "console");
     }

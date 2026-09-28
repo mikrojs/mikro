@@ -250,6 +250,7 @@ static void mik__wifi_event_handler(void* arg, esp_event_base_t event_base, int3
 
     if (s_event_queue) {
         xQueueSend(s_event_queue, &evt, 0);
+        MIK_Wake();
     }
 }
 

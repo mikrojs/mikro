@@ -75,6 +75,7 @@ In the C++ (see the full example in `docs/develop/native-modules.md`):
 
 - Register with `MIK_REGISTER_PUBLIC_MODULE({id}, "{scope}/{name}/{module}", init, consume, destroy)` and create the module with `JS_NewCModule` under the same name. The compiler checks that the name starts with `MIK_PACKAGE_NAME`.
 - Each export needs `JS_AddModuleExport` in the init function and `JS_SetModuleExport` when the module is evaluated.
+- A consume hook that takes results from an ISR or a background task needs a wake after each enqueue: `MIK_Wake()`, or `MIK_WakeFromISR()` in an ISR. Without it the event loop can sleep up to 100 ms first.
 - Apps import the module directly, so validate every argument in C: types, ranges, buffer lengths.
 - Return `Result`s with `MIK_ResultOk`, `MIK_ResultOkVoid` and `MIK_ResultErrNamed`.
 - Claim the pins it configures with `MIK_ClaimGpios(ctx, gpios, count, "ClassName")`, and release them with `MIK_ReleaseGpios` in `end()` and the finalizer. For a native handle, call `MIK_KeepHandle(ctx, obj)` when creating it and `MIK_DropHandle(ctx, this_val)` in `end()`.

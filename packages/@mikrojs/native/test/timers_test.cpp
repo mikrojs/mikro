@@ -316,6 +316,49 @@ TEST_CASE_FIXTURE(TimerFixture, "mik__next_wake_us: -1 idle, 0 busy, else the ea
     rt->restart_at_us = 0;
 }
 
+TEST_CASE_FIXTURE(TimerFixture, "mik__next_wake_us: restart, feed and awake deadlines, UDP poll" *
+                                    doctest::test_suite("timers")) {
+    /* A pending restart is the only deadline of the grace window. */
+    rt->restart_at_us = g_now_us + 250000;
+    CHECK(mik__next_wake_us(rt) == 250000);
+    advance_ms(300);
+    CHECK(mik__next_wake_us(rt) == 0); /* passed: MIK_Loop takes the action now */
+    rt->restart_at_us = 0;
+
+    /* Feed and awake deadlines bound the wait; the awake clock is boot time. */
+    MIKConfig config;
+    MIK_DefaultConfig(&config);
+    config.feed_timeout_ms = 500;
+    config.awake_timeout_ms = 2000;
+    config.panic_mode = MIK_PANIC_DEEP_SLEEP;
+    MIK_SetConfig(rt, &config);
+    CHECK(mik__next_wake_us(rt) == 500000);
+    eval("setTimeout(() => {}, 100)\n");
+    CHECK(mik__next_wake_us(rt) == 100000);
+    advance_ms(100);
+    MIK_Loop(rt); /* fires the timer; the feed window keeps counting */
+    CHECK(mik__next_wake_us(rt) == 400000);
+    advance_ms(400);
+    CHECK(mik__next_wake_us(rt) == 0); /* the feed deadline passed */
+    rt->feed_armed = false;
+    CHECK(mik__next_wake_us(rt) == 2000000 - g_now_us);
+    rt->awake_armed = false;
+    CHECK(mik__next_wake_us(rt) == -1);
+
+    /* Datagrams are polled: an open socket caps the wait at the poll period. */
+    static const char src[] =
+        "import {bind} from 'mikro/udp'\n"
+        "bind({port: 0, family: 'ipv4'}).then((r) => { globalThis.__sock = r.value })\n";
+    JSValue rv = JS_Eval(ctx, src, sizeof(src) - 1, "/test/udp_wake.js", JS_EVAL_TYPE_MODULE);
+    REQUIRE_FALSE(JS_IsException(rv));
+    JS_FreeValue(ctx, rv);
+    MIK_Loop(rt);
+    CHECK(global_str("__sock") != "undefined");
+    CHECK(mik__next_wake_us(rt) == 10000);
+    eval("globalThis.__sock.close()\n");
+    CHECK(mik__next_wake_us(rt) == -1);
+}
+
 TEST_CASE_FIXTURE(TimerFixture, "registry C API: CountDue and SetNextDeadline" *
                                     doctest::test_suite("timers")) {
     eval("setTimeout(() => { globalThis.__moved = 1 }, 1000)\n");

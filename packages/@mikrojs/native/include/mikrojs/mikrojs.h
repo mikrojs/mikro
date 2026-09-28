@@ -125,6 +125,10 @@ void MIK_SetFSLimit(MIKRuntime* mik_rt, size_t limit);
  * the default (65536). */
 void MIK_SetFSReadMax(MIKRuntime* mik_rt, size_t bytes);
 int MIK_Loop(MIKRuntime* mik_rt);
+/* End the serve loop's wait so work just queued from another task runs now.
+ * Call after the enqueue; no-op without the platform hook. Interrupt handlers
+ * use the platform's own ISR variant (MIK_WakeFromISR on ESP32). */
+void MIK_Wake(void);
 void MIK_Stop(MIKRuntime* mik_rt);
 
 /* True once the runtime has entered a halted state — set by the promise

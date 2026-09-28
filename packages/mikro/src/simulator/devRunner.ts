@@ -12,7 +12,7 @@ const DEFAULT_MEM_LIMIT = 300 * 1024 // 300 KB
 const DEFAULT_FS_ROOT = '.mikro/sim-fs'
 export const DEFAULT_FS_LIMIT = 1472 * 1024 // matches the device's 'user' partition
 // Longest sleep between ticks: host input (evals, messages, fetch results,
-// resume) and loop consumers such as UDP are not in nextWakeUs(), so they wait this long.
+// resume) is not in nextWakeUs(), so it waits this long.
 const IDLE_CAP_MS = 10
 
 // Node-side handler for the http stub's host.call('http.fetch'). Uses Node's

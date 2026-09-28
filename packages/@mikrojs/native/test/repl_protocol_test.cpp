@@ -1255,6 +1255,9 @@ static int stutter_read(uint8_t* buf, size_t size, void* opaque) {
     auto* ctx = (StutterTransportCtx*)opaque;
     ctx->stutter = !ctx->stutter;
     if (ctx->stutter) {
+        /* The next byte is already here: wake the loop the way the console
+         * RX interrupt does, or each gap costs the serve loop's wait cap. */
+        if (ctx->input_pos < ctx->input.size()) MIK_Wake();
         errno = EAGAIN;
         return -1;
     }
@@ -1272,6 +1275,63 @@ static void stutter_write(const void* buf, size_t len, void* opaque) {
     auto* ctx = (StutterTransportCtx*)opaque;
     auto* bytes = (const uint8_t*)buf;
     ctx->output.insert(ctx->output.end(), bytes, bytes + len);
+}
+
+/* Idle transport: EAGAIN until `until_us` on the boot clock, then EOF. Counts
+ * reads: a loop that sleeps between passes makes a handful, a polling one
+ * makes one per millisecond. */
+struct IdleUntilCtx {
+    int64_t until_us;
+    int reads = 0;
+};
+
+static int idle_until_read(uint8_t*, size_t, void* opaque) {
+    auto* ctx = (IdleUntilCtx*)opaque;
+    ctx->reads++;
+    if (MIK_GetPlatform()->get_boot_us() >= ctx->until_us) return 0;
+    errno = EAGAIN;
+    return -1;
+}
+
+static void idle_until_write(const void*, size_t, void*) {}
+
+TEST_CASE("The serve loop sleeps until the next timer instead of polling" *
+          doctest::test_suite("repl_protocol")) {
+    proto_setup();
+    JSContext* ctx = MIK_GetJSContext(proto_rt);
+    const char* code =
+        "globalThis.__t0 = Date.now()\n"
+        "globalThis.__dt = -1\n"
+        "setTimeout(() => { globalThis.__dt = Date.now() - globalThis.__t0 }, 30)\n";
+    JSValue v = JS_Eval(ctx, code, strlen(code), "timer.js", JS_EVAL_TYPE_GLOBAL);
+    REQUIRE_FALSE(JS_IsException(v));
+    JS_FreeValue(ctx, v);
+
+    IdleUntilCtx mock = {MIK_GetPlatform()->get_boot_us() + 150000};
+    MIKReplTransport transport = {};
+    transport.read = idle_until_read;
+    transport.write = idle_until_write;
+    transport.ctx = &mock;
+
+    MIK_ProtocolOpen(&transport);
+    MIK_ProtocolAttach(proto_rt);
+    MIK_ProtocolServeLoop();
+    MIK_ProtocolDetach();
+    MIK_ProtocolClose();
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue dt = JS_GetPropertyStr(ctx, global, "__dt");
+    JS_FreeValue(ctx, global);
+    int32_t fired_after_ms = -1;
+    JS_ToInt32(ctx, &fired_after_ms, dt);
+    JS_FreeValue(ctx, dt);
+    /* the wait ends at the timer's deadline, not at a tick after it */
+    CHECK(fired_after_ms >= 30);
+    CHECK(fired_after_ms < 100);
+    /* 150 ms idle: the first read, one after the timer, then the 100 ms cap */
+    CHECK(mock.reads < 10);
+
+    proto_teardown();
 }
 
 TEST_CASE("A stuttering EAGAIN transport still serves" * doctest::test_suite("repl_protocol")) {

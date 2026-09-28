@@ -104,17 +104,25 @@ MIK_RegisterLoopConsumer(mik_rt, consume_fn, destroy_fn);
 
 Loop consumers are called every iteration regardless of whether they have work to do. The consume function must return quickly when it has no work.
 
-## Yield
+## Waiting between passes
 
-Between loop iterations, the caller must yield to prevent busy-waiting:
+A pass that found nothing to do must not spin. `mik__next_wake_us()` reports how long the loop can sleep: 0 when work is due now (a pending job, a due timer, a stop to report), the microseconds until the earliest timer or watchdog deadline, or -1 when nothing is scheduled. The protocol serve loop does this (simplified: it also falls back to `yield()` on a platform without `wait()`):
 
 ```c
 while (MIK_Loop(mik_rt) == 0) {
-    MIK_GetPlatform()->yield();
+    int64_t wake_us = mik__next_wake_us(mik_rt);
+    if (wake_us == 0) {
+        MIK_GetPlatform()->yield();  /* busy: let other tasks run */
+        continue;
+    }
+    if (wake_us < 0 || wake_us > 100000) wake_us = 100000; /* the cap */
+    MIK_GetPlatform()->wait(wake_us);  /* idle: block until then or a wake */
 }
 ```
 
-On POSIX, `yield()` is `usleep(1000)` (1ms sleep). On ESP-IDF, it yields the FreeRTOS task so other tasks (the WiFi stack, for example) can run.
+`wait()` blocks the task until the timeout elapses or something calls `MIK_Wake()` (`MIK_WakeFromISR()` from an interrupt handler). Every producer that hands the loop work from another task or an ISR calls it after the enqueue: the console RX interrupt, GPIO edges, PWM fades, the WiFi, SNTP and BLE event queues, the HTTP client and server tasks, the UART and I2S drivers. So does code on the JS task that queues work for a consumer, since that consumer may already have run this pass: `ota.check()` and the OTA hooks do. Timers need nothing, since the wait's timeout is the next deadline. The 100 ms cap is a backstop for a producer that forgot. Deadlines that only a loop consumer tracks, such as an HTTP request timeout or the next OTA check-in, can fire up to 100 ms late. UDP sockets have no callback from the socket API, so while one is open the loop polls `recvfrom` every 10 ms.
+
+On ESP-IDF, `wait()` waits on FreeRTOS task notification index 1, which leaves index 0 to native code on the JS task, and `yield()` is `vTaskDelay(1)`. If a wake was already pending at every wait for a second, as under a fast GPIO signal, `wait()` sleeps one tick so the idle task runs. On POSIX, `wait()` is a condition variable and `yield()` is `usleep(1000)`. A platform without `wait()` falls back to `yield()` between passes.
 
 ## Promise integration
 

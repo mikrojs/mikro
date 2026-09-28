@@ -2,6 +2,8 @@
 #include <cstring>
 
 #include "driver/uart.h"
+#include "driver/uart_select.h"
+#include "esp_attr.h"
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
@@ -12,6 +14,14 @@
 
 static JSClassID mik_uart_class_id;
 static int mik__uart_slot = -1;
+
+/* UART ISR (IRAM, so it runs with the flash cache off): RX data landed. */
+static void IRAM_ATTR mik__uart_rx_notify(uart_port_t port, uart_select_notif_t notif,
+                                          BaseType_t* task_woken) {
+    (void)port;
+    (void)task_woken;  // the wake yields itself
+    if (notif == UART_SELECT_READ_NOTIF) MIK_WakeFromISR();
+}
 
 /* Forward decl: defined alongside the iterator class further down. The Uart
  * state holds a non-owning backpointer so end() can mark the active iterator
@@ -178,6 +188,9 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
                                      "uart_driver_install failed on port %d: %s", (int)port,
                                      esp_err_to_name(err));
     }
+    /* The loop consumer polls the RX buffer; this ends its wait when bytes land.
+     * uart_driver_delete clears the callback. */
+    uart_set_select_notif_callback(uart_port, mik__uart_rx_notify);
 
     auto* s = static_cast<MIKUartState*>(calloc(1, sizeof(MIKUartState)));
     if (!s) {
