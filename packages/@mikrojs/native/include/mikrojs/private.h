@@ -224,6 +224,12 @@ void mik__sys_api_init(JSContext* ctx, JSValue ns);
  * on device, "generic" on host. Static storage, never NULL. */
 const char* mik__board_name(void);
 void mik__text_encoding_init(JSContext* ctx, JSValue global);
+/* UTF-8 pass shared by TextDecoder and the http body drain: each invalid byte
+ * becomes U+FFFD. A null `out` only counts; returns the output length. With
+ * `hold_tail`, an incomplete final sequence is left out and its byte count
+ * stored in *tail. */
+size_t mik__utf8_replace(const uint8_t* in, size_t len, bool hold_tail, uint8_t* out,
+                         size_t* tail);
 void mik__abort_init(JSContext* ctx, JSValue global_obj);
 
 JSValue mik_new_error(JSContext* ctx, int err);

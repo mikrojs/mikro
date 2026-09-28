@@ -116,6 +116,7 @@ void MIK_RejectPromise(JSContext* ctx, MIKPromise* p, int argc, JSValue* argv);
 JSValue MIK_NewResolvedPromise(JSContext* ctx, int argc, JSValue* argv);
 JSValue MIK_NewRejectedPromise(JSContext* ctx, int argc, JSValue* argv);
 
+/* A Uint8Array over `data` (js_malloc'd). Takes ownership of `data`, also on failure. */
 JSValue MIK_NewUint8Array(JSContext* ctx, uint8_t* data, size_t size);
 
 #define MIK_THROW_ARG_ERR(ctx, argno, expected) \

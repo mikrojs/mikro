@@ -295,7 +295,19 @@ static void* mik__buf_realloc(JSRuntime* rt, void* opaque, void* ptr, size_t siz
 }
 
 JSValue MIK_NewUint8Array(JSContext* ctx, uint8_t* data, size_t size) {
-    return JS_NewUint8Array(ctx, data, size, mik__buf_realloc, NULL, false);
+    /* JS_NewUint8Array leaks `data` when the ArrayBuffer object cannot be
+     * allocated. Once JS_NewArrayBuffer succeeds, the buffer owns `data`. */
+    JSValue ab = JS_NewArrayBuffer(ctx, data, size, 0, mik__buf_realloc, NULL, false);
+    if (JS_IsException(ab)) {
+        js_free(ctx, data);
+        return ab;
+    }
+    /* Before quickjs-ng 0.17.0, JS_NewTypedArray reads argv[1] and argv[2]
+     * whatever argc says, so pass all three. */
+    JSValueConst args[3] = {ab, JS_UNDEFINED, JS_UNDEFINED};
+    JSValue u8 = JS_NewTypedArray(ctx, 3, args, JS_TYPED_ARRAY_UINT8);
+    JS_FreeValue(ctx, ab);
+    return u8;
 }
 
 void mik_dbuf_init(JSContext* ctx, DynBuf* s) {

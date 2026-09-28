@@ -688,6 +688,71 @@ TEST_CASE("json() parses valid JSON and maps parse failures to InvalidJson" *
                          R"("badName":"InvalidJson"})");
 }
 
+TEST_CASE("text() and json() repair invalid UTF-8 like the runtime's TextDecoder" *
+          doctest::test_suite("http_client")) {
+    HttpFixture f;
+    REQUIRE(f.run(R"JS(
+        const bodyOf = (bytes) => ({
+          async *[Symbol.asyncIterator]() {
+            yield {ok: true, value: new Uint8Array(bytes)}
+            yield {ok: true, value: new Uint8Array([])}
+          },
+        })
+        const make = (bytes) => makeResponse({
+          status: 200, statusText: '', url: '', redirected: false, headers: [], body: bodyOf(bytes),
+        })
+        /* "a" + lone continuation + truncated 3-byte lead at the end */
+        const text = await make([0x61, 0x80, 0xe2, 0x9c]).text()
+        /* {"a":"<0xff>"} */
+        const json = await make([0x7b, 0x22, 0x61, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d]).json()
+        const bad = await make([0x7b, 0xff]).json()
+        __finish({
+          text: text.ok ? text.value : 'FAIL',
+          json: json.ok ? json.value : 'FAIL',
+          badName: bad.ok ? 'FAIL' : bad.error.name,
+        })
+    )JS"));
+    CHECK_EQ(f.result(), "{\"text\":\"a\xef\xbf\xbd\xef\xbf\xbd\xef\xbf\xbd\","
+                         "\"json\":{\"a\":\"\xef\xbf\xbd\"},\"badName\":\"InvalidJson\"}");
+}
+
+TEST_CASE("a 64 KB body drains through bytes(), text() and json()" *
+          doctest::test_suite("http_client")) {
+    HttpFixture f;
+    REQUIRE(f.run(R"JS(
+        const N = 65536
+        const bodyOf = (fill) => ({
+          async *[Symbol.asyncIterator]() {
+            for (let off = 0; off < N; off += 1024) {
+              const c = new Uint8Array(1024)
+              for (let i = 0; i < 1024; i++) c[i] = fill(off + i)
+              yield {ok: true, value: c}
+            }
+          },
+        })
+        const make = (fill) => makeResponse({
+          status: 200, statusText: '', url: '', redirected: false, headers: [], body: bodyOf(fill),
+        })
+        const bytes = await make((i) => i & 0xff).bytes()
+        const text = await make((i) => 0x61 + (i % 26)).text()
+        /* {"a":"xxx...x"} with the string filling the rest */
+        const jsonHead = '{"a":"'
+        const json = await make((i) =>
+          i < jsonHead.length ? jsonHead.charCodeAt(i) : i >= N - 2 ? '"}'.charCodeAt(i - (N - 2)) : 0x78,
+        ).json()
+        const b = bytes.ok ? bytes.value : new Uint8Array(0)
+        __finish({
+          bytesLen: b.length,
+          bytesOk: b[0] === 0 && b[255] === 255 && b[N - 1] === 255,
+          textLen: text.ok ? text.value.length : -1,
+          textTail: text.ok ? text.value.slice(-3) : '',
+          jsonLen: json.ok ? json.value.a.length : -1,
+        })
+    )JS"));
+    CHECK_EQ(f.result(), R"({"bytesLen":65536,"bytesOk":true,"textLen":65536,"textTail":"nop",)"
+                         R"("jsonLen":65528})");
+}
+
 TEST_CASE("second body consumer throws BodyConsumed in every combination" *
           doctest::test_suite("http_client")) {
     HttpFixture f;
