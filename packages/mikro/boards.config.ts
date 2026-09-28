@@ -1,5 +1,6 @@
 // The generic boards: the firmware without anything board-specific, one board
-// per chip, each with a no-ble and a no-ble+no-wifi image besides the full one.
+// per chip, each with a no-ble and a no-ble+no-wifi image besides the full one,
+// and the ESP32 also with a no-wifi image.
 // The release builds them with `mikro fw build` (one image per CI job) into
 // dist-fw/, and the CLI flashes them when a project has no board of its own.
 // They ship with mikro, so apps never list them. Devices and registries know
@@ -14,7 +15,9 @@ export default defineBoards({
       chip: 'esp32',
       name: 'esp32-generic',
       description: 'Generic ESP32 board',
-      images: LEAN_IMAGES,
+      // WiFi takes 17 KB of RAM on the ESP32 even when unused, which a BLE app
+      // on a board without PSRAM needs
+      images: [...LEAN_IMAGES, {wifi: false}],
     },
     './esp32c3-generic': {
       chip: 'esp32c3',
