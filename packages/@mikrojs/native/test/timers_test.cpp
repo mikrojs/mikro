@@ -293,6 +293,29 @@ TEST_CASE_FIXTURE(TimerFixture, "a throwing callback stops the pass and reports"
     CHECK(rt->timers->entries.size() == 1);
 }
 
+TEST_CASE_FIXTURE(TimerFixture, "mik__next_wake_us: -1 idle, 0 busy, else the earliest timer" *
+                                    doctest::test_suite("timers")) {
+    CHECK(mik__next_wake_us(rt) == -1);
+    eval("setTimeout(() => {}, 100)\n");
+    CHECK(mik__next_wake_us(rt) == 100000);
+    eval("setTimeout(() => {}, 40)\n");
+    CHECK(mik__next_wake_us(rt) == 40000);
+    advance_ms(40);
+    CHECK(mik__next_wake_us(rt) == 0); /* a timer is due */
+    MIK_Loop(rt);
+    CHECK(mik__next_wake_us(rt) == 60000);
+    eval("Promise.resolve().then(() => {})\n");
+    CHECK(mik__next_wake_us(rt) == 0); /* a job is pending */
+    MIK_Loop(rt);
+    CHECK(mik__next_wake_us(rt) == 60000);
+    MIK_Stop(rt);
+    CHECK(mik__next_wake_us(rt) == 0); /* the caller must pump to see the stop */
+    /* A pending restart waits for its deadline, not the next pass */
+    rt->restart_at_us = MIK_GetPlatform()->get_boot_us() + 500000;
+    CHECK(mik__next_wake_us(rt) == 500000);
+    rt->restart_at_us = 0;
+}
+
 TEST_CASE_FIXTURE(TimerFixture, "registry C API: CountDue and SetNextDeadline" *
                                     doctest::test_suite("timers")) {
     eval("setTimeout(() => { globalThis.__moved = 1 }, 1000)\n");

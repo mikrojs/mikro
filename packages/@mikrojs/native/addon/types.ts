@@ -26,6 +26,7 @@ export interface NativeMikroRuntime {
   evalModuleContent(filename: string, content: string): void
   evalScript(code: string): string | undefined
   loopOnce(): number
+  nextWakeUs(): number
   dispose(): void
   registerModuleSource(name: string, source: string): void
   drainMessages(): HostMessage[]

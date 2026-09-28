@@ -29,6 +29,21 @@ describe('MikroRuntime', () => {
     expect(runtime).toBeDefined()
   })
 
+  it('reports pending host messages as work', () => {
+    runtime = new MikroRuntime()
+    expect(runtime.nextWakeUs()).toBe(-1)
+    runtime.postMessage('ping', '{}')
+    expect(runtime.nextWakeUs()).toBe(0)
+    runtime.loopOnce()
+    expect(runtime.nextWakeUs()).toBe(-1)
+  })
+
+  it('throws from nextWakeUs() after dispose', () => {
+    const disposed = new MikroRuntime()
+    disposed.dispose()
+    expect(() => disposed.nextWakeUs()).toThrow('runtime disposed')
+  })
+
   it('can eval a simple module', () => {
     mkdirSync(TEST_DIR, {recursive: true})
     const modulePath = join(TEST_DIR, 'test.js')

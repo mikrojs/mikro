@@ -40,6 +40,7 @@ class RuntimeWrap : public Napi::ObjectWrap<RuntimeWrap> {
     Napi::Value EvalScript(const Napi::CallbackInfo& info);
     Napi::Value EvalForRepl(const Napi::CallbackInfo& info);
     Napi::Value LoopOnce(const Napi::CallbackInfo& info);
+    Napi::Value NextWakeUs(const Napi::CallbackInfo& info);
     void Dispose(const Napi::CallbackInfo& info);
 
     /* Virtual module registration */

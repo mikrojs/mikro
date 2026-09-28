@@ -11,6 +11,9 @@ import type {BuiltinName} from './builtins/types.js'
 const DEFAULT_MEM_LIMIT = 300 * 1024 // 300 KB
 const DEFAULT_FS_ROOT = '.mikro/sim-fs'
 export const DEFAULT_FS_LIMIT = 1472 * 1024 // matches the device's 'user' partition
+// Longest sleep between ticks: host input (evals, messages, fetch results,
+// resume) and loop consumers such as UDP are not in nextWakeUs(), so they wait this long.
+const IDLE_CAP_MS = 10
 
 // Node-side handler for the http stub's host.call('http.fetch'). Uses Node's
 // global fetch so the simulator can hit real URLs without a device. Body is
@@ -236,6 +239,34 @@ export function createDevRunner(options: DevRunnerOptions): DevRunner {
 
   const messages$ = new Subject<HostMessage>()
   const tickCallbacks: (() => void)[] = []
+  // The idle sleep before the next tick; unset while a tick is due at once.
+  let idle: NodeJS.Timeout | undefined
+  let stopped = false
+
+  function tick() {
+    idle = undefined
+    if (stopped) return
+    const rc = handle.paused ? 0 : runtime.loopOnce()
+
+    for (const msg of runtime.drainMessages()) {
+      messages$.next(msg)
+    }
+
+    for (const cb of tickCallbacks) {
+      cb()
+    }
+
+    if (stopped) return
+    // Sleep until the runtime next has work, at most IDLE_CAP_MS. A paused or
+    // stopped runtime (loopOnce returned 1) only needs the tick callbacks.
+    const wakeUs = handle.paused || rc !== 0 ? -1 : runtime.nextWakeUs()
+    if (wakeUs === 0) {
+      setImmediate(tick)
+      return
+    }
+    const delayMs = wakeUs < 0 ? IDLE_CAP_MS : Math.min(Math.ceil(wakeUs / 1000), IDLE_CAP_MS)
+    idle = setTimeout(tick, delayMs)
+  }
 
   function start(): () => void {
     // Bootstrap console and evaluate user script inside start() so that
@@ -250,26 +281,12 @@ export function createDevRunner(options: DevRunnerOptions): DevRunner {
       messages$.next(msg)
     }
 
-    let stopped = false
-
-    function tick() {
-      if (stopped) return
-      if (!handle.paused) runtime.loopOnce()
-
-      for (const msg of runtime.drainMessages()) {
-        messages$.next(msg)
-      }
-
-      for (const cb of tickCallbacks) {
-        cb()
-      }
-
-      setImmediate(tick)
-    }
     setImmediate(tick)
 
     return () => {
       stopped = true
+      if (idle) clearTimeout(idle)
+      idle = undefined
       messages$.complete()
     }
   }

@@ -46,6 +46,9 @@ class MikroRuntime {
   // Run a single loop iteration synchronously
   loopOnce(): number
 
+  // Microseconds until the loop next has work (0 = now, -1 = nothing scheduled)
+  nextWakeUs(): number
+
   // Clean up all resources
   dispose(): void
 
