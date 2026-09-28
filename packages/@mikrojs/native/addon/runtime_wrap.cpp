@@ -259,6 +259,7 @@ Napi::Object RuntimeWrap::Init(Napi::Env env, Napi::Object exports) {
                                           InstanceMethod("evalScript", &RuntimeWrap::EvalScript),
                                           InstanceMethod("evalForRepl", &RuntimeWrap::EvalForRepl),
                                           InstanceMethod("loopOnce", &RuntimeWrap::LoopOnce),
+                                          InstanceMethod("nextWakeUs", &RuntimeWrap::NextWakeUs),
                                           InstanceMethod("dispose", &RuntimeWrap::Dispose),
                                           InstanceMethod("registerModuleSource", &RuntimeWrap::RegisterModuleSource),
                                           InstanceMethod("drainMessages", &RuntimeWrap::DrainMessages),
@@ -777,6 +778,20 @@ Napi::Value RuntimeWrap::LoopOnce(const Napi::CallbackInfo& info) {
     if (host_bridge_) host_bridge_->current_env = env;
     int rc = MIK_Loop(mik_rt_);
     return Napi::Number::New(env, rc);
+}
+
+/* mik__next_wake_us, with inbound host messages counted as work: they are
+ * delivered on the next pass. */
+Napi::Value RuntimeWrap::NextWakeUs(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (!mik_rt_) {
+        Napi::Error::New(env, "runtime disposed").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    if (host_bridge_ && !host_bridge_->inbound_messages.empty()) {
+        return Napi::Number::New(env, 0);
+    }
+    return Napi::Number::New(env, (double)mik__next_wake_us(mik_rt_));
 }
 
 void RuntimeWrap::Dispose(const Napi::CallbackInfo& info) {

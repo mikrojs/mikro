@@ -758,6 +758,24 @@ int MIK_Loop(MIKRuntime* mik_rt) {
     return mik_rt->stop_requested ? 1 : 0;
 }
 
+int64_t mik__next_wake_us(MIKRuntime* mik_rt) {
+    int64_t now = MIK_GetPlatform()->get_boot_us();
+    /* In the grace window MIK_Loop does nothing until the restart deadline */
+    if (mik_rt->restart_at_us > 0) {
+        return mik_rt->restart_at_us > now ? mik_rt->restart_at_us - now : 0;
+    }
+    if (mik_rt->stop_requested || JS_IsJobPending(mik_rt->rt)) {
+        return 0;
+    }
+    int64_t wake = -1;
+    for (const auto& entry : mik_rt->timers->entries) {
+        int64_t delay = entry.next_deadline - now;
+        if (delay <= 0) return 0;
+        if (wake < 0 || delay < wake) wake = delay;
+    }
+    return wake;
+}
+
 void MIK_SetConfig(MIKRuntime* mik_rt, const MIKConfig* config) {
     CHECK_NOT_NULL(mik_rt);
     CHECK_NOT_NULL(config);

@@ -64,6 +64,12 @@ export class MikroRuntime {
     return this.native.loopOnce()
   }
 
+  /** Microseconds until the loop next has work: 0 when it has work now, -1
+   *  when nothing is scheduled. Lets the caller sleep between loopOnce() calls. */
+  nextWakeUs(): number {
+    return this.native.nextWakeUs()
+  }
+
   dispose(): void {
     this.native.dispose()
   }
