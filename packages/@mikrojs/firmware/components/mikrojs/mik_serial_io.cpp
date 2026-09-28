@@ -156,7 +156,15 @@ void mik__console_init(void) {
     uart_config.parity = UART_PARITY_DISABLE;
     uart_config.stop_bits = UART_STOP_BITS_1;
     uart_config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
+    /* DFS slows the APB clock; keep the DFS-safe clock that esp_pm_impl_init
+     * gave the console, or RX garbles whenever the chip idles. */
+#if CONFIG_PM_ENABLE && SOC_UART_SUPPORT_REF_TICK
+    uart_config.source_clk = UART_SCLK_REF_TICK;
+#elif CONFIG_PM_ENABLE
+    uart_config.source_clk = UART_SCLK_XTAL;
+#else
     uart_config.source_clk = UART_SCLK_DEFAULT;
+#endif
     uart_param_config(UART_NUM_0, &uart_config);
     uart_set_pin(UART_NUM_0, U0TXD_GPIO_NUM, U0RXD_GPIO_NUM,
                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);

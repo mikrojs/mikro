@@ -13,6 +13,7 @@
 #include "esp_littlefs.h"
 #include "esp_log.h"
 #include "esp_partition.h"
+#include "esp_pm.h"
 #include "esp_system.h"
 #if CONFIG_ESP_TASK_WDT_EN
 #include "esp_task_wdt.h"
@@ -353,6 +354,21 @@ void MIK_Main(void) {
      * the active console.  On chips with USB Serial/JTAG this checks
      * for USB SOF packets; if absent it falls back to UART. */
     mik__console_init();
+
+#if CONFIG_MIKROJS_AUTO_LIGHT_SLEEP
+    /* Keeps the DFS range from PM_DFS_INIT_AUTO and adds light sleep. */
+    {
+        esp_pm_config_t pm_config;
+        esp_err_t err = esp_pm_get_configuration(&pm_config);
+        if (err == ESP_OK) {
+            pm_config.light_sleep_enable = true;
+            err = esp_pm_configure(&pm_config);
+        }
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Automatic light sleep not enabled: %s", esp_err_to_name(err));
+        }
+    }
+#endif
 
     /* Gather chip/feature info early — cheap, no side effects, used to
      * print the banner AFTER runtime init succeeds. We deliberately defer
