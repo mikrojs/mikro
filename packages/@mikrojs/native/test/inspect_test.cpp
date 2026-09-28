@@ -108,8 +108,7 @@ TEST_CASE_FIXTURE(DirectFixture, "inspect renders symbol descriptions" *
 
 TEST_CASE_FIXTURE(DirectFixture, "custom hook is keyed by the registered mikrojs.inspect symbol" *
                                      doctest::test_suite("inspect")) {
-    CHECK(inspect_eval("({[Symbol.for(['mikrojs', 'inspect'].join('.'))]() { return 'hi' }})") ==
-          "hi");
+    CHECK(inspect_eval("({[Symbol.for('mikrojs.inspect')]() { return 'hi' }})") == "hi");
     /* An unregistered symbol with the same description is an ordinary key */
     CHECK(inspect_eval("({a: 1, [Symbol('mikrojs.inspect')]() { return 'hi' }})") == "{ a: 1 }");
 }
