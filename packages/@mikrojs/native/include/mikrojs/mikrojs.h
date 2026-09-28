@@ -19,7 +19,8 @@ typedef struct MIKRunOptions {
      * IO-bound workloads this is invisible against networking and IO
      * costs. No effect on hosts and chips without PSRAM. Defaults false
      * for backward compatibility; the firmware bootstrap flips it on
-     * when CONFIG_MIKROJS_QUICKJS_HEAP_PSRAM is set. */
+     * when CONFIG_MIKROJS_QUICKJS_HEAP_PSRAM is set and PSRAM was found
+     * at boot. */
     bool use_psram_heap;
 } MIKRunOptions;
 

@@ -566,7 +566,12 @@ void MIK_Main(void) {
         options.stack_size = app_config.stack_size;
     }
 #ifdef CONFIG_MIKROJS_QUICKJS_HEAP_PSRAM
-    options.use_psram_heap = true;
+    /* Route the JS heap to PSRAM only when the heap allocator has some: with
+     * SPIRAM_IGNORE_NOTFOUND a board without the chip boots too, and every failed
+     * heap_caps_malloc(MALLOC_CAP_SPIRAM) would walk the heap registry first. */
+    if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0) {
+        options.use_psram_heap = true;
+    }
 #endif
 
     auto create_runtime = [&]() -> MIKRuntime* {
