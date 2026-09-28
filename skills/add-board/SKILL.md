@@ -7,7 +7,7 @@ description: Scaffold a mikrojs board package for a development board. Use this 
 
 Generate a board package: prebuilt firmware for a development board, declared with a `firmware` export condition, plus an optional JS library with the board's pin names and pre-wired peripherals.
 
-When this skill triggers, gather the required information from the user, then generate the files listed below. The repo's `docs/develop/creating-boards.md` is the reference; read it when in doubt. If the user has demo code or a schematic for the board, read it to extract pin mappings and hardware details. After generating files, guide the user through building and testing.
+When this skill triggers, gather the required information from the user, scaffold the package with `create mikro <name> --board`, then edit the files it writes as described below. The repo's `docs/develop/creating-boards.md` is the reference; read it when in doubt. If the user has demo code or a schematic for the board, read it to extract pin mappings and hardware details. After generating files, guide the user through building and testing.
 
 ## What you need from the user
 
@@ -27,9 +27,9 @@ When this skill triggers, gather the required information from the user, then ge
 - There is no extending: apps flash the image as it is. To change a board's firmware, fork the package.
 - The JS library (pins, peripherals, tsconfig preset) is ordinary exports that the tools ignore.
 
-## Package structure to generate
+## Package structure
 
-Single board:
+Single board (`create mikro <name> --board` writes all of these except `sdkconfig.defaults` and the peripheral modules):
 
 ```
 @acme/devboard/
@@ -46,9 +46,21 @@ Single board:
 
 Multi-board: one entry per board in `boards.config.ts`, keyed `./<board>`, each exported as `"./<board>": {"firmware": "./dist-fw/<board>/full/firmware.json"}`; the name defaults to `@acme/boards/<board>`. One `pn mikro fw build` in the package builds them all (each into `.mikro/build-fw-<board>`); `--board <board>` builds one. Variants that need different builds (octal PSRAM, say) are boards of their own that share a base object in the config; a variant with more flash needs none, since `mikro flash` gives the extra flash to the filesystem.
 
-## Files to generate
+## Step 1: Scaffold the package
+
+```sh
+pn create mikro @acme/devboard --board --chip esp32s3
+```
+
+This writes `package.json`, `boards.config.ts`, an empty `pins.ts`, `tsconfig.json`, `tsconfig.build.json`, `.gitignore` and `README.md` into the folder `@acme/devboard/`, for one board at `.`. Pass both the name and `--chip`: without a terminal, a missing one is an error. For a multi-board package, scaffold one board and change the keys and exports as described above.
+
+## Step 2: Edit the files
+
+The sections below show each file in its finished form. Keep what the scaffold writes and add to it; don't remove its scripts or dependencies. Write only the files it doesn't (`sdkconfig.defaults`, the peripheral modules).
 
 ### 1. package.json
+
+The scaffold writes the `firmware` export, `./pins`, `./tsconfig`, `files`, the scripts (`prepack` runs the build with the package manager it was created with) and the devDependencies. Set the description, and add an export per peripheral module, the driver packages, and a license.
 
 ```json
 {
@@ -66,6 +78,7 @@ Multi-board: one entry per board in `boards.config.ts`, keyed `./<board>`, each 
   "files": ["dist", "dist-fw", "tsconfig.json"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
     "prepack": "npm run build && mikro fw build"
   },
   "dependencies": {
@@ -76,7 +89,8 @@ Multi-board: one entry per board in `boards.config.ts`, keyed `./<board>`, each 
   },
   "devDependencies": {
     "@mikrojs/firmware": "^0.1.0",
-    "mikro": "^0.1.0"
+    "mikro": "^0.1.0",
+    "typescript": "^6.0.3"
   }
 }
 ```
@@ -87,9 +101,11 @@ Key points:
 - `@mikrojs/firmware` is a direct devDependency: the build resolves it from the package, and pnpm lets a package resolve only its own dependencies.
 - `mikro` is a plain required peer for the JS library; driver packages are dependencies. No `peerDependenciesMeta`.
 - The package's description becomes the board's description, shown when `mikro flash` asks which board to flash.
-- In this monorepo, use `"private": true`, `"version": "0.0.0"` and `workspace:*` ranges, and put the package under `packages/@mikrojs/`.
+- In this monorepo, run `pn create mikro @mikrojs/<board> --board` from `packages/`, so the package lands in `packages/@mikrojs/<board>/` and keeps its scope (the name is the folder, and only a name that starts with `@` keeps one). Then use `"private": true`, `"version": "0.0.0"` and `workspace:*` ranges.
 
 ### 2. boards.config.ts
+
+The scaffold writes the chip, with `sdkconfig` and `nativeModules` commented out.
 
 ```ts
 import {defineBoards} from 'mikro'
@@ -120,6 +136,8 @@ CONFIG_SPIRAM_MODE_OCT=y
 
 ### 4. pins.ts
 
+The scaffold writes an empty `pins` object; fill it in.
+
 Pin names as printed on the board, each a GPIO number.
 
 ```ts
@@ -138,6 +156,8 @@ export const LCD_HEIGHT = 240
 ```
 
 ### 5. Pre-wired peripherals (display.ts, ...)
+
+Not scaffolded. Add each module to `include` in `tsconfig.build.json` and to `exports`.
 
 A function that gives the driver the board's pins and returns the driver's `Result`, so the app claims the hardware when it calls it:
 
@@ -171,11 +191,14 @@ A native driver imported here must also be in the board's `nativeModules`; `mikr
 }
 ```
 
-Extend the preset for the board's chip. No `include`: paths in an extended config are relative to the board package, not the app. `tsconfig.build.json` extends it, sets `include` to the library's files, `outDir: "dist"`, `declaration: true` and `noEmit: false`.
+The scaffold writes both. Extend the preset for the board's chip. No `include`: paths in an extended config are relative to the board package, not the app. `tsconfig.build.json` extends it, sets `include` to the library's files, `outDir: "dist"`, `declaration: true`, `noEmit: false` and `sourceMap: false` (a map would point at sources that aren't published).
 
 ### 7. .gitignore
 
+The scaffold writes it:
+
 ```
+node_modules
 dist
 dist-fw
 .mikro

@@ -9,6 +9,14 @@ A board package provides the firmware for a development board, and optionally th
 
 Apps install board packages as a dependency, and `mikro flash` flashes the board's firmware.
 
+To start one, run:
+
+```sh
+pn create mikro @acme/devboard --board
+```
+
+It asks for the board's chip, or takes it from `--chip`. In the folder `@acme/devboard/` it writes the `package.json`, `boards.config.ts` and `pins.ts` described below, with a TypeScript preset for apps.
+
 ## Anatomy of a board package
 
 ```
