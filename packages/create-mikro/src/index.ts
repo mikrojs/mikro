@@ -1,17 +1,17 @@
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 
 import * as p from '@clack/prompts'
-import {message, object, optional} from '@optique/core'
+import {message} from '@optique/core'
 import type {InferValue} from '@optique/core/parser'
-import {argument, flag, option} from '@optique/core/primitives'
 import {defineProgram} from '@optique/core/program'
-import {string} from '@optique/core/valueparser'
 import {run} from '@optique/run'
 
+import {args} from './args.js'
+import {scaffoldBoard} from './board.js'
 import {printLogo} from './logo.js'
+import {formatTargetDir, isValidPackageName, packageNameFor, toValidPackageName} from './names.js'
 import {detectPkgManager, installCommand, mikroCommand} from './pkg-manager.js'
 import {CHIPS, scaffold, TEMPLATES} from './scaffold.js'
 
@@ -22,26 +22,9 @@ const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'package.js
   version: string
 }
 
-const args = object({
-  name: optional(argument(string({metavar: 'NAME'}))),
-  template: optional(
-    option('-t', '--template', string({metavar: 'TEMPLATE'}), {
-      description: message`Template to use`,
-    }),
-  ),
-  chip: optional(
-    option('--chip', string({metavar: 'CHIP'}), {
-      description: message`The chip a firmware project builds for (default: esp32c6)`,
-    }),
-  ),
-  firmware: optional(
-    flag('--firmware', {
-      description: message`Make the app its own firmware project, for native modules or custom settings`,
-    }),
-  ),
-})
+type Chip = (typeof CHIPS)[number]
 
-const CHIP_LABELS: Record<(typeof CHIPS)[number], string> = {
+const CHIP_LABELS: Record<Chip, string> = {
   esp32: 'ESP32',
   esp32c3: 'ESP32-C3',
   esp32c5: 'ESP32-C5',
@@ -49,143 +32,151 @@ const CHIP_LABELS: Record<(typeof CHIPS)[number], string> = {
   esp32s3: 'ESP32-S3',
 }
 
-const prog = defineProgram({
-  parser: args,
-  metadata: {
-    name: 'create-mikro',
-    version: pkg.version,
-    author: message`Bjørge Næss <bjoerge@gmail.com>`,
-    bugs: message`https://github.com/mikrojs/mikro/issues`,
-  },
-})
-
-// Turn a human-friendly name like "My Project" into a valid npm
-// package / directory name like "my-project". Returns '' if nothing
-// usable remains.
-function toValidProjectName(input: string): string {
-  return input
-    .normalize('NFKD') // decompose accents: "Ü" → "U" + combining mark
-    .replace(/[\u0300-\u036f]/g, '') // strip the combining marks
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9.-]+/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^[-.]+/, '')
-    .replace(/[-.]+$/, '')
+function exitCancelled(): never {
+  p.cancel('Cancelled.')
+  process.exit(0)
 }
 
-async function main(config: InferValue<typeof args>): Promise<void> {
-  const templateNames = TEMPLATES.map((t) => t.name)
+// Without a terminal there is no one to answer a prompt, so a script must give
+// every answer.
+function exitMissing(what: string, how: string): never {
+  p.cancel(`No ${what} given. Pass it ${how}.`)
+  process.exit(1)
+}
 
-  printLogo()
+/** The folder to create the project in: the argument, or asked for. */
+async function askTargetDir(arg: string | undefined, placeholder: string): Promise<string> {
+  const given = formatTargetDir(arg ?? '')
+  if (given) return given
+  if (!process.stdin.isTTY) exitMissing('project name', 'as an argument')
+  const name = await p.text({
+    message: 'Project name',
+    placeholder,
+    defaultValue: placeholder,
+    validate: (value = '') => (formatTargetDir(value) ? undefined : 'Project name is required'),
+  })
+  if (p.isCancel(name)) exitCancelled()
+  return formatTargetDir(name) || placeholder
+}
+
+function checkChip(chip: string | undefined): asserts chip is Chip | undefined {
+  if (chip !== undefined && !(CHIPS as readonly string[]).includes(chip)) {
+    p.cancel(`Unknown chip "${chip}". Available chips: ${CHIPS.join(', ')}`)
+    process.exit(1)
+  }
+}
+
+async function askChip(): Promise<Chip> {
+  if (!process.stdin.isTTY) exitMissing('chip', 'with --chip')
+  const picked = await p.select({
+    message: 'Select your ESP32 chip',
+    initialValue: 'esp32c6' as const,
+    options: CHIPS.map((c) => ({
+      label: c === 'esp32c6' ? `${CHIP_LABELS[c]} (default)` : CHIP_LABELS[c],
+      value: c,
+    })),
+  })
+  if (p.isCancel(picked)) exitCancelled()
+  return picked
+}
+
+/** `word` as the shell reads it: as it is when safe, else in single quotes. */
+function shellQuote(word: string): string {
+  return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`
+}
+
+/** Where `targetDir` puts the project and its package name, or exits when it
+ *  can't go there. `idf`: ESP-IDF builds in the folder. */
+async function resolveProject(targetDir: string, idf: boolean) {
+  const cwd = process.cwd()
+  const root = path.resolve(cwd, targetDir)
+  const isCwd = root === cwd
+
+  if (idf && root.includes(' ')) {
+    p.cancel(`ESP-IDF can't build in a path with spaces: "${root}". Choose a folder without them.`)
+    process.exit(1)
+  }
+
+  if (isCwd) {
+    if (fs.existsSync(path.join(root, 'package.json'))) {
+      p.cancel('Current directory already contains a package.json.')
+      process.exit(1)
+    }
+  } else if (fs.existsSync(root) && fs.readdirSync(root).length > 0) {
+    p.cancel(`Directory "${targetDir}" already exists and is not empty.`)
+    process.exit(1)
+  }
+
+  let pkgName = packageNameFor(targetDir, cwd)
+  if (!isValidPackageName(pkgName)) {
+    const suggested = toValidPackageName(pkgName)
+    if (process.stdin.isTTY) {
+      const picked = await p.text({
+        message: 'Package name',
+        placeholder: suggested,
+        defaultValue: suggested,
+        validate: (value) =>
+          isValidPackageName(value || suggested) ? undefined : 'Invalid package.json name',
+      })
+      if (p.isCancel(picked)) exitCancelled()
+      pkgName = picked || suggested
+    } else if (suggested) {
+      pkgName = suggested
+      p.log.info(`Using "${pkgName}" as the package name.`)
+    } else {
+      p.cancel(`"${pkgName}" can't be turned into a valid package name.`)
+      process.exit(1)
+    }
+  }
+
+  const cd = isCwd ? undefined : `cd ${shellQuote(targetDir)}`
+  return {isCwd, pkgName, root, cd}
+}
+
+type Config = InferValue<typeof args>
+
+async function createApp(config: Config): Promise<void> {
+  const templateNames = TEMPLATES.map((t) => t.name)
 
   p.intro(`Create a new Mikro.js project (v${pkg.version})`)
 
-  const projectName =
-    config.name ||
-    ((await p.text({
-      message: 'Project name',
-      placeholder: 'my-mikrojs-project',
-      defaultValue: 'my-mikrojs-project',
-      validate: (value = '') => {
-        if (!value.trim()) return 'Project name is required'
-        if (value.trim() !== '.' && !toValidProjectName(value)) {
-          return 'Project name must contain at least one letter or number'
-        }
-      },
-    })) as string)
-
-  if (p.isCancel(projectName)) {
-    p.cancel('Cancelled.')
-    process.exit(0)
-  }
-
-  if (config.template && !(templateNames as string[]).includes(config.template)) {
+  if (config.template !== undefined && !(templateNames as string[]).includes(config.template)) {
     p.cancel(
       `Unknown template "${config.template}". Available templates: ${templateNames.join(', ')}`,
     )
     process.exit(1)
   }
 
-  if (config.chip && !(CHIPS as readonly string[]).includes(config.chip)) {
-    p.cancel(`Unknown chip "${config.chip}". Available chips: ${CHIPS.join(', ')}`)
-    process.exit(1)
-  }
+  checkChip(config.chip)
 
-  const template =
-    config.template ||
-    ((await p.select({
+  // The folder first, as it depends on nothing else and may be refused
+  const targetDir = await askTargetDir(config.name, 'my-mikrojs-project')
+  const {isCwd, pkgName, root, cd} = await resolveProject(targetDir, config.firmware === true)
+
+  let template = config.template
+  if (template === undefined) {
+    if (!process.stdin.isTTY) exitMissing('template', 'with --template')
+    const picked = await p.select({
       message: 'Select a template',
       options: TEMPLATES.map((t) => ({
         label: t.name,
         hint: t.description,
         value: t.name,
       })),
-    })) as string)
-
-  if (p.isCancel(template)) {
-    p.cancel('Cancelled.')
-    process.exit(0)
+    })
+    if (p.isCancel(picked)) exitCancelled()
+    template = picked
   }
 
   // Only a firmware project needs the chip: an app's is detected when it's
-  // flashed. A script that passes the name and --template must not meet a new
-  // prompt, so without a terminal the chip falls back to the default.
+  // flashed.
   let chip = config.chip
-  if (chip === undefined && config.firmware === true) {
-    const picked = process.stdin.isTTY
-      ? await p.select({
-          message: 'Select your ESP32 chip',
-          initialValue: 'esp32c6',
-          options: CHIPS.map((c) => ({
-            label: c === 'esp32c6' ? `${CHIP_LABELS[c]} (default)` : CHIP_LABELS[c],
-            value: c as string,
-          })),
-        })
-      : 'esp32c6'
-    if (p.isCancel(picked)) {
-      p.cancel('Cancelled.')
-      process.exit(0)
-    }
-    chip = picked as string
-  }
-
-  const rawName = projectName.trim()
-  const isCwd = rawName === '.' || path.resolve(process.cwd(), rawName) === process.cwd()
-  const pkgName = toValidProjectName(isCwd ? path.basename(process.cwd()) : rawName)
-
-  // The interactive prompt validates this, but a name passed as a CLI argument
-  // skips that check, so guard here too.
-  if (!pkgName) {
-    p.cancel(`"${rawName}" can't be turned into a valid project name.`)
-    process.exit(1)
-  }
-
-  const targetDir = isCwd ? process.cwd() : path.resolve(process.cwd(), pkgName)
-
-  if (!isCwd && pkgName !== rawName) {
-    const home = os.homedir()
-    const displayPath = targetDir.startsWith(home + path.sep)
-      ? `~${targetDir.slice(home.length)}`
-      : targetDir
-    p.log.info(`Using "${pkgName}" as the project name (created in ${displayPath}).`)
-  }
-
-  if (isCwd) {
-    if (fs.existsSync(path.join(targetDir, 'package.json'))) {
-      p.cancel('Current directory already contains a package.json.')
-      process.exit(1)
-    }
-  } else if (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0) {
-    p.cancel(`Directory "${pkgName}" already exists and is not empty.`)
-    process.exit(1)
-  }
+  if (chip === undefined && config.firmware === true) chip = await askChip()
 
   const pm = detectPkgManager()
 
   scaffold({
-    targetDir,
+    targetDir: root,
     template,
     projectName: pkgName,
     mikroVersion: pkg.version,
@@ -197,7 +188,7 @@ async function main(config: InferValue<typeof args>): Promise<void> {
 
   const templateMeta = TEMPLATES.find((t) => t.name === template)
   const steps: string[] = []
-  if (!isCwd) steps.push(`cd ${pkgName}`)
+  if (cd) steps.push(cd)
   steps.push(installCommand(pm))
   steps.push('# connect your ESP32 via USB')
   if (config.firmware) {
@@ -213,8 +204,61 @@ async function main(config: InferValue<typeof args>): Promise<void> {
 
   p.note(steps.join('\n'), 'Next steps')
 
-  p.outro(isCwd ? 'Project created in current directory.' : `Project created in ${pkgName}/`)
+  p.outro(isCwd ? 'Project created in current directory.' : `Project created in ${targetDir}/`)
 }
+
+async function createBoard(config: Config): Promise<void> {
+  p.intro(`Create a new Mikro.js board package (v${pkg.version})`)
+
+  if (config.template !== undefined || config.firmware) {
+    p.cancel('--board takes no --template or --firmware: a board package is always firmware.')
+    process.exit(1)
+  }
+
+  checkChip(config.chip)
+
+  // The folder first, as it depends on nothing else and may be refused
+  const targetDir = await askTargetDir(config.name, 'my-board')
+  const {isCwd, pkgName, root, cd} = await resolveProject(targetDir, true)
+
+  const chip = config.chip ?? (await askChip())
+
+  const pm = detectPkgManager()
+
+  scaffoldBoard({
+    targetDir: root,
+    packageName: pkgName,
+    chip,
+    chipLabel: CHIP_LABELS[chip],
+    mikroVersion: pkg.version,
+    pkgManager: pm,
+  })
+
+  const steps: string[] = []
+  if (cd) steps.push(cd)
+  steps.push(installCommand(pm))
+  steps.push("# name the board's pins in pins.ts, its settings in boards.config.ts")
+  steps.push('# connect the board via USB')
+  steps.push(mikroCommand(pm, 'fw build --flash'))
+
+  p.note(steps.join('\n'), 'Next steps')
+
+  p.outro(
+    isCwd
+      ? 'Board package created in current directory.'
+      : `Board package created in ${targetDir}/`,
+  )
+}
+
+const prog = defineProgram({
+  parser: args,
+  metadata: {
+    name: 'create-mikro',
+    version: pkg.version,
+    author: message`Bjørge Næss <bjoerge@gmail.com>`,
+    bugs: message`https://github.com/mikrojs/mikro/issues`,
+  },
+})
 
 const config = run(prog, {
   help: 'both',
@@ -222,7 +266,10 @@ const config = run(prog, {
   args: process.argv.slice(2),
 })
 
-main(config).catch((error) => {
+printLogo()
+
+const created = config.board ? createBoard(config) : createApp(config)
+created.catch((error) => {
   // eslint-disable-next-line no-console
   console.error(error)
   process.exit(1)
