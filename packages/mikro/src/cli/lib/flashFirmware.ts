@@ -49,9 +49,9 @@ export interface FlashPlanOptions {
    *  BoardChoice, for a picker. Otherwise (headless) the plan stops and lists
    *  them. */
   pickBoard?: boolean
-  /** Features the image must have (`wifi`), or `full` for the full image:
-   *  `--features`, which flashes the leanest of the board's images with all of
-   *  them. */
+  /** `--features`: features the image must have (`wifi`), for the leanest of
+   *  the board's images with them all; `no-<feature>` for the full image
+   *  without that feature; or `full` for the full image. */
   features?: string[]
   /** The features the device's firmware reports, so a reflash keeps the image
    *  it runs when `features` doesn't pick one. */
@@ -312,11 +312,12 @@ async function fromArchive(from: string, opts: FlashPlanOptions): Promise<FlashP
   })
 }
 
-/** `--features` as a list of features: comma-separated, where `min` asks for
- *  none of them, so the leanest image. */
+/** `--features` as a list of features: comma-separated, or joined with `+`
+ *  as in image names (`no-ble+no-wifi`), where `min` asks for none of them,
+ *  so the leanest image. */
 export function parseFeatures(value: string): string[] {
   return value
-    .split(',')
+    .split(/[,+]/)
     .map((f) => f.trim())
     .filter((f) => f !== '' && f !== 'min')
 }
@@ -344,6 +345,29 @@ function leanestImage<I extends {name: string; features?: string[]}>(
     .sort((a, b) => (a.features?.length ?? Infinity) - (b.features?.length ?? Infinity))[0]
 }
 
+/** The images of a board with their features, for an error. */
+function listImages(images: {name: string; features?: string[]}[]): string {
+  return (
+    `\nIts images: ` +
+    images.map((i) => `${i.name} (${i.features?.join(', ') ?? 'every feature'})`).join(', ')
+  )
+}
+
+/** The error for features the firmware has no image with. */
+function lackingError(
+  boardName: string,
+  images: {name: string; features?: string[]}[],
+  lacking: string[],
+  known: string[],
+): UserError {
+  const hint = lacking.length === 1 ? didYouMean(lacking[0]!, known) : undefined
+  return new UserError(
+    `${boardName}'s firmware has no ${lacking.join(', ')}.` +
+      (hint === undefined ? '' : ` Did you mean ${hint}?`) +
+      listImages(images),
+  )
+}
+
 /**
  * The image `--features` asks for: the leanest with them all. Each image is
  * the full one without some features, so none fits only when the firmware
@@ -354,16 +378,47 @@ function imageWithFeatures<I extends {name: string; features?: string[]}>(
   images: I[],
   wanted: string[],
 ): I {
+  const without = wanted.filter((f) => f.startsWith('no-')).map((f) => f.slice(3))
+  if (without.length > 0) return imageWithout(boardName, images, wanted, without)
   const leanest = leanestImage(images, wanted)
   if (leanest !== undefined) return leanest
   const known = images[0]!.features ?? []
-  const lacking = wanted.filter((f) => !known.includes(f))
-  const hint = lacking.length === 1 ? didYouMean(lacking[0]!, known) : undefined
+  throw lackingError(
+    boardName,
+    images,
+    wanted.filter((f) => !known.includes(f)),
+    known,
+  )
+}
+
+/**
+ * The image `--features no-<feature>` asks for: one without the features
+ * named that has every other feature of the full image, and any asked for,
+ * the leanest if several do.
+ */
+function imageWithout<I extends {name: string; features?: string[]}>(
+  boardName: string,
+  images: I[],
+  wanted: string[],
+  without: string[],
+): I {
+  // An image can also add a feature the full one lacks (`{ble: true}`)
+  const known = [...new Set(images.flatMap((i) => i.features ?? []))]
+  const asked = [
+    ...new Set([
+      ...(images[0]!.features ?? []).filter((f) => !without.includes(f)),
+      ...wanted.filter((f) => !f.startsWith('no-') && f !== FULL_IMAGE),
+    ]),
+  ]
+  const lacking = [...asked, ...without].filter((f) => !known.includes(f))
+  if (lacking.length > 0) throw lackingError(boardName, images, lacking, known)
+  // A full image that lists no features has them all
+  const candidates = images.filter((i) => !without.some((f) => i.features?.includes(f) ?? true))
+  const image = candidates.length === 0 ? undefined : leanestImage(candidates, asked)
+  if (image !== undefined) return image
+  const withAsked = asked.length === 0 ? '' : `with ${asked.join(', ')} and `
   throw new UserError(
-    `${boardName}'s firmware has no ${lacking.join(', ')}.` +
-      (hint === undefined ? '' : ` Did you mean ${hint}?`) +
-      `\nIts images: ` +
-      images.map((i) => `${i.name} (${i.features?.join(', ') ?? 'every feature'})`).join(', '),
+    `${boardName} has no image ${withAsked}without ${without.join(', ')}.${listImages(images)}`,
   )
 }
 

@@ -25,7 +25,7 @@ export const args = command(
     ),
     features: optional(
       option('--features', string({metavar: 'FEATURES'}), {
-        description: message`Flash the leanest of the board's images with these features, comma-separated (wifi, or wifi,ble), min for the leanest image, or full for the full image. Without it, a reflash keeps the image the device runs.`,
+        description: message`Flash the leanest of the board's images with these features, comma-separated (wifi, or wifi,ble), no-<feature> for the full image without that feature (no-ble, or no-ble+no-wifi as in the image names), min for the leanest image, or full for the full image. Without it, a reflash keeps the image the device runs.`,
       }),
     ),
     chip: optional(

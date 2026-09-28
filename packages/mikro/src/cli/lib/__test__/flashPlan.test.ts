@@ -136,6 +136,7 @@ describe('chooseImage', () => {
 
   it('reads --features as a list, min as the leanest image', () => {
     expect(parseFeatures('wifi, ble')).toEqual(['wifi', 'ble'])
+    expect(parseFeatures('no-ble+no-wifi')).toEqual(['no-ble', 'no-wifi'])
     expect(parseFeatures('min')).toEqual([])
     expect(parseFeatures('')).toEqual([])
     const lean = {
@@ -172,6 +173,43 @@ describe('chooseImage', () => {
     // A full image that lists no features has them all
     expect(chooseImage({...lean, features: undefined}, ['ble', 'wifi'], undefined)).toMatchObject({
       chosenImage: {name: 'full'},
+    })
+  })
+
+  it('takes the full image without the feature no-<feature> names', () => {
+    const lean = {
+      ...board,
+      features: ['wifi', 'ble', 'i2s'],
+      images: [
+        {name: 'no-ble', features: ['wifi', 'i2s'], dir: '/ring/no-ble'},
+        {name: 'no-ble+no-wifi', features: ['i2s'], dir: '/ring/none'},
+      ],
+    }
+    const pick = (features: string) =>
+      chooseImage(lean, parseFeatures(features), undefined).chosenImage
+    // Not the leanest image without BLE, which leaves out WiFi too
+    expect(pick('no-ble')).toEqual({name: 'no-ble', source: 'features'})
+    expect(pick('wifi,no-ble')).toEqual({name: 'no-ble', source: 'features'})
+    expect(pick('no-ble,no-wifi')).toEqual({name: 'no-ble+no-wifi', source: 'features'})
+    expect(pick('no-ble+no-wifi')).toEqual({name: 'no-ble+no-wifi', source: 'features'})
+    // The image without WiFi also leaves out BLE
+    const images = 'Its images: full (wifi, ble, i2s), no-ble (wifi, i2s), no-ble+no-wifi (i2s)'
+    expect(() => pick('no-wifi')).toThrow(
+      `ring has no image with ble, i2s and without wifi.\n${images}`,
+    )
+    expect(() => pick('ble,no-ble')).toThrow(
+      'ring has no image with wifi, i2s, ble and without ble.',
+    )
+    expect(() => pick('no-bel')).toThrow(`ring's firmware has no bel. Did you mean ble?`)
+    // An image can add a feature: without it, that is the full image
+    const adds = {
+      ...board,
+      features: ['wifi'],
+      images: [{name: 'ble', features: ['wifi', 'ble'], dir: '/ring/ble'}],
+    }
+    expect(chooseImage(adds, parseFeatures('no-ble'), undefined).chosenImage).toEqual({
+      name: 'full',
+      source: 'features',
     })
   })
 })
