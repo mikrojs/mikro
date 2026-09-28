@@ -10,22 +10,12 @@ export const args = command(
     action: constant('flash'),
     buildDir: optional(
       option('--build-dir', string({metavar: 'DIR'}), {
-        description: message`Path to a local ESP-IDF build directory. If omitted, downloads pre-built firmware.`,
+        description: message`Path to a local ESP-IDF build directory.`,
       }),
     ),
     from: optional(
-      option('--from', string({metavar: 'REF'}), {
-        description: message`Firmware source: a release tag (v0.2.0), branch, commit SHA, GitHub repo (user/repo or user/repo@ref), or URL to a .tar.gz archive.`,
-      }),
-    ),
-    release: optional(
-      option('--release', string({metavar: 'REF'}), {
-        description: message`Deprecated. Use --from instead.`,
-      }),
-    ),
-    firmware: optional(
-      option('--firmware', string({metavar: 'SOURCE'}), {
-        description: message`Deprecated. Use --from instead.`,
+      option('--from', string({metavar: 'URL'}), {
+        description: message`The URL of a firmware archive (a .tar.gz, as mikro fw pack writes it), flashed as it is.`,
       }),
     ),
     board: optional(

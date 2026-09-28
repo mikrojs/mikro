@@ -11,7 +11,6 @@ import {
   checkBoardsConfig,
   firmwareExports,
   imageName,
-  isArchiveForChip,
   loadBoards,
   sortImageName,
 } from '../boards.ts'
@@ -505,15 +504,4 @@ test('archives are named after the firmware and the chip, the chip last', () => 
   expect(archiveName('esp32-devkit', 'esp32c6')).toBe('mikro-fw-esp32-devkit-esp32c6')
   expect(archiveName('esp32-devkit', 'esp32')).toBe('mikro-fw-esp32-devkit-esp32')
   expect(archiveName(undefined, 'esp32s3')).toBe('mikro-fw-esp32s3')
-})
-
-test('an archive is for the chip in the place archiveName puts it', () => {
-  expect(isArchiveForChip('mikro-fw-esp32-devkit-esp32c6', 'esp32c6')).toBe(true)
-  expect(isArchiveForChip('mikro-fw-esp32-devkit-esp32c6', 'esp32')).toBe(false)
-  expect(isArchiveForChip('mikro-fw-acme-esp32-board-esp32s3', 'esp32')).toBe(false)
-  expect(isArchiveForChip('mikro-fw-esp32c6-generic', 'esp32c6')).toBe(true)
-  expect(isArchiveForChip('mikro-fw-esp32', 'esp32')).toBe(true)
-  // A board's other images are only ever asked for by name
-  expect(isArchiveForChip('mikro-fw-esp32c6-generic+no-ble', 'esp32c6')).toBe(false)
-  expect(isArchiveForChip('mikrojs-firmware-esp32', 'esp32')).toBe(false)
 })

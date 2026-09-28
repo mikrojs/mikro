@@ -112,8 +112,8 @@ export function boardFileName(name: string): string {
  * or `mikro-fw-<chip>` for firmware without a name. The chip is left out when
  * the name already ends with it (`seeed-xiao-esp32c6`) or is `<chip>-generic`,
  * so the chip is always the last word, or the one before `generic`.
- * `mikro fw pack` names archives this way, and `mikro flash --from` looks for
- * them; the CI artifact of a build has the same name.
+ * `mikro fw pack` names archives this way, and the CI artifact of a build has
+ * the same name.
  */
 export function archiveName(name: string | undefined, chip: string): string {
   if (name === undefined) return `mikro-fw-${chip}`
@@ -121,17 +121,6 @@ export function archiveName(name: string | undefined, chip: string): string {
   return fileName.endsWith(`-${chip}`) || fileName === chip || fileName === `${chip}-generic`
     ? `mikro-fw-${fileName}`
     : `mikro-fw-${fileName}-${chip}`
-}
-
-/** Whether an archive name (without `.tar.gz`) is a full image for `chip`, by
- *  the place archiveName puts the chip. A board's other images (`+no-ble`)
- *  are only ever asked for by name. */
-export function isArchiveForChip(archive: string, chip: string): boolean {
-  return (
-    archive.startsWith('mikro-fw-') &&
-    !archive.includes('+') &&
-    (archive.endsWith(`-${chip}`) || archive === `mikro-fw-${chip}-generic`)
-  )
 }
 
 function readPackageJson(

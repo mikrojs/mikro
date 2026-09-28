@@ -212,9 +212,9 @@ describe('resolveFlashPlan', () => {
     expect(again.flasherArgs.files[1]!.filename).toBe(plan.flasherArgs.files[1]!.filename)
   })
 
-  it('does the same for --from firmware and a chip given with --chip', async () => {
+  it('does the same for --from firmware', async () => {
     device('8MB')
-    const plan = await planFor({port: '/dev/tty.fixture', from: 'v1', chip: 'esp32c6'})
+    const plan = await planFor({port: '/dev/tty.fixture', from: 'https://example.com/fw.tar.gz'})
     expect(plan.flasherArgs.flashSize).toBe('8MB')
     expect(plan.filesystemSize).toBe(0x570000)
   })

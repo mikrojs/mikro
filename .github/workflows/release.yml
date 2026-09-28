@@ -322,8 +322,7 @@ jobs:
         run: |
           pnpm --silent releaser github-release \
             --version ${{ needs.plan.outputs.version }} \
-            --latest \
-            --firmware-dir packages/mikro/dist-fw
+            --latest
 
       - name: Comment on PR (preview modes only)
         if: (needs.plan.outputs.mode == 'pr-preview' || needs.plan.outputs.mode ==

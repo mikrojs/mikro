@@ -36,7 +36,8 @@ export interface FlashPlanOptions {
   port: string
   /** Local ESP-IDF build directory. Mutually exclusive with `from`. */
   buildDir?: string
-  /** Firmware source ref (release tag, branch, commit, repo, or archive URL). */
+  /** URL of a firmware archive, as `mikro fw pack` writes it. Mutually
+   *  exclusive with `buildDir`. */
   from?: string
   /** Board name; auto-discovered from project dependencies if omitted. */
   board?: string
@@ -270,14 +271,47 @@ function verifyBoardChip(port: string, board: BoardInfo, detected: Chip | undefi
 }
 
 /**
- * Resolve everything needed to flash, without running esptool: the esptool
- * binary plus the per-chip flasher arguments (firmware files, flash mode,
- * etc.). Mirrors the source modes of `mikro flash`:
- *   - `buildDir`: a local ESP-IDF build
- *   - `from`: a downloaded firmware ref
- *   - neither: the image the board package ships, or else the generic
- *     prebuilt bundled with this CLI version
+ * The plan for `--from`: the firmware archive at a URL, flashed as it is but
+ * fitted to the device's flash. The firmware of a Mikro.js version ships in
+ * that version's mikro package instead, which `mikro flash` flashes.
  */
+async function fromArchive(from: string, opts: FlashPlanOptions): Promise<FlashPlan> {
+  if (!/^https?:\/\//.test(from)) {
+    throw new UserError(
+      `--from takes the URL of a firmware archive (a .tar.gz, as mikro fw pack writes it), ` +
+        `not "${from}". The firmware of another Mikro.js version ships in that version's ` +
+        `mikro package: install it and run mikro flash. Flash a local build with --build-dir.`,
+    )
+  }
+  if (opts.board !== undefined || opts.features !== undefined) {
+    throw new UserError(
+      "--board and --features pick a board's image; --from flashes the archive at that URL as it is.",
+    )
+  }
+  opts.onProgress?.('Resolving esptool…')
+  const esptoolPath = await getEsptoolPath()
+  // For fitToDeviceFlash and assertFilesystemKept, and to name a wrong chip
+  // before esptool does
+  opts.onProgress?.('Reading device flash…')
+  const {device} = await readDeviceFlash(esptoolPath, opts.port)
+  const firmwareDir = await resolveFrom(from, opts.onProgress)
+  const archived = readFirmwareJson(path.join(firmwareDir, 'firmware.json'))
+  const chip = opts.chip ?? device?.chip
+  if (archived.ok && chip !== undefined && archived.value.chip !== chip) {
+    throw new UserError(
+      `${from} is firmware for ${archived.value.chip}, and the device is an ${chip}.`,
+    )
+  }
+  const flasherArgs = await fitToDeviceFlash(await readFlasherArgs(firmwareDir), device)
+  return withFilesystemSize({
+    esptoolPath,
+    flasherArgs,
+    image: 'from',
+    warnings: [],
+    devicePartitionTable: device?.partitionTable,
+  })
+}
+
 /** `--features` as a list of features: comma-separated, where `min` asks for
  *  none of them, so the leanest image. */
 export function parseFeatures(value: string): string[] {
@@ -356,6 +390,15 @@ export function chooseImage(
     : {dir: running.dir, chosenImage: {name: running.name, source: 'device'}}
 }
 
+/**
+ * Resolve everything needed to flash, without running esptool: the esptool
+ * binary plus the per-chip flasher arguments (firmware files, flash mode,
+ * etc.). Mirrors the source modes of `mikro flash`:
+ *   - `buildDir`: a local ESP-IDF build
+ *   - `from`: a firmware archive, downloaded from its URL
+ *   - neither: the image the board package ships, or else the generic
+ *     prebuilt bundled with this CLI version
+ */
 export async function resolveFlashPlan(
   opts: FlashPlanOptions & {
     /** How an explicit `board` was chosen; `flag` unless a picker supplied it. */
@@ -377,33 +420,24 @@ export async function resolveFlashPlan(
     return withFilesystemSize({esptoolPath, flasherArgs, image: 'build-dir', warnings: []})
   }
 
-  if (from !== undefined && /^https?:\/\//.test(from) && opts.features !== undefined) {
-    throw new UserError(
-      '--features picks an image of a board; --from with a URL flashes that archive as it is.',
-    )
-  }
+  if (from !== undefined) return fromArchive(from, opts)
 
   onProgress?.('Resolving esptool…')
   const esptoolPath = await getEsptoolPath()
   const found = await discoverBoard(boardFlag, configBoard, opts.boardSource ?? 'flag')
   const warnings = [...found.warnings]
-  if (found.kind === 'unknown' && !from) throw unknownBoardError(found)
+  if (found.kind === 'unknown') throw unknownBoardError(found)
   // One esptool session gives the chip, the partition table for
   // assertFilesystemKept, and the flash size for fitToDeviceFlash.
   onProgress?.(chip ? 'Reading device flash…' : 'Detecting chip…')
   const {device, error: deviceError} = await readDeviceFlash(esptoolPath, port)
   let resolved: {board: BoardInfo; source: BoardSource} | undefined
-  // With --from, --board only picks an archive of the release or build, so it
-  // needs no installed board of that name (custom firmware has none).
-  let archiveBoard: {name: string; source: BoardSource} | undefined
   if (found.kind === 'board') {
     resolved = {board: found.board, source: found.source}
   } else if (found.kind === 'choose') {
     const chosen = boardForChip(found.boards, chip ?? device?.chip, opts)
     if ('choose' in chosen) return chosen
     resolved = chosen
-  } else if (found.kind === 'unknown') {
-    archiveBoard = {name: found.name, source: found.source}
   }
 
   if (resolved && chip && chip !== resolved.board.chip) {
@@ -428,71 +462,6 @@ export async function resolveFlashPlan(
   }
   const devicePartitionTable = device?.partitionTable
 
-  if (from) {
-    // No board named or found: the chip's bundled board, whose archive a release carries.
-    const board = archiveBoard ?? {
-      name: resolved?.board.name ?? `${resolvedChip}-generic`,
-      source: resolved?.source ?? 'detected',
-    }
-    // The archive of the image --features picks, from the installed board's
-    // images: the release has no list of them
-    let image: string | undefined
-    if (opts.features !== undefined && !opts.features.includes(FULL_IMAGE)) {
-      const local =
-        resolved?.board ?? bundledBoards().find((b) => b.name === board.name && b.dir !== undefined)
-      if (local?.dir === undefined) {
-        throw new UserError(
-          `--features picks among the images of an installed board, and ${board.name} is not ` +
-            'installed. Without --features, --from flashes its full image.',
-        )
-      }
-      const picked = imageWithFeatures(
-        board.name,
-        boardImages({...local, dir: local.dir}),
-        opts.features,
-      )
-      image = picked.name === FULL_IMAGE ? undefined : picked.name
-    }
-    const firmwareDir = await resolveFrom({
-      from,
-      chip: resolvedChip,
-      board: board.name,
-      image,
-      onProgress: (message) => onProgress?.(message),
-    })
-    const chosenImage =
-      opts.features === undefined
-        ? undefined
-        : {name: image ?? FULL_IMAGE, source: 'features' as const}
-    const flasherArgs = await fitToDeviceFlash(await readFlasherArgs(firmwareDir), device)
-    // A release without the board's archive falls back to the chip's: report
-    // what was downloaded, not what was asked for.
-    const archived = readFirmwareJson(path.join(firmwareDir, 'firmware.json'))
-    if (archived.ok && archived.value.name !== board.name) {
-      warnings.push(
-        `${from} has no firmware for ${board.name}; this flashes ${archived.value.name}`,
-      )
-      return withFilesystemSize({
-        esptoolPath,
-        flasherArgs,
-        image: 'from',
-        board: {name: archived.value.name, source: 'detected'},
-        chosenImage,
-        warnings,
-        devicePartitionTable,
-      })
-    }
-    return withFilesystemSize({
-      esptoolPath,
-      flasherArgs,
-      image: 'from',
-      board,
-      chosenImage,
-      warnings,
-      devicePartitionTable,
-    })
-  }
-
   // No board selected: the bundled board for the chip --chip names, or the detected one.
   resolved ??= {
     board: bundledBoards().find((b) => b.chip === resolvedChip) ?? {
@@ -507,8 +476,7 @@ export async function resolveFlashPlan(
   if (resolved.board.dir === undefined) {
     throw new UserError(
       `No bundled firmware for ${resolvedChip}. ` +
-        `Build a custom firmware locally and flash with --build-dir, ` +
-        `or fetch a CI artifact with --from=mikrojs/mikro@<sha>.`,
+        `Build a custom firmware locally and flash it with --build-dir.`,
     )
   }
   const {dir, chosenImage} = chooseImage(

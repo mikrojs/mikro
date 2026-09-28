@@ -17,7 +17,8 @@ concurrency:
 # Tagged releases are handled by release.yml, which uses the same firmware-build
 # composite action and bundles the binaries into the published mikro
 # npm package. This workflow only produces artifacts for ad-hoc / PR / dispatch
-# builds, consumed via `mikro flash --from=mikrojs/mikro@<sha>`.
+# builds. An artifact holds an image folder in a .tar.gz: extract it and flash
+# the folder with `mikro flash --build-dir <folder>`.
 #
 # The boards and their images come from packages/mikro/boards.config.ts
 # (`mikro fw list`), one job per image.
@@ -73,5 +74,5 @@ jobs:
           board: ${{ matrix.board }}
           image: ${{ matrix.image }}
           pack-format: tarball
-          # The names `mikro flash --from <sha> [--features <image>]` looks for
+          # Named like `mikro fw pack` names archives
           artifact-name: mikro-fw-${{ matrix.board }}${{ matrix.image != 'full' && format('+{0}', matrix.image) || '' }}

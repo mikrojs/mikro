@@ -1,8 +1,6 @@
 /* eslint-disable no-console */
-import {spawnSync} from 'node:child_process'
-import {readdirSync, readFileSync, statSync} from 'node:fs'
-import {tmpdir} from 'node:os'
-import {join, resolve} from 'node:path'
+import {readFileSync} from 'node:fs'
+import {join} from 'node:path'
 
 import {command, constant, message, optional} from '@optique/core'
 import {object} from '@optique/core/constructs'
@@ -26,14 +24,9 @@ export const args = command(
         description: message`Mark as the "Latest" release on GitHub. Skip for prereleases.`,
       }),
     ),
-    firmwareDir: optional(
-      option('--firmware-dir', string({metavar: 'PATH'}), {
-        description: message`Directory of <board>/ subdirs (e.g. esp32c6-generic/) whose full/ images are tarballed and uploaded as mikro-fw-<board>.tar.gz assets, and under their older mikrojs-firmware- names; a board's other images (<board>/no-ble/) as mikro-fw-<board>+<image>.tar.gz.`,
-      }),
-    ),
   }),
   {
-    description: message`Create a GitHub Release with install instructions, changelog, and firmware assets`,
+    description: message`Create a GitHub Release with install instructions and the changelog`,
   },
 )
 
@@ -103,65 +96,14 @@ function composeBody(version: string): string {
   )
 }
 
-/** Asset names one firmware dir is uploaded under: `mikro-fw-<board>`, the
- *  name `mikro flash --from` looks for (the dirs are generic images, whose
- *  names already hold the chip; see archiveName in @mikrojs/firmware), then
- *  the `mikrojs-firmware-` names of older CLIs. A generic build also gets its
- *  old chip name (mikrojs-firmware-esp32c6.tar.gz), the only one that
- *  `mikro flash --from` in CLI versions up to 0.20 looks for. */
-export function firmwareAssetNames(board: string): string[] {
-  const names = [`mikro-fw-${board}.tar.gz`, `mikrojs-firmware-${board}.tar.gz`]
-  const generic = /^(.+)-generic$/.exec(board)
-  if (generic) names.push(`mikrojs-firmware-${generic[1]}.tar.gz`)
-  return names
-}
-
-// Tar each image of each board-named subdir (e.g. esp32c6-generic/) under
-// firmwareDir into a tmp file and return {name, path} pairs ready for upload:
-// the full image (full/) under the board's names, and each other image
-// (no-ble/) as mikro-fw-<board>+<image>.
-export function packFirmwareAssets(firmwareDir: string): Array<{name: string; path: string}> {
-  const absDir = resolve(MONOREPO_ROOT, firmwareDir)
-  if (!statSync(absDir, {throwIfNoEntry: false})?.isDirectory()) {
-    console.error(`No firmware dir at ${absDir} — skipping asset upload`)
-    return []
-  }
-
-  const out: Array<{name: string; path: string}> = []
-  for (const entry of readdirSync(absDir, {withFileTypes: true})) {
-    if (!entry.isDirectory()) continue
-    const board = entry.name
-    for (const image of readdirSync(join(absDir, board), {withFileTypes: true})) {
-      if (!image.isDirectory()) continue
-      const names =
-        image.name === 'full'
-          ? firmwareAssetNames(board)
-          : [`mikro-fw-${board}+${image.name}.tar.gz`]
-      const tarPath = join(tmpdir(), names[0]!)
-      const r = spawnSync('tar', ['czf', tarPath, '-C', join(absDir, board, image.name), '.'], {
-        stdio: 'inherit',
-      })
-      if (r.status !== 0) {
-        throw new Error(`tar failed for ${board}/${image.name} (status ${r.status})`)
-      }
-      for (const name of names) out.push({name, path: tarPath})
-    }
-  }
-  return out
-}
-
 // Idempotent create: if a release for the tag already exists (failed mid-run
 // of an earlier invocation), update it in place instead of erroring with 422.
-// Returns existing-asset id-by-name so the caller can delete-then-re-upload
-// rather than skip — uploadReleaseAsset doesn't resume, so a partial upload
-// from a previous run leaves a same-named but truncated asset that we need
-// to replace, not preserve.
 async function createOrUpdateRelease(
   gh: ReturnType<typeof octokit>,
   owner: string,
   repo: string,
   params: {tag: string; body: string; isPrerelease: boolean; makeLatest: boolean},
-): Promise<{id: number; html_url: string; existingAssets: Map<string, number>}> {
+): Promise<{id: number; html_url: string}> {
   const {tag, body, isPrerelease, makeLatest} = params
   try {
     const {data} = await gh.repos.createRelease({
@@ -173,7 +115,7 @@ async function createOrUpdateRelease(
       make_latest: makeLatest ? 'true' : 'false',
       prerelease: isPrerelease,
     })
-    return {id: data.id, html_url: data.html_url, existingAssets: new Map()}
+    return {id: data.id, html_url: data.html_url}
   } catch (err) {
     const status = (err as {status?: number}).status
     if (status !== 422) throw err
@@ -187,11 +129,7 @@ async function createOrUpdateRelease(
       make_latest: makeLatest ? 'true' : 'false',
       prerelease: isPrerelease,
     })
-    return {
-      id: updated.id,
-      html_url: updated.html_url,
-      existingAssets: new Map(existing.assets.map((a) => [a.name, a.id])),
-    }
+    return {id: updated.id, html_url: updated.html_url}
   }
 }
 
@@ -220,34 +158,6 @@ export async function run(opts: Args): Promise<void> {
     isPrerelease,
     makeLatest,
   })
-
-  if (opts.firmwareDir) {
-    const assets = packFirmwareAssets(opts.firmwareDir)
-    for (const asset of assets) {
-      // Replace any existing asset with the same name. Possible cases:
-      //  - First run: existingAssets is empty, nothing to delete.
-      //  - Retry after partial upload: GitHub kept the truncated asset;
-      //    delete it before re-uploading so the result is complete.
-      const existingId = release.existingAssets.get(asset.name)
-      if (existingId !== undefined) {
-        console.error(`Replacing existing ${asset.name}…`)
-        await gh.repos.deleteReleaseAsset({owner, repo, asset_id: existingId})
-      } else {
-        console.error(`Uploading ${asset.name}…`)
-      }
-      const data = readFileSync(asset.path)
-      await gh.repos.uploadReleaseAsset({
-        owner,
-        repo,
-        release_id: release.id,
-        name: asset.name,
-        // octokit's types don't model Buffer cleanly here, but this is the
-        // documented binary-upload path.
-        data: data as unknown as string,
-      })
-    }
-    console.error(`Uploaded ${assets.length} firmware assets`)
-  }
 
   console.error(`Release ready: ${release.html_url}`)
 }

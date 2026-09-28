@@ -79,22 +79,9 @@ const IMAGE_SOURCE_LABELS: Record<ImageChoice['source'], string> = {
 
 export default function FlashCmd(props: Props) {
   const {
-    args: {
-      buildDir,
-      from,
-      release,
-      firmware: firmwareSource,
-      board: boardFlag,
-      features,
-      chip,
-      port,
-      baud,
-      yes,
-      force,
-    },
+    args: {buildDir, from, board: boardFlag, features, chip, port, baud, yes, force},
   } = props
 
-  const deprecatedFlag = release ? '--release' : firmwareSource ? '--firmware' : undefined
   const mutuallyExclusive = buildDir && from
   const baudRate = baud ? Number(baud) : 460800
   const deviceDiscovery = useDevices()
@@ -161,7 +148,6 @@ export default function FlashCmd(props: Props) {
   const deviceFeatures = probe.status === 'done' ? probe.features : undefined
 
   useEffect(() => {
-    if (deprecatedFlag) return
     if (mutuallyExclusive) return
     if (deviceDiscovery.status === 'loading') return
     if (!devicePath) return
@@ -169,10 +155,10 @@ export default function FlashCmd(props: Props) {
     if (probe.status === 'pending') return
 
     async function init() {
-      // The config board only fills in without --board or --build-dir, so
-      // those flags keep `mikro flash` working when the config does not load.
-      // A project without a config is fine.
-      const config = boardFlag || buildDir ? null : await loadMikroConfig(process.cwd())
+      // The config board only fills in without --board, --build-dir or --from,
+      // so those flags keep `mikro flash` working when the config does not
+      // load. A project without a config is fine.
+      const config = boardFlag || buildDir || from ? null : await loadMikroConfig(process.cwd())
       const plan = await resolveFlashPlan({
         port: devicePath!,
         buildDir,
@@ -206,7 +192,6 @@ export default function FlashCmd(props: Props) {
     })
   }, [
     mutuallyExclusive,
-    deprecatedFlag,
     buildDir,
     from,
     boardFlag,
@@ -220,20 +205,6 @@ export default function FlashCmd(props: Props) {
     probe.status,
     deviceFeatures,
   ])
-
-  if (deprecatedFlag) {
-    const value = release ?? firmwareSource
-    return (
-      <RenderAndExit exitCode={1}>
-        <Text color="red">
-          {figures.cross} {deprecatedFlag} has been removed. Use --from instead:
-        </Text>
-        <Text>
-          {'\n'} mikro flash --from {value}
-        </Text>
-      </RenderAndExit>
-    )
-  }
 
   if (mutuallyExclusive) {
     return (

@@ -224,7 +224,6 @@ describe('mikro fw pack', () => {
     await run({subcommand: 'pack', out: undefined, board: undefined, parallel: undefined})
 
     expect(existsSync(pathlib.join(app, '.mikro', 'build-fw', 'flasher_args.json'))).toBe(true)
-    // The name `mikro flash --from` looks for
     expect(entries(pathlib.join(app, 'mikro-fw-my-firmware-esp32c6.tar.gz'))).toEqual(IMAGE)
     expect(log).toHaveBeenCalledWith('Packed firmware for my-firmware')
   })

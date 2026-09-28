@@ -46,9 +46,8 @@ async function packImage(
   image?: string,
 ) {
   const [flasherArgs, files] = await Promise.all([readFlasherArgs(dir), imageFiles(dir)])
-  // Default to the working directory, like `mikro ota pack`, under the name
-  // `mikro flash --from` looks for in a release: the firmware's and the chip's,
-  // then `+no-ble` for one of a board's other images.
+  // Default to the working directory, like `mikro ota pack`, named after the
+  // firmware and the chip, then `+no-ble` for one of a board's other images.
   const archive = `${archiveName(name, flasherArgs.chip)}${image ? `+${image}` : ''}`
   const outPath = out ?? pathlib.resolve(`${archive}.tar.gz`)
   await tarCreate({file: outPath, cwd: dir, gzip: {level: 9}, portable: true, noMtime: true}, files)
