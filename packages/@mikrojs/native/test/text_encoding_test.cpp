@@ -475,3 +475,14 @@ TEST_CASE("btoa and atob round-trip and reject bad input" * doctest::test_suite(
     CHECK(te_global("__oddLen") == "SyntaxError");
     teardown();
 }
+
+TEST_CASE("TextEncoder.encode keeps the bytes after an embedded NUL" *
+          doctest::test_suite("text_encoding")) {
+    setup();
+    te_run("const nul = new TextEncoder().encode('a\\u0000b')\n"
+           "globalThis.__nulBytes = Array.from(nul).join(',')\n"
+           "globalThis.__nulLen = new TextDecoder().decode(nul).length\n");
+    CHECK(te_global("__nulBytes") == "97,0,98");
+    CHECK(te_global("__nulLen") == "3");
+    teardown();
+}

@@ -23,11 +23,12 @@ static JSValue mik__text_encoder_constructor(JSContext* ctx, JSValue new_target,
 
 static JSValue mik__text_encoder_encode(JSContext* ctx, JSValue this_val, int argc,
                                         JSValue* argv) {
-    const char* str = JS_ToCString(ctx, argv[0]);
+    size_t len = 0;
+    const char* str = JS_ToCStringLen(ctx, &len, argv[0]);
     if (!str) {
         return JS_EXCEPTION;
     }
-    JSValue ret = JS_NewUint8ArrayCopy(ctx, (const uint8_t*)str, strlen(str));
+    JSValue ret = JS_NewUint8ArrayCopy(ctx, (const uint8_t*)str, len);
     JS_FreeCString(ctx, str);
     return ret;
 }
