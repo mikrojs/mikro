@@ -28,10 +28,9 @@ vi.mock('@mikrojs/esptool', () => ({getEsptoolPath: async () => esptool.path}))
 
 // `--from` without the network: the download is the image in `downloaded.dir`.
 const downloaded = vi.hoisted(() => ({dir: '', calls: [] as unknown[]}))
-vi.mock('../firmware.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../firmware.js')>()),
-  resolveFrom: async (options: unknown) => {
-    downloaded.calls.push(options)
+vi.mock('../firmware.js', () => ({
+  resolveFrom: async (url: unknown) => {
+    downloaded.calls.push(url)
     return downloaded.dir
   },
 }))
@@ -265,24 +264,6 @@ describe('resolveFlashPlan', () => {
     expect(back.chosenImage).toEqual({name: 'full', source: 'features'})
     expect(app(back)).toBe(pathlib.join(ring, 'dist-fw', 'full', 'app.bin'))
 
-    // With --from, the installed board's images say which archive to fetch
-    downloaded.dir = pathlib.join(tempDir, 'download')
-    downloaded.calls = []
-    writeImage(downloaded.dir, 'ring')
-    const fetched = plan_(
-      await resolveFlashPlan({port: '/dev/null', board: 'ring', from: 'a/b', features: ['wifi']}),
-    )
-    expect(downloaded.calls).toEqual([expect.objectContaining({board: 'ring', image: 'no-ble'})])
-    expect(fetched.chosenImage).toEqual({name: 'no-ble', source: 'features'})
-    await expect(
-      resolveFlashPlan({
-        port: '/dev/null',
-        board: 'not-installed',
-        from: 'a/b',
-        features: ['wifi'],
-        chip: 'esp32c6',
-      }),
-    ).rejects.toThrow('--features picks among the images of an installed board')
     // A URL names one archive, so there is nothing to pick
     await expect(
       resolveFlashPlan({
@@ -291,7 +272,7 @@ describe('resolveFlashPlan', () => {
         from: 'https://example.com/mikro-fw-ring.tar.gz',
         features: ['wifi'],
       }),
-    ).rejects.toThrow('--from with a URL flashes that archive as it is')
+    ).rejects.toThrow('--from flashes the archive at that URL as it is')
   })
 
   it('flashes the bundled image of the chip', async () => {
@@ -391,38 +372,31 @@ describe('resolveFlashPlan', () => {
     expect(plan.warnings).toEqual([expect.stringMatching(/^skipped other-tool: .*\(name\)/)])
   })
 
-  it('takes any --board name with --from, to pick the archive', async () => {
+  it('flashes the archive at a --from URL, and takes nothing but a URL', async () => {
     downloaded.dir = pathlib.join(tempDir, 'download')
     downloaded.calls = []
     writeImage(downloaded.dir, 'my-firmware')
-    const plan = plan_(
-      await resolveFlashPlan({
-        port: '/dev/null',
-        from: 'my-org/my-firmware',
-        board: 'my-firmware',
-        chip: 'esp32c6',
-      }),
-    )
+    const url = 'https://example.com/mikro-fw-my-firmware-esp32c6.tar.gz'
+    const plan = plan_(await resolveFlashPlan({port: '/dev/null', from: url}))
     expect(plan.image).toBe('from')
-    expect(plan.board).toEqual({name: 'my-firmware', source: 'flag'})
-    expect(downloaded.calls).toEqual([
-      expect.objectContaining({from: 'my-org/my-firmware', board: 'my-firmware', chip: 'esp32c6'}),
-    ])
-    // A release without the board's archive: the plan says what it flashes
-    writeImage(downloaded.dir, 'esp32c6-generic')
-    const fallback = plan_(
-      await resolveFlashPlan({
-        port: '/dev/null',
-        from: 'mikrojs/mikro',
-        board: 'my-firmware',
-        chip: 'esp32c6',
-      }),
+    expect(plan.board).toBeUndefined()
+    expect(downloaded.calls).toEqual([url])
+    // A version, a ref or a repo is no URL
+    for (const from of ['v0.21.0', 'main', 'my-org/my-firmware']) {
+      await expect(resolveFlashPlan({port: '/dev/null', from})).rejects.toThrow(
+        '--from takes the URL of a firmware archive',
+      )
+    }
+    // --board picked an archive of several; now there is only the one at the URL
+    await expect(
+      resolveFlashPlan({port: '/dev/null', from: url, board: 'my-firmware'}),
+    ).rejects.toThrow('--from flashes the archive at that URL as it is')
+    // Firmware for another chip
+    writeImage(downloaded.dir, 'my-firmware', 'esp32s3')
+    await expect(resolveFlashPlan({port: '/dev/null', from: url, chip: 'esp32c6'})).rejects.toThrow(
+      `${url} is firmware for esp32s3, and the device is an esp32c6.`,
     )
-    expect(fallback.board).toEqual({name: 'esp32c6-generic', source: 'detected'})
-    expect(fallback.warnings).toEqual([
-      'mikrojs/mikro has no firmware for my-firmware; this flashes esp32c6-generic',
-    ])
-    // Without --from, the name must be an installed board
+    // An installed board's name
     await expect(
       resolveFlashPlan({port: '/dev/null', board: 'my-firmware', chip: 'esp32c6'}),
     ).rejects.toThrow("Unknown board 'my-firmware'.")

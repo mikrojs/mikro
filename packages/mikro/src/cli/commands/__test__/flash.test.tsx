@@ -184,7 +184,9 @@ describe('mikro flash confirmation', () => {
 
     // --from skips the firmware identity probe without --force, which would
     // also skip the filesystem check.
-    const {frames} = render(<Flash args={{port: PORT, from: 'v0.1.0'} as never} />)
+    const {frames} = render(
+      <Flash args={{port: PORT, from: 'https://example.com/fw.tar.gz'} as never} />,
+    )
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1))
 
     const seen = frames.map((frame) => stripVTControlCharacters(frame))

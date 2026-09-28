@@ -148,13 +148,10 @@ Others can flash the firmware without building it. In the project folder, build 
 pn mikro fw pack
 ```
 
-This writes `mikro-fw-my-firmware-esp32c6.tar.gz`, named after the firmware and the chip, to the current folder: `@` is dropped and `/` becomes `-`, so `@acme/devboard` gives `mikro-fw-acme-devboard-esp32c6.tar.gz`. Attach it to a GitHub release: the names let the CLI pick the archive for the connected chip from a release with builds for several chips. To flash it:
+This writes `mikro-fw-my-firmware-esp32c6.tar.gz`, named after the firmware and the chip, to the current folder: `@` is dropped and `/` becomes `-`, so `@acme/devboard` gives `mikro-fw-acme-devboard-esp32c6.tar.gz`. Put it where others can download it, such as a GitHub release, and flash it by its URL:
 
 ```sh
-mikro flash --from my-org/my-firmware          # the latest release
-mikro flash --from my-org/my-firmware@v1.0.0   # a given release
-mikro flash --board my-firmware --from my-org/my-firmware   # one firmware of several
-mikro flash --from https://example.com/mikro-fw-my-firmware-esp32c6.tar.gz
+pn mikro flash --from https://github.com/my-org/my-firmware/releases/download/v1.0.0/mikro-fw-my-firmware-esp32c6.tar.gz
 ```
 
 To make firmware for a development board that apps can install with npm and flash with `mikro flash`, publish it as a [board package](./creating-boards).
