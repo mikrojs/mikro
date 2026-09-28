@@ -45,42 +45,29 @@ static inline JSValue new_result_obj(JSContext* ctx) {
     return JS_NewObjectProto(ctx, proto);
 }
 
-static const MIKResultAtoms kNoAtoms = {};
-
+/* Created by mik__result_init, which runs before anything can build a Result. */
 static inline const MIKResultAtoms& result_atoms(JSContext* ctx) {
-    MIKRuntime* rt = MIK_GetRuntime(ctx);
-    return rt ? rt->result_atoms : kNoAtoms;
+    return MIK_GetRuntime(ctx)->result_atoms;
 }
 
-/* Defines `name` through its cached atom, or by string before mik__result_init. */
-static inline void define_prop(JSContext* ctx, JSValue obj, JSAtom atom, const char* name,
-                               JSValue val) {
-    if (atom != JS_ATOM_NULL) {
-        JS_DefinePropertyValue(ctx, obj, atom, val, JS_PROP_C_W_E);
-    } else {
-        JS_DefinePropertyValueStr(ctx, obj, name, val, JS_PROP_C_W_E);
-    }
-}
-
-static inline JSValue get_prop(JSContext* ctx, JSValue obj, JSAtom atom, const char* name) {
-    return atom != JS_ATOM_NULL ? JS_GetProperty(ctx, obj, atom)
-                                : JS_GetPropertyStr(ctx, obj, name);
+static inline void define_prop(JSContext* ctx, JSValue obj, JSAtom atom, JSValue val) {
+    JS_DefinePropertyValue(ctx, obj, atom, val, JS_PROP_C_W_E);
 }
 
 /* {ok: false, error} on the shared prototype; consumes `error` */
 static JSValue new_err_result(JSContext* ctx, JSValue error) {
     const MIKResultAtoms& a = result_atoms(ctx);
     JSValue obj = new_result_obj(ctx);
-    define_prop(ctx, obj, a.ok, "ok", JS_FALSE);
-    define_prop(ctx, obj, a.error, "error", error);
+    define_prop(ctx, obj, a.ok, JS_FALSE);
+    define_prop(ctx, obj, a.error, error);
     return obj;
 }
 
 JSValue mik__result_ok(JSContext* ctx, JSValue value) {
     const MIKResultAtoms& a = result_atoms(ctx);
     JSValue obj = new_result_obj(ctx);
-    define_prop(ctx, obj, a.ok, "ok", JS_TRUE);
-    define_prop(ctx, obj, a.value, "value", value);
+    define_prop(ctx, obj, a.ok, JS_TRUE);
+    define_prop(ctx, obj, a.value, value);
     return obj;
 }
 
@@ -104,8 +91,8 @@ JSValue mik__result_err(JSContext* ctx, int code, int platform_errno, const char
 
     const MIKResultAtoms& a = result_atoms(ctx);
     JSValue error = JS_NewObject(ctx);
-    define_prop(ctx, error, a.code, "code", JS_NewInt32(ctx, code));
-    define_prop(ctx, error, a.message, "message", JS_NewString(ctx, msg));
+    define_prop(ctx, error, a.code, JS_NewInt32(ctx, code));
+    define_prop(ctx, error, a.message, JS_NewString(ctx, msg));
     if (platform_errno) {
         JS_DefinePropertyValueStr(ctx, error, "errno", JS_NewInt32(ctx, platform_errno),
                                   JS_PROP_C_W_E);
@@ -122,8 +109,8 @@ static JSValue result_err_named_v(JSContext* ctx, const char* name, const char* 
 
     const MIKResultAtoms& a = result_atoms(ctx);
     JSValue error = JS_NewObject(ctx);
-    define_prop(ctx, error, a.name, "name", JS_NewString(ctx, name));
-    define_prop(ctx, error, a.message, "message", JS_NewString(ctx, msg));
+    define_prop(ctx, error, a.name, JS_NewString(ctx, name));
+    define_prop(ctx, error, a.message, JS_NewString(ctx, msg));
     return new_err_result(ctx, error);
 }
 
@@ -149,7 +136,7 @@ JSValue MIK_ResultErrNamed(JSContext* ctx, const char* name, const char* fmt, ..
 
 JSValue mik__result_err_tag(JSContext* ctx, const char* name) {
     JSValue error = JS_NewObject(ctx);
-    define_prop(ctx, error, result_atoms(ctx).name, "name", JS_NewString(ctx, name));
+    define_prop(ctx, error, result_atoms(ctx).name, JS_NewString(ctx, name));
     return new_err_result(ctx, error);
 }
 
@@ -173,18 +160,18 @@ static JSValue js_result_err(JSContext* ctx, JSValue this_val, int argc, JSValue
 /* ── Prototype method helpers ───────────────────────────────────── */
 
 static inline bool result_is_ok(JSContext* ctx, JSValue this_val) {
-    JSValue ok_val = get_prop(ctx, this_val, result_atoms(ctx).ok, "ok");
+    JSValue ok_val = JS_GetProperty(ctx, this_val, result_atoms(ctx).ok);
     bool is_ok = JS_ToBool(ctx, ok_val) != 0;
     JS_FreeValue(ctx, ok_val);
     return is_ok;
 }
 
 static JSValue result_get_value(JSContext* ctx, JSValue this_val) {
-    return get_prop(ctx, this_val, result_atoms(ctx).value, "value");
+    return JS_GetProperty(ctx, this_val, result_atoms(ctx).value);
 }
 
 static JSValue result_get_error(JSContext* ctx, JSValue this_val) {
-    return get_prop(ctx, this_val, result_atoms(ctx).error, "error");
+    return JS_GetProperty(ctx, this_val, result_atoms(ctx).error);
 }
 
 /* ── Prototype methods ──────────────────────────────────────────── */
@@ -241,7 +228,7 @@ static JSValue js_result_match(JSContext* ctx, JSValue this_val, int argc, JSVal
     const MIKResultAtoms& a = result_atoms(ctx);
     bool is_ok = result_is_ok(ctx, this_val);
     const char* key = is_ok ? "ok" : "err";
-    JSValue handler = get_prop(ctx, argv[0], is_ok ? a.ok : a.err, key);
+    JSValue handler = JS_GetProperty(ctx, argv[0], is_ok ? a.ok : a.err);
     if (!JS_IsFunction(ctx, handler)) {
         JS_FreeValue(ctx, handler);
         return JS_ThrowTypeError(ctx, "Result.match: missing '%s' handler", key);

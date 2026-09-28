@@ -241,9 +241,7 @@ static MIKObservableDispatch* dispatch_state(JSContext* ctx) {
 
 /* JS_NewAtom(name) without hashing the name: dups the cached atom. Free with JS_FreeAtom. */
 static JSAtom observable_atom(JSContext* ctx, ObservableAtom which) {
-    MIKObservableDispatch* ds = dispatch_state(ctx);
-    if (ds && ds->atoms[which] != JS_ATOM_NULL) return JS_DupAtom(ctx, ds->atoms[which]);
-    return JS_NewAtom(ctx, observable_atom_names[which]);
+    return JS_DupAtom(ctx, dispatch_state(ctx)->atoms[which]);
 }
 
 /* True once a panic is armed. The producer's own callback keeps running (JS
