@@ -18,7 +18,7 @@ description: Recovering from common Mikro.js problems
 
 ## Recovering a crash-looping device
 
-If your deployed app crashes immediately on boot, the device restarts before you can connect a normal REPL. There's no window to send a `mikro clean` or to deploy a fix. The firmware opens a brief recovery window (~500ms) very early in boot for exactly this case. If triggered, the firmware skips autorun and drops into the protocol loop, where deploy and REPL commands work as normal.
+If your deployed app crashes immediately on boot, the device restarts before you can connect a normal REPL. There's no window to send a `mikro clean` or to deploy a fix. The firmware opens a brief recovery window (~500ms) very early in boot for exactly this case. If triggered, the firmware skips autorun and drops into the protocol loop, where deploy and REPL commands work as normal. Custom firmware can skip the window with `CONFIG_MIKROJS_RECOVERY_WINDOW_MS` (see [Change ESP-IDF settings](/develop/custom-firmware#change-esp-idf-settings)).
 
 When safe mode is active you'll see this banner in the device output:
 
