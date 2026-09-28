@@ -226,9 +226,10 @@ static bool platform_command_handler(MIKReplTransport* transport, uint8_t cmd_ty
         return true;
     }
 
-    /* Deploy commands (0x20-0x27) plus the build-stage command (0x2D) */
+    /* Deploy commands (0x20-0x27, 0x2F, 0x30) plus the build-stage command (0x2D) */
     if ((cmd_type >= MIK_CMD_DEPLOY_PUT && cmd_type <= MIK_CMD_DEPLOY_CHECKSUM) ||
-        cmd_type == MIK_CMD_DEPLOY_BUILD) {
+        cmd_type == MIK_CMD_DEPLOY_BUILD || cmd_type == MIK_CMD_DEPLOY_CHECKSUM_LIST ||
+        cmd_type == MIK_CMD_DEPLOY_KEEP_MANY) {
         return mik__handle_deploy_command(transport, cmd_type, payload_len);
     }
 

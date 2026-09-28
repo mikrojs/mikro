@@ -88,6 +88,19 @@ export const CMD_DEPLOY_BUILD = 0x2d
  *  | u16le chk_len | chk | u16le reason_len | reason
  *  | u16le detail_len | detail. */
 export const CMD_DEPLOY_RESULT = 0x2e
+/** Every checksum the device holds, in one reply. No payload. Reply is MSG_OK
+ *  with: u16le file_count | one `<sha256 hex>  <name>\n` line per manifest
+ *  entry whose file is on disk; see {@link parseChecksumListPayload}. */
+export const CMD_DEPLOY_CHECKSUM_LIST = 0x2f
+/** KEEP for several files. Payload: repeated u16le name_len | name. The
+ *  device stages them in order and stops at the first failure, which its
+ *  MSG_ERR names. */
+export const CMD_DEPLOY_KEEP_MANY = 0x30
+
+/** Revision of the command set, which the device reports in MSG_READY as
+ *  `proto`. Absent means 0. 1: CMD_DEPLOY_CHECKSUM_LIST and
+ *  CMD_DEPLOY_KEEP_MANY. Mirrors MIK_PROTO_REV. */
+export const PROTOCOL_REV = 1
 
 export const CMD_CONFIG_LIST = 0x40
 export const CMD_CONFIG_SET = 0x41
@@ -262,6 +275,44 @@ export function buildDeployKeepCommand(filename: string): Buffer {
   payload.writeUInt16LE(nameBytes.length, 0)
   nameBytes.copy(payload, 2)
   return buildFrame(CMD_DEPLOY_KEEP, payload)
+}
+
+/** Build DEPLOY_KEEP_MANY payload: repeated u16le name_len | name */
+export function buildDeployKeepManyCommand(filenames: string[]): Buffer {
+  const parts: Buffer[] = []
+  for (const filename of filenames) {
+    const nameBytes = Buffer.from(filename, 'utf-8')
+    const len = Buffer.alloc(2)
+    len.writeUInt16LE(nameBytes.length, 0)
+    parts.push(len, nameBytes)
+  }
+  return buildFrame(CMD_DEPLOY_KEEP_MANY, Buffer.concat(parts))
+}
+
+/** Build CMD_DEPLOY_CHECKSUM_LIST (no payload). */
+export function buildDeployChecksumListCommand(): Buffer {
+  return buildFrame(CMD_DEPLOY_CHECKSUM_LIST)
+}
+
+/** The checksums a device holds, from the CMD_DEPLOY_CHECKSUM_LIST reply. */
+export interface DeviceChecksums {
+  /** File entries in the device's manifest, on disk or not. */
+  fileCount: number
+  /** Lowercase hex SHA-256 by file name, for the files on disk. */
+  hashes: Map<string, string>
+}
+
+/** Parse the CMD_DEPLOY_CHECKSUM_LIST reply payload: u16le file_count | lines
+ *  of `<64 hex>  <name>`, the format of the `.checksums` manifest. */
+export function parseChecksumListPayload(payload: Buffer): DeviceChecksums {
+  const fileCount = payload.length >= 2 ? payload.readUInt16LE(0) : 0
+  const hashes = new Map<string, string>()
+  for (const line of payload.subarray(2).toString('utf-8').split('\n')) {
+    if (line.length >= 67 && line[64] === ' ' && line[65] === ' ') {
+      hashes.set(line.slice(66), line.slice(0, 64))
+    }
+  }
+  return {fileCount, hashes}
 }
 
 /** Build DEPLOY_CHECKSUM payload: u16le name_len | name | sha256[32] */

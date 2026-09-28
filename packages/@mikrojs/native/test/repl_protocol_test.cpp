@@ -184,6 +184,8 @@ TEST_CASE("CMD_HELLO triggers MSG_READY" * doctest::test_suite("repl_protocol"))
                   "MSG_READY should contain firmware version");
     CHECK_MESSAGE(ready->payload.find("board") != std::string::npos,
                   "MSG_READY should contain the board name");
+    CHECK_MESSAGE(ready->payload.find("proto") != std::string::npos,
+                  "MSG_READY should carry the protocol revision");
     CHECK_MESSAGE(ready->payload.find("features") == std::string::npos,
                   "Host builds have no MIK_FW_FEATURES, so no features field");
     CHECK_MESSAGE(ready->payload.find("natives") != std::string::npos,

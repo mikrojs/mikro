@@ -63,9 +63,11 @@ import {
   buildDeployAbortCommand,
   buildDeployBuildCommand,
   buildDeployChecksumCommand,
+  buildDeployChecksumListCommand,
   buildDeployDoneCommand,
   buildDeployEraseCommand,
   buildDeployKeepCommand,
+  buildDeployKeepManyCommand,
   buildDeployPutChunkCommand,
   buildDeployPutCommand,
   buildDeployResultCommand,
@@ -81,10 +83,12 @@ import {
   buildRuntimePauseCommand,
   buildRuntimeResumeCommand,
   type CompletionResult,
+  type DeviceChecksums,
   type Frame,
   FrameParser,
   frameToMessage,
   type KvNamespace,
+  parseChecksumListPayload,
   parseCompletions,
   parseDeployResultPayload,
 } from './protocol.js'
@@ -136,6 +140,9 @@ export interface ReadyEvent {
    *  on a generic build). Absent on firmware predating the field, which
    *  callers treat as unknown — no native module gating. */
   natives?: string[] | undefined
+  /** Revision of the command set the firmware answers (`proto` in MSG_READY).
+   *  Absent on firmware predating it, which callers treat as 0. */
+  protocolRev?: number | undefined
   advisory?: FirmwareAdvisory | null
 }
 
@@ -451,6 +458,26 @@ const JS_YIELD_TIMEOUT_MS = 30_000
  * (RX 4 KB) and any plausible UART path. */
 const PUT_CHUNK_SIZE = 2048
 
+/** Split file names into KEEP_MANY payloads of at most PUT_CHUNK_SIZE bytes,
+ *  the frame size that stays inside the device's RX ring. */
+function keepBatches(paths: string[]): string[][] {
+  const batches: string[][] = []
+  let batch: string[] = []
+  let bytes = 0
+  for (const path of paths) {
+    const size = 2 + Buffer.byteLength(path, 'utf-8')
+    if (batch.length > 0 && bytes + size > PUT_CHUNK_SIZE) {
+      batches.push(batch)
+      batch = []
+      bytes = 0
+    }
+    batch.push(path)
+    bytes += size
+  }
+  if (batch.length > 0) batches.push(batch)
+  return batches
+}
+
 function formatDuration(ms: number): string {
   return ms >= 1000 ? `${ms / 1000}s` : `${ms}ms`
 }
@@ -642,6 +669,59 @@ export function connectRepl(
     }
   }
 
+  /** Every checksum the device holds, or undefined when the device cannot
+   *  produce the list (it answers MSG_ERR, for example out of memory), which
+   *  leaves the CHECKSUM per file. */
+  async function listDeviceChecksums(): Promise<DeviceChecksums | undefined> {
+    const resp = await sendAndWait(buildDeployChecksumListCommand(), 'deploy checksum list')
+    if (resp.type === 'err') return undefined
+    if (resp.type !== 'ok') {
+      throw new Error(`deploy checksum list: unexpected response type '${resp.type}'`)
+    }
+    return parseChecksumListPayload(resp.payload)
+  }
+
+  /** Bring the device's env vars in line with `envVars`: set what differs
+   *  from the device's listing, delete what the listing has and `envVars`
+   *  does not. A secret is listed without its value, so it is always sent and
+   *  the device reports whether it changed. Returns the keys that changed and
+   *  the keys removed, from the device's own changed/existed bits. */
+  async function syncEnv(envVars: EnvVar[]): Promise<{changed: string[]; removed: string[]}> {
+    const changed: string[] = []
+    const removed: string[] = []
+    if (envVars.length === 0) return {changed, removed}
+
+    const tooLong = envVars.filter((v) => Buffer.byteLength(v.key, 'utf-8') > 15)
+    if (tooLong.length > 0) {
+      throw new UserError(
+        `Env key(s) exceed NVS 15-char limit: ${tooLong.map((v) => v.key).join(', ')}`,
+      )
+    }
+
+    const deviceEntries = await config.list()
+    const onDevice = new Map(deviceEntries.map((e) => [e.key, e]))
+    for (const v of envVars) {
+      const entry = onDevice.get(v.key)
+      if (entry && !entry.secret && !v.secret && entry.value === v.value) continue
+      const payload = await sendExpectOk(
+        buildConfigSetCommand(v.key, v.value, v.secret),
+        `config set '${v.key}'`,
+      )
+      if (payload.length > 0 && payload[0] === 1) changed.push(v.key)
+    }
+
+    const desiredKeys = new Set(envVars.map((v) => v.key))
+    for (const entry of deviceEntries) {
+      if (desiredKeys.has(entry.key)) continue
+      const payload = await sendExpectOk(
+        buildConfigDeleteCommand(entry.key),
+        `config delete '${entry.key}'`,
+      )
+      if (payload.length > 0 && payload[0] === 1) removed.push(entry.key)
+    }
+    return {changed, removed}
+  }
+
   /**
    * Wait for device to be ready. Emits the ReadyEvent, then completes.
    * Errors if the device firmware version is incompatible.
@@ -753,11 +833,16 @@ export function connectRepl(
 
     return concat(
       of({type: 'connecting'} satisfies DeployEvent),
-      awaitReady$(readyTimeoutMs).pipe(switchMap(() => from(deployAfterReady(options)))),
+      awaitReady$(readyTimeoutMs).pipe(
+        switchMap((ready) => from(deployAfterReady(options, ready.protocolRev ?? 0))),
+      ),
     )
   }
 
-  async function* deployAfterReady(options: DeployOptions): AsyncGenerator<DeployEvent> {
+  async function* deployAfterReady(
+    options: DeployOptions,
+    protocolRev: number,
+  ): AsyncGenerator<DeployEvent> {
     const {
       files,
       envVars = [],
@@ -798,70 +883,52 @@ export function connectRepl(
       if (force || erase) {
         filesToPut.push(...files)
       } else {
-        // Checksum-based incremental deploy
-        let checksumSupported = true
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i]!
-          yield {type: 'checking', file: file.path, index: i, total: files.length}
+        // Checksum-based incremental deploy: one CHECKSUM_LIST round trip on
+        // firmware with protocol revision 1, else a CHECKSUM per file. Older
+        // firmware never answers a command it does not know, so the revision
+        // decides, not a failed attempt.
+        const list = files.length > 0 && protocolRev >= 1 ? await listDeviceChecksums() : undefined
+        if (list) {
+          deviceFileCount = list.fileCount
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i]!
+            yield {type: 'checking', file: file.path, index: i, total: files.length}
+            const hash = localHashes.get(file.path)!.toString('hex')
+            if (list.hashes.get(file.path) === hash) filesToKeep.push(file.path)
+            else filesToPut.push(file)
+          }
+        } else {
+          let checksumSupported = true
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i]!
+            yield {type: 'checking', file: file.path, index: i, total: files.length}
 
-          if (!checksumSupported) {
-            filesToPut.push(file)
-            continue
-          }
-          const hash = localHashes.get(file.path)!
-          const resp = await sendAndWait(
-            buildDeployChecksumCommand(file.path, hash),
-            `deploy checksum '${file.path}'`,
-          )
-          if (resp.type === 'err') {
-            checksumSupported = false
-            filesToPut.push(file)
-            filesToKeep.length = 0
-            continue
-          }
-          if (resp.type === 'checksum_result') deviceFileCount = resp.fileCount
-          if (resp.type === 'checksum_result' && resp.match) {
-            filesToKeep.push(file.path)
-          } else {
-            filesToPut.push(file)
+            if (!checksumSupported) {
+              filesToPut.push(file)
+              continue
+            }
+            const hash = localHashes.get(file.path)!
+            const resp = await sendAndWait(
+              buildDeployChecksumCommand(file.path, hash),
+              `deploy checksum '${file.path}'`,
+            )
+            if (resp.type === 'err') {
+              checksumSupported = false
+              filesToPut.push(file)
+              filesToKeep.length = 0
+              continue
+            }
+            if (resp.type === 'checksum_result') deviceFileCount = resp.fileCount
+            if (resp.type === 'checksum_result' && resp.match) {
+              filesToKeep.push(file.path)
+            } else {
+              filesToPut.push(file)
+            }
           }
         }
       }
 
-      // Env vars: diff against current device state so we only mutate
-      // actual differences. Firmware reports per-entry changed/existed bits,
-      // giving the CLI a definitive "did anything change" signal without
-      // any local caching.
-      const envChanged: string[] = []
-      const envRemoved: string[] = []
-      if (envVars.length > 0) {
-        const tooLong = envVars.filter((v) => Buffer.byteLength(v.key, 'utf-8') > 15)
-        if (tooLong.length > 0) {
-          throw new UserError(
-            `Env key(s) exceed NVS 15-char limit: ${tooLong.map((v) => v.key).join(', ')}`,
-          )
-        }
-
-        const deviceEntries = await config.list()
-        const desiredKeys = new Set(envVars.map((v) => v.key))
-
-        for (const v of envVars) {
-          const payload = await sendExpectOk(
-            buildConfigSetCommand(v.key, v.value, v.secret),
-            `config set '${v.key}'`,
-          )
-          if (payload.length > 0 && payload[0] === 1) envChanged.push(v.key)
-        }
-
-        for (const entry of deviceEntries) {
-          if (desiredKeys.has(entry.key)) continue
-          const payload = await sendExpectOk(
-            buildConfigDeleteCommand(entry.key),
-            `config delete '${entry.key}'`,
-          )
-          if (payload.length > 0 && payload[0] === 1) envRemoved.push(entry.key)
-        }
-      }
+      const {changed: envChanged, removed: envRemoved} = await syncEnv(envVars)
 
       const envActuallyChanged = envChanged.length > 0 || envRemoved.length > 0
       // The device holds files the build no longer has. Staging only what the
@@ -896,9 +963,16 @@ export function connectRepl(
           await sendExpectOk(buildDeployEraseCommand(), 'deploy erase')
         }
 
-        // KEEP unchanged files
-        for (const filePath of filesToKeep) {
-          await sendExpectOk(buildDeployKeepCommand(filePath), `deploy keep '${filePath}'`)
+        // KEEP unchanged files: as many names per KEEP_MANY as fit a PUT
+        // chunk on firmware with protocol revision 1, else one KEEP each.
+        if (protocolRev >= 1) {
+          for (const batch of keepBatches(filesToKeep)) {
+            await sendExpectOk(buildDeployKeepManyCommand(batch), 'deploy keep')
+          }
+        } else {
+          for (const filePath of filesToKeep) {
+            await sendExpectOk(buildDeployKeepCommand(filePath), `deploy keep '${filePath}'`)
+          }
         }
 
         // PUT changed/new files
@@ -1016,38 +1090,7 @@ export function connectRepl(
       await sendExpectOk(buildRuntimePauseCommand(), 'runtime pause', JS_YIELD_TIMEOUT_MS)
       paused = true
 
-      // Env vars: diff against current device state, same protocol as deploy().
-      const envChanged: string[] = []
-      const envRemoved: string[] = []
-      if (envVars.length > 0) {
-        const tooLong = envVars.filter((v) => Buffer.byteLength(v.key, 'utf-8') > 15)
-        if (tooLong.length > 0) {
-          throw new UserError(
-            `Env key(s) exceed NVS 15-char limit: ${tooLong.map((v) => v.key).join(', ')}`,
-          )
-        }
-
-        const deviceEntries = await config.list()
-        const desiredKeys = new Set(envVars.map((v) => v.key))
-
-        for (const v of envVars) {
-          const payload = await sendExpectOk(
-            buildConfigSetCommand(v.key, v.value, v.secret),
-            `config set '${v.key}'`,
-          )
-          if (payload.length > 0 && payload[0] === 1) envChanged.push(v.key)
-        }
-
-        for (const entry of deviceEntries) {
-          if (desiredKeys.has(entry.key)) continue
-          const payload = await sendExpectOk(
-            buildConfigDeleteCommand(entry.key),
-            `config delete '${entry.key}'`,
-          )
-          if (payload.length > 0 && payload[0] === 1) envRemoved.push(entry.key)
-        }
-      }
-
+      const {changed: envChanged, removed: envRemoved} = await syncEnv(envVars)
       if (envChanged.length > 0 || envRemoved.length > 0) {
         yield {type: 'env_changed', changed: envChanged, removed: envRemoved}
       }
@@ -1302,6 +1345,7 @@ function frameToEvent(frame: Frame): ReplEvent | null {
       let board: string | undefined
       let features: string[] | undefined
       let natives: string[] | undefined
+      let protocolRev: number | undefined
       try {
         const info = decodeCbor(msg.payload) as {
           chip?: string
@@ -1315,6 +1359,7 @@ function frameToEvent(frame: Frame): ReplEvent | null {
           board?: string
           features?: string[]
           natives?: string[]
+          proto?: number
         }
         chip = info.chip ?? null
         id = info.id ?? null
@@ -1336,6 +1381,7 @@ function frameToEvent(frame: Frame): ReplEvent | null {
         natives = Array.isArray(info.natives)
           ? info.natives.filter((n): n is string => typeof n === 'string')
           : undefined
+        protocolRev = typeof info.proto === 'number' ? info.proto : undefined
       } catch {
         // ignore
       }
@@ -1354,6 +1400,7 @@ function frameToEvent(frame: Frame): ReplEvent | null {
         board,
         features,
         natives,
+        protocolRev,
       }
     }
     case 'log':

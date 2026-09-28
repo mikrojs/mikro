@@ -9,9 +9,11 @@ import {
   buildDeployAbortCommand,
   buildDeployBuildCommand,
   buildDeployChecksumCommand,
+  buildDeployChecksumListCommand,
   buildDeployDoneCommand,
   buildDeployEraseCommand,
   buildDeployKeepCommand,
+  buildDeployKeepManyCommand,
   buildDeployPutChunkCommand,
   buildDeployPutCommand,
   buildDeployResultCommand,
@@ -29,9 +31,11 @@ import {
   CMD_DEPLOY_ABORT,
   CMD_DEPLOY_BUILD,
   CMD_DEPLOY_CHECKSUM,
+  CMD_DEPLOY_CHECKSUM_LIST,
   CMD_DEPLOY_DONE,
   CMD_DEPLOY_ERASE,
   CMD_DEPLOY_KEEP,
+  CMD_DEPLOY_KEEP_MANY,
   CMD_DEPLOY_PUT,
   CMD_DEPLOY_PUT_CHUNK,
   CMD_DEPLOY_RESULT,
@@ -58,6 +62,7 @@ import {
   MSG_READY,
   MSG_RESULT,
   MSG_WARN,
+  parseChecksumListPayload,
   parseCompletions,
   parseDeployResultPayload,
   parseFrame,
@@ -286,6 +291,63 @@ describe('protocol', () => {
     it('buildDeployResultCommand', () => {
       const frame = buildDeployResultCommand()
       expect(parseFrame(frame)!.frame.type).to.equal(CMD_DEPLOY_RESULT)
+    })
+
+    it('buildDeployKeepManyCommand encodes each name with its length', () => {
+      const frame = buildDeployKeepManyCommand(['/app/a.js', '/app/lib/b.js'])
+      const result = parseFrame(frame)
+      expect(result!.frame.type).to.equal(CMD_DEPLOY_KEEP_MANY)
+      const payload = result!.frame.payload
+      const names: string[] = []
+      for (let offset = 0; offset < payload.length;) {
+        const len = payload.readUInt16LE(offset)
+        names.push(payload.subarray(offset + 2, offset + 2 + len).toString('utf-8'))
+        offset += 2 + len
+      }
+      expect(names).to.deep.equal(['/app/a.js', '/app/lib/b.js'])
+      expect(payload.length).to.equal(2 + 9 + 2 + 13)
+    })
+
+    it('buildDeployChecksumListCommand', () => {
+      const result = parseFrame(buildDeployChecksumListCommand())
+      expect(result!.frame.type).to.equal(CMD_DEPLOY_CHECKSUM_LIST)
+      expect(result!.frame.payload.length).to.equal(0)
+    })
+  })
+
+  describe('parseChecksumListPayload', () => {
+    /** Encode the device-side reply: u16le file_count | manifest text. */
+    function encodeList(fileCount: number, text: string) {
+      const count = Buffer.alloc(2)
+      count.writeUInt16LE(fileCount)
+      return Buffer.concat([count, Buffer.from(text)])
+    }
+
+    it('reads the file count and one hash per manifest line', () => {
+      const a = 'a'.repeat(64)
+      const b = 'b'.repeat(64)
+      const list = parseChecksumListPayload(
+        encodeList(3, `${a}  /app/main.js\n${b}  /app/lib/x.js\n`),
+      )
+      expect(list.fileCount).to.equal(3)
+      expect([...list.hashes]).to.deep.equal([
+        ['/app/main.js', a],
+        ['/app/lib/x.js', b],
+      ])
+    })
+
+    it('skips lines that are not manifest entries', () => {
+      const text = `#firmware:${'c'.repeat(64)}\nshort\n${'a'.repeat(64)}  /app/a.js`
+      expect([...parseChecksumListPayload(encodeList(1, text)).hashes.keys()]).to.deep.equal([
+        '/app/a.js',
+      ])
+    })
+
+    it('treats an empty payload as no files', () => {
+      expect(parseChecksumListPayload(Buffer.alloc(0))).to.deep.equal({
+        fileCount: 0,
+        hashes: new Map(),
+      })
     })
   })
 

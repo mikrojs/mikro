@@ -390,6 +390,11 @@ void mik__repl_set_paused(bool paused);
 /* Header size: 1 (type) + 4 (u32le length) */
 #define MIK_PROTO_HEADER_SIZE 5
 
+/* Revision of this command set, sent in MSG_READY as "proto" so the host
+ * knows which commands the device answers. Absent means 0.
+ * 1: MIK_CMD_DEPLOY_CHECKSUM_LIST and MIK_CMD_DEPLOY_KEEP_MANY. */
+#define MIK_PROTO_REV 1
+
 /* Device → CLI message types */
 #define MIK_MSG_READY 0x01
 #define MIK_MSG_LOG 0x02
@@ -458,6 +463,14 @@ void mik__repl_set_paused(bool paused);
  *   u8 status (0 none | 1 ok | 2 fail) | u16le chk_len | chk
  *   | u16le reason_len | reason | u16le detail_len | detail. */
 #define MIK_CMD_DEPLOY_RESULT 0x2E
+/* Every checksum the device holds, in one reply. No payload. Reply is
+ * MIK_MSG_OK with: u16le file_count | one "<sha256 hex>  <name>\n" line per
+ * manifest entry whose file is on disk. file_count counts every manifest
+ * entry, so the host can tell the device holds files the build no longer has. */
+#define MIK_CMD_DEPLOY_CHECKSUM_LIST 0x2F
+/* KEEP for several files. Payload: repeated u16le name_len | name. Staged in
+ * order; the first failure ends the batch and MIK_MSG_ERR names the file. */
+#define MIK_CMD_DEPLOY_KEEP_MANY 0x30
 
 #define MIK_CMD_CONFIG_LIST 0x40
 #define MIK_CMD_CONFIG_SET 0x41

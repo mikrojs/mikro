@@ -1,10 +1,11 @@
+import {createHash} from 'node:crypto'
 import {mkdtemp, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import * as pathlib from 'node:path'
 
 import {encode as encodeCbor} from 'cbor2'
 import pkg from 'mikro/package.json' with {type: 'json'}
-import {firstValueFrom, lastValueFrom, Subject} from 'rxjs'
+import {firstValueFrom, lastValueFrom, Subject, toArray} from 'rxjs'
 import {inc} from 'semver'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 
@@ -12,11 +13,16 @@ import {UserError} from '../errorMessage.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
 import {
   buildFrame,
+  CMD_CONFIG_DELETE,
+  CMD_CONFIG_LIST,
+  CMD_CONFIG_SET,
   CMD_DEPLOY_ABORT,
   CMD_DEPLOY_BUILD,
   CMD_DEPLOY_CHECKSUM,
+  CMD_DEPLOY_CHECKSUM_LIST,
   CMD_DEPLOY_DONE,
   CMD_DEPLOY_KEEP,
+  CMD_DEPLOY_KEEP_MANY,
   CMD_DEPLOY_PUT,
   CMD_DEPLOY_PUT_CHUNK,
   CMD_DEPLOY_RESULT,
@@ -38,6 +44,8 @@ import {
 import {
   connectRepl as connectReplImpl,
   type ConnectReplOptions,
+  type DeployEvent,
+  type DeployFile,
   DeviceTimeoutError,
   type ReplEvent,
   type ReplSession,
@@ -1003,6 +1011,278 @@ describe('session', () => {
       await session.config.delete('KEY')
 
       session.close()
+    })
+  })
+
+  describe('deploy on firmware with protocol revision 1', () => {
+    type Respond = (
+      type: number,
+      payload: Buffer,
+      sendFrame: (type: number, payload?: string | Buffer) => void,
+    ) => void
+
+    /** Run a deploy against a device that answers each written frame through
+     *  `respond`; returns the events or rejection, and the frames written. */
+    async function runDeploy(
+      options: Parameters<ReplSession['deploy']>[0],
+      respond: Respond,
+      ready: Record<string, unknown> = {proto: 1},
+    ) {
+      const {transport, written, sendFrame} = createMockTransport()
+      const session = connectRepl(transport)
+      session.messages$.subscribe(() => {})
+      sendFrame(
+        MSG_READY,
+        Buffer.from(encodeCbor({chip: 'test', id: '00:00:00:00:00:00', v: CLI_VERSION, ...ready})),
+      )
+
+      let lastSeen = 0
+      const autoRespond = setInterval(() => {
+        while (lastSeen < written.length) {
+          const frame = written[lastSeen]!
+          respond(parseWrittenType(frame), Buffer.from(frame.subarray(HEADER_SIZE)), sendFrame)
+          lastSeen++
+        }
+      }, 5)
+      const outcome = await lastValueFrom(session.deploy(options).pipe(toArray())).then(
+        (events) => ({events, err: undefined}),
+        (err: unknown) => ({events: [] as DeployEvent[], err}),
+      )
+      clearInterval(autoRespond)
+      session.close()
+      const frames = written.map((f) => ({
+        type: parseWrittenType(f),
+        payload: Buffer.from(f.subarray(HEADER_SIZE)),
+      }))
+      return {...outcome, last: outcome.events.at(-1), frames, types: frames.map((f) => f.type)}
+    }
+
+    function app(count: number, name = (i: number) => `/app/mod${i}.js`): DeployFile[] {
+      return Array.from({length: count}, (_, i) => ({
+        path: name(i),
+        data: Buffer.from(`export const v${i} = ${i}\n`),
+      }))
+    }
+
+    /** The device's CHECKSUM_LIST reply for `files`: u16le count | manifest lines. */
+    function checksumList(files: DeployFile[], fileCount = files.length): Buffer {
+      const count = Buffer.alloc(2)
+      count.writeUInt16LE(fileCount)
+      const lines = files.map(
+        (f) => `${createHash('sha256').update(f.data).digest('hex')}  ${f.path}\n`,
+      )
+      return Buffer.concat([count, Buffer.from(lines.join(''))])
+    }
+
+    /** Names in a KEEP_MANY payload. */
+    function keepNames(payload: Buffer): string[] {
+      const names: string[] = []
+      for (let offset = 0; offset < payload.length;) {
+        const len = payload.readUInt16LE(offset)
+        names.push(payload.subarray(offset + 2, offset + 2 + len).toString('utf-8'))
+        offset += 2 + len
+      }
+      return names
+    }
+
+    /** The key of a CONFIG_SET (offset 1, after the flags) or CONFIG_DELETE payload. */
+    function configKey(payload: Buffer, offset: number): string {
+      const len = payload.readUInt16LE(offset)
+      return payload.subarray(offset + 2, offset + 2 + len).toString('utf-8')
+    }
+
+    it('decodes the protocol revision from MSG_READY', () => {
+      const {transport, sendFrame} = createMockTransport()
+      const session = connectRepl(transport)
+      const events: ReplEvent[] = []
+      session.messages$.subscribe((e) => events.push(e))
+
+      sendFrame(MSG_READY, Buffer.from(encodeCbor({chip: 'esp32c6', proto: 1})))
+      sendFrame(MSG_READY, Buffer.from(encodeCbor({chip: 'esp32c6'})))
+
+      expect(events.map((e) => (e.type === 'ready' ? e.protocolRev : null))).to.deep.equal([
+        1,
+        undefined,
+      ])
+      session.close()
+    })
+
+    it('finds nothing changed in one round trip, whatever the file count', async () => {
+      const files = app(40)
+      const {last, types} = await runDeploy({files, restart: false}, (type, _, sendFrame) => {
+        if (type === CMD_DEPLOY_CHECKSUM_LIST) sendFrame(MSG_OK, checksumList(files))
+        else sendFrame(MSG_OK)
+      })
+
+      expect(last).to.deep.equal({type: 'complete', deployed: false, stats: {put: 0, kept: 40}})
+      expect(types).to.deep.equal([
+        CMD_RUNTIME_PAUSE,
+        CMD_DEPLOY_CHECKSUM_LIST,
+        CMD_DEPLOY_ABORT,
+        CMD_RUNTIME_RESUME,
+      ])
+    })
+
+    it('keeps the unchanged files with one KEEP_MANY and puts the rest', async () => {
+      const files = app(3)
+      // The device holds mod0 and mod1 as built, and an older mod2.
+      const onDevice = [files[0]!, files[1]!, {path: '/app/mod2.js', data: Buffer.from('old')}]
+      const {last, types, frames} = await runDeploy(
+        {files, restart: false},
+        (type, _, sendFrame) => {
+          if (type === CMD_DEPLOY_CHECKSUM_LIST) sendFrame(MSG_OK, checksumList(onDevice))
+          else sendFrame(MSG_OK)
+        },
+      )
+
+      expect(last).to.deep.equal({type: 'complete', deployed: true, stats: {put: 1, kept: 2}})
+      // KEEP_MANY, PUT mod2, PUT the manifest, DONE.
+      expect(types).to.deep.equal([
+        CMD_RUNTIME_PAUSE,
+        CMD_DEPLOY_CHECKSUM_LIST,
+        CMD_DEPLOY_KEEP_MANY,
+        CMD_DEPLOY_PUT,
+        CMD_DEPLOY_PUT_CHUNK,
+        CMD_DEPLOY_PUT,
+        CMD_DEPLOY_PUT_CHUNK,
+        CMD_DEPLOY_DONE,
+        CMD_RUNTIME_RESUME,
+      ])
+      const keep = frames.find((f) => f.type === CMD_DEPLOY_KEEP_MANY)!
+      expect(keepNames(keep.payload)).to.deep.equal(['/app/mod0.js', '/app/mod1.js'])
+    })
+
+    it('deploys when the device holds a file the build no longer has', async () => {
+      const files = app(1)
+      const {last, types} = await runDeploy({files, restart: false}, (type, _, sendFrame) => {
+        if (type === CMD_DEPLOY_CHECKSUM_LIST) sendFrame(MSG_OK, checksumList(files, 2))
+        else sendFrame(MSG_OK)
+      })
+
+      expect(last).to.deep.equal({type: 'complete', deployed: true, stats: {put: 0, kept: 1}})
+      expect(types).to.include(CMD_DEPLOY_KEEP_MANY)
+      expect(types).to.include(CMD_DEPLOY_DONE)
+    })
+
+    it('splits KEEP_MANY so no frame exceeds a PUT chunk', async () => {
+      const files = app(200, (i) => `/app/${'x'.repeat(40)}${i}.js`)
+      const {last, frames} = await runDeploy({files, restart: false}, (type, _, sendFrame) => {
+        if (type === CMD_DEPLOY_CHECKSUM_LIST) sendFrame(MSG_OK, checksumList(files, 201))
+        else sendFrame(MSG_OK)
+      })
+
+      expect(last).to.deep.equal({type: 'complete', deployed: true, stats: {put: 0, kept: 200}})
+      const keeps = frames.filter((f) => f.type === CMD_DEPLOY_KEEP_MANY)
+      expect(keeps.length).to.be.greaterThan(1)
+      for (const keep of keeps) expect(keep.payload.length).to.be.at.most(2048)
+      expect(keeps.flatMap((k) => keepNames(k.payload))).to.deep.equal(files.map((f) => f.path))
+    })
+
+    it('asks per file when the device cannot list its checksums', async () => {
+      const files = app(2)
+      const {last, types} = await runDeploy({files, restart: false}, (type, _, sendFrame) => {
+        if (type === CMD_DEPLOY_CHECKSUM_LIST) sendFrame(MSG_ERR, 'out of memory')
+        else if (type === CMD_DEPLOY_CHECKSUM)
+          sendFrame(MSG_CHECKSUM_RESULT, Buffer.from([1, 2, 0]))
+        else sendFrame(MSG_OK)
+      })
+
+      expect(last).to.deep.equal({type: 'complete', deployed: false, stats: {put: 0, kept: 2}})
+      expect(types).to.deep.equal([
+        CMD_RUNTIME_PAUSE,
+        CMD_DEPLOY_CHECKSUM_LIST,
+        CMD_DEPLOY_CHECKSUM,
+        CMD_DEPLOY_CHECKSUM,
+        CMD_DEPLOY_ABORT,
+        CMD_RUNTIME_RESUME,
+      ])
+    })
+
+    it('asks per file on firmware that reports no protocol revision', async () => {
+      const files = app(2)
+      const {types} = await runDeploy(
+        {files, restart: false},
+        (type, _, sendFrame) => {
+          if (type === CMD_DEPLOY_CHECKSUM) sendFrame(MSG_CHECKSUM_RESULT, Buffer.from([1, 3, 0]))
+          else sendFrame(MSG_OK)
+        },
+        {},
+      )
+
+      expect(types).to.not.include(CMD_DEPLOY_CHECKSUM_LIST)
+      expect(types).to.not.include(CMD_DEPLOY_KEEP_MANY)
+      expect(types.filter((t) => t === CMD_DEPLOY_CHECKSUM)).to.have.length(2)
+      expect(types.filter((t) => t === CMD_DEPLOY_KEEP)).to.have.length(2)
+    })
+
+    it('explains a full app storage when KEEP_MANY cannot stage a file', async () => {
+      const files = app(1)
+      const {err, types} = await runDeploy({files, restart: false}, (type, _, sendFrame) => {
+        if (type === CMD_DEPLOY_CHECKSUM_LIST) sendFrame(MSG_OK, checksumList(files, 2))
+        else if (type === CMD_DEPLOY_KEEP_MANY) {
+          sendFrame(MSG_ERR, '/app/mod0.js: create directory failed: No space left on device')
+        } else sendFrame(MSG_OK)
+      })
+
+      expect(err).to.be.instanceOf(UserError)
+      expect((err as UserError).message).to.include('second copy of the app')
+      expect(((err as UserError).cause as Error).message).to.equal(
+        'deploy keep: /app/mod0.js: create directory failed: No space left on device',
+      )
+      expect(types).to.deep.equal([
+        CMD_RUNTIME_PAUSE,
+        CMD_DEPLOY_CHECKSUM_LIST,
+        CMD_DEPLOY_KEEP_MANY,
+        CMD_DEPLOY_ABORT,
+        CMD_RUNTIME_RESUME,
+      ])
+    })
+
+    it('sets only the env vars the device does not already hold', async () => {
+      const files = app(1)
+      const {events, frames} = await runDeploy(
+        {
+          files,
+          envVars: [
+            {key: 'SAME', value: 'a', secret: false},
+            {key: 'NEW', value: 'b', secret: false},
+            {key: 'TOKEN', value: 's', secret: true},
+          ],
+          restart: false,
+        },
+        (type, _, sendFrame) => {
+          if (type === CMD_DEPLOY_CHECKSUM_LIST) sendFrame(MSG_OK, checksumList(files))
+          else if (type === CMD_CONFIG_LIST) {
+            // A secret is listed without its value.
+            sendFrame(
+              MSG_CONFIG_ENTRIES,
+              Buffer.from(
+                encodeCbor([
+                  {key: 'SAME', value: 'a', secret: false},
+                  {key: 'TOKEN', value: '', secret: true},
+                  {key: 'STALE', value: 'x', secret: false},
+                ]),
+              ),
+            )
+          } else if (type === CMD_CONFIG_SET || type === CMD_CONFIG_DELETE) {
+            sendFrame(MSG_OK, Buffer.from([1]))
+          } else sendFrame(MSG_OK)
+        },
+      )
+
+      const set = frames
+        .filter((f) => f.type === CMD_CONFIG_SET)
+        .map((f) => configKey(f.payload, 1))
+      expect(set).to.deep.equal(['NEW', 'TOKEN'])
+      const deleted = frames
+        .filter((f) => f.type === CMD_CONFIG_DELETE)
+        .map((f) => configKey(f.payload, 0))
+      expect(deleted).to.deep.equal(['STALE'])
+      expect(events).to.deep.include({
+        type: 'env_changed',
+        changed: ['NEW', 'TOKEN'],
+        removed: ['STALE'],
+      })
     })
   })
 
