@@ -4,16 +4,29 @@
 #include "driver/uart.h"
 #include "driver/uart_select.h"
 #include "esp_attr.h"
+#include "esp_pm.h"
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
 #include "mikrojs_esp32.h"
+#include "soc/soc_caps.h"
 
 #define MIK_UART_RX_BUF_SIZE 2048
 #define MIK_UART_MAX_INSTANCES 3
 
 static JSClassID mik_uart_class_id;
 static int mik__uart_slot = -1;
+
+#if CONFIG_PM_ENABLE
+/* Held per live handle (the driver guards only TX): the default source is APB where the
+ * chip has it, which DFS slows; PLL_F80M (C6/C5) keeps its rate but stops in light sleep. */
+#if SOC_UART_SUPPORT_APB_CLK
+#define MIK_UART_PM_LOCK ESP_PM_APB_FREQ_MAX
+#else
+#define MIK_UART_PM_LOCK ESP_PM_NO_LIGHT_SLEEP
+#endif
+static esp_pm_lock_handle_t s_uart_pm_lock = nullptr;
+#endif
 
 /* UART ISR (IRAM, so it runs with the flash cache off): RX data landed. */
 static void IRAM_ATTR mik__uart_rx_notify(uart_port_t port, uart_select_notif_t notif,
@@ -85,6 +98,9 @@ static void mik__uart_release(MIKRuntime* mik_rt, MIKUartState* s) {
     uart_driver_delete(s->port);
     const int gpios[] = {s->tx_pin, s->rx_pin};
     MIK_ReleaseGpios(gpios, countof(gpios), "Uart");
+#if CONFIG_PM_ENABLE
+    esp_pm_lock_release(s_uart_pm_lock);
+#endif
     s->active = false;
 }
 
@@ -139,6 +155,15 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
     const MIKGpioCheck checks[] = {{tx, true}, {rx, false}};
     JSValue invalid = mik__gpio_check(ctx, checks, countof(checks));
     if (!JS_IsUndefined(invalid)) return invalid;
+#if CONFIG_PM_ENABLE
+    if (!s_uart_pm_lock) {
+        esp_err_t lock_err = esp_pm_lock_create(MIK_UART_PM_LOCK, 0, "uart", &s_uart_pm_lock);
+        if (lock_err != ESP_OK)
+            return mik__result_err_named(ctx, "DriverInstallFailed",
+                                         "esp_pm_lock_create failed: %s",
+                                         esp_err_to_name(lock_err));
+    }
+#endif
     const int gpios[] = {tx, rx};
     JSValue claim_failed = MIK_ClaimGpios(ctx, gpios, countof(gpios), "Uart");
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
@@ -212,6 +237,9 @@ static JSValue js_uart(JSContext* ctx, JSValue this_val, int argc, JSValue* argv
         return obj;
     }
     JS_SetOpaque(obj, s);
+#if CONFIG_PM_ENABLE
+    esp_pm_lock_acquire(s_uart_pm_lock);
+#endif
     mik__uart_track(MIK_GetRuntime(ctx), s);
     MIK_KeepHandle(ctx, obj);
     return mik__result_ok(ctx, obj);

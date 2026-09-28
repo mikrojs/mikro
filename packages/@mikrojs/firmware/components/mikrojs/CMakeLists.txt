@@ -49,7 +49,7 @@ endif()
 # idf_component.yml.
 idf_component_register(
     INCLUDE_DIRS "include" "${MIK_INCLUDE_DIR}"
-    REQUIRES bt littlefs esp_adc esp_app_format esp_driver_gpio esp_driver_i2c esp_driver_i2s esp_driver_ledc esp_driver_rmt esp_driver_spi esp_psram esp_timer esp_http_client esp_http_server esp-tls esp_netif esp_event esp_wifi nvs_flash esp_driver_uart esp_driver_usb_serial_jtag spi_flash
+    REQUIRES bt littlefs esp_adc esp_app_format esp_driver_gpio esp_driver_i2c esp_driver_i2s esp_driver_ledc esp_driver_rmt esp_driver_spi esp_pm esp_psram esp_timer esp_http_client esp_http_server esp-tls esp_netif esp_event esp_wifi nvs_flash esp_driver_uart esp_driver_usb_serial_jtag spi_flash
     SRCS
     # QuickJS engine
     ${QUICKJS_SOURCES}

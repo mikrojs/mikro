@@ -4,6 +4,7 @@
 #include "driver/ledc.h"
 #include "soc/soc_caps.h"
 #include "esp_log.h"
+#include "esp_pm.h"
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
 #include "mikrojs/utils.h"
@@ -22,6 +23,17 @@ static uint8_t s_channel_used = 0;  // bitmask of allocated channels
 static uint32_t s_timer_freq[MIK_PWM_MAX_TIMERS] = {};
 static uint8_t s_timer_refcount[MIK_PWM_MAX_TIMERS] = {};
 static bool s_fade_installed = false;
+
+#if CONFIG_PM_ENABLE
+/* Held per live handle: LEDC_AUTO_CLK picks APB where the chip has it, which DFS
+ * slows; XTAL and PLL_F80M (C6/C5) keep their rate but stop in light sleep. */
+#if SOC_LEDC_SUPPORT_APB_CLOCK
+#define MIK_PWM_PM_LOCK ESP_PM_APB_FREQ_MAX
+#else
+#define MIK_PWM_PM_LOCK ESP_PM_NO_LIGHT_SLEEP
+#endif
+static esp_pm_lock_handle_t s_pwm_pm_lock = nullptr;
+#endif
 
 static int mik__pwm_alloc_channel() {
     for (int i = 0; i < MIK_PWM_MAX_CHANNELS; i++) {
@@ -167,6 +179,9 @@ static void mik__pwm_release(MIKPwmState* s) {
     mik__pwm_free_channel(s->channel);
     mik__pwm_free_timer(s->timer);
     MIK_ReleaseGpio(s->gpio, "Pwm");
+#if CONFIG_PM_ENABLE
+    esp_pm_lock_release(s_pwm_pm_lock);
+#endif
     s->active = false;
 }
 
@@ -232,6 +247,14 @@ static JSValue js_pwm(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     const MIKGpioCheck check = {gpio, true};
     invalid = mik__gpio_check(ctx, &check, 1);
     if (!JS_IsUndefined(invalid)) return invalid;
+#if CONFIG_PM_ENABLE
+    if (!s_pwm_pm_lock) {
+        esp_err_t lock_err = esp_pm_lock_create(MIK_PWM_PM_LOCK, 0, "pwm", &s_pwm_pm_lock);
+        if (lock_err != ESP_OK)
+            return mik__result_err_named(ctx, "ConfigFailed", "esp_pm_lock_create failed: %s",
+                                         esp_err_to_name(lock_err));
+    }
+#endif
     const int gpios[] = {gpio};
     JSValue claim_failed = MIK_ClaimGpios(ctx, gpios, 1, "Pwm");
     if (!JS_IsUndefined(claim_failed)) return claim_failed;
@@ -305,6 +328,9 @@ static JSValue js_pwm(JSContext* ctx, JSValue this_val, int argc, JSValue* argv)
     s->resolution = resolution;
     s->duty = duty;
     s->active = true;
+#if CONFIG_PM_ENABLE
+    esp_pm_lock_acquire(s_pwm_pm_lock);
+#endif
 
     JSValue obj = JS_NewObjectClass(ctx, mik_pwm_class_id);
     if (JS_IsException(obj)) {

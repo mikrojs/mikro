@@ -88,6 +88,14 @@ For example, an app that does all its networking over a cellular modem can leave
 CONFIG_MIKROJS_WIFI=n
 ```
 
+On chips with USB-Serial/JTAG (ESP32-C3, ESP32-C5, ESP32-C6, ESP32-S3), a battery-powered device can enter light sleep between timers. This is experimental:
+
+```ini
+CONFIG_MIKROJS_AUTO_LIGHT_SLEEP=y
+```
+
+The option also turns on ESP-IDF power management, which lowers the CPU clock while the app waits. The device stays awake while a USB host is connected, so development over USB works as before. It also stays awake while the app has a `Pwm`, `Uart`, `NeoPixel` or `I2s` handle open. A `main.cpp` that doesn't call `MIK_Main()` gets no light sleep unless it calls `esp_pm_configure()` itself. Light sleep has two limits. The device can miss a GPIO edge that happens while it sleeps. If you connect a USB host while the device sleeps, the host may not detect the device until you reset it.
+
 ## Use a bigger flash chip
 
 The official firmware's partition table is for 4 MB of flash. `mikro flash` stretches `user`, the partition that holds the app and its files, to the end of a bigger chip for prebuilt images: the generic firmware, a [board package](./creating-boards)'s image and `--from` firmware. A build flashed with `--build-dir` or `pn mikro idf flash` uses the flash size in its `sdkconfig` and the table as you wrote it. For a bigger chip, set its size in `sdkconfig.defaults`, and add a `partitions.csv` that gives the extra space to `user`. For 8 MB:

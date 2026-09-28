@@ -22,6 +22,49 @@ menu "mikrojs console"
 
 endmenu
 
+menu "mikrojs power"
+
+    config MIKROJS_AUTO_LIGHT_SLEEP
+        bool "Enter light sleep automatically when idle (experimental)"
+        default n
+        # select skips PM_ENABLE's own conditions, so repeat them here.
+        depends on SOC_PM_SUPPORTED && !FREERTOS_SMP
+        depends on ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED
+        depends on !MIKROJS_CONSOLE_FALLBACK_UART
+        select PM_ENABLE
+        select PM_DFS_INIT_AUTO
+        select FREERTOS_USE_TICKLESS_IDLE
+        select USJ_NO_AUTO_LS_ON_CONNECTION
+        help
+            When enabled, the chip enters light sleep whenever no task needs
+            to run and no driver holds a power lock, and wakes for the next
+            timer. It also turns on ESP-IDF power management with frequency
+            scaling (DFS), which lowers the CPU clock while the app waits.
+
+            MIK_Main switches light sleep on. A custom main that does not call
+            MIK_Main gets frequency scaling and tickless idle but no light
+            sleep, unless it calls esp_pm_configure itself.
+
+            The USB-Serial/JTAG console stops in light sleep, so
+            USJ_NO_AUTO_LS_ON_CONNECTION keeps the chip awake while a USB host
+            is connected: the console, REPL and deploy work as before, and the
+            savings start once the host is gone.
+
+            An open Pwm, Uart, NeoPixel or I2s handle keeps the chip awake, and
+            I2C and SPI transfers do too. WiFi sleeps between beacons in the
+            "min" and "max" power save modes. BLE keeps the chip awake while
+            the controller is enabled.
+
+            Known limits: GPIO edges do not wake the chip, so an edge during
+            sleep can be missed. A USB host plugged in while the chip sleeps
+            can fail to enumerate; reset the board. On the ESP32-S3 the CPU
+            state saved across sleep takes up to about 17 KB of internal RAM.
+
+            Not available with a UART console (the ESP32, or
+            MIKROJS_CONSOLE_FALLBACK_UART), since UART RX stops in light sleep.
+
+endmenu
+
 menu "mikrojs WiFi"
 
     config MIKROJS_WIFI
