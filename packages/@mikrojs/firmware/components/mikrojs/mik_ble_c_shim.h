@@ -30,6 +30,15 @@ int mik_ble_controller_disable(void);
  */
 int mik_ble_controller_deinit(void);
 
+/* ── Boot-time memory release ──────────────────────────────────────── */
+
+/**
+ * Release the classic-BT controller memory to the heap. Original ESP32
+ * only; call before the controller is initialized. Returns 0 on success
+ * or a non-zero esp_err_t code on failure.
+ */
+int mik_ble_release_classic_bt_mem(void);
+
 #ifdef __cplusplus
 }
 #endif

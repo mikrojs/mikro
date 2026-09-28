@@ -59,3 +59,13 @@ int mik_ble_controller_deinit(void) {
     if (status == ESP_BT_CONTROLLER_STATUS_IDLE) return 0;
     return (int)esp_bt_controller_deinit();
 }
+
+/* ── Boot-time memory release ──────────────────────────────────────── */
+
+#if CONFIG_IDF_TARGET_ESP32
+/* Only the original ESP32 has a classic-BT controller region to give back
+ * (SOC_MEM_BT_EM_BREDR_START..SOC_MEM_BT_EM_BREDR_REAL_END). */
+int mik_ble_release_classic_bt_mem(void) {
+    return (int)esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
+}
+#endif
