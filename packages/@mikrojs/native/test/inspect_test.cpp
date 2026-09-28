@@ -104,6 +104,41 @@ TEST_CASE_FIXTURE(DirectFixture, "inspect renders symbol descriptions" *
     CHECK_FALSE(JS_HasException(ctx));
 }
 
+/* ── Custom hooks and type tags ──────────────────────────────────── */
+
+TEST_CASE_FIXTURE(DirectFixture, "custom hook is keyed by the registered mikrojs.inspect symbol" *
+                                     doctest::test_suite("inspect")) {
+    CHECK(inspect_eval("({[Symbol.for(['mikrojs', 'inspect'].join('.'))]() { return 'hi' }})") ==
+          "hi");
+    /* An unregistered symbol with the same description is an ordinary key */
+    CHECK(inspect_eval("({a: 1, [Symbol('mikrojs.inspect')]() { return 'hi' }})") == "{ a: 1 }");
+}
+
+TEST_CASE_FIXTURE(DirectFixture, "type tags follow Object.prototype.toString" *
+                                     doctest::test_suite("inspect")) {
+    CHECK(inspect_eval("new (class extends Map { get [Symbol.toStringTag]() { return 'TM' } })") ==
+          "TM{}");
+    CHECK(inspect_eval("new (class extends Map {})([[1, 2]])") == "Map{ 1 => 2 }");
+    CHECK(inspect_eval("Object.defineProperty(new Date(0), Symbol.toStringTag, {value: 'D'})") ==
+          "D{}");
+    CHECK(inspect_eval("Object.assign(new Error('x'), {[Symbol.toStringTag]: 'Array'})") == "[]");
+    CHECK(inspect_eval("({[Symbol.toStringTag]: 5, a: 1})") == "{ a: 1 }");
+    CHECK(inspect_eval("new Number(5)") == "Number{}");
+    CHECK(inspect_eval("(function () { return arguments })(1)") == "{ '0': 1 }");
+    CHECK(inspect_eval("new Proxy([1, 2], {})") == "[ 1, 2 ]");
+    CHECK(inspect_eval("new WeakRef({})") == "WeakRef{}");
+    CHECK(inspect_eval("new DataView(new ArrayBuffer(2))") == "DataView{}");
+}
+
+TEST_CASE_FIXTURE(DirectFixture, "type tags ignore an app's Object.prototype.toString" *
+                                     doctest::test_suite("inspect")) {
+    inspect_eval("globalThis.__orig = Object.prototype.toString;"
+                 "Object.prototype.toString = () => '[object Fake]'; 0");
+    CHECK(inspect_eval("new Proxy(new (class Foo {}), {})") == "Foo{}");
+    inspect_eval("Object.prototype.toString = __orig; 0");
+    CHECK(inspect_eval("new Proxy(new (class Foo {}), {})") == "Foo{}");
+}
+
 /* ── Throwing getters and traps ──────────────────────────────────── */
 
 TEST_CASE_FIXTURE(DirectFixture, "throwing getter renders placeholder, other keys intact" *

@@ -71,6 +71,10 @@ extern "C" {
 #include "quickjs.h"
 }
 
+/* Property names the per-value paths use, atomized once per runtime */
+enum ObservableAtom { OBS_NEXT, OBS_DONE, OBS_VALUE, OBS_ATOM_COUNT };
+static const char* const observable_atom_names[OBS_ATOM_COUNT] = {"next", "done", "value"};
+
 /* Per-runtime dispatch queue. Entries hold their own references (dup on
  * enqueue, freed after the drained delivery). The queue is only non-empty
  * while a dispatch is on the stack, so runtime teardown never sees values. */
@@ -83,6 +87,7 @@ struct MIKObservableDispatch {
     bool active = false;
     size_t head = 0;
     std::vector<Entry> queue;
+    JSAtom atoms[OBS_ATOM_COUNT] = {};
 };
 
 namespace {
@@ -232,6 +237,13 @@ static void close_subscriber(JSContext* ctx, SubscriberData* d) {
 static MIKObservableDispatch* dispatch_state(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     return mik_rt ? mik_rt->observable_dispatch : nullptr;
+}
+
+/* JS_NewAtom(name) without hashing the name: dups the cached atom. Free with JS_FreeAtom. */
+static JSAtom observable_atom(JSContext* ctx, ObservableAtom which) {
+    MIKObservableDispatch* ds = dispatch_state(ctx);
+    if (ds && ds->atoms[which] != JS_ATOM_NULL) return JS_DupAtom(ctx, ds->atoms[which]);
+    return JS_NewAtom(ctx, observable_atom_names[which]);
 }
 
 /* True once a panic is armed. The producer's own callback keeps running (JS
@@ -656,12 +668,14 @@ static JSValue get_iterator(JSContext* ctx, JSValueConst src) {
  * Sets *done = true if iteration is complete (and returns JS_UNDEFINED).
  * Returns JS_EXCEPTION on protocol error. Caller frees the returned value. */
 static JSValue iterator_next(JSContext* ctx, JSValueConst iterator, bool* done) {
-    JSAtom next_atom = JS_NewAtom(ctx, "next");
+    JSAtom next_atom = observable_atom(ctx, OBS_NEXT);
     JSValue result = JS_Invoke(ctx, iterator, next_atom, 0, nullptr);
     JS_FreeAtom(ctx, next_atom);
     if (JS_IsException(result)) return result;
 
-    JSValue done_val = JS_GetPropertyStr(ctx, result, "done");
+    JSAtom done_atom = observable_atom(ctx, OBS_DONE);
+    JSValue done_val = JS_GetProperty(ctx, result, done_atom);
+    JS_FreeAtom(ctx, done_atom);
     int done_int = JS_ToBool(ctx, done_val);
     JS_FreeValue(ctx, done_val);
     if (done_int < 0) {
@@ -674,7 +688,9 @@ static JSValue iterator_next(JSContext* ctx, JSValueConst iterator, bool* done) 
         JS_FreeValue(ctx, result);
         return JS_UNDEFINED;
     }
-    JSValue value = JS_GetPropertyStr(ctx, result, "value");
+    JSAtom value_atom = observable_atom(ctx, OBS_VALUE);
+    JSValue value = JS_GetProperty(ctx, result, value_atom);
+    JS_FreeAtom(ctx, value_atom);
     JS_FreeValue(ctx, result);
     return value;
 }
@@ -721,7 +737,7 @@ static JSValue from_iterable_subscribe(JSContext* ctx, JSValueConst this_val, in
     JSValue iterator = get_iterator(ctx, c->iterable);
     if (JS_IsException(iterator)) return iterator;
 
-    JSAtom next_atom = JS_NewAtom(ctx, "next");
+    JSAtom next_atom = observable_atom(ctx, OBS_NEXT);
 
     bool done = false;
     while (!done) {
@@ -792,7 +808,7 @@ static JSValue from_promise_on_resolve(JSContext* ctx, JSValueConst this_val, in
     if (!sd || sd->closed) return JS_UNDEFINED;
 
     JSValue value = argc > 0 ? argv[0] : JS_UNDEFINED;
-    JSAtom next_atom = JS_NewAtom(ctx, "next");
+    JSAtom next_atom = observable_atom(ctx, OBS_NEXT);
     invoke_safely(ctx, subscriber, next_atom, 1, &value);
     JS_FreeAtom(ctx, next_atom);
 
@@ -1008,7 +1024,7 @@ static JSValue multicast_emit_next(JSContext* ctx, JSValueConst this_val, int ar
     for (auto& s : m->subscribers) snapshot.push_back(JS_DupValue(ctx, s));
 
     JSValue value = argc > 0 ? argv[0] : JS_UNDEFINED;
-    JSAtom next_atom = JS_NewAtom(ctx, "next");
+    JSAtom next_atom = observable_atom(ctx, OBS_NEXT);
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     for (auto& s : snapshot) {
         auto* sd = static_cast<SubscriberData*>(JS_GetOpaque(s, subscriber_class_id));
@@ -1982,6 +1998,9 @@ int mik__observable_multicast_new(JSContext* ctx, JSValue* observable, JSValue* 
 }
 
 void mik__observable_dispatch_free(MIKRuntime* mik_rt) {
+    if (mik_rt->observable_dispatch) {
+        for (JSAtom a : mik_rt->observable_dispatch->atoms) JS_FreeAtom(mik_rt->ctx, a);
+    }
     delete mik_rt->observable_dispatch;
     mik_rt->observable_dispatch = nullptr;
 }
@@ -1992,6 +2011,9 @@ JSModuleDef* mik__observable_init(JSContext* ctx) {
     MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
     if (mik_rt && !mik_rt->observable_dispatch) {
         mik_rt->observable_dispatch = new MIKObservableDispatch();
+        for (int i = 0; i < OBS_ATOM_COUNT; i++) {
+            mik_rt->observable_dispatch->atoms[i] = JS_NewAtom(ctx, observable_atom_names[i]);
+        }
     }
 
     /* The IDs are process-wide (MIK_NewClassID); the classes register once per runtime. */
