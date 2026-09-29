@@ -11,19 +11,24 @@
 struct AssertionInfo {
     const char* file_line;  // filename:line
     const char* message;
-    const char* function;
 };
 
-#define ERROR_AND_ABORT(expr)                                                              \
-    do {                                                                                   \
-        static const struct AssertionInfo args = {__FILE__ ":" STRINGIFY(__LINE__), #expr, \
-                                                  PRETTY_FUNCTION_NAME};                   \
-        mik_assert(args);                                                                  \
+/* Base name only: __FILE__ would put the build machine's absolute path in flash at every
+ * call site. */
+#ifdef __FILE_NAME__
+#define MIK__FILE_NAME __FILE_NAME__
+#else
+#define MIK__FILE_NAME __FILE__
+#endif
+
+#define ERROR_AND_ABORT(expr)                                                                     \
+    do {                                                                                          \
+        static const struct AssertionInfo args = {MIK__FILE_NAME ":" STRINGIFY(__LINE__), #expr}; \
+        mik_assert(args);                                                                         \
     } while (0)
 
 #define MIK__LIKELY(expr) __builtin_expect(!!(expr), 1)
 #define MIK__UNLIKELY(expr) __builtin_expect(!!(expr), 0)
-#define PRETTY_FUNCTION_NAME __PRETTY_FUNCTION__
 
 #define STRINGIFY_(x) #x
 #define STRINGIFY(x) STRINGIFY_(x)
