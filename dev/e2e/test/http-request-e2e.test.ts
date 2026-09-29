@@ -21,11 +21,14 @@ const hasWifi = WIFI_SSID && WIFI_PASSPHRASE
 // produce realistic responses for them, so skip in simulator mode.
 const isSim = env.get('MIKRO_ENV') === 'simulator'
 
-// The request/wifi module graph plus TLS working room needs ~48KB of
-// free JS heap (estimate; the graph alone retains ~30KB). Chips whose
-// per-file runtime has less than that skip this file (e.g. esp32c3).
+// TLS buffers need internal RAM, not JS heap, and systemFree also counts
+// PSRAM, so the bar is on internalFree. Measured on esp32c3 (no PSRAM):
+// the handshake fails with 42KB free after wifi connect and succeeds with
+// 58KB, and wifi itself costs ~60KB from file entry. That puts the entry
+// bar near 120KB; 128KB adds margin. Chips under it skip rather than fail
+// (esp32c3 enters with ~110KB). internalFree is 0 on the host sim.
 const m = memoryUsage()
-const fitsHttp = m.heapTotal - m.heapUsed > 48 * 1024
+const fitsHttp = m.internalFree > 128 * 1024
 
 // A cross-internet TLS round trip normally takes ~3.5s here, but a single
 // stalled handshake or slow httpbingo response blows the 10s default and

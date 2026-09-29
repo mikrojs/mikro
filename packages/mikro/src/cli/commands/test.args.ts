@@ -58,6 +58,11 @@ export const args = command(
       }),
     ),
     yes: optional(flag('-y', '--yes', {description: message`Skip confirmation prompt`})),
+    isolate: optional(
+      flag('--isolate', {
+        description: message`Restart the device before every file so each starts from a fresh boot. Slower; removes any effect of run order on results and heap figures.`,
+      }),
+    ),
     diagnostics: optional(
       flag('--diagnostics', {
         description: message`Show per-test heap progress and other runtime diagnostics`,

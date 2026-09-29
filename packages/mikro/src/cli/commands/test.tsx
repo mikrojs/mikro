@@ -20,6 +20,7 @@ import {
   formatMemorySummary,
   formatSuiteBreakdown,
   runTestManifest,
+  runTestManifestIsolated,
   type TestFileResult,
   type TestRunOptions,
 } from '../lib/testRunner.js'
@@ -139,7 +140,8 @@ export async function run(config: InferValue<typeof args>): Promise<void> {
   let boot: BootSnapshotResult | undefined
 
   try {
-    results = await runTestManifest(session, testFiles, options, {
+    const run = config.isolate === true ? runTestManifestIsolated : runTestManifest
+    results = await run(session, testFiles, options, {
       onFileStart: (file, i, total) => {
         const relPath = pathlib.relative(cwd, file)
         if (jsonOutput) {

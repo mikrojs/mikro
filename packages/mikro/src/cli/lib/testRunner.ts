@@ -212,12 +212,14 @@ export interface TestManifestCallbacks {
  * Build the test manifest, deploy once, and observe the device supervisor
  * stream as each test file runs in its own fresh runtime. Returns one
  * TestFileResult per input, with heap-snapshot bookkeeping applied.
+ * `checkBoot: false` skips the boot figures (and onBoot).
  */
 export async function runTestManifest(
   session: ReplSession,
   testFiles: string[],
   options: TestRunOptions,
   cb: TestManifestCallbacks = {},
+  checkBoot = true,
 ): Promise<TestFileResult[]> {
   const cwd = process.cwd()
   const rootDir = resolveAppRoot(cwd)
@@ -287,7 +289,7 @@ export async function runTestManifest(
   // floor rather than this run. Free to read, so record it here instead of
   // asking for a separate `mikro profile`. Absent on the host sim and on
   // firmware predating the field.
-  if (ready.heapFree !== undefined && ready.systemFree !== undefined) {
+  if (checkBoot && ready.heapFree !== undefined && ready.systemFree !== undefined) {
     const measured: BootFigures = {
       heapFree: ready.heapFree,
       systemFree: ready.systemFree,
@@ -311,6 +313,40 @@ export async function runTestManifest(
 
   cb.log?.('Waiting for test results...')
   return await collectManifestEvents(session, testFiles, options.timeout, wrappedCb)
+}
+
+/**
+ * Run each file as its own one-file manifest: deploy, restart, collect,
+ * repeat. Every file then starts from a fresh boot, so native state one file
+ * leaves behind (a network stack that cannot be torn down, a request that
+ * never finished) cannot reach the next, and a file's figures no longer
+ * depend on where it sits in the run. Costs a restart per file.
+ */
+export async function runTestManifestIsolated(
+  session: ReplSession,
+  testFiles: string[],
+  options: TestRunOptions,
+  cb: TestManifestCallbacks = {},
+): Promise<TestFileResult[]> {
+  const total = testFiles.length
+  const results: TestFileResult[] = []
+  for (let i = 0; i < total; i++) {
+    const file = testFiles[i]!
+    // Boot figures once per run: every restart boots the same firmware.
+    const [result] = await runTestManifest(
+      session,
+      [file],
+      options,
+      {
+        ...cb,
+        onFileStart: (f) => cb.onFileStart?.(f, i, total),
+        onFileDone: (r) => cb.onFileDone?.(r, i, total),
+      },
+      i === 0,
+    )
+    results.push(result!)
+  }
+  return results
 }
 
 /**

@@ -297,20 +297,21 @@ Run on-device tests. Discovers `*.test.ts` files, deploys them, and reports stru
 mikro test [PATTERN]
 ```
 
-| Option                  | Description                                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| `PATTERN`               | Glob pattern to filter test files (default: `**/*.test.ts`)                                             |
-| `-p, --port PORT`       | Serial port (auto-detected if omitted)                                                                  |
-| `--env-file FILE`       | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence) |
-| `--no-auto-env`         | Skip auto-loading of `.env` and `.env.test`                                                             |
-| `--no-minify`           | Skip minification                                                                                       |
-| `--no-bytecode`         | Skip bytecode compilation                                                                               |
-| `-t, --timeout MS`      | Per-file timeout in ms (default: `60000`)                                                               |
-| `-u, --update-heap`     | Overwrite committed heap snapshots with this run's measurements, boot figures included                  |
-| `--heap-tolerance SIZE` | Heap drift below which a snapshot is neither flagged nor rewritten                                      |
-| `--diagnostics`         | Show per-test heap progress and supervisor announcements                                                |
-| `-y, --yes`             | Skip confirmation prompt                                                                                |
-| `--json`                | Output as JSON                                                                                          |
+| Option                  | Description                                                                                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `PATTERN`               | Glob pattern to filter test files (default: `**/*.test.ts`)                                                                        |
+| `-p, --port PORT`       | Serial port (auto-detected if omitted)                                                                                             |
+| `--env-file FILE`       | Extra `.env` file, applied last (highest priority); see [precedence](/environment-variables#precedence)                            |
+| `--no-auto-env`         | Skip auto-loading of `.env` and `.env.test`                                                                                        |
+| `--no-minify`           | Skip minification                                                                                                                  |
+| `--no-bytecode`         | Skip bytecode compilation                                                                                                          |
+| `-t, --timeout MS`      | Per-file timeout in ms (default: `60000`)                                                                                          |
+| `-u, --update-heap`     | Overwrite committed heap snapshots with this run's measurements, boot figures included                                             |
+| `--heap-tolerance SIZE` | Heap drift below which a snapshot is neither flagged nor rewritten                                                                 |
+| `--diagnostics`         | Show per-test heap progress and supervisor announcements                                                                           |
+| `--isolate`             | Restart the device before every file so each starts from a fresh boot; slower, but run order cannot affect results or heap figures |
+| `-y, --yes`             | Skip confirmation prompt                                                                                                           |
+| `--json`                | Output as JSON                                                                                                                     |
 
 See [Build options](#build-options) for details on `--no-minify` and other build flags.
 

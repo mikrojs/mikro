@@ -18,11 +18,10 @@ const onDevice = env.get('MIKRO_ENV') !== 'simulator'
 const hasWifi = WIFI_SSID && WIFI_PASSPHRASE && onDevice
 
 const m = memoryUsage()
-const fitsFetch = m.heapTotal - m.heapUsed > 48 * 1024
 
-// The radio pre-flight needs ~128KB of free system heap at file entry;
+// The radio pre-flight needs ~100KB of free internal RAM at file entry;
 // the derivation is in wifi-e2e.test.ts next to its fitsRadio.
-const fitsRadio = m.systemFree > 128 * 1024
+const fitsRadio = m.internalFree > 100 * 1024
 
 // ~120 beacon intervals at the usual 102.4ms — long enough that a wake
 // path that corrupts state or misses TIM windows gets caught, short
@@ -53,7 +52,7 @@ describe.runIf(hasWifi && fitsRadio)('wifi modem-sleep', () => {
     {timeout: IDLE_MS + 10_000},
   )
 
-  test.runIf(fitsFetch)('http request works after the idle window', async () => {
+  test('http request works after the idle window', async () => {
     const {request} = await import('mikro/http/request')
     const result = await request('http://httpbingo.org/get')
     assert.ok(result)
