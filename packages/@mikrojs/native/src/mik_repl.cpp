@@ -927,8 +927,9 @@ static std::vector<uint8_t> proto_complete(JSContext* ctx, const char* partial, 
  * lists the registered C modules outside the core namespace (package native
  * modules compiled in, e.g. "@mikrojs/drivers/sh8601"; empty on a generic
  * build), so the host can refuse an app importing one this firmware lacks.
- * `fw` is the firmware identity: the board name the build set (MIK_BOARD_NAME),
- * which `board` also reports. The host only auto-flashes its bundled image over
+ * `fw` is the firmware identity: the name the build set (MIK_BOARD_NAME). `board`
+ * reports the same unless `mikro flash` wrote a board's name into a generic
+ * image (mik__board_name). The host only auto-flashes its bundled image over
  * a device whose identity matches that image's name; omitting it reads as
  * firmware predating identity reporting, which the host treats as its own
  * bundled firmware.

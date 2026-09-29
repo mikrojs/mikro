@@ -124,6 +124,8 @@ export default defineBoards({
 
 Leave out `sdkconfig` when the generic firmware's settings are enough. `partitions` names a partition table to use instead of the default one; `project` points at a firmware project of the package's own, for the rare board that needs its own `main` or ESP-IDF components.
 
+A board whose drivers are all pure JS and that needs no settings of its own runs the generic image instead: `{firmware: 'esp32c6-generic', description: '...'}` builds nothing, and `mikro flash` writes the board's name into the generic image, so the device still reports it as `sys.board.name`.
+
 ### 3. sdkconfig.defaults
 
 Only what the board needs and the generic firmware does not set:

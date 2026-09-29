@@ -172,6 +172,7 @@ export async function run(
         port: devicePath,
         configBoard: artifact.configBoard,
         deviceFeatures: err.features,
+        deviceBoard: err.deviceBoard,
         onProgress: (m) => log(m),
       })
       const pm = await detectPreferredPm()

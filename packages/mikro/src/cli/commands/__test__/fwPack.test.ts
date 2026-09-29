@@ -13,6 +13,7 @@ import {
 import {tmpdir} from 'node:os'
 import * as pathlib from 'node:path'
 
+import figures from 'figures'
 import pkg from 'mikro/package.json' with {type: 'json'}
 import {afterAll, afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
@@ -163,6 +164,33 @@ write(
   ].join('\n'),
 )
 
+/** A package with a board that runs a generic image, and one with an image
+ *  of its own. */
+const generic = pathlib.join(root, 'generic')
+write(
+  pathlib.join(generic, 'package.json'),
+  JSON.stringify({
+    name: '@acme/generic',
+    files: ['dist-fw'],
+    exports: {
+      './t-display': {firmware: './dist-fw/t-display/full/firmware.json'},
+      './knob': {firmware: './dist-fw/knob/full/firmware.json'},
+    },
+  }),
+)
+const GENERIC_CONFIG = [
+  `import {defineBoards} from 'mikro'`,
+  ``,
+  `export default defineBoards({`,
+  `  boards: {`,
+  `    './t-display': {firmware: 'esp32-generic', description: 'T-Display'},`,
+  `    './knob': {chip: 'esp32c6'},`,
+  `  },`,
+  `})`,
+  ``,
+].join('\n')
+write(pathlib.join(generic, 'boards.config.ts'), GENERIC_CONFIG)
+
 const originalCwd = process.cwd()
 
 beforeEach(() => {
@@ -178,7 +206,7 @@ afterEach(() => {
   agent.mode = false
   process.chdir(originalCwd)
   rmSync(idfLog, {force: true})
-  for (const dir of [app, board, boards]) {
+  for (const dir of [app, board, boards, generic]) {
     for (const file of ['.mikro', 'dist-fw'])
       rmSync(pathlib.join(dir, file), {recursive: true, force: true})
     for (const name of [
@@ -188,12 +216,14 @@ afterEach(() => {
       'acme-boards-t-display-esp32c6',
       'acme-boards-devkit-esp32c6',
       'acme-devboard-esp32c6+no-ble',
+      'acme-generic-knob-esp32c6',
     ]) {
       rmSync(pathlib.join(dir, `mikro-fw-${name}.tar.gz`), {force: true})
     }
   }
   write(pathlib.join(board, 'package.json'), JSON.stringify(BOARD_PACKAGE))
   write(pathlib.join(board, 'boards.config.ts'), BOARD_CONFIG)
+  write(pathlib.join(generic, 'boards.config.ts'), GENERIC_CONFIG)
 })
 
 afterAll(() => {
@@ -996,6 +1026,136 @@ describe('mikro fw check', () => {
       expect.stringContaining('has no export with a "firmware" condition'),
     )
     expect(exit).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('a board that runs a generic image', () => {
+  const BUILD = {
+    subcommand: 'build',
+    board: undefined,
+    image: undefined,
+    parallel: undefined,
+    flash: undefined,
+  } as const
+  const stub = pathlib.join(generic, 'dist-fw', 't-display', 'full', 'firmware.json')
+
+  it("fw build writes its firmware.json, naming the generic board, and builds the others'", async () => {
+    process.chdir(generic)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await runBuild(BUILD)
+
+    expect(JSON.parse(readFileSync(stub, 'utf8'))).toEqual({
+      name: '@acme/generic/t-display',
+      description: 'T-Display',
+      firmware: 'esp32-generic',
+    })
+    expect(log).toHaveBeenCalledWith(
+      'Wrote @acme/generic/t-display (esp32), which runs esp32-generic, to dist-fw/t-display/full',
+    )
+    // Only the board with an image of its own goes through ESP-IDF
+    expect(idfCalls()).toHaveLength(1)
+    expect(existsSync(pathlib.join(generic, 'dist-fw', 'knob', 'full', 'firmware.json'))).toBe(true)
+  })
+
+  it('fw build --board builds it alone, without ESP-IDF, and refuses --image', async () => {
+    process.chdir(generic)
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await runBuild({...BUILD, board: './t-display'})
+
+    expect(existsSync(stub)).toBe(true)
+    expect(idfCalls()).toEqual([])
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    await runBuild({...BUILD, board: './t-display', image: 'no-ble'})
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('@acme/generic/t-display run a generic image'),
+    )
+    expect(exit).toHaveBeenCalledWith(1)
+  })
+
+  it('fw check passes once built, and fails when the config names another', async () => {
+    process.chdir(generic)
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    await runBuild(BUILD)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+
+    await runCheck({subcommand: 'check'})
+
+    expect(log).toHaveBeenCalledWith(
+      `${figures.tick} @acme/generic/t-display: @acme/generic/t-display runs esp32-generic`,
+    )
+    expect(exit).not.toHaveBeenCalled()
+
+    write(
+      pathlib.join(generic, 'boards.config.ts'),
+      GENERIC_CONFIG.replace(`firmware: 'esp32-generic'`, `firmware: 'esp32c6-generic'`),
+    )
+    await runCheck({subcommand: 'check'})
+    expect(error).toHaveBeenCalledWith(
+      `${figures.cross} @acme/generic/t-display: the firmware.json has @acme/generic/t-display ` +
+        'running esp32-generic, but boards.config.ts has @acme/generic/t-display running ' +
+        'esp32c6-generic; run `mikro fw build`',
+    )
+    expect(exit).toHaveBeenCalledWith(1)
+  })
+
+  it('refuses a generic board mikro does not have', async () => {
+    process.chdir(generic)
+    write(
+      pathlib.join(generic, 'boards.config.ts'),
+      GENERIC_CONFIG.replace(`firmware: 'esp32-generic'`, `firmware: 'esp32c9-generic'`),
+    )
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+
+    await runBuild(BUILD)
+
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        '"firmware" is esp32c9-generic, which is not a generic board; they are esp32-generic,',
+      ),
+    )
+    expect(existsSync(stub)).toBe(false)
+  })
+
+  it('fw pack writes its firmware.json and packs only the others', async () => {
+    process.chdir(generic)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await run({subcommand: 'pack', out: undefined, board: undefined, parallel: undefined})
+
+    expect(existsSync(stub)).toBe(true)
+    expect(existsSync(pathlib.join(generic, 'mikro-fw-acme-generic-knob-esp32c6.tar.gz'))).toBe(
+      true,
+    )
+    expect(log).toHaveBeenCalledWith(
+      '@acme/generic/t-display runs esp32-generic, which mikro ships: nothing to pack',
+    )
+
+    // Named alone: nothing to pack, and no archive for --out to name
+    await run({subcommand: 'pack', out: undefined, board: './t-display', parallel: undefined})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    await run({subcommand: 'pack', out: 'x.tar.gz', board: './t-display', parallel: undefined})
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('a board that runs a generic image has none'),
+    )
+    expect(exit).toHaveBeenCalledWith(1)
+  })
+
+  it('fw list shows the generic board it runs, with nothing to build', async () => {
+    process.chdir(generic)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await runList({subcommand: 'list', json: undefined})
+
+    expect(log).toHaveBeenCalledWith('@acme/generic/t-display (esp32): runs esp32-generic')
+    expect(log).toHaveBeenCalledWith('@acme/generic/knob (esp32c6): full')
   })
 })
 

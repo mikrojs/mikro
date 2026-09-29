@@ -16,7 +16,12 @@ import type {InferValue} from '@optique/core/parser'
 
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
 import {boardBuildDir, boardProjectDir} from '../../lib/boards.js'
-import {BOARDS_CONFIG, loadBoardsConfig, selectBoards} from '../../lib/boardsConfig.js'
+import {
+  BOARDS_CONFIG,
+  loadBoardsConfig,
+  type ResolvedGenericBoard,
+  selectBoards,
+} from '../../lib/boardsConfig.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {UserError} from '../../lib/errorMessage.js'
 import {
@@ -27,6 +32,7 @@ import {
   configuredImageProblems,
   writeBoardImage,
   writeBoardImages,
+  writeGenericBoard,
 } from '../../lib/fwImage.js'
 import type {args} from './build.args.js'
 import {
@@ -46,12 +52,15 @@ export function problemLines(problems: BoardProblem[]): string {
 }
 
 /**
- * The package around `dir` and the boards its boards.config.ts declares, or
- * undefined when it has no config. Throws when the config has problems.
+ * The package around `dir` and the boards its boards.config.ts declares (with
+ * an image of their own, and running a generic one), or undefined when it has
+ * no config. Throws when the config has problems.
  */
 export async function configuredPackage(
   dir: string,
-): Promise<{packageDir: string; boards: ConfiguredBoard[]} | undefined> {
+): Promise<
+  {packageDir: string; boards: ConfiguredBoard[]; generic: ResolvedGenericBoard[]} | undefined
+> {
   const packageDir = findPackageRoot(dir)
   if (packageDir === undefined) return undefined
   const loaded = await loadBoardsConfig(packageDir)
@@ -62,7 +71,7 @@ export async function configuredPackage(
         problemLines(loaded.problems),
     )
   }
-  return {packageDir, boards: loaded.boards}
+  return {packageDir, boards: loaded.boards, generic: loaded.generic}
 }
 
 /**
@@ -259,13 +268,14 @@ export async function buildBoardImages(
 /** The one image `--flash` flashes: of the only board selected, the one
  *  `--image` names, or the full image of a board without others. */
 function imageToFlash(
-  boards: ConfiguredBoard[],
+  boards: (ConfiguredBoard | ResolvedGenericBoard)[],
   image: string | undefined,
-): {board: ConfiguredBoard; image: string} {
+): {board: ConfiguredBoard | ResolvedGenericBoard; image: string} {
   const [board, ...others] = boards
   if (board === undefined || others.length > 0) {
     throw new UserError('--flash flashes one image: pick the board with --board.')
   }
+  if ('firmware' in board) return {board, image: FULL_IMAGE}
   if (image === undefined && board.images.length > 0) {
     throw new UserError(
       `--flash flashes one image: pick one of ${board.name}'s with --image (` +
@@ -279,8 +289,8 @@ function imageToFlash(
 /** The `--features` that make `mikro flash` pick `image` of `board`: `full`,
  *  the features the image has, whose leanest image it is, or `min` for an
  *  image with none. */
-function featuresOf(board: ConfiguredBoard, image: string): string {
-  if (image === FULL_IMAGE) return FULL_IMAGE
+function featuresOf(board: ConfiguredBoard | ResolvedGenericBoard, image: string): string {
+  if (image === FULL_IMAGE || 'firmware' in board) return FULL_IMAGE
   const read = readFirmwareJson(pathlib.join(board.boardDir, image, 'firmware.json'))
   if (!read.ok) throw new UserError(read.message)
   const features = read.value.features ?? []
@@ -307,32 +317,59 @@ export async function run(config: Args): Promise<void> {
   try {
     const configured = await configuredPackage(process.cwd())
     if (configured === undefined) throw noBoardsConfig(process.cwd())
-    const {packageDir, boards} = configured
+    const {packageDir, boards, generic} = configured
     if (config.image !== undefined && config.parallel !== undefined) {
       throw new UserError(
         "--parallel builds each board's images at once, and --image builds one of them.",
       )
     }
-    const selected = selectBoards(
-      boards,
-      config.board === '' ? await pickBoard(boards) : config.board,
-    )
+    const all = [...boards, ...generic]
+    const selected = selectBoards(all, config.board === '' ? await pickBoard(all) : config.board)
+    const selectedBoards = boards.filter((b) => selected.includes(b))
+    const selectedGeneric = generic.filter((b) => selected.includes(b))
+    if (config.image !== undefined && selectedGeneric.length > 0) {
+      throw new UserError(
+        `${selectedGeneric.map((b) => b.name).join(', ')} run a generic image, which mikro ` +
+          "ships with its other images; --image builds one of a board's own images.",
+      )
+    }
     const image =
       config.image === undefined
         ? undefined
-        : sortImageName(config.image === '' ? await pickImage(selected) : config.image)
+        : sortImageName(config.image === '' ? await pickImage(selectedBoards) : config.image)
     // Before any build, so a --flash that can't pick one image stops at once
     const toFlash = config.flash === true ? imageToFlash(selected, image) : undefined
+    const written: (ResolvedGenericBoard & {dir: string})[] = []
+    for (const board of selectedGeneric) {
+      written.push({...board, dir: await writeGenericBoard(board, packageDir)})
+    }
     const images =
-      image === undefined
-        ? await buildBoardImages(packageDir, selected, 'fw build', jsonOutput, config.parallel)
-        : await buildOneImage(packageDir, selected, image, 'fw build', jsonOutput)
+      selectedBoards.length === 0
+        ? []
+        : image === undefined
+          ? await buildBoardImages(
+              packageDir,
+              selectedBoards,
+              'fw build',
+              jsonOutput,
+              config.parallel,
+            )
+          : await buildOneImage(packageDir, selectedBoards, image, 'fw build', jsonOutput)
     if (images === undefined) return
     if (jsonOutput) {
       agentResult('fw build', {
-        boards: images.map(({name, chip, dir}) => ({name, chip, dir})),
+        boards: [
+          ...written.map(({name, chip, dir, firmware}) => ({name, chip, dir, firmware})),
+          ...images.map(({name, chip, dir}) => ({name, chip, dir})),
+        ],
       })
     } else {
+      for (const board of written) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `Wrote ${board.name} (${board.chip}), which runs ${board.firmware}, to ${displayPath(board.dir)}`,
+        )
+      }
       for (const image of images) {
         // eslint-disable-next-line no-console
         console.log(`Wrote the image of ${image.name} (${image.chip}) to ${displayPath(image.dir)}`)

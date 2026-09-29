@@ -115,6 +115,7 @@ TEST_CASE_FIXTURE(SysFixture, "device facts come from the platform" *
               "globalThis.__reset = sys.resetReason\n"
               "globalThis.__version = sys.version\n"
               "globalThis.__board = sys.board.name\n"
+              "globalThis.__firmware = sys.firmware.name\n"
               "const up = sys.uptime()\n"
               "globalThis.__bootPositive = up.boot > 0 && up.rtc > 0\n")
                  .c_str());
@@ -122,6 +123,7 @@ TEST_CASE_FIXTURE(SysFixture, "device facts come from the platform" *
     CHECK(read_global_string(ctx, "__reset") == "power-on-test");
     CHECK(read_global_string(ctx, "__version") != "");
     CHECK(read_global_string(ctx, "__board") == "generic");
+    CHECK(read_global_string(ctx, "__firmware") == "generic");
     CHECK(read_global_string(ctx, "__bootPositive") == "true");
 }
 

@@ -7,7 +7,7 @@ import pkg from 'mikro/package.json' with {type: 'json'}
 import {type ReactNode, useEffect, useRef, useState} from 'react'
 import {firstValueFrom} from 'rxjs'
 
-import {customFirmwareOf} from '../bundledFirmware.js'
+import {customFirmwareOf, type DeviceBoard, genericBoardOf} from '../bundledFirmware.js'
 import {flashFirmware} from '../flashFirmware.js'
 import {detectPreferredPm, rerunCommand} from '../pkgManager.js'
 import {Spinner} from '../Spinner.js'
@@ -68,8 +68,10 @@ export function FirmwareGate(props: FirmwareGateProps) {
   // toggling it doesn't restart the flash effect.
   const [confirmAbort, setConfirmAbort] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
-  // The features the device reports, so the reflash keeps its image
+  // The features the device reports, so the reflash keeps its image, and the
+  // board a device on the generic firmware was flashed as, to keep its name
   const deviceFeaturesRef = useRef<string[] | undefined>(undefined)
+  const deviceBoardRef = useRef<DeviceBoard | undefined>(undefined)
 
   // Probe compatibility once on mount.
   useEffect(() => {
@@ -82,6 +84,7 @@ export function FirmwareGate(props: FirmwareGateProps) {
           const ready = await firstValueFrom(h.session.awaitReady$(PROBE_TIMEOUT_MS))
           if (cancelled) return
           deviceFeaturesRef.current = ready.features
+          deviceBoardRef.current = genericBoardOf(ready)
           if (ready.advisory?.kind === 'incompatible') {
             // Never flash the bundled build over a device reporting custom
             // firmware, not even with --yes: that silently reverts its
@@ -124,6 +127,7 @@ export function FirmwareGate(props: FirmwareGateProps) {
     flashFirmware({
       port: devicePath,
       deviceFeatures: deviceFeaturesRef.current,
+      deviceBoard: deviceBoardRef.current,
       signal: controller.signal,
       onProgress: (message) => {
         if (!cancelled) setState({status: 'flashing', message})

@@ -8,24 +8,31 @@ import {
   type BoardProblem,
   checkBoardsConfig,
   type ConfiguredBoard,
+  type ConfiguredGenericBoard,
   type ConfiguredImage,
 } from '@mikrojs/firmware/boards'
 
-import {boardBuildDir, boardProjectDir} from './boards.js'
+import {boardBuildDir, boardProjectDir, bundledBoards} from './boards.js'
 import {UserError} from './errorMessage.js'
 import {rewriteConfigImports} from './loadMikroConfig.js'
 
 /** A board package's config: at its root, next to package.json. */
 export const BOARDS_CONFIG = 'boards.config.ts'
 
+/** A board that runs a generic image, with that image's chip. */
+export type ResolvedGenericBoard = ConfiguredGenericBoard & {chip: string}
+
 /**
  * The boards the package's boards.config.ts declares, and what is wrong with
- * it (see checkBoardsConfig); undefined when the package has none. Loaded like
+ * it (see checkBoardsConfig, and a board that runs a generic image mikro
+ * doesn't have); undefined when the package has none. Loaded like
  * mikro.config.ts: types stripped, the `mikro` import shimmed.
  */
 export async function loadBoardsConfig(
   packageDir: string,
-): Promise<{boards: ConfiguredBoard[]; problems: BoardProblem[]} | undefined> {
+): Promise<
+  {boards: ConfiguredBoard[]; generic: ResolvedGenericBoard[]; problems: BoardProblem[]} | undefined
+> {
   const file = path.join(packageDir, BOARDS_CONFIG)
   if (!existsSync(file)) return undefined
   const source = stripTypeScriptTypes(await fs.readFile(file, 'utf8'), {mode: 'strip'})
@@ -38,15 +45,31 @@ export async function loadBoardsConfig(
   } catch (e) {
     throw new UserError(`${file} failed to load`, {cause: e})
   }
-  return checkBoardsConfig(packageDir, mod.default)
+  const {boards, generic, problems} = checkBoardsConfig(packageDir, mod.default)
+  const bundled = bundledBoards()
+  const resolved: ResolvedGenericBoard[] = []
+  for (const board of generic) {
+    const image = bundled.find((b) => b.name === board.firmware)
+    if (image === undefined) {
+      problems.push({
+        specifier: board.specifier,
+        message:
+          `boards.config.ts, board "${board.key}": "firmware" is ${board.firmware}, which is not ` +
+          `a generic board; they are ${bundled.map((b) => b.name).join(', ')}`,
+      })
+    } else {
+      resolved.push({...board, chip: image.chip})
+    }
+  }
+  return {boards, generic: resolved, problems}
 }
 
 /** The boards `selector` names (`--board`): an export key (`./t-display`, or
  *  `t-display`) or a board name. All of them without one. */
-export function selectBoards(
-  boards: ConfiguredBoard[],
+export function selectBoards<T extends {key: string; name: string}>(
+  boards: T[],
   selector: string | undefined,
-): ConfiguredBoard[] {
+): T[] {
   if (selector === undefined) return boards
   const key = selector === '.' || selector.startsWith('./') ? selector : `./${selector}`
   const selected = boards.filter((b) => b.key === key || b.name === selector)

@@ -39,7 +39,8 @@ export function missingFeaturesError(
   ready: Pick<ReadyEvent, 'board' | 'chip' | 'features' | 'fw' | 'natives'>,
 ): string | undefined {
   if (features === undefined) return undefined
-  const firmware = ready.board ?? ready.chip ?? 'unknown'
+  // `fw`, not `board`: a generic image flashed for a board reports the board
+  const firmware = ready.fw ?? ready.board ?? ready.chip ?? 'unknown'
   const sections: string[] = []
   const device = new Set(ready.features ?? [])
   const missing =

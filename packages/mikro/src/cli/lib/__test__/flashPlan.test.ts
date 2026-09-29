@@ -2,6 +2,7 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -20,6 +21,7 @@ import {
   parseFeatures,
   resolveFlashPlan,
 } from '../flashFirmware.js'
+import {appImage} from './appImage.js'
 
 // No real esptool: chip detection fails, which the plan treats as "unknown"
 // and falls back to the board's chip or the one --chip names.
@@ -32,6 +34,17 @@ vi.mock('../firmware.js', () => ({
   resolveFrom: async (url: unknown) => {
     downloaded.calls.push(url)
     return downloaded.dir
+  },
+}))
+
+// The copies of generic images with a board's name written in, out of the
+// user's cache.
+const cache = vi.hoisted(() => ({dir: ''}))
+vi.mock('../envPaths.js', () => ({
+  paths: {
+    get cache() {
+      return cache.dir
+    },
   },
 }))
 
@@ -223,6 +236,7 @@ describe('resolveFlashPlan', () => {
     tempDir = realpathSync(mkdtempSync(pathlib.join(tmpdir(), 'flash-plan-')))
     process.chdir(tempDir)
     bundled.dir = pathlib.join(tempDir, 'bundled')
+    cache.dir = pathlib.join(tempDir, 'cache')
     writeImage(bundled.dir, 'esp32c6-generic')
   })
 
@@ -257,6 +271,96 @@ describe('resolveFlashPlan', () => {
       pathlib.join(ring, 'dist-fw/full/bootloader.bin'),
       pathlib.join(ring, 'dist-fw/full/app.bin'),
     ])
+  })
+
+  it('flashes the generic image for a board that runs one, with its name written in', async () => {
+    writeFileSync(pathlib.join(bundled.dir, 'app.bin'), appImage())
+    write(
+      pathlib.join(tempDir, 'package.json'),
+      JSON.stringify({name: 'fixture', dependencies: {boards: '*'}}),
+    )
+    const boards = pathlib.join(tempDir, 'node_modules/boards')
+    write(
+      pathlib.join(boards, 'package.json'),
+      JSON.stringify({
+        name: 'boards',
+        exports: {'./t-display': {firmware: './dist-fw/t-display/full/firmware.json'}},
+      }),
+    )
+    write(
+      pathlib.join(boards, 'dist-fw/t-display/full/firmware.json'),
+      JSON.stringify({name: 'boards/t-display', firmware: 'esp32c6-generic'}),
+    )
+
+    // The only board dependency, picked without naming it
+    const plan = plan_(await resolveFlashPlan({port: '/dev/null'}))
+    expect(plan.image).toBe('board')
+    expect(plan.board).toEqual({
+      name: 'boards/t-display',
+      source: 'dependency',
+      firmware: 'esp32c6-generic',
+    })
+    const [bootloader, app] = plan.flasherArgs.files
+    expect(bootloader!.filename).toBe(pathlib.join(bundled.dir, 'bootloader.bin'))
+    expect(app!.filename).toBe(
+      pathlib.join(cache.dir, 'app-images', 'boards-t-display+bundled.bin'),
+    )
+    const name = readFileSync(app!.filename).subarray(0x124, 0x124 + 16)
+    expect(name.toString()).toBe('boards/t-display')
+
+    write(
+      pathlib.join(boards, 'dist-fw/t-display/full/firmware.json'),
+      JSON.stringify({name: 'boards/t-display', firmware: 'esp32c9-generic'}),
+    )
+    await expect(resolveFlashPlan({port: '/dev/null', board: 'boards/t-display'})).rejects.toThrow(
+      'skipped boards/t-display: it runs esp32c9-generic, which is not a generic board this CLI has',
+    )
+  })
+
+  it('keeps the board a device on the generic firmware was flashed as, when nothing else names one', async () => {
+    writeFileSync(pathlib.join(bundled.dir, 'app.bin'), appImage())
+    write(pathlib.join(tempDir, 'package.json'), JSON.stringify({name: 'fixture'}))
+    const deviceBoard = {name: 'acme/t-display', firmware: 'esp32c6-generic'}
+
+    const kept = plan_(await resolveFlashPlan({port: '/dev/null', deviceBoard}))
+    expect(kept.board).toEqual({
+      name: 'acme/t-display',
+      source: 'device',
+      firmware: 'esp32c6-generic',
+    })
+    const app = kept.flasherArgs.files.find((f) => f.address === 0x10000)!
+    expect(
+      readFileSync(app.filename)
+        .subarray(0x124, 0x124 + 14)
+        .toString(),
+    ).toBe('acme/t-display')
+
+    // --board and mikro.config.ts still choose
+    const named = plan_(
+      await resolveFlashPlan({port: '/dev/null', deviceBoard, configBoard: 'esp32c6-generic'}),
+    )
+    expect(named.board).toEqual({name: 'esp32c6-generic', source: 'config'})
+
+    // A board dependency comes first, as over a board's own image, except on
+    // an automatic reflash
+    write(
+      pathlib.join(tempDir, 'package.json'),
+      JSON.stringify({name: 'fixture', dependencies: {ring: '*'}}),
+    )
+    const ring = pathlib.join(tempDir, 'node_modules', 'ring')
+    write(
+      pathlib.join(ring, 'package.json'),
+      JSON.stringify({name: 'ring', exports: {'.': {firmware: './dist-fw/full/firmware.json'}}}),
+    )
+    writeImage(pathlib.join(ring, 'dist-fw', 'full'), 'ring')
+    const dependency = plan_(await resolveFlashPlan({port: '/dev/null', deviceBoard}))
+    expect(dependency.board).toEqual({name: 'ring', source: 'dependency'})
+    const reflash = plan_(await resolveFlashPlan({port: '/dev/null', deviceBoard, reflash: true}))
+    expect(reflash.board).toEqual({
+      name: 'acme/t-display',
+      source: 'device',
+      firmware: 'esp32c6-generic',
+    })
   })
 
   it("flashes the board's image --features asks for, else the one the device runs", async () => {

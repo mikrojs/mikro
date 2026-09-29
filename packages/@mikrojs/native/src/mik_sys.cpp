@@ -171,7 +171,7 @@ static JSValue mik__sys_restart(JSContext* ctx, JSValue this_val, int argc, JSVa
     return JS_UNDEFINED;
 }
 
-const char* mik__board_name(void) {
+const char* mik__firmware_name(void) {
 #ifdef MIK_BOARD_NAME
     return MIK_BOARD_NAME;
 #elif defined(CONFIG_IDF_TARGET)
@@ -179,6 +179,36 @@ const char* mik__board_name(void) {
 #else
     return "generic";
 #endif
+}
+
+#ifdef CONFIG_IDF_TARGET
+/* The board name `mikro flash` writes into a copy of the image when it flashes
+ * the generic firmware for a board (packages/mikro/src/cli/lib/boardName.ts).
+ * ESP-IDF places .rodata_custom_desc right after esp_app_desc_t, at image
+ * offset 0x120. Empty in the built image. */
+struct MIKBoardDesc {
+    uint32_t magic;
+    char board[64];
+};
+static const MIKBoardDesc s_board_desc
+    __attribute__((section(".rodata_custom_desc"), used)) = {0x424b494d /* "MIKB" */, {}};
+
+/* Copied through volatile reads: the compiler knows the empty initializer and
+ * would otherwise fold every read of it. */
+static const char* mik__patched_board_name(void) {
+    static char name[sizeof(s_board_desc.board)];
+    const volatile char* src = s_board_desc.board;
+    for (size_t i = 0; i + 1 < sizeof(name) && src[i] != '\0'; i++) name[i] = src[i];
+    return name;
+}
+#endif
+
+const char* mik__board_name(void) {
+#ifdef CONFIG_IDF_TARGET
+    static const char* patched = mik__patched_board_name();
+    if (patched[0] != '\0') return patched;
+#endif
+    return mik__firmware_name();
 }
 
 static JSValue mik__sys_board(JSContext* ctx) {
@@ -248,6 +278,7 @@ static JSValue mik__sys_board(JSContext* ctx) {
 
 static JSValue mik__sys_firmware(JSContext* ctx) {
     JSValue obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, obj, "name", JS_NewString(ctx, mik__firmware_name()));
 #ifdef CONFIG_IDF_TARGET
     const esp_app_desc_t* desc = esp_app_get_description();
     char elf_hash[65];

@@ -9,7 +9,7 @@ import {catchError, map, startWith} from 'rxjs/operators'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import type {BoardInfo} from '../lib/boards.js'
-import {customFirmwareOf} from '../lib/bundledFirmware.js'
+import {customFirmwareOf, type DeviceBoard, genericBoardOf} from '../lib/bundledFirmware.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
 import {describeError} from '../lib/errorMessage.js'
 import {type FlasherArgs, getWriteFlashMultiArgs} from '../lib/esptool.js'
@@ -56,6 +56,7 @@ const BOARD_SOURCE_LABELS: Record<BoardSource, string> = {
   detected: 'default: detected chip',
   flag: 'from --board',
   config: 'from mikro.config.ts',
+  device: 'kept: the board the device reports',
   dependency: 'auto: only board dependency',
   chip: "auto: only board for the device's chip",
   picked: 'picked',
@@ -70,7 +71,7 @@ const PROBE_TIMEOUT_MS = 4000
  *  firmware bundled with this CLI (`custom`), and the features it reports. */
 type ProbeState =
   | {status: 'pending'}
-  | {status: 'done'; fw?: string; custom?: string; features?: string[]}
+  | {status: 'done'; fw?: string; custom?: string; features?: string[]; board?: DeviceBoard}
 
 const IMAGE_SOURCE_LABELS: Record<ImageChoice['source'], string> = {
   features: 'from --features',
@@ -128,6 +129,7 @@ export default function FlashCmd(props: Props) {
             fw: ready.fw,
             custom: customFirmwareOf(ready),
             features: ready.features,
+            board: genericBoardOf(ready),
           })
         } finally {
           h.close()
@@ -144,8 +146,9 @@ export default function FlashCmd(props: Props) {
     }
   }, [needsProbe, devicePath])
 
-  // What the device reports running, so the plan keeps its image
+  // What the device reports running, so the plan keeps its image and board
   const deviceFeatures = probe.status === 'done' ? probe.features : undefined
+  const deviceBoard = probe.status === 'done' ? probe.board : undefined
 
   useEffect(() => {
     if (mutuallyExclusive) return
@@ -168,6 +171,7 @@ export default function FlashCmd(props: Props) {
         configBoard: config?.board,
         features: features === undefined ? undefined : parseFeatures(features),
         deviceFeatures,
+        deviceBoard,
         chip,
         // Only an interactive run without --yes can answer the picker.
         pickBoard: process.stdin.isTTY && yes !== true,
@@ -204,6 +208,7 @@ export default function FlashCmd(props: Props) {
     devicePath,
     probe.status,
     deviceFeatures,
+    deviceBoard,
   ])
 
   if (mutuallyExclusive) {
@@ -336,10 +341,17 @@ export default function FlashCmd(props: Props) {
     initState.image === 'board' &&
     probe.status === 'done' &&
     probe.custom !== undefined &&
-    probe.fw !== board?.name
+    probe.fw !== (board?.firmware ?? board?.name)
       ? [`The device runs other firmware ("${probe.fw}"), which this replaces with ${board?.name}.`]
       : []
-  const warnings = [...replaces, ...initState.warnings]
+  // Also for the generic firmware: the device's board name goes with it
+  const renames =
+    probe.status === 'done' && probe.board !== undefined && probe.board.name !== board?.name
+      ? [
+          `The device runs ${probe.board.firmware} as ${probe.board.name}, which this replaces with ${board?.name}.`,
+        ]
+      : []
+  const warnings = [...replaces, ...renames, ...initState.warnings]
 
   if (!confirmed) {
     return (
@@ -511,6 +523,9 @@ function FlashProgress(props: {
           <Text color="gray">
             board: {board.name} ({BOARD_SOURCE_LABELS[board.source]})
           </Text>
+          {board.firmware !== undefined ? (
+            <Text color="gray">firmware: {board.firmware}, with the board&apos;s name</Text>
+          ) : null}
           {chosenImage ? (
             <Text color="gray">
               image: {chosenImage.name} ({IMAGE_SOURCE_LABELS[chosenImage.source]})

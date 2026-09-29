@@ -98,8 +98,9 @@ export declare const version: string
 export type BoardFeature = 'wifi' | 'ble' | 'bt' | 'ieee802154'
 
 export interface BoardInfo {
-  /** Board name from the firmware build (e.g. "xiao-esp32c6"). A build for no
-   * particular board is "<chip>-generic" (e.g. "esp32c6-generic"). */
+  /** The board (e.g. "@acme/devboard"). The generic firmware reports
+   * "<chip>-generic" (e.g. "esp32c6-generic"), or the name of the board it was
+   * flashed for. */
   name: string
   /** Chip target (e.g. "esp32c6") or "host" */
   chip: string
@@ -148,6 +149,8 @@ export declare function setDeviceName(value: DeviceName): void
 
 /** Firmware build identifiers */
 export declare const firmware: {
+  /** The build (e.g. "esp32c6-generic", "@acme/devboard") */
+  readonly name: string
   /** ELF SHA256 hash on ESP32, "dev" on host */
   readonly hash: string
   /** Build date and time */

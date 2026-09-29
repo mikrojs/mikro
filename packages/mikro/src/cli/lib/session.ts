@@ -42,7 +42,7 @@ import {
   timer,
 } from 'rxjs'
 
-import {customFirmwareOf} from './bundledFirmware.js'
+import {customFirmwareOf, genericBoardOf} from './bundledFirmware.js'
 import {decodeDeviceName} from './deviceName.js'
 import {describeError, UserError} from './errorMessage.js'
 import {
@@ -746,7 +746,12 @@ export function connectRepl(
             ? formatCustomIncompatibleError(compat, customFw, pm)
             : formatIncompatibleError(compat, pm)
         if (compatPolicy === 'enforce') {
-          throw new FirmwareIncompatibleError(incompatible, customFw, event.features)
+          throw new FirmwareIncompatibleError(
+            incompatible,
+            customFw,
+            event.features,
+            genericBoardOf(event),
+          )
         }
         // best-effort: warn once and proceed. report: stay silent (the
         // caller renders its own UI from the attached advisory).

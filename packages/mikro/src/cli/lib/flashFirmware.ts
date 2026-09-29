@@ -5,10 +5,18 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 
 import {getEsptoolPath} from '@mikrojs/esptool'
-import {FULL_IMAGE, readFirmwareJson} from '@mikrojs/firmware/boards'
+import {boardFileName, FULL_IMAGE, readFirmwareJson} from '@mikrojs/firmware/boards'
 import {lastValueFrom} from 'rxjs'
 
-import {type BoardInfo, bundledBoards, discoverBoards, staleImage} from './boards.js'
+import {writeBoardName} from './boardName.js'
+import {
+  type BoardInfo,
+  bundledBoards,
+  discoverBoards,
+  onGenericImage,
+  staleImage,
+} from './boards.js'
+import type {DeviceBoard} from './bundledFirmware.js'
 import {didYouMean} from './didYouMean.js'
 import {paths} from './envPaths.js'
 import {UserError} from './errorMessage.js'
@@ -56,12 +64,26 @@ export interface FlashPlanOptions {
   /** The features the device's firmware reports, so a reflash keeps the image
    *  it runs when `features` doesn't pick one. */
   deviceFeatures?: string[]
+  /** The board the device runs the generic firmware as. Without `board` or
+   *  `configBoard`, `mikro flash` flashes it when the project's dependencies
+   *  name no board, and an automatic reflash keeps it (`reflash`). */
+  deviceBoard?: DeviceBoard
+  /** An automatic reflash after a version mismatch: it keeps the device's
+   *  board over the project's dependencies, as nobody asked for another. */
+  reflash?: boolean
   /** Progress callback for the resolution/flash phases. */
   onProgress?: (message: string) => void
 }
 
 /** How the flash plan's board was chosen. */
-export type BoardSource = 'flag' | 'config' | 'dependency' | 'chip' | 'picked' | 'detected'
+export type BoardSource =
+  | 'flag'
+  | 'config'
+  | 'device'
+  | 'dependency'
+  | 'chip'
+  | 'picked'
+  | 'detected'
 
 export interface FlashPlan {
   esptoolPath: string
@@ -69,9 +91,10 @@ export interface FlashPlan {
   /** Where the image comes from: a local build, a download, a board
    *  package's image, or the generic image bundled with this CLI. */
   image: 'build-dir' | 'from' | 'board' | 'bundled'
-  /** The board flashed and how it was chosen. Absent for `--build-dir`
-   * flashes, which take the build as-is. */
-  board?: {name: string; source: BoardSource}
+  /** The board flashed and how it was chosen, and for a board that runs a
+   * generic image, that image's name (what the device reports as `fw`).
+   * Absent for `--build-dir` flashes, which take the build as-is. */
+  board?: {name: string; source: BoardSource; firmware?: string}
   /** The board's image, when it isn't the full one by default: the leanest
    *  with the `--features` asked for, or the one the device runs now. */
   chosenImage?: ImageChoice
@@ -172,7 +195,8 @@ async function readDeviceFlash(
 }
 
 /** Look for the board to flash. Precedence: `--board` flag > `config.board` >
- *  exactly one board in the project's dependencies; several are a `choose`
+ *  (on an automatic reflash) the board a device on the generic firmware was
+ *  flashed as > exactly one board in the project's dependencies; several are a `choose`
  *  that resolveFlashPlan narrows down to the device's chip (see boardForChip);
  *  none leaves the chip's bundled board to the caller. A board is found by the
  *  name its image reports, among the project's board packages and the bundled
@@ -181,6 +205,7 @@ export async function discoverBoard(
   boardFlag: string | undefined,
   configBoard?: string,
   source: BoardSource = 'flag',
+  device?: {board: DeviceBoard; first: boolean},
 ): Promise<BoardDiscovery> {
   const bundled = bundledBoards()
   // A bundled board needs no board package, so a broken one cannot block the
@@ -201,6 +226,18 @@ export async function discoverBoard(
     const known = [...boards, ...bundled].map((b) => b.name)
     return {kind: 'unknown', name: named, source: namedSource, known, warnings}
   }
+  // The board a device on the generic firmware was flashed as: the installed
+  // board of that name, else the generic image with the name in it. An
+  // automatic reflash keeps it; `mikro flash` follows the dependencies first,
+  // as it does over a board's own image.
+  const image = device && bundled.find((b) => b.name === device.board.firmware)
+  const kept =
+    device &&
+    (boards.find((b) => b.name === device.board.name) ??
+      (image === undefined ? undefined : onGenericImage(image, device.board.name)))
+  if (kept !== undefined && device?.first === true) {
+    return {kind: 'board', board: kept, source: 'device', warnings}
+  }
   for (const [name, same] of Map.groupBy(boards, (b) => b.name)) {
     if (same.length > 1) throw duplicateNameError(name, same)
   }
@@ -208,6 +245,7 @@ export async function discoverBoard(
     return {kind: 'board', board: boards[0]!, source: 'dependency', warnings}
   }
   if (boards.length > 1) return {kind: 'choose', boards, warnings}
+  if (kept !== undefined) return {kind: 'board', board: kept, source: 'device', warnings}
   return {kind: 'none', warnings}
 }
 
@@ -479,7 +517,12 @@ export async function resolveFlashPlan(
 
   onProgress?.('Resolving esptool…')
   const esptoolPath = await getEsptoolPath()
-  const found = await discoverBoard(boardFlag, configBoard, opts.boardSource ?? 'flag')
+  const found = await discoverBoard(
+    boardFlag,
+    configBoard,
+    opts.boardSource ?? 'flag',
+    opts.deviceBoard && {board: opts.deviceBoard, first: opts.reflash === true},
+  )
   const warnings = [...found.warnings]
   if (found.kind === 'unknown') throw unknownBoardError(found)
   // One esptool session gives the chip, the partition table for
@@ -526,7 +569,12 @@ export async function resolveFlashPlan(
     },
     source: 'detected',
   }
-  const boardInfo = {name: resolved.board.name, source: resolved.source}
+  const {firmware} = resolved.board
+  const boardInfo = {
+    name: resolved.board.name,
+    source: resolved.source,
+    ...(firmware !== undefined ? {firmware} : {}),
+  }
 
   if (resolved.board.dir === undefined) {
     throw new UserError(
@@ -545,7 +593,8 @@ export async function resolveFlashPlan(
         'Run `mikro fw build` in its package.',
     )
   }
-  const flasherArgs = await fitToDeviceFlash(await readFlasherArgs(dir), device)
+  let flasherArgs = await fitToDeviceFlash(await readFlasherArgs(dir), device)
+  if (firmware !== undefined) flasherArgs = await withBoardName(flasherArgs, dir, resolved.board)
   const stale = staleImage(resolved.board)
   if (stale) warnings.push(stale)
   return withFilesystemSize({
@@ -586,6 +635,41 @@ async function fitToDeviceFlash(
     flashSize: `${flashSize / (1024 * 1024)}MB` as FlashSize,
     files: flasherArgs.files.map((f) => (f === table ? {...f, filename} : f)),
   }
+}
+
+/** Write the board's name into a copy of the generic image's app binary, for
+ *  a board that runs a generic image: the device reports it as its board. */
+async function withBoardName(
+  flasherArgs: FlasherArgs,
+  imageDir: string,
+  board: BoardInfo,
+): Promise<FlasherArgs> {
+  const {app} = JSON.parse(await fs.readFile(path.join(imageDir, 'flasher_args.json'), 'utf8')) as {
+    app?: {file?: unknown}
+  }
+  const file = typeof app?.file === 'string' ? path.resolve(imageDir, app.file) : undefined
+  const entry = flasherArgs.files.find((f) => f.filename === file)
+  if (entry === undefined) {
+    throw new UserError(`The image in ${imageDir} names no app binary in flasher_args.json.`)
+  }
+  const patched = writeBoardName(await fs.readFile(entry.filename), board.name)
+  if (!patched.ok) {
+    throw new UserError(
+      `Cannot write ${board.name} into ${board.firmware}'s image (${entry.filename}): ` +
+        `${patched.message}.`,
+    )
+  }
+  // One copy per board and image in the user's cache, replaced by the next
+  // flash: an app binary is megabytes, unlike the partition tables
+  const dir = path.join(paths.cache, 'app-images')
+  await fs.mkdir(dir, {recursive: true})
+  const filename = path.join(dir, `${boardFileName(board.name)}+${path.basename(imageDir)}.bin`)
+  // Renamed into place, so a flash of the same board running at the same
+  // time never reads a half-written file
+  const partial = `${filename}.${process.pid}.tmp`
+  await fs.writeFile(partial, patched.value)
+  await fs.rename(partial, filename)
+  return {...flasherArgs, files: flasherArgs.files.map((f) => (f === entry ? {...f, filename} : f))}
 }
 
 async function withFilesystemSize(plan: FlashPlan): Promise<FlashPlan> {
@@ -641,7 +725,8 @@ export async function assertFilesystemKept(
  * access. Used by the auto-reflash flow; the interactive `mikro flash`
  * command renders its own live progress and only shares `resolveFlashPlan`.
  *
- * It only installs the generic firmware bundled with this CLI. A board
+ * It only installs the generic firmware bundled with this CLI, with the
+ * device's board name written in when it runs that firmware as a board. A board
  * package's image (whose version is not checked) is left to `mikro flash`,
  * which shows what it will flash and asks.
  */
@@ -649,11 +734,13 @@ export async function flashFirmware(
   opts: FlashPlanOptions & {baudRate?: number; signal?: AbortSignal},
 ): Promise<void> {
   const {port, baudRate = DEFAULT_FLASH_BAUD, onProgress, signal} = opts
-  const plan = await resolveFlashPlan(opts)
+  // Only the automatic reflashes flash headlessly
+  const plan = await resolveFlashPlan({...opts, reflash: true})
   // Headless (no pickBoard): several boards for the chip already stopped the plan.
   if ('choose' in plan) throw new UserError(chooseMessage(plan.choose))
   const {esptoolPath, flasherArgs, image, board} = plan
-  if (image === 'board') {
+  // A board on the generic firmware flashes this CLI's own image
+  if (image === 'board' && board?.firmware === undefined) {
     throw new UserError(
       `${board!.name} ships firmware of its own, so it is not flashed automatically. ` +
         `Flash it with:\n  mikro flash --board ${board!.name}`,
