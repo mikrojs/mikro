@@ -91,6 +91,8 @@ Each key is the export that declares the board: `.` for a package with one board
 | `project`       | A firmware project of your own to build instead (see [below](#a-firmware-project-of-your-own)) |
 | `images`        | Leaner images to build besides the full one (see [below](#leaner-images))                      |
 
+A board that needs nothing the generic firmware lacks can run the generic image instead of building one (see [below](#boards-on-the-generic-firmware)).
+
 Next to `boards`, `dist` sets the folder for the images, `dist-fw` by default. The full image goes in `full/` inside it.
 
 `sdkconfig.defaults` holds the ESP-IDF settings the board needs and the generic firmware doesn't set:
@@ -227,6 +229,24 @@ export default defineBoards({
 The features are `ble` and `wifi`. Each image is named after what it changes (`no-ble`, `no-ble+no-wifi`), builds in `.mikro/build-fw+no-ble`, and goes in a folder of that name beside the full image (`dist-fw/no-ble/` next to `dist-fw/full/`), so each folder holds one image. Each image's `firmware.json` lists its features, and `mikro flash` finds a board's images by their folders. `mikro fw build --image no-ble` builds one image and keeps the others, for example to build the images in parallel CI jobs; `mikro fw list --json` lists them for the job matrix. `mikro fw build` checks that each image has the features it asks for and differs from the full image. `mikro fw pack` names the archive of each with its name as a suffix: `mikro-fw-acme-devboard-esp32c6+no-ble.tar.gz`.
 
 `mikro flash` flashes the full image. `mikro flash --features wifi` flashes the leanest image with the features listed (here `no-ble`), and `--features min` the leanest of all. `--features no-<feature>` flashes the full image without that feature (`--features no-ble` gives `no-ble` here): the image that leaves it out and keeps every other feature, or an error when the board has none. From then on a reflash keeps the image the device runs, until `--features full` (`--force` flashes the full image). When no image has the features, the firmware lacks one of them altogether, and `mikro flash` says which.
+
+## Boards on the generic firmware
+
+A board whose drivers are all JavaScript needs nothing the generic firmware lacks. Instead of building an image of its own, it can run the generic image for its chip:
+
+```ts
+export default defineBoards({
+  boards: {
+    './t-display': {firmware: 'esp32-generic', description: 'LILYGO T-Display'},
+  },
+})
+```
+
+`firmware` names the generic board: `esp32-generic`, `esp32c6-generic` and so on. The board takes its chip, settings and images from it, so it sets only `name` and `description`. Its export has a `firmware` condition like any board's, and `mikro fw build` writes its `firmware.json` without ESP-IDF: the board's name and description, and the generic board.
+
+`mikro flash` flashes the generic image that ships with `mikro`, with the board's name written into a copy of it. The device reports the board as `sys.board.name`, and the generic board as `sys.firmware.name`. `--features` picks among the generic images as it does for any board.
+
+A later flash keeps the name when nothing else names a board: not `--board`, `board` in `mikro.config.ts` or a board in the app's dependencies. The automatic reflash that `mikro dev` and `mikro deploy` offer when the device's firmware doesn't match the CLI's version always keeps it.
 
 ## Multi-board packages
 

@@ -13,9 +13,12 @@ import {
   resolveFlashPlan,
 } from '../flashFirmware.js'
 import {growFilesystemToFlash, parsePartitionTable} from '../partitionTable.js'
+import {appImage} from './appImage.js'
 
-const {execFile, firmwareDir, installed, cache} = vi.hoisted(() => ({
+const {execFile, spawned, firmwareDir, installed, cache} = vi.hoisted(() => ({
   execFile: vi.fn(),
+  // The esptool runs that flash: their arguments.
+  spawned: [] as string[][],
   firmwareDir: {current: ''},
   // The CLI's cache folder, where grown partition tables go.
   cache: {current: ''},
@@ -24,13 +27,23 @@ const {execFile, firmwareDir, installed, cache} = vi.hoisted(() => ({
 }))
 vi.mock('node:child_process', () => ({execFile}))
 vi.mock('@mikrojs/esptool', () => ({getEsptoolPath: async () => '/fixture/esptool'}))
-vi.mock('../boards.js', () => ({
+vi.mock('../boards.js', async (importOriginal) => ({
+  onGenericImage: (await importOriginal<typeof import('../boards.js')>()).onGenericImage,
   bundledBoards: () => [
     {name: 'esp32c6-generic', chip: 'esp32c6', bundled: true, dir: firmwareDir.current},
   ],
   discoverBoards: async () => ({boards: installed.boards, problems: []}),
   staleImage: () => undefined,
 }))
+vi.mock('../ospawn.js', async () => {
+  const {of} = await import('rxjs')
+  return {
+    ospawn: (_file: string, args: string[]) => {
+      spawned.push(args)
+      return of({type: 'complete', code: 0})
+    },
+  }
+})
 vi.mock('../firmware.js', () => ({resolveFrom: async () => firmwareDir.current}))
 vi.mock('../envPaths.js', () => ({
   paths: {
@@ -269,6 +282,31 @@ describe('resolveFlashPlan', () => {
       'esp32c6-generic is an esp32c6 board; the device on /dev/tty.fixture is an esp32s3.',
     )
     expect(execFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the name of a board on the generic firmware through the automatic reflash', async () => {
+    await fs.writeFile(path.join(dir, 'mikrojs.bin'), appImage())
+    const args = JSON.parse(await fs.readFile(path.join(dir, 'flasher_args.json'), 'utf8'))
+    await fs.writeFile(
+      path.join(dir, 'flasher_args.json'),
+      JSON.stringify({...args, app: {offset: '0x10000', file: 'mikrojs.bin'}}),
+    )
+    device(undefined)
+    spawned.length = 0
+
+    // Not a board of the project's: the name the device reports
+    await flashFirmware({
+      port: '/dev/tty.fixture',
+      deviceBoard: {name: 'acme/t-display', firmware: 'esp32c6-generic'},
+    })
+
+    const [written] = spawned
+    const app = written![written!.indexOf(String(0x10000)) + 1]!
+    expect(app).toBe(
+      path.join(cache.current, 'app-images', 'acme-t-display+' + path.basename(dir) + '.bin'),
+    )
+    const name = (await fs.readFile(app)).subarray(0x124, 0x124 + 14)
+    expect(name.toString()).toBe('acme/t-display')
   })
 
   it('keeps the automatic reflash from shrinking the app filesystem', async () => {

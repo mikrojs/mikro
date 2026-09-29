@@ -1,6 +1,7 @@
 import pkg from 'mikro/package.json' with {type: 'json'}
 import {lt, major, minor, patch, satisfies} from 'semver'
 
+import type {DeviceBoard} from './bundledFirmware.js'
 import {UserError} from './errorMessage.js'
 import {
   installLatestCommand,
@@ -111,10 +112,14 @@ export class FirmwareIncompatibleError extends UserError {
   readonly customFw: string | undefined
   /** The features the device's firmware reports, so the reflash keeps its image. */
   readonly features: string[] | undefined
-  constructor(message: string, customFw?: string, features?: string[]) {
+  /** The board a device on the generic firmware was flashed as, so the
+   *  reflash keeps its name. */
+  readonly deviceBoard: DeviceBoard | undefined
+  constructor(message: string, customFw?: string, features?: string[], deviceBoard?: DeviceBoard) {
     super(message)
     this.customFw = customFw
     this.features = features
+    this.deviceBoard = deviceBoard
   }
 }
 

@@ -220,8 +220,12 @@ struct MIKRuntime {
 void mik__pub_fs_register(JSContext* ctx);
 void mik__stdio_init(JSContext* ctx, JSValue ns);
 void mik__sys_api_init(JSContext* ctx, JSValue ns);
-/* Board name of this build: MIK_BOARD_NAME if defined, else "<chip>-generic"
- * on device, "generic" on host. Static storage, never NULL. */
+/* Name of this build: MIK_BOARD_NAME if defined, else "<chip>-generic" on
+ * device, "generic" on host. Static storage, never NULL. */
+const char* mik__firmware_name(void);
+/* The board: the name `mikro flash` wrote into the image when it flashed the
+ * generic firmware for a board, else mik__firmware_name(). Static storage,
+ * never NULL. */
 const char* mik__board_name(void);
 void mik__text_encoding_init(JSContext* ctx, JSValue global);
 /* UTF-8 pass shared by TextDecoder and the http body drain: each invalid byte

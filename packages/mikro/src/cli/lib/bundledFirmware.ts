@@ -1,5 +1,32 @@
 import {bundledBoards} from './boards.js'
 
+/** A board on the generic firmware, as the device reports it: the board's
+ *  name `mikro flash` wrote in, and the generic board it runs. */
+export interface DeviceBoard {
+  name: string
+  firmware: string
+}
+
+/**
+ * The board a device runs the bundled generic firmware as, when `mikro flash`
+ * wrote a board's name into it, else undefined. A reflash keeps that name, as
+ * it keeps the device's image. `bundledName` is injectable for tests.
+ */
+export function genericBoardOf(
+  ready: {
+    fw?: string | undefined
+    board?: string | undefined
+    chip?: string | null | undefined
+  },
+  bundledName: string | undefined = bundledBoards().find((b) => b.chip === ready.chip && b.dir)
+    ?.name,
+): DeviceBoard | undefined {
+  if (ready.fw === undefined || ready.board === undefined || ready.board === ready.fw) {
+    return undefined
+  }
+  return ready.fw === bundledName ? {name: ready.board, firmware: ready.fw} : undefined
+}
+
 /**
  * The device's reported firmware identity when it is NOT the firmware
  * bundled with this CLI, else undefined. Drives the auto-reflash guard: the

@@ -150,6 +150,8 @@ idf_component_register(SRCS "main.cpp"
 
 To change what `MIK_Main()` itself does, start from [its source](https://github.com/mikrojs/mikro/blob/main/packages/%40mikrojs/firmware/components/mikrojs/mik_main.cpp).
 
+Mikro.js keeps a 68-byte structure in ESP-IDF's [custom app description](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/app_image_format.html#adding-a-custom-structure-to-an-application) (`.rodata_custom_desc`), where `mikro flash` writes a board's name into the generic firmware. A structure of your own shares that section, and the link order decides which of the two comes first, so its offset in the image isn't fixed: give it a marker of its own to find it by.
+
 ## Custom firmware and the CLI
 
 The CLI comes with the official Mikro.js firmware, but it never flashes that over custom firmware unless you ask it to. After a CLI upgrade, it asks you to rebuild and flash the custom firmware instead. To switch a device back to the official Mikro.js firmware, run `mikro flash --force`.

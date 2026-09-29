@@ -106,7 +106,9 @@ export function flashBuiltImage(packageDir: string, board: string, features: str
 
 /** The key of a board of `boards`, asked for in the terminal for a bare
  *  `--board`. Without a terminal, an error that lists them. */
-export async function pickBoard(boards: ConfiguredBoard[]): Promise<string> {
+export async function pickBoard(
+  boards: {key: string; name: string; chip: string}[],
+): Promise<string> {
   if (!process.stdin.isTTY || isAgentMode()) {
     throw new UserError(
       '--board needs a board. The boards in boards.config.ts:\n' +

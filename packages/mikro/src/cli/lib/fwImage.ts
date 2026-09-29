@@ -6,10 +6,12 @@ import {
   type BoardProblem,
   checkBoardPackage,
   type ConfiguredBoard,
+  type ConfiguredGenericBoard,
   type ConfiguredImage,
   FULL_IMAGE,
   loadBoards,
   readFirmwareJson,
+  readGenericBoardJson,
 } from '@mikrojs/firmware/boards'
 
 import {boardBuildDir, staleImage} from './boards.js'
@@ -31,6 +33,14 @@ export async function imageFiles(dir: string): Promise<string[]> {
 /** What macOS's Finder leaves in a folder it has shown: not the user's, and
  *  replaced with the folder. */
 const FINDER_FILES = new Set(['.DS_Store'])
+
+/** The board a firmware.json names, an image's or a generic board's. */
+function boardNameIn(file: string): string | undefined {
+  const image = readFirmwareJson(file)
+  if (image.ok) return image.value.name
+  const generic = readGenericBoardJson(file)
+  return generic.ok ? generic.value.name : undefined
+}
 
 /** Whether `child` is `parent` or inside it. */
 function within(child: string, parent: string): boolean {
@@ -75,10 +85,9 @@ export async function checkBoardFolder(
     const entries = (await fs.readdir(dir)).filter((e) => !FINDER_FILES.has(e))
     // This board's images, current or no longer configured, go too
     const images = entries.filter((e) => existsSync(path.join(dir, e, 'firmware.json')))
-    const others = images.filter((e) => {
-      const read = readFirmwareJson(path.join(dir, e, 'firmware.json'))
-      return !read.ok || read.value.name !== board.name
-    })
+    const others = images.filter(
+      (e) => boardNameIn(path.join(dir, e, 'firmware.json')) !== board.name,
+    )
     if (others.length > 0) {
       throw new UserError(
         `${dir} holds the images of other boards (${others.join(', ')}), and mikro fw ` +
@@ -123,8 +132,7 @@ export async function checkImageFolder(
     )
   }
   if (existsSync(dir) && (await fs.readdir(dir)).some((e) => !FINDER_FILES.has(e))) {
-    const read = readFirmwareJson(path.join(dir, 'firmware.json'))
-    if (!read.ok || read.value.name !== board.name) {
+    if (boardNameIn(path.join(dir, 'firmware.json')) !== board.name) {
       throw new UserError(
         `${dir} holds something other than an image of ${board.name}, and mikro fw build ` +
           'replaces the whole folder.',
@@ -145,6 +153,24 @@ export async function writeBoardImages(
   for (const {name, buildDir} of imageBuilds) {
     await copyImage(buildDir, path.join(board.boardDir, name))
   }
+}
+
+/** Replace the folder of a board that runs a generic image with its
+ *  firmware.json: its name and description, and the generic board. */
+export async function writeGenericBoard(
+  board: ConfiguredGenericBoard,
+  packageDir: string,
+): Promise<string> {
+  await checkBoardFolder(board, [], packageDir)
+  const dir = path.join(board.boardDir, FULL_IMAGE)
+  await fs.rm(board.boardDir, {recursive: true, force: true})
+  await fs.mkdir(dir, {recursive: true})
+  const {name, description, firmware} = board
+  await fs.writeFile(
+    path.join(dir, 'firmware.json'),
+    `${JSON.stringify({name, description, firmware}, null, 2)}\n`,
+  )
+  return dir
 }
 
 /** Replace the folder of one image of a board with the image built in
@@ -205,6 +231,48 @@ export function configuredImageProblems(
             `(${names(full.features)}); leave it out of "images"`,
         )
       }
+    }
+  }
+  return problems
+}
+
+/** Boards whose folder holds the other kind than boards.config.ts has (an
+ *  image where it runs a generic one, or the other way round), or a generic
+ *  board's firmware.json that doesn't match the config. Not built is
+ *  checkBoardPackage's to report. */
+export function genericBoardProblems(
+  packageDir: string,
+  boards: ConfiguredBoard[],
+  generic: ConfiguredGenericBoard[],
+): BoardProblem[] {
+  const loaded = loadBoards(packageDir)
+  const problems: BoardProblem[] = []
+  for (const board of generic) {
+    const problem = (message: string) => problems.push({specifier: board.specifier, message})
+    const written = loaded.generic.find((b) => b.key === board.key)
+    if (loaded.boards.some((b) => b.key === board.key)) {
+      problem(
+        `boards.config.ts runs ${board.firmware}, but an image is built; run \`mikro fw build\``,
+      )
+    } else if (
+      written !== undefined &&
+      (written.name !== board.name ||
+        written.firmware !== board.firmware ||
+        written.description !== board.description)
+    ) {
+      problem(
+        `the firmware.json has ${written.name} running ${written.firmware}, but ` +
+          `boards.config.ts has ${board.name} running ${board.firmware}; run \`mikro fw build\``,
+      )
+    }
+  }
+  for (const board of boards) {
+    if (loaded.generic.some((b) => b.key === board.key)) {
+      problems.push({
+        specifier: board.specifier,
+        message:
+          'boards.config.ts builds an image, but the folder runs a generic one; run `mikro fw build`',
+      })
     }
   }
   return problems

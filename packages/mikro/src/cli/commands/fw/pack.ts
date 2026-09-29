@@ -13,7 +13,7 @@ import {displayPath} from '../../lib/displayPath.js'
 import {UserError} from '../../lib/errorMessage.js'
 import {readFlasherArgs} from '../../lib/esptool.js'
 import {formatSize} from '../../lib/formatSize.js'
-import {imageFiles} from '../../lib/fwImage.js'
+import {imageFiles, writeGenericBoard} from '../../lib/fwImage.js'
 import {sha256File} from '../../lib/ota.js'
 import {buildBoardImages, configuredPackage} from './build.js'
 import type {args} from './pack.args.js'
@@ -69,26 +69,36 @@ function printArtifact(artifact: Artifact): void {
 }
 
 /** A board package packs its boards' images as `fw build` writes them, so
- *  the archives and the published package hold the same files. */
+ *  the archives and the published package hold the same files. A board that
+ *  runs a generic image gets its firmware.json and no archive. */
 async function packBoards(
   configured: NonNullable<Awaited<ReturnType<typeof configuredPackage>>>,
   config: Args,
   jsonOutput: boolean,
 ): Promise<void> {
-  const boards = selectBoards(
-    configured.boards,
-    config.board === '' ? await pickBoard(configured.boards) : config.board,
-  )
-  if (config.out !== undefined && boards.reduce((n, b) => n + 1 + b.images.length, 0) > 1) {
-    throw new UserError('--out names one archive: pick a board without other images with --board.')
+  const all = [...configured.boards, ...configured.generic]
+  const selected = selectBoards(all, config.board === '' ? await pickBoard(all) : config.board)
+  const boards = configured.boards.filter((b) => selected.includes(b))
+  const generic = configured.generic.filter((b) => selected.includes(b))
+  const archives = boards.reduce((n, b) => n + 1 + b.images.length, 0)
+  if (config.out !== undefined && archives !== 1) {
+    throw new UserError(
+      archives === 0
+        ? '--out names an archive, and a board that runs a generic image has none: pick a board with an image of its own with --board.'
+        : '--out names one archive: pick a board without other images with --board.',
+    )
   }
-  const images = await buildBoardImages(
-    configured.packageDir,
-    boards,
-    'fw pack',
-    jsonOutput,
-    config.parallel,
-  )
+  for (const board of generic) await writeGenericBoard(board, configured.packageDir)
+  const images =
+    boards.length === 0
+      ? []
+      : await buildBoardImages(
+          configured.packageDir,
+          boards,
+          'fw pack',
+          jsonOutput,
+          config.parallel,
+        )
   if (images === undefined) return
   const artifacts: Artifact[] = []
   for (const image of images) {
@@ -106,8 +116,13 @@ async function packBoards(
         checksum,
         size,
       })),
+      generic: generic.map(({name, firmware}) => ({name, firmware})),
     })
   } else {
+    for (const board of generic) {
+      // eslint-disable-next-line no-console
+      console.log(`${board.name} runs ${board.firmware}, which mikro ships: nothing to pack`)
+    }
     artifacts.forEach(printArtifact)
   }
 }

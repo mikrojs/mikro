@@ -169,15 +169,15 @@ console.log('Features: %s', board.features.join(', '))
 console.log('Flash: %dMB', board.flash / 1024 / 1024)
 ```
 
-| Property   | Description                                                                                                                                                                                    |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`     | The board that the firmware was built for, as its firmware project names it (for example `"@acme/devboard"`), or `"<chip>-generic"` for the generic firmware (for example `"esp32c6-generic"`) |
-| `chip`     | Chip target (for example `"esp32c6"`) or `"host"`                                                                                                                                              |
-| `cores`    | Number of CPU cores                                                                                                                                                                            |
-| `revision` | Silicon revision (major \* 100 + minor on ESP32, 0 on host)                                                                                                                                    |
-| `features` | Supported features (for example `["wifi", "ble"]`)                                                                                                                                             |
-| `flash`    | Flash size in bytes (0 on host)                                                                                                                                                                |
-| `psram`    | PSRAM size in bytes (0 if unavailable)                                                                                                                                                         |
+| Property   | Description                                                                                                                                                                                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | The board, as its firmware project names it (for example `"@acme/devboard"`), or `"<chip>-generic"` for the generic firmware (for example `"esp32c6-generic"`). A board that runs the generic firmware reports its own name, which `mikro flash` writes in |
+| `chip`     | Chip target (for example `"esp32c6"`) or `"host"`                                                                                                                                                                                                          |
+| `cores`    | Number of CPU cores                                                                                                                                                                                                                                        |
+| `revision` | Silicon revision (major \* 100 + minor on ESP32, 0 on host)                                                                                                                                                                                                |
+| `features` | Supported features (for example `["wifi", "ble"]`)                                                                                                                                                                                                         |
+| `flash`    | Flash size in bytes (0 on host)                                                                                                                                                                                                                            |
+| `psram`    | PSRAM size in bytes (0 if unavailable)                                                                                                                                                                                                                     |
 
 `wifi`, `ble` and `bt` appear only when the chip supports them and the matching
 stack was compiled into the firmware, so `features` answers whether the module
@@ -198,12 +198,13 @@ console.log('Build: %s', firmware.hash)
 console.log('Date: %s', firmware.date)
 ```
 
-| Property          | Description                                  |
-| ----------------- | -------------------------------------------- |
-| `hash`            | ELF SHA256 hash on ESP32, `"dev"` on host    |
-| `date`            | Build date and time                          |
-| `idfVersion`      | ESP-IDF version string, `undefined` on host  |
-| `bytecodeVersion` | QuickJS bytecode version this firmware loads |
+| Property          | Description                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `name`            | The firmware build: `"<chip>-generic"` for the generic firmware, or the board it was built for (for example `"@acme/devboard"`) |
+| `hash`            | ELF SHA256 hash on ESP32, `"dev"` on host                                                                                       |
+| `date`            | Build date and time                                                                                                             |
+| `idfVersion`      | ESP-IDF version string, `undefined` on host                                                                                     |
+| `bytecodeVersion` | QuickJS bytecode version this firmware loads                                                                                    |
 
 `bytecodeVersion` is what an app build has to match to run on this device: bytecode is not
 portable across QuickJS versions, so a build compiled for a different one cannot be loaded.

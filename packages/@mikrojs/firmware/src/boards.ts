@@ -21,7 +21,7 @@
 import {existsSync, readdirSync, readFileSync} from 'node:fs'
 import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path'
 
-import {array, enumOf, object, optional, string, validate} from '@mikrojs/schema'
+import {array, enumOf, object, optional, type Schema, string, validate} from '@mikrojs/schema'
 
 import {type Chip, chips} from './index.ts'
 
@@ -87,6 +87,27 @@ const FirmwareJson = object({
   version: string(),
   features: optional(array(string())),
 })
+
+/** The firmware.json of a board that runs a generic image: no image of its
+ *  own, the generic board's name in `firmware`. */
+const GenericFirmwareJson = object({
+  name: string(),
+  description: optional(string()),
+  firmware: string(),
+})
+
+/** A board that runs one of the generic images, as its firmware.json says.
+ *  `mikro flash` flashes that image with the board's name written into it. */
+export interface GenericBoard {
+  name: string
+  description?: string
+  /** The generic board whose image it runs: `esp32-generic`. */
+  firmware: string
+  specifier: string
+  key: string
+  packageName: string
+  packageDir: string
+}
 
 /** An image name: what it leaves out (`no-ble`) or adds, joined with `+`. */
 const IMAGE_NAME_RE = /^(no-)?[a-z0-9]+(\+(no-)?[a-z0-9]+)*$/
@@ -181,48 +202,83 @@ export function firmwareExports(packageDir: string): {
   return {entries, problems}
 }
 
-/** What a firmware.json says, or why it can't describe a board. */
-export function readFirmwareJson(file: string):
-  | {
-      ok: true
-      value: Pick<BoardImage, 'name' | 'description' | 'chip' | 'version' | 'features'>
-    }
-  | {ok: false; message: string} {
+type ImageJson = Pick<BoardImage, 'name' | 'description' | 'chip' | 'version' | 'features'>
+type GenericJson = Pick<GenericBoard, 'name' | 'description' | 'firmware'>
+
+/** A firmware.json's content, or why it can't be read. */
+function readJson(file: string): {ok: true; value: unknown} | {ok: false; message: string} {
   if (!existsSync(file)) return {ok: false, message: `not built: ${file} does not exist`}
-  let json: unknown
   try {
-    json = JSON.parse(readFileSync(file, 'utf8'))
+    return {ok: true, value: JSON.parse(readFileSync(file, 'utf8')) as unknown}
   } catch (e) {
     return {ok: false, message: `${file} is not valid JSON: ${(e as Error).message}`}
   }
-  const invalid = validate(FirmwareJson, json, '')
+}
+
+/** Whether a firmware.json is a generic board's: no image, a `firmware` instead. */
+function isGenericJson(json: unknown): boolean {
+  return isObject(json) && Object.hasOwn(json, 'firmware')
+}
+
+/** `json` checked against `schema` and the board-name form, or why it isn't. */
+function checkedJson<T extends {name: string}>(
+  schema: Schema,
+  json: unknown,
+  file: string,
+): {ok: true; value: T} | {ok: false; message: string} {
+  const invalid = validate(schema, json, '')
   if (invalid) {
     const {message, path} = invalid.error
     return {ok: false, message: `${file}${path ? ` (${path.slice(1)})` : ''}: ${message}`}
   }
-  const value = json as {
-    name: string
-    description?: string
-    chip: string
-    version: string
-    features?: string[]
-  }
+  const value = json as T
   if (!BOARD_NAME_RE.test(value.name) || value.name.length > MAX_BOARD_NAME_LENGTH) {
     return {
       ok: false,
       message: `${file}: "${value.name}" is not a board name (at most ${MAX_BOARD_NAME_LENGTH} characters, the form of a package name with an optional /<board>)`,
     }
   }
-  return {
-    ok: true,
-    value: {
-      name: value.name,
-      description: value.description,
-      chip: value.chip,
-      version: value.version,
-      features: value.features,
-    },
+  return {ok: true, value}
+}
+
+function imageJson(
+  json: unknown,
+  file: string,
+): {ok: true; value: ImageJson} | {ok: false; message: string} {
+  if (isGenericJson(json)) {
+    return {ok: false, message: `${file} is a board that runs a generic image, not an image`}
   }
+  const read = checkedJson<ImageJson>(FirmwareJson, json, file)
+  if (!read.ok) return read
+  const {name, description, chip, version, features} = read.value
+  return {ok: true, value: {name, description, chip, version, features}}
+}
+
+function genericJson(
+  json: unknown,
+  file: string,
+): {ok: true; value: GenericJson} | {ok: false; message: string} {
+  const read = checkedJson<GenericJson>(GenericFirmwareJson, json, file)
+  if (!read.ok) return read
+  const {name, description, firmware} = read.value
+  return {ok: true, value: {name, description, firmware}}
+}
+
+/** What an image's firmware.json says, or why it can't describe an image. */
+export function readFirmwareJson(
+  file: string,
+): {ok: true; value: ImageJson} | {ok: false; message: string} {
+  const json = readJson(file)
+  return json.ok ? imageJson(json.value, file) : json
+}
+
+/** What the firmware.json of a board that runs a generic image says, or why
+ *  it isn't one. */
+export function readGenericBoardJson(
+  file: string,
+): {ok: true; value: GenericJson} | {ok: false; message: string} {
+  const json = readJson(file)
+  return json.ok ? genericJson(json.value, file) : json
 }
 
 /** A board's other images: the folders beside its full image's `full/`
@@ -246,24 +302,39 @@ function siblingImages(dir: string, name: string, chip: string): ImageInfo[] | u
   return images.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/** The boards a package declares, and the `firmware` exports that aren't one
- *  (not built, or not a Mikro.js firmware.json). */
-export function loadBoards(packageDir: string): {boards: BoardImage[]; problems: BoardProblem[]} {
+/** The boards a package declares: those with an image of their own in
+ *  `boards`, those that run a generic image in `generic`, and the `firmware`
+ *  exports that are neither (not built, or not a Mikro.js firmware.json). */
+export function loadBoards(packageDir: string): {
+  boards: BoardImage[]
+  generic: GenericBoard[]
+  problems: BoardProblem[]
+} {
   const {entries, problems} = firmwareExports(packageDir)
-  const read = readPackageJson(packageDir)
-  const packageName = (read.ok ? read.value.name : undefined) ?? packageDir
+  const pkg = readPackageJson(packageDir)
+  const packageName = (pkg.ok ? pkg.value.name : undefined) ?? packageDir
   const boards: BoardImage[] = []
+  const generic: GenericBoard[] = []
   for (const {key, specifier, file} of entries) {
-    const read = readFirmwareJson(file)
-    if (read.ok) {
-      const dir = dirname(file)
-      const images = siblingImages(dir, read.value.name, read.value.chip)
-      boards.push({...read.value, images, specifier, key, packageName, packageDir, dir})
+    const json = readJson(file)
+    if (!json.ok) {
+      problems.push({specifier, message: json.message})
+    } else if (isGenericJson(json.value)) {
+      const read = genericJson(json.value, file)
+      if (read.ok) generic.push({...read.value, specifier, key, packageName, packageDir})
+      else problems.push({specifier, message: read.message})
     } else {
-      problems.push({specifier, message: read.message})
+      const read = imageJson(json.value, file)
+      if (read.ok) {
+        const dir = dirname(file)
+        const images = siblingImages(dir, read.value.name, read.value.chip)
+        boards.push({...read.value, images, specifier, key, packageName, packageDir, dir})
+      } else {
+        problems.push({specifier, message: read.message})
+      }
     }
   }
-  return {boards, problems}
+  return {boards, generic, problems}
 }
 
 /** Whether npm publishes `path` (relative to the package) under this `files`
@@ -291,7 +362,7 @@ export function checkBoardPackage(packageDir: string): BoardProblem[] {
   if (!read.ok) return [{specifier: packageDir, message: read.message}]
   const pkg = read.value
   const {entries} = firmwareExports(packageDir)
-  const {boards, problems} = loadBoards(packageDir)
+  const {boards, generic, problems} = loadBoards(packageDir)
   const packageName = pkg.name ?? packageDir
 
   for (const {specifier, target, file} of entries) {
@@ -333,8 +404,8 @@ export function checkBoardPackage(packageDir: string): BoardProblem[] {
     }
   }
 
-  const byName = new Map<string, BoardImage>()
-  for (const board of boards) {
+  const byName = new Map<string, {specifier: string}>()
+  for (const board of [...boards, ...generic]) {
     const other = byName.get(board.name)
     if (other) {
       problems.push({
@@ -418,6 +489,20 @@ export interface BoardConfig {
   images?: readonly ImageFeatures[]
 }
 
+/** A board in boards.config.ts that runs one of the generic images, such as a
+ *  board whose drivers are all JavaScript. `mikro flash` writes its name into
+ *  the image. */
+export interface GenericBoardConfig {
+  /** The generic board whose image it runs: `esp32-generic`. */
+  firmware: string
+  /** The name the device reports as sys.board.name. Default: the specifier of
+   *  the board's export. */
+  name?: string
+  /** Shown when `mikro flash` asks which board to flash. Default: the
+   *  package's description. */
+  description?: string
+}
+
 /** boards.config.ts: the boards a package builds, keyed by the export that
  *  declares each, `.` or `./<board>`. */
 export interface BoardsConfig {
@@ -425,7 +510,7 @@ export interface BoardsConfig {
    *  board at `.`, `<dist>/<board>/full/` for the others, and each other image
    *  in a folder beside `full/`. Default: `dist-fw`. */
   dist?: string
-  boards: Record<string, BoardConfig>
+  boards: Record<string, BoardConfig | GenericBoardConfig>
 }
 
 /** A board from boards.config.ts, with defaults filled in and paths resolved. */
@@ -450,6 +535,18 @@ export interface ConfiguredBoard {
   images: ConfiguredImage[]
 }
 
+/** A board from boards.config.ts that runs a generic image. `mikro fw build`
+ *  writes its firmware.json to `target`, which names the generic board. */
+export interface ConfiguredGenericBoard {
+  key: string
+  specifier: string
+  name: string
+  description?: string
+  firmware: string
+  target: string
+  boardDir: string
+}
+
 /** An image from `images` in boards.config.ts. */
 export interface ConfiguredImage {
   /** `no-ble`: the image's folder in the board's, and its name everywhere else. */
@@ -471,6 +568,7 @@ const BOARD_KEYS = [
   'project',
   'images',
 ]
+const GENERIC_BOARD_KEYS = ['firmware', 'name', 'description']
 /** `./<board>`: one segment, in the form of a board name's last part. */
 const SUBPATH_RE = /^\.\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/
 
@@ -479,7 +577,7 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 /** The exports block that declares `boards`, for messages. */
-function exportsSnippet(boards: ConfiguredBoard[]): string {
+function exportsSnippet(boards: {key: string; target: string}[]): string {
   return boards.map((b) => `  "${b.key}": {"firmware": "${b.target}"}`).join(',\n')
 }
 
@@ -488,20 +586,24 @@ function exportsSnippet(boards: ConfiguredBoard[]): string {
  * and everything wrong with it: fields that don't check out, files it names
  * that don't exist, names a device can't take, and `exports` that don't match
  * (a board without its `firmware` export, one pointing elsewhere, or a
- * `firmware` export the config doesn't have).
+ * `firmware` export the config doesn't have). Boards with an image of their own
+ * are in `boards`, boards that run a generic image in `generic`.
  */
 export function checkBoardsConfig(
   packageDir: string,
   config: unknown,
-): {boards: ConfiguredBoard[]; problems: BoardProblem[]} {
+): {boards: ConfiguredBoard[]; generic: ConfiguredGenericBoard[]; problems: BoardProblem[]} {
   const read = readPackageJson(packageDir)
-  if (!read.ok) return {boards: [], problems: [{specifier: packageDir, message: read.message}]}
+  if (!read.ok) {
+    return {boards: [], generic: [], problems: [{specifier: packageDir, message: read.message}]}
+  }
   const pkg = read.value
   const packageName = pkg.name ?? packageDir
   const problems: BoardProblem[] = []
   // Stops at a problem that leaves nothing to check, keeping the ones found so far
   const fail = (message: string) => ({
     boards: [],
+    generic: [],
     problems: [...problems, {specifier: packageName, message}],
   })
   if (pkg.name === undefined) return fail('package.json has no "name"')
@@ -533,6 +635,7 @@ export function checkBoardsConfig(
   }
 
   const boards: ConfiguredBoard[] = []
+  const generic: ConfiguredGenericBoard[] = []
   for (const [key, board] of Object.entries(config.boards)) {
     const sub = key.slice(2)
     const specifier = key === '.' ? packageName : `${packageName}/${sub}`
@@ -546,17 +649,56 @@ export function checkBoardsConfig(
       problem('expected an object')
       continue
     }
-    for (const field of Object.keys(board)) {
-      if (!BOARD_KEYS.includes(field)) problem(`unknown field "${field}"`)
-    }
-    const {chip, name, description, sdkconfig, partitions, nativeModules, project, images} = board
-    if (typeof chip !== 'string' || !chips.includes(chip)) {
-      problem(`"chip" must be one of ${chips.join(', ')}`)
-      continue
-    }
+    const {name, description} = board
     if (name !== undefined && typeof name !== 'string') problem('"name" must be a string')
     if (description !== undefined && typeof description !== 'string') {
       problem('"description" must be a string')
+    }
+    const boardName = typeof name === 'string' ? name : specifier
+    if (!BOARD_NAME_RE.test(boardName) || boardName.length > MAX_BOARD_NAME_LENGTH) {
+      problem(
+        `"${boardName}" is not a board name (at most ${MAX_BOARD_NAME_LENGTH} characters, the ` +
+          'form of a package name with an optional /<board>)' +
+          (typeof name === 'string' ? '' : '; set "name"'),
+      )
+    }
+    const target = `./${distPath}/${key === '.' ? '' : `${sub}/`}${FULL_IMAGE}/firmware.json`
+    const boardDir = key === '.' ? distDir : join(distDir, sub)
+    const boardDescription = typeof description === 'string' ? description : pkg.description
+
+    if (Object.hasOwn(board, 'firmware')) {
+      const {firmware} = board
+      for (const field of Object.keys(board)) {
+        if (GENERIC_BOARD_KEYS.includes(field)) continue
+        problem(
+          BOARD_KEYS.includes(field)
+            ? `a board that runs a generic image gets "${field}" from it; leave out "${field}"`
+            : `unknown field "${field}"`,
+        )
+      }
+      if (typeof firmware !== 'string' || !BOARD_NAME_RE.test(firmware)) {
+        problem('"firmware" names the generic board whose image it runs, like "esp32c6-generic"')
+        continue
+      }
+      generic.push({
+        key,
+        specifier,
+        name: boardName,
+        description: boardDescription,
+        firmware,
+        target,
+        boardDir,
+      })
+      continue
+    }
+
+    for (const field of Object.keys(board)) {
+      if (!BOARD_KEYS.includes(field)) problem(`unknown field "${field}"`)
+    }
+    const {chip, sdkconfig, partitions, nativeModules, project, images} = board
+    if (typeof chip !== 'string' || !chips.includes(chip)) {
+      problem(`"chip" must be one of ${chips.join(', ')}`)
+      continue
     }
     if (sdkconfig !== undefined && typeof sdkconfig !== 'string' && !isStringArray(sdkconfig)) {
       problem('"sdkconfig" must be a path or a list of paths')
@@ -622,21 +764,11 @@ export function checkBoardsConfig(
     for (const file of files) {
       if (!existsSync(resolve(packageDir, file))) problem(`${file} does not exist`)
     }
-    const boardName = typeof name === 'string' ? name : specifier
-    if (!BOARD_NAME_RE.test(boardName) || boardName.length > MAX_BOARD_NAME_LENGTH) {
-      problem(
-        `"${boardName}" is not a board name (at most ${MAX_BOARD_NAME_LENGTH} characters, the ` +
-          'form of a package name with an optional /<board>)' +
-          (typeof name === 'string' ? '' : '; set "name"'),
-      )
-    }
-    const target = `./${distPath}/${key === '.' ? '' : `${sub}/`}${FULL_IMAGE}/firmware.json`
-    const boardDir = key === '.' ? distDir : join(distDir, sub)
     boards.push({
       key,
       specifier,
       name: boardName,
-      description: typeof description === 'string' ? description : pkg.description,
+      description: boardDescription,
       chip: chip as Chip,
       sdkconfig: (typeof sdkconfig === 'string'
         ? [sdkconfig]
@@ -653,8 +785,8 @@ export function checkBoardsConfig(
     })
   }
 
-  const byName = new Map<string, ConfiguredBoard>()
-  for (const board of boards) {
+  const byName = new Map<string, {key: string}>()
+  for (const board of [...boards, ...generic]) {
     const other = byName.get(board.name)
     if (other) {
       problems.push({
@@ -668,7 +800,7 @@ export function checkBoardsConfig(
   // The exports must declare exactly the configured boards, where the config
   // puts their images.
   const targets = firmwareTargets(pkg.exports)
-  const missing = boards.filter((board) => {
+  const missing = [...boards, ...generic].filter((board) => {
     const target = targets.get(board.key)
     return (
       typeof target !== 'string' ||
@@ -699,5 +831,5 @@ export function checkBoardsConfig(
       message: `add these to "exports" in package.json (next to any other conditions of the same export):\n${exportsSnippet(missing)}`,
     })
   }
-  return {boards, problems}
+  return {boards, generic, problems}
 }

@@ -6,6 +6,7 @@ import {chips} from '@mikrojs/firmware'
 import {
   type BoardImage,
   type BoardProblem,
+  type GenericBoard,
   type ImageInfo,
   loadBoards,
 } from '@mikrojs/firmware/boards'
@@ -36,6 +37,9 @@ export interface BoardInfo {
   features?: string[]
   /** The board's other images (`no-ble`), besides the full one in `dir`. */
   images?: ImageInfo[]
+  /** For a board that runs a generic image: that generic board's name. Its
+   *  images are the board's, flashed with the board's name written in. */
+  firmware?: string
 }
 
 /** The suffix of a board's folders in `.mikro/`: none for the board at `.`,
@@ -70,6 +74,44 @@ function fromImage(image: BoardImage, bundled?: boolean): BoardInfo {
     ...(bundled ? {bundled} : {}),
     ...(buildDir !== undefined && existsSync(buildDir) ? {buildDir} : {}),
   }
+}
+
+/** The bundled generic board `image` flashed as the board `name`: its
+ *  image, with the board's name written in. */
+export function onGenericImage(
+  image: BoardInfo,
+  name: string,
+  own: {description?: string; specifier?: string} = {},
+): BoardInfo {
+  return {
+    name,
+    chip: image.chip,
+    description: own.description ?? image.description,
+    ...(own.specifier !== undefined ? {specifier: own.specifier} : {}),
+    firmware: image.name,
+    ...(image.dir !== undefined ? {dir: image.dir} : {}),
+    ...(image.features ? {features: image.features} : {}),
+    ...(image.images?.length ? {images: image.images} : {}),
+  }
+}
+
+/** A board that runs a generic image, as that image with the board's name,
+ *  or why it can't be flashed. */
+function fromGeneric(
+  board: GenericBoard,
+  bundled: BoardInfo[],
+): {ok: true; value: BoardInfo} | {ok: false; problem: BoardProblem} {
+  const image = bundled.find((b) => b.name === board.firmware)
+  if (image === undefined) {
+    return {
+      ok: false,
+      problem: {
+        specifier: board.specifier,
+        message: `it runs ${board.firmware}, which is not a generic board this CLI has`,
+      },
+    }
+  }
+  return {ok: true, value: onGenericImage(image, board.name, board)}
 }
 
 /** The generic `<chip>-generic` boards, one per supported chip, with the image
@@ -113,19 +155,23 @@ export async function discoverBoards(
   assertNoLegacyMikroConfig(pkg, 'package.json')
 
   const bundled = path.resolve(bundledBoardsDir(projectDir))
-  // A board package's own boards, so it can flash them from its own folder
-  if (path.resolve(projectDir) !== bundled) {
-    const own = loadBoards(projectDir)
-    boards.push(...own.boards.map((image) => fromImage(image)))
-    problems.push(...own.problems)
+  const generic = bundledBoards()
+  const add = (loaded: ReturnType<typeof loadBoards>) => {
+    boards.push(...loaded.boards.map((image) => fromImage(image)))
+    for (const board of loaded.generic) {
+      const found = fromGeneric(board, generic)
+      if (found.ok) boards.push(found.value)
+      else problems.push(found.problem)
+    }
+    problems.push(...loaded.problems)
   }
+  // A board package's own boards, so it can flash them from its own folder
+  if (path.resolve(projectDir) !== bundled) add(loadBoards(projectDir))
   for (const depName of Object.keys({...pkg.dependencies, ...pkg.devDependencies})) {
     if (depName === '@mikrojs/firmware') continue
     const depDir = findPackageDir(depName, projectDir)
     if (depDir === undefined || path.resolve(depDir) === bundled) continue
-    const loaded = loadBoards(depDir)
-    boards.push(...loaded.boards.map((image) => fromImage(image)))
-    problems.push(...loaded.problems)
+    add(loadBoards(depDir))
   }
   return {boards, problems}
 }

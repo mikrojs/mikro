@@ -12,6 +12,7 @@ import {
   firmwareExports,
   imageName,
   loadBoards,
+  readFirmwareJson,
   sortImageName,
 } from '../boards.ts'
 import {chips} from '../index.ts'
@@ -259,6 +260,135 @@ test('a boards.config.ts board takes its defaults from the package and its expor
   ])
 })
 
+test('a board that runs a generic image names it, and takes nothing else from the config', () => {
+  const {dir, boards, generic, problems} = configured(
+    '@acme/boards',
+    {
+      description: 'ACME boards',
+      exports: {
+        './t-display': {firmware: './dist-fw/t-display/full/firmware.json'},
+        './xiao': {firmware: './dist-fw/xiao/full/firmware.json'},
+        './knob': {firmware: './dist-fw/knob/full/firmware.json'},
+      },
+    },
+    {
+      boards: {
+        './t-display': {firmware: 'esp32-generic', description: 'T-Display'},
+        './xiao': {firmware: 'esp32c6-generic', name: 'xiao'},
+        './knob': {chip: 'esp32s3'},
+      },
+    },
+  )
+  expect(problems).toEqual([])
+  expect(boards.map((b) => b.key)).toEqual(['./knob'])
+  expect(generic).toEqual([
+    {
+      key: './t-display',
+      specifier: '@acme/boards/t-display',
+      name: '@acme/boards/t-display',
+      description: 'T-Display',
+      firmware: 'esp32-generic',
+      target: './dist-fw/t-display/full/firmware.json',
+      boardDir: join(dir, 'dist-fw/t-display'),
+    },
+    {
+      key: './xiao',
+      specifier: '@acme/boards/xiao',
+      name: 'xiao',
+      description: 'ACME boards',
+      firmware: 'esp32c6-generic',
+      target: './dist-fw/xiao/full/firmware.json',
+      boardDir: join(dir, 'dist-fw/xiao'),
+    },
+  ])
+
+  const wrong = configured(
+    'wrong-generic',
+    {
+      exports: {
+        './a': {firmware: './dist-fw/a/full/firmware.json'},
+        './b': {firmware: './dist-fw/b/full/firmware.json'},
+      },
+    },
+    {
+      boards: {
+        './a': {firmware: 'esp32-generic', chip: 'esp32', sdkconfig: 'x.defaults', pins: 1},
+        './b': {firmware: 'Not A Name', name: 'b'},
+      },
+    },
+  )
+  expect(wrong.problems.map((p) => p.message)).toEqual([
+    'boards.config.ts, board "./a": a board that runs a generic image gets "chip" from it; leave out "chip"',
+    'boards.config.ts, board "./a": a board that runs a generic image gets "sdkconfig" from it; leave out "sdkconfig"',
+    'boards.config.ts, board "./a": unknown field "pins"',
+    'boards.config.ts, board "./b": "firmware" names the generic board whose image it runs, like "esp32c6-generic"',
+  ])
+  expect(wrong.generic.map((b) => b.key)).toEqual(['./a'])
+})
+
+test('a generic board needs its firmware export too, and shares names with the others', () => {
+  const {problems} = configured(
+    'generic-exports',
+    {exports: {'./a': {firmware: './dist-fw/a/full/firmware.json'}}},
+    {
+      boards: {
+        './a': {chip: 'esp32', name: 'twin'},
+        './b': {firmware: 'esp32-generic', name: 'twin'},
+      },
+    },
+  )
+  expect(problems.map((p) => p.message)).toEqual([
+    'boards.config.ts: boards "./a" and "./b" are both named "twin"',
+    '"exports" has no "firmware" condition for "./b"',
+    'add these to "exports" in package.json (next to any other conditions of the same export):\n  "./b": {"firmware": "./dist-fw/b/full/firmware.json"}',
+  ])
+})
+
+test("a generic board's firmware.json names it and the generic board, and has no image", () => {
+  const dir = boardPackage('generic-board', {
+    files: ['dist-fw'],
+    exports: {
+      './t-display': {firmware: './dist-fw/t-display/full/firmware.json'},
+      './knob': {firmware: './dist-fw/knob/full/firmware.json'},
+    },
+  })
+  const stub = join(dir, 'dist-fw/t-display/full/firmware.json')
+  write(stub, JSON.stringify({name: 'generic-board/t-display', firmware: 'esp32-generic'}))
+  writeImage(join(dir, 'dist-fw/knob/full'), {
+    name: 'generic-board/knob',
+    chip: 'esp32s3',
+    version: '0.21.0',
+  })
+  const {boards, generic, problems} = loadBoards(dir)
+  expect(problems).toEqual([])
+  expect(boards.map((b) => b.name)).toEqual(['generic-board/knob'])
+  expect(generic).toEqual([
+    {
+      name: 'generic-board/t-display',
+      description: undefined,
+      firmware: 'esp32-generic',
+      specifier: 'generic-board/t-display',
+      key: './t-display',
+      packageName: 'generic-board',
+      packageDir: dir,
+    },
+  ])
+  // Nothing to flash from its folder, so nothing to check there
+  expect(checkBoardPackage(dir)).toEqual([])
+  expect(readFirmwareJson(stub)).toEqual({
+    ok: false,
+    message: `${stub} is a board that runs a generic image, not an image`,
+  })
+
+  write(stub, JSON.stringify({name: 'Generic', firmware: 'esp32-generic'}))
+  expect(loadBoards(dir).problems).toEqual([
+    {
+      specifier: 'generic-board/t-display',
+      message: `${stub}: "Generic" is not a board name (at most 63 characters, the form of a package name with an optional /<board>)`,
+    },
+  ])
+})
+
 test('a board at "." puts its images in the dist folder itself, and resolves its files', () => {
   const {dir, boards, problems} = configured(
     'devboard',
@@ -476,6 +606,7 @@ test('unreadable JSON is a problem, not a crash', () => {
   write(join(broken, 'package.json'), '{"name": ')
   expect(loadBoards(broken)).toEqual({
     boards: [],
+    generic: [],
     problems: [{specifier: broken, message: expect.stringContaining('cannot read')}],
   })
   expect(checkBoardPackage(broken)).toEqual([
