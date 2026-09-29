@@ -100,6 +100,12 @@ typedef struct MIKPlatform {
      *  "unknown". The returned pointer must remain valid for the lifetime
      *  of the platform. */
     const char* (*get_reset_reason)(void);
+    /** Bring up the TCP/IP stack if the platform has one that starts on
+     *  demand. Called before a networking module creates its first socket;
+     *  idempotent. NULL where sockets need no setup (hosts). On ESP32 the
+     *  stack otherwise starts only as a side effect of the wifi or http
+     *  module loading, and lwip aborts on a socket call before that. */
+    void (*net_init)(void);
 } MIKPlatform;
 
 /* Log levels (matching ESP-IDF ESP_LOG_xxx values) */
