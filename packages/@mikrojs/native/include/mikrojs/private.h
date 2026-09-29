@@ -344,6 +344,9 @@ JSModuleDef* mik__observable_operators_load(JSContext* ctx);
 int mik__observable_multicast_new(JSContext* ctx, JSValue* observable, JSValue* next,
                                   JSValue* complete);
 
+/* Test runner module (mik_test.cpp): mikro/test, C-module table in modules.cpp. */
+JSModuleDef* mik__test_load(JSContext* ctx);
+
 /* Watchdog (mik_watchdog.cpp). */
 /* Start a fresh blocking budget: top of each MIK_Loop pass, eval entry
  * points, REPL eval, and on return from a deliberately blocking native

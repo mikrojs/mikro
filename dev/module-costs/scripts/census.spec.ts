@@ -17,7 +17,6 @@ const NOT_CENSUSED = new Set([
   './sim', // host-side simulator stubs
   './console', // type-only shim; console is a global
   './format', // type-only shim
-  './sys', // imported by mikro/test, so already loaded in the baseline
   './test', // the harness
 ])
 

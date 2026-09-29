@@ -41,7 +41,6 @@ const deviceBytecode = [
   'stdio',
   'stream',
   'sys',
-  'test',
   'udp',
   'watchdog',
 ]

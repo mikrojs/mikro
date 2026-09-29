@@ -20,8 +20,8 @@ Rules the census files follow:
 - One suite, one test. Shared dependencies are charged to every module that
   pulls them in: the figure answers "what do I pay to import X", not the
   marginal cost after something else is loaded.
-- `mikro/sys` and `mikro/test` have no file. The harness imports both, so their
-  cost sits inside the baseline and cannot be seen from a test.
+- `mikro/test` has no file: it is the harness itself, native code that a test
+  cannot measure.
 - Chip-gated modules (`mikro/ble`) use `describe.runIf` on `board.features`.
   `mikro/http/server` is firmware-only and skips on the simulator via
   `MIKRO_ENV`. A file whose only test is skipped records nothing
