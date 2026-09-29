@@ -520,7 +520,10 @@ static JSValue mik__udp_bind(JSContext* ctx, JSValue this_val, int argc, JSValue
     JS_FreeValue(ctx, rq_val);
     if (recv_queue < 1) recv_queue = 1;
 
-    /* Create socket */
+    /* Create socket. The stack may not be running yet on platforms that
+     * start it on demand (nothing else in this file needs an interface). */
+    const MIKPlatform* platform = MIK_GetPlatform();
+    if (platform->net_init) platform->net_init();
     int fd = socket(family, SOCK_DGRAM, 0);
     if (fd < 0) {
         if (address) JS_FreeCString(ctx, address);

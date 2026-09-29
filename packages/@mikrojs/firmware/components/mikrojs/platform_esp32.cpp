@@ -5,6 +5,7 @@
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 #include <esp_mac.h>
+#include <esp_netif.h>
 #include <nanocbor/nanocbor.h>
 #include <nvs.h>
 #include <esp_random.h>
@@ -390,6 +391,16 @@ static void esp32_log(int level, const char* tag, const char* fmt, ...) {
     mik__console_write(buf, total + 1);
 }
 
+/* Start lwip's tcpip thread. esp_netif_init is idempotent (INVALID_STATE
+ * on a second call); the wifi and http modules run it too and share the
+ * result. */
+static void esp32_net_init(void) {
+    esp_err_t err = esp_netif_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGE("mikrojs", "esp_netif_init failed: %s", esp_err_to_name(err));
+    }
+}
+
 static const MIKPlatform esp32_platform = {
     .get_boot_us = esp32_get_boot_us,
     .get_rtc_us = esp32_get_rtc_us,
@@ -423,6 +434,7 @@ static const MIKPlatform esp32_platform = {
     .get_device_name = esp32_get_device_name,
     .set_device_name = esp32_set_device_name,
     .get_reset_reason = esp32_get_reset_reason,
+    .net_init = esp32_net_init,
 };
 
 /*

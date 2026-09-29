@@ -3,6 +3,7 @@
 #include <string>
 
 #include <mikrojs/mikrojs.h>
+#include <mikrojs/platform.h>
 #include <mikrojs/private.h>
 #include <quickjs.h>
 
@@ -516,4 +517,28 @@ TEST_CASE_FIXTURE(UdpFixture, "link-local scope ids parse on send" *
         "  s.close()\n");
     std::string outcome = read_global_string(ctx, "__scope");
     CHECK((outcome == "ok" || outcome == "err"));
+}
+
+namespace {
+int g_net_init_calls = 0;
+void count_net_init(void) {
+    g_net_init_calls++;
+}
+}  // namespace
+
+/* On ESP32 lwip starts on demand and aborts on a socket call before that;
+ * udp must ask the platform first rather than rely on wifi or http having
+ * loaded earlier in the boot. */
+TEST_CASE_FIXTURE(UdpFixture, "bind() asks the platform to start the network stack" *
+                                  doctest::test_suite("udp")) {
+    const MIKPlatform* orig = MIK_GetPlatform();
+    MIKPlatform fake = *orig;
+    fake.net_init = count_net_init;
+    g_net_init_calls = 0;
+    MIK_SetPlatform(&fake);
+    run_async(
+        "  const s = (await bind({family: 'ipv4', port: 0})).value\n"
+        "  s.close()\n");
+    MIK_SetPlatform(orig);
+    CHECK(g_net_init_calls == 1);
 }
