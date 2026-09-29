@@ -24,8 +24,7 @@ JSValue mik_throw_errno(JSContext* ctx, int err) {
 }
 
 void mik_assert(const struct AssertionInfo info) {
-    fprintf(stderr, "%s:%s%s Assertion `%s' failed.\n", info.file_line, info.function,
-            *info.function ? ":" : "", info.message);
+    fprintf(stderr, "%s Assertion '%s' failed\n", info.file_line, info.message);
     fflush(stderr);
     abort();
 }
