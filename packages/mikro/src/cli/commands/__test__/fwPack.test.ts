@@ -1116,9 +1116,7 @@ describe('a board that runs a generic image', () => {
     await runBuild(BUILD)
 
     expect(error).toHaveBeenCalledWith(
-      expect.stringContaining(
-        '"firmware" is esp32c9-generic, which is not a generic board; they are esp32-generic,',
-      ),
+      expect.stringContaining('"firmware" must be one of esp32-generic, esp32c3-generic,'),
     )
     expect(existsSync(stub)).toBe(false)
   })

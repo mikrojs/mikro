@@ -12,26 +12,23 @@ import {
   type ConfiguredImage,
 } from '@mikrojs/firmware/boards'
 
-import {boardBuildDir, boardProjectDir, bundledBoards} from './boards.js'
+import {boardBuildDir, boardProjectDir} from './boards.js'
 import {UserError} from './errorMessage.js'
 import {rewriteConfigImports} from './loadMikroConfig.js'
 
 /** A board package's config: at its root, next to package.json. */
 export const BOARDS_CONFIG = 'boards.config.ts'
 
-/** A board that runs a generic image, with that image's chip. */
-export type ResolvedGenericBoard = ConfiguredGenericBoard & {chip: string}
-
 /**
  * The boards the package's boards.config.ts declares, and what is wrong with
- * it (see checkBoardsConfig, and a board that runs a generic image mikro
- * doesn't have); undefined when the package has none. Loaded like
+ * it (see checkBoardsConfig); undefined when the package has none. Loaded like
  * mikro.config.ts: types stripped, the `mikro` import shimmed.
  */
 export async function loadBoardsConfig(
   packageDir: string,
 ): Promise<
-  {boards: ConfiguredBoard[]; generic: ResolvedGenericBoard[]; problems: BoardProblem[]} | undefined
+  | {boards: ConfiguredBoard[]; generic: ConfiguredGenericBoard[]; problems: BoardProblem[]}
+  | undefined
 > {
   const file = path.join(packageDir, BOARDS_CONFIG)
   if (!existsSync(file)) return undefined
@@ -45,23 +42,7 @@ export async function loadBoardsConfig(
   } catch (e) {
     throw new UserError(`${file} failed to load`, {cause: e})
   }
-  const {boards, generic, problems} = checkBoardsConfig(packageDir, mod.default)
-  const bundled = bundledBoards()
-  const resolved: ResolvedGenericBoard[] = []
-  for (const board of generic) {
-    const image = bundled.find((b) => b.name === board.firmware)
-    if (image === undefined) {
-      problems.push({
-        specifier: board.specifier,
-        message:
-          `boards.config.ts, board "${board.key}": "firmware" is ${board.firmware}, which is not ` +
-          `a generic board; they are ${bundled.map((b) => b.name).join(', ')}`,
-      })
-    } else {
-      resolved.push({...board, chip: image.chip})
-    }
-  }
-  return {boards, generic: resolved, problems}
+  return checkBoardsConfig(packageDir, mod.default)
 }
 
 /** The boards `selector` names (`--board`): an export key (`./t-display`, or
