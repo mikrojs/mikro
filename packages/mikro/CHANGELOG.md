@@ -1,5 +1,76 @@
 # Changelog
 
+## 0.22.0 (2026-09-30)
+
+### Features
+
+- **releaser:** add min_bump to bump 0.x minor ([#496](https://github.com/mikrojs/mikro/pull/496))
+- **boards:** let boards use generic firmware with custom name ([#493](https://github.com/mikrojs/mikro/pull/493))
+- **test:** add mikro test --isolate and free device RAM during test runs ([#489](https://github.com/mikrojs/mikro/pull/489))
+- **create-mikro:** scaffold board packages with --board ([#488](https://github.com/mikrojs/mikro/pull/488))
+- **boards:** give ESP32 BLE apps 17 KB more RAM with a no-wifi image ([#483](https://github.com/mikrojs/mikro/pull/483))
+- **cli:** add support for `--features no-\<feature\>` ([#477](https://github.com/mikrojs/mikro/pull/477))
+- **firmware:** make the boot recovery window configurable ([#478](https://github.com/mikrojs/mikro/pull/478))
+- **firmware:** add an opt-in automatic light sleep ([#476](https://github.com/mikrojs/mikro/pull/476))
+- **create-mikro:** ask for the chip only for a firmware project ([#470](https://github.com/mikrojs/mikro/pull/470))
+- **cli:** rename mikro flash --target to --chip ([#466](https://github.com/mikrojs/mikro/pull/466))
+- **boards:** rename fw prepack to fw build and add --parallel, --flash and fw list ([#463](https://github.com/mikrojs/mikro/pull/463))
+- **boards:** build leaner board images by default ([#462](https://github.com/mikrojs/mikro/pull/462))
+- **boards:** ship generic boards from boards config in mikro package ([#461](https://github.com/mikrojs/mikro/pull/461))
+- **cli:** let prebuilt firmware use all of a larger flash chip ([#456](https://github.com/mikrojs/mikro/pull/456))
+- **firmware:** find @mikrojs/firmware with find_package ([#455](https://github.com/mikrojs/mikro/pull/455))
+- **firmware:** board packages w/prebuilt firmware images ([#453](https://github.com/mikrojs/mikro/pull/453))
+- **create-mikro:** add `--firmware` for apps with custom firmware ([#450](https://github.com/mikrojs/mikro/pull/450))
+- **cli:** add mikro idf and mikro fw pack for custom firmware ([#449](https://github.com/mikrojs/mikro/pull/449))
+- **firmware:** compile C/C++ native modules into custom firmware ([#446](https://github.com/mikrojs/mikro/pull/446))
+- **cli:** write mikro build output to .mikro/build by default ([#445](https://github.com/mikrojs/mikro/pull/445))
+- **cli:** show radios and free heap when a device connects ([#442](https://github.com/mikrojs/mikro/pull/442))
+
+### Bug fixes
+
+- **udp:** start the network stack on bind instead of aborting ([#490](https://github.com/mikrojs/mikro/pull/490))
+- **native:** keep TextEncoder output past an embedded NUL ([#484](https://github.com/mikrojs/mikro/pull/484))
+- **native:** stop skipping intervals past the due cap, drop dead code ([#469](https://github.com/mikrojs/mikro/pull/469))
+- **firmware:** list types first in published exports for publint ([#467](https://github.com/mikrojs/mikro/pull/467))
+- **cli:** load the native addon lazily so fw list runs in CI ([#465](https://github.com/mikrojs/mikro/pull/465))
+- **ci:** make firmware builds hit the ccache ([#458](https://github.com/mikrojs/mikro/pull/458))
+- **esp32:** run mikro-fw through pnpm instead of npx ([#454](https://github.com/mikrojs/mikro/pull/454))
+- **cli:** make ota snapshot builds report the snapshot version ([#452](https://github.com/mikrojs/mikro/pull/452))
+- **cli:** stop frame parser stalling on a CR before a tiny frame ([#451](https://github.com/mikrojs/mikro/pull/451))
+- **types:** type import.meta's url, main and path fields + typecheck fix ([#443](https://github.com/mikrojs/mikro/pull/443))
+- **kv:** delete() no longer returns WriteFailed on a missing key ([#440](https://github.com/mikrojs/mikro/pull/440))
+- **kv:** keep RTC values if write fails due to storage full ([#438](https://github.com/mikrojs/mikro/pull/438))
+
+### Performance
+
+- **flash:** write only the flash sectors that change on a reflash ([#494](https://github.com/mikrojs/mikro/pull/494))
+- **native:** keep only file name and line in CHECK strings ([#492](https://github.com/mikrojs/mikro/pull/492))
+- **test:** port the test runner to C ([#491](https://github.com/mikrojs/mikro/pull/491))
+- **firmware:** route the JS heap to PSRAM only when PSRAM is present ([#487](https://github.com/mikrojs/mikro/pull/487))
+- **deploy:** batch file checks and skip unchanged env vars ([#486](https://github.com/mikrojs/mikro/pull/486))
+- **native:** cut the memory peak when reading a fetch body ([#485](https://github.com/mikrojs/mikro/pull/485))
+- **native:** cache property lookups in Result, inspect and observables ([#480](https://github.com/mikrojs/mikro/pull/480))
+- **firmware:** release classic BT controller memory at boot on ESP32 ([#479](https://github.com/mikrojs/mikro/pull/479))
+- **native:** let the event loop sleep until work arrives ([#475](https://github.com/mikrojs/mikro/pull/475))
+- sleep between ticks while the runtime is idle ([#472](https://github.com/mikrojs/mikro/pull/472))
+- **cli:** cut CPU in serial reads, REPL output and port rescans ([#471](https://github.com/mikrojs/mikro/pull/471))
+- **cli:** load only the dispatched command at startup ([#468](https://github.com/mikrojs/mikro/pull/468))
+
+### Other
+
+- **boards:** type image and generic board configs as exclusive ([#495](https://github.com/mikrojs/mikro/pull/495))
+- **native:** drop atom fallbacks never called ([#482](https://github.com/mikrojs/mikro/pull/482))
+- **cli:** limit `mikro flash --from` to archive URLs ([#474](https://github.com/mikrojs/mikro/pull/474))
+- **boards:** point ESP32 boards without PSRAM at the image without BLE ([975fa35](https://github.com/mikrojs/mikro/commit/975fa35c7ae1c10b92c7338b6e79ea70bdb3c4a3))
+- **firmware:** skip install scripts in the setup job, which only runs fw list ([36c9543](https://github.com/mikrojs/mikro/commit/36c9543a1b1bf973cadfb489dd03be467132be42))
+- **firmware:** replace chips.json with a CHIPS constant ([#464](https://github.com/mikrojs/mikro/pull/464))
+- **deps:** update pnpm to v12.6.0 ([#425](https://github.com/mikrojs/mikro/pull/425))
+- **deps:** update pnpm/setup action to v3 ([#436](https://github.com/mikrojs/mikro/pull/436))
+- **boards:** generic esp32s3 firmware uses octal PSRAM, not quad ([#457](https://github.com/mikrojs/mikro/pull/457))
+- **native:** drop package bytecode builtins for now ([#448](https://github.com/mikrojs/mikro/pull/448))
+- **cli:** stop EntryGate JSON error test depending on temp path length ([#447](https://github.com/mikrojs/mikro/pull/447))
+- **platform:** require get_device_id ([#444](https://github.com/mikrojs/mikro/pull/444))
+
 ## 0.21.0 (2026-09-21)
 
 ### Breaking changes
