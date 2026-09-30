@@ -3,6 +3,7 @@ import semver from 'semver'
 import type {ParsedCommit} from './commits.js'
 
 export type ReleaseType = 'major' | 'minor' | 'patch'
+export type MinBump = 'patch' | 'minor'
 
 // Conventional-commits bump policy: breaking → major, feat → minor,
 // anything else (including an empty range) → patch.
@@ -46,6 +47,7 @@ export function computeVersion({
   build,
   breakingIsMinorOn0x,
   featIsPatchOn0x,
+  minBump,
   noIncrement,
 }: {
   currentVersion: string
@@ -59,6 +61,9 @@ export function computeVersion({
   build?: string
   breakingIsMinorOn0x?: boolean
   featIsPatchOn0x?: boolean
+  // Floor for the increment, applied after the 0.x caps. `minor` lets a
+  // release that would land as a patch get its own minor line instead.
+  minBump?: MinBump
   // Base the version on `currentVersion` as-is, skipping the semver
   // increment. Used by release-preview: the rolling release PR has already
   // bumped package.json to the version about to ship, so a preview must
@@ -87,6 +92,9 @@ export function computeVersion({
       effectiveIncrement = 'minor'
     } else if (preMajor && semverIncrement === 'minor' && featIsPatchOn0x) {
       effectiveIncrement = 'patch'
+    }
+    if (minBump === 'minor' && effectiveIncrement === 'patch') {
+      effectiveIncrement = 'minor'
     }
     const bumped = semver.inc(currentVersion, effectiveIncrement)
     if (!bumped) {

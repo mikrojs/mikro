@@ -116,6 +116,31 @@ describe('computeBumpPure', () => {
     })
   })
 
+  test('minBump minor raises a capped patch to minor, leaves minor and major alone', () => {
+    // The `min_bump: minor` dispatch path: fixes and chores (or feats
+    // capped to patch) get their own 0.x minor line. A breaking change
+    // still lands where the caps put it.
+    const caps = {breakingIsMinorOn0x: true, featIsPatchOn0x: true, minBump: 'minor' as const}
+    expect(
+      computeBumpPure({...baseInputs, mode: 'release', semverIncrement: 'patch', ...caps}),
+    ).toMatchObject({version: '0.3.0'})
+    expect(
+      computeBumpPure({...baseInputs, mode: 'release', semverIncrement: 'minor', ...caps}),
+    ).toMatchObject({version: '0.3.0'})
+    expect(
+      computeBumpPure({...baseInputs, mode: 'release', semverIncrement: 'major', ...caps}),
+    ).toMatchObject({version: '0.3.0'})
+    expect(
+      computeBumpPure({
+        ...baseInputs,
+        mode: 'release',
+        semverIncrement: 'major',
+        featIsPatchOn0x: true,
+        minBump: 'minor',
+      }),
+    ).toMatchObject({version: '1.0.0'})
+  })
+
   test('breakingIsMinorOn0x is a no-op once on 1.x or later', () => {
     expect(
       computeBumpPure({

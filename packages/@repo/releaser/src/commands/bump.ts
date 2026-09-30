@@ -9,7 +9,13 @@ import semver from 'semver'
 import {findReleaseBase, getCommitsSince} from '../util/commits.js'
 import {readGitInfo} from '../util/git.js'
 import {MONOREPO_ROOT} from '../util/repo.js'
-import {computeVersion, formatTimestamp, recommendBump, type ReleaseType} from '../util/version.js'
+import {
+  computeVersion,
+  formatTimestamp,
+  type MinBump,
+  recommendBump,
+  type ReleaseType,
+} from '../util/version.js'
 import {getPublishablePackages, readCanonicalVersion, writeVersion} from '../util/workspace.js'
 
 export type Mode = 'release' | 'release-preview' | 'canary' | 'pr-preview'
@@ -48,6 +54,11 @@ export const args = command(
         description: message`While on 0.x, treat features as patch (downgrade recommended minor bumps). Off by default. No-op on 1.x and later.`,
       }),
     ),
+    minBump: optional(
+      option('--min-bump', choice(['patch', 'minor'] as const, {metavar: 'BUMP'}), {
+        description: message`Floor for the increment (release mode only). 'minor' raises a computed patch to minor, to give a run of small changes their own minor line.`,
+      }),
+    ),
     dryRun: optional(
       flag('--dry-run', {description: message`Print the new version without writing files`}),
     ),
@@ -72,6 +83,7 @@ export interface BumpInputs {
   useCurrent?: boolean
   breakingIsMinorOn0x?: boolean
   featIsPatchOn0x?: boolean
+  minBump?: MinBump
   currentVersion: string
   semverIncrement: ReleaseType
   git: {commitHash: string}
@@ -87,6 +99,7 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
     useCurrent,
     breakingIsMinorOn0x,
     featIsPatchOn0x,
+    minBump,
     currentVersion,
     semverIncrement,
     git,
@@ -108,6 +121,7 @@ export function computeBumpPure(inputs: BumpInputs): BumpResult {
       suffix: undefined,
       breakingIsMinorOn0x,
       featIsPatchOn0x,
+      minBump,
     })
     return {version, npmTag: 'latest', mode}
   }
@@ -190,6 +204,7 @@ async function gather(opts: BumpArgs): Promise<BumpInputs> {
     useCurrent,
     breakingIsMinorOn0x: opts.breakingIsMinorOn0x === true,
     featIsPatchOn0x: opts.featIsPatchOn0x === true,
+    minBump: opts.minBump,
     currentVersion: readCanonicalVersion(),
     semverIncrement: useCurrent ? 'patch' : recommendBump(getCommitsSince(findReleaseBase())),
     git: useCurrent ? {commitHash: ''} : readGitInfo(),
