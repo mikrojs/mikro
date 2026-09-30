@@ -23,7 +23,7 @@ import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:
 
 import {array, enumOf, object, optional, type Schema, string, validate} from '@mikrojs/schema'
 
-import {type Chip, chips} from './index.ts'
+import {type Chip, CHIPS, chips} from './index.ts'
 
 /** A board's image, as its firmware.json describes it. */
 export interface BoardImage {
@@ -487,6 +487,17 @@ export interface BoardConfig {
   /** Images to build besides the full one, each with features switched off
    *  or on: `[{ble: false}, {ble: false, wifi: false}]`. */
   images?: readonly ImageFeatures[]
+  /** Only for a board on the generic firmware (GenericBoardConfig). */
+  firmware?: never
+}
+
+/** The generic boards, one per chip: the firmware a board on the generic
+ *  firmware runs. */
+const GENERIC_FIRMWARE = CHIPS.map((chip) => `${chip}-generic` as const)
+export type GenericFirmware = (typeof GENERIC_FIRMWARE)[number]
+
+function isGenericFirmware(name: unknown): name is GenericFirmware {
+  return (GENERIC_FIRMWARE as readonly unknown[]).includes(name)
 }
 
 /** A board in boards.config.ts that runs one of the generic images, such as a
@@ -494,13 +505,20 @@ export interface BoardConfig {
  *  the image. */
 export interface GenericBoardConfig {
   /** The generic board whose image it runs: `esp32-generic`. */
-  firmware: string
+  firmware: GenericFirmware
   /** The name the device reports as sys.board.name. Default: the specifier of
    *  the board's export. */
   name?: string
   /** Shown when `mikro flash` asks which board to flash. Default: the
    *  package's description. */
   description?: string
+  // The generic board's, so not set here
+  chip?: never
+  sdkconfig?: never
+  partitions?: never
+  nativeModules?: never
+  project?: never
+  images?: never
 }
 
 /** boards.config.ts: the boards a package builds, keyed by the export that
@@ -542,7 +560,9 @@ export interface ConfiguredGenericBoard {
   specifier: string
   name: string
   description?: string
-  firmware: string
+  firmware: GenericFirmware
+  /** The generic board's chip. */
+  chip: Chip
   target: string
   boardDir: string
 }
@@ -676,8 +696,8 @@ export function checkBoardsConfig(
             : `unknown field "${field}"`,
         )
       }
-      if (typeof firmware !== 'string' || !BOARD_NAME_RE.test(firmware)) {
-        problem('"firmware" names the generic board whose image it runs, like "esp32c6-generic"')
+      if (!isGenericFirmware(firmware)) {
+        problem(`"firmware" must be one of ${GENERIC_FIRMWARE.join(', ')}`)
         continue
       }
       generic.push({
@@ -686,6 +706,7 @@ export function checkBoardsConfig(
         name: boardName,
         description: boardDescription,
         firmware,
+        chip: CHIPS[GENERIC_FIRMWARE.indexOf(firmware)]!,
         target,
         boardDir,
       })

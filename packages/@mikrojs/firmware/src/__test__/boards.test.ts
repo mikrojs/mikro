@@ -288,6 +288,7 @@ test('a board that runs a generic image names it, and takes nothing else from th
       name: '@acme/boards/t-display',
       description: 'T-Display',
       firmware: 'esp32-generic',
+      chip: 'esp32',
       target: './dist-fw/t-display/full/firmware.json',
       boardDir: join(dir, 'dist-fw/t-display'),
     },
@@ -297,6 +298,7 @@ test('a board that runs a generic image names it, and takes nothing else from th
       name: 'xiao',
       description: 'ACME boards',
       firmware: 'esp32c6-generic',
+      chip: 'esp32c6',
       target: './dist-fw/xiao/full/firmware.json',
       boardDir: join(dir, 'dist-fw/xiao'),
     },
@@ -321,7 +323,7 @@ test('a board that runs a generic image names it, and takes nothing else from th
     'boards.config.ts, board "./a": a board that runs a generic image gets "chip" from it; leave out "chip"',
     'boards.config.ts, board "./a": a board that runs a generic image gets "sdkconfig" from it; leave out "sdkconfig"',
     'boards.config.ts, board "./a": unknown field "pins"',
-    'boards.config.ts, board "./b": "firmware" names the generic board whose image it runs, like "esp32c6-generic"',
+    'boards.config.ts, board "./b": "firmware" must be one of esp32-generic, esp32c3-generic, esp32c5-generic, esp32c6-generic, esp32s3-generic',
   ])
   expect(wrong.generic.map((b) => b.key)).toEqual(['./a'])
 })

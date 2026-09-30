@@ -5,6 +5,7 @@ import {
   type BoardImage,
   type BoardProblem,
   type ConfiguredBoard,
+  type ConfiguredGenericBoard,
   type ConfiguredImage,
   FULL_IMAGE,
   loadBoards,
@@ -16,12 +17,7 @@ import type {InferValue} from '@optique/core/parser'
 
 import {agentError, agentResult, isAgentMode} from '../../lib/agent.js'
 import {boardBuildDir, boardProjectDir} from '../../lib/boards.js'
-import {
-  BOARDS_CONFIG,
-  loadBoardsConfig,
-  type ResolvedGenericBoard,
-  selectBoards,
-} from '../../lib/boardsConfig.js'
+import {BOARDS_CONFIG, loadBoardsConfig, selectBoards} from '../../lib/boardsConfig.js'
 import {displayPath} from '../../lib/displayPath.js'
 import {UserError} from '../../lib/errorMessage.js'
 import {
@@ -59,7 +55,7 @@ export function problemLines(problems: BoardProblem[]): string {
 export async function configuredPackage(
   dir: string,
 ): Promise<
-  {packageDir: string; boards: ConfiguredBoard[]; generic: ResolvedGenericBoard[]} | undefined
+  {packageDir: string; boards: ConfiguredBoard[]; generic: ConfiguredGenericBoard[]} | undefined
 > {
   const packageDir = findPackageRoot(dir)
   if (packageDir === undefined) return undefined
@@ -268,9 +264,9 @@ export async function buildBoardImages(
 /** The one image `--flash` flashes: of the only board selected, the one
  *  `--image` names, or the full image of a board without others. */
 function imageToFlash(
-  boards: (ConfiguredBoard | ResolvedGenericBoard)[],
+  boards: (ConfiguredBoard | ConfiguredGenericBoard)[],
   image: string | undefined,
-): {board: ConfiguredBoard | ResolvedGenericBoard; image: string} {
+): {board: ConfiguredBoard | ConfiguredGenericBoard; image: string} {
   const [board, ...others] = boards
   if (board === undefined || others.length > 0) {
     throw new UserError('--flash flashes one image: pick the board with --board.')
@@ -289,7 +285,7 @@ function imageToFlash(
 /** The `--features` that make `mikro flash` pick `image` of `board`: `full`,
  *  the features the image has, whose leanest image it is, or `min` for an
  *  image with none. */
-function featuresOf(board: ConfiguredBoard | ResolvedGenericBoard, image: string): string {
+function featuresOf(board: ConfiguredBoard | ConfiguredGenericBoard, image: string): string {
   if (image === FULL_IMAGE || 'firmware' in board) return FULL_IMAGE
   const read = readFirmwareJson(pathlib.join(board.boardDir, image, 'firmware.json'))
   if (!read.ok) throw new UserError(read.message)
@@ -339,7 +335,7 @@ export async function run(config: Args): Promise<void> {
         : sortImageName(config.image === '' ? await pickImage(selectedBoards) : config.image)
     // Before any build, so a --flash that can't pick one image stops at once
     const toFlash = config.flash === true ? imageToFlash(selected, image) : undefined
-    const written: (ResolvedGenericBoard & {dir: string})[] = []
+    const written: (ConfiguredGenericBoard & {dir: string})[] = []
     for (const board of selectedGeneric) {
       written.push({...board, dir: await writeGenericBoard(board, packageDir)})
     }
