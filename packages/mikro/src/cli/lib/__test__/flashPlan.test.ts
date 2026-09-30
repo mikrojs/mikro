@@ -14,6 +14,7 @@ import * as pathlib from 'node:path'
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 
+import {getWriteFlashMultiArgs} from '../esptool.js'
 import {
   chooseImage,
   flashFirmware,
@@ -111,6 +112,55 @@ function plan_(result: FlashPlan | {choose: unknown}): FlashPlan {
   if ('choose' in result) throw new Error('expected a plan, got a choice of boards')
   return result
 }
+
+/** The files esptool compares the plan's files with, in order (`--diff-with`). */
+function diffs(plan: FlashPlan): string[] {
+  const args = getWriteFlashMultiArgs({
+    port: '/dev/null',
+    baudRate: 460800,
+    files: plan.flasherArgs.files,
+  })
+  return args.slice(args.indexOf('--diff-with') + 1, args.indexOf('--'))
+}
+
+/** The board name in an app binary's slot. */
+function nameIn(file: string): string {
+  return readFileSync(file)
+    .subarray(0x124, 0x124 + 64)
+    .toString()
+    .replace(/\0+$/, '')
+}
+
+describe('getWriteFlashMultiArgs', () => {
+  const files = [
+    {address: 0x0, filename: 'bootloader.bin'},
+    {address: 0x10000, filename: 'app.bin'},
+  ]
+  const options = {port: '/dev/null', baudRate: 460800}
+
+  it('pairs the files with the ones to diff with, and ends the list before them', () => {
+    const args = getWriteFlashMultiArgs({
+      ...options,
+      files: [{...files[0]!, diffWith: 'bootloader.bin'}, files[1]!],
+    })
+    expect(args.slice(args.indexOf('--diff-with'))).toEqual([
+      '--diff-with',
+      'bootloader.bin',
+      'skip',
+      '--',
+      '0',
+      'bootloader.bin',
+      '65536',
+      'app.bin',
+    ])
+  })
+
+  it('leaves the list out when no file has one', () => {
+    const args = getWriteFlashMultiArgs({...options, files})
+    expect(args).not.toContain('--diff-with')
+    expect(args).not.toContain('--')
+  })
+})
 
 describe('chooseImage', () => {
   const board = {
@@ -361,6 +411,116 @@ describe('resolveFlashPlan', () => {
       source: 'device',
       firmware: 'esp32c6-generic',
     })
+  })
+
+  // What the diff tests share: the generic image's app, and a device on it
+  const deviceFirmware = {name: 'esp32c6-generic', version: '0.21.0'}
+  const onGeneric = (name: string) => ({name, firmware: 'esp32c6-generic'})
+  const copy = (name: string) => pathlib.join(cache.dir, 'app-images', `${name}+bundled.bin`)
+
+  /** A board package with `boards/t-display` on the generic image, the
+   *  project's only board dependency. */
+  function installGenericBoard() {
+    write(
+      pathlib.join(tempDir, 'package.json'),
+      JSON.stringify({name: 'fixture', dependencies: {boards: '*'}}),
+    )
+    const boards = pathlib.join(tempDir, 'node_modules/boards')
+    write(
+      pathlib.join(boards, 'package.json'),
+      JSON.stringify({
+        name: 'boards',
+        exports: {'./t-display': {firmware: './dist-fw/t-display/full/firmware.json'}},
+      }),
+    )
+    write(
+      pathlib.join(boards, 'dist-fw/t-display/full/firmware.json'),
+      JSON.stringify({name: 'boards/t-display', firmware: 'esp32c6-generic'}),
+    )
+  }
+
+  it('diffs the generic image with what a device on it holds', async () => {
+    const app = pathlib.join(bundled.dir, 'app.bin')
+    const bootloader = pathlib.join(bundled.dir, 'bootloader.bin')
+    writeFileSync(app, appImage())
+    const generic = {port: '/dev/null', configBoard: 'esp32c6-generic', deviceFirmware}
+
+    // The same image: esptool skips each file the flash holds
+    expect(diffs(plan_(await resolveFlashPlan(generic)))).toEqual([bootloader, app])
+    // The device runs it as a board: the copy with that name, for two sectors
+    const named = plan_(await resolveFlashPlan({...generic, deviceBoard: onGeneric('acme/old')}))
+    expect(named.flasherArgs.files[1]!.filename).toBe(app)
+    expect(diffs(named)).toEqual([bootloader, copy('acme-old')])
+    expect(nameIn(copy('acme-old'))).toBe('acme/old')
+  })
+
+  it("diffs a board's copy of the generic image with the plain image or another board's copy", async () => {
+    const app = pathlib.join(bundled.dir, 'app.bin')
+    const bootloader = pathlib.join(bundled.dir, 'bootloader.bin')
+    writeFileSync(app, appImage())
+    installGenericBoard()
+    const board = {port: '/dev/null', deviceFirmware}
+
+    const plain = plan_(await resolveFlashPlan(board))
+    expect(plain.flasherArgs.files[1]!.filename).toBe(copy('boards-t-display'))
+    expect(nameIn(copy('boards-t-display'))).toBe('boards/t-display')
+    expect(diffs(plain)).toEqual([bootloader, app])
+    const renamed = plan_(await resolveFlashPlan({...board, deviceBoard: onGeneric('acme/old')}))
+    expect(diffs(renamed)).toEqual([bootloader, copy('acme-old')])
+    const same = plan_(
+      await resolveFlashPlan({...board, deviceBoard: onGeneric('boards/t-display')}),
+    )
+    expect(diffs(same)).toEqual([bootloader, copy('boards-t-display')])
+  })
+
+  it('makes no guess for a board name with the same file name as the one flashed', async () => {
+    writeFileSync(pathlib.join(bundled.dir, 'app.bin'), appImage())
+    installGenericBoard()
+    // Its copy would replace the one being flashed
+    const clash = plan_(
+      await resolveFlashPlan({
+        port: '/dev/null',
+        deviceFirmware,
+        deviceBoard: onGeneric('@boards/t-display'),
+      }),
+    )
+    expect(diffs(clash)).toEqual([pathlib.join(bundled.dir, 'bootloader.bin'), 'skip'])
+    expect(nameIn(clash.flasherArgs.files[1]!.filename)).toBe('boards/t-display')
+  })
+
+  it("doesn't diff the app with a guess when the device runs other firmware", async () => {
+    writeFileSync(pathlib.join(bundled.dir, 'app.bin'), appImage())
+    const bootloader = pathlib.join(bundled.dir, 'bootloader.bin')
+    const generic = {port: '/dev/null', chip: 'esp32c6' as const}
+    for (const device of [
+      // Not read (--force), or too old to report a version
+      {},
+      {deviceFirmware: {...deviceFirmware, version: '0.20.0'}},
+      {deviceFirmware: {...deviceFirmware, name: 'my-firmware'}},
+      // Another image: this one lists no features
+      {deviceFirmware, deviceFeatures: ['wifi']},
+    ]) {
+      expect(diffs(plan_(await resolveFlashPlan({...generic, ...device})))).toEqual([
+        bootloader,
+        'skip',
+      ])
+    }
+  })
+
+  it("diffs a board's own image with itself when the device runs it", async () => {
+    const ring = installBoards(tempDir)
+    const image = pathlib.join(ring, 'dist-fw/full')
+    const plan = plan_(
+      await resolveFlashPlan({
+        port: '/dev/null',
+        board: 'ring',
+        deviceFirmware: {name: 'ring', version: '0.21.0'},
+      }),
+    )
+    expect(diffs(plan)).toEqual([
+      pathlib.join(image, 'bootloader.bin'),
+      pathlib.join(image, 'app.bin'),
+    ])
   })
 
   it("flashes the board's image --features asks for, else the one the device runs", async () => {

@@ -68,6 +68,9 @@ export interface FlashPlanOptions {
    *  `configBoard`, `mikro flash` flashes it when the project's dependencies
    *  name no board, and an automatic reflash keeps it (`reflash`). */
   deviceBoard?: DeviceBoard
+  /** The firmware the device reports (`fw`) and its version, so a reflash of
+   *  the image it runs writes only the sectors that change. */
+  deviceFirmware?: {name: string; version: string}
   /** An automatic reflash after a version mismatch: it keeps the device's
    *  board over the project's dependencies, as nobody asked for another. */
   reflash?: boolean
@@ -593,8 +596,12 @@ export async function resolveFlashPlan(
         'Run `mikro fw build` in its package.',
     )
   }
-  let flasherArgs = await fitToDeviceFlash(await readFlasherArgs(dir), device)
-  if (firmware !== undefined) flasherArgs = await withBoardName(flasherArgs, dir, resolved.board)
+  const flasherArgs = await withDiffs(
+    await fitToDeviceFlash(await readFlasherArgs(dir), device),
+    dir,
+    resolved.board,
+    opts,
+  )
   const stale = staleImage(resolved.board)
   if (stale) warnings.push(stale)
   return withFilesystemSize({
@@ -637,12 +644,14 @@ async function fitToDeviceFlash(
   }
 }
 
-/** Write the board's name into a copy of the generic image's app binary, for
- *  a board that runs a generic image: the device reports it as its board. */
-async function withBoardName(
+/** Pair the app with heldApp's guess and every other file with itself, which
+ *  esptool skips when the flash holds it. A board on a generic image flashes a
+ *  copy of its app with the board's name written in. */
+async function withDiffs(
   flasherArgs: FlasherArgs,
   imageDir: string,
   board: BoardInfo,
+  opts: FlashPlanOptions,
 ): Promise<FlasherArgs> {
   const {app} = JSON.parse(await fs.readFile(path.join(imageDir, 'flasher_args.json'), 'utf8')) as {
     app?: {file?: unknown}
@@ -650,26 +659,86 @@ async function withBoardName(
   const file = typeof app?.file === 'string' ? path.resolve(imageDir, app.file) : undefined
   const entry = flasherArgs.files.find((f) => f.filename === file)
   if (entry === undefined) {
+    if (board.firmware === undefined) return flasherArgs
     throw new UserError(`The image in ${imageDir} names no app binary in flasher_args.json.`)
   }
-  const patched = writeBoardName(await fs.readFile(entry.filename), board.name)
-  if (!patched.ok) {
-    throw new UserError(
-      `Cannot write ${board.name} into ${board.firmware}'s image (${entry.filename}): ` +
-        `${patched.message}.`,
-    )
+  let flashed = entry.filename
+  if (board.firmware !== undefined) {
+    flashed = namedCopyPath(imageDir, board.name)
+    const written = await writeNamedCopy(entry.filename, board.name, flashed)
+    if (!written.ok) {
+      throw new UserError(
+        `Cannot write ${board.name} into ${board.firmware}'s image (${entry.filename}): ` +
+          `${written.message}.`,
+      )
+    }
   }
-  // One copy per board and image in the user's cache, replaced by the next
-  // flash: an app binary is megabytes, unlike the partition tables
-  const dir = path.join(paths.cache, 'app-images')
-  await fs.mkdir(dir, {recursive: true})
-  const filename = path.join(dir, `${boardFileName(board.name)}+${path.basename(imageDir)}.bin`)
+  const held = await heldApp(entry.filename, flashed, imageDir, board, opts)
+  return {
+    ...flasherArgs,
+    files: flasherArgs.files.map((f) =>
+      f === entry ? {...f, filename: flashed, diffWith: held} : {...f, diffWith: f.filename},
+    ),
+  }
+}
+
+/** The app the device holds when it runs this image at the same version and
+ *  features: `app` with the board name it reports. esptool checks the flash
+ *  first, so a wrong guess costs time, not a broken flash. */
+async function heldApp(
+  app: string,
+  flashed: string,
+  imageDir: string,
+  board: BoardInfo,
+  opts: FlashPlanOptions,
+): Promise<string | undefined> {
+  const {deviceFirmware, deviceFeatures = [], deviceBoard} = opts
+  const image = readFirmwareJson(path.join(imageDir, 'firmware.json'))
+  if (!image.ok) return undefined
+  const {name, version, features = []} = image.value
+  if (
+    deviceFirmware?.name !== name ||
+    deviceFirmware.version !== version ||
+    features.length !== deviceFeatures.length ||
+    !features.every((f) => deviceFeatures.includes(f))
+  ) {
+    return undefined
+  }
+  if (deviceBoard === undefined) return app
+  const copy = namedCopyPath(imageDir, deviceBoard.name)
+  // The copy being flashed: of the same board, or of one whose name gives the
+  // same file name (@acme/pi, acme-pi), which writing this copy would replace
+  if (copy === flashed) return deviceBoard.name === board.name ? flashed : undefined
+  return (await writeNamedCopy(app, deviceBoard.name, copy)).ok ? copy : undefined
+}
+
+/** The copy of the image in `imageDir` with the board `name` written in: one
+ *  per board and image in the user's cache, replaced by the next flash, as an
+ *  app binary is megabytes, unlike the partition tables. */
+function namedCopyPath(imageDir: string, name: string): string {
+  return path.join(
+    paths.cache,
+    'app-images',
+    `${boardFileName(name)}+${path.basename(imageDir)}.bin`,
+  )
+}
+
+/** Write the app binary `app` with the board `name` in it to `filename`, or
+ *  say why it can't be. */
+async function writeNamedCopy(
+  app: string,
+  name: string,
+  filename: string,
+): Promise<{ok: true} | {ok: false; message: string}> {
+  const patched = writeBoardName(await fs.readFile(app), name)
+  if (!patched.ok) return patched
+  await fs.mkdir(path.dirname(filename), {recursive: true})
   // Renamed into place, so a flash of the same board running at the same
   // time never reads a half-written file
   const partial = `${filename}.${process.pid}.tmp`
   await fs.writeFile(partial, patched.value)
   await fs.rename(partial, filename)
-  return {...flasherArgs, files: flasherArgs.files.map((f) => (f === entry ? {...f, filename} : f))}
+  return {ok: true}
 }
 
 async function withFilesystemSize(plan: FlashPlan): Promise<FlashPlan> {
@@ -728,7 +797,9 @@ export async function assertFilesystemKept(
  * It only installs the generic firmware bundled with this CLI, with the
  * device's board name written in when it runs that firmware as a board. A board
  * package's image (whose version is not checked) is left to `mikro flash`,
- * which shows what it will flash and asks.
+ * which shows what it will flash and asks. It runs because the device has
+ * another version, so it writes the whole app; only the bootloader and
+ * partition table can be left as they are.
  */
 export async function flashFirmware(
   opts: FlashPlanOptions & {baudRate?: number; signal?: AbortSignal},

@@ -63,6 +63,9 @@ type CommonOptions = {
 export interface FlashEntry {
   address: number
   filename: string
+  /** The file the flash most likely holds at `address`. esptool checks that it
+   *  does, then writes only the 4 KB sectors that differ (`--diff-with`). */
+  diffWith?: string
 }
 
 export interface WriteFlashMultiOptions extends CommonOptions {
@@ -127,6 +130,11 @@ export function getWriteFlashMultiArgs(options: WriteFlashMultiOptions) {
     typeof options.flashMode === 'string' ? ['--flash-mode', String(options.flashMode)] : [],
     typeof options.flashSize === 'string' ? ['--flash-size', String(options.flashSize)] : [],
     options.verify ? ['--verify'] : [],
+    // Paired with the files in order; `--` ends the list, which takes every
+    // argument up to the next option
+    options.files.some((f) => f.diffWith !== undefined)
+      ? ['--diff-with', ...options.files.map((f) => f.diffWith ?? 'skip'), '--']
+      : [],
     ...options.files.flatMap((f) => [[String(f.address)], [f.filename]]),
   ]
     .filter((arg) => arg.length > 0)
