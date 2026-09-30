@@ -177,6 +177,7 @@ describe('resolveFlashPlan', () => {
           '0x8000': 'partition-table.bin',
           '0x10000': 'mikrojs.bin',
         },
+        app: {offset: '0x10000', file: 'mikrojs.bin'},
         flash_settings: {flash_mode: 'dio', flash_size: '4MB', flash_freq: '80m'},
         extra_esptool_args: {chip: 'esp32c6', before: 'default_reset', after: 'hard_reset'},
       }),
@@ -286,11 +287,6 @@ describe('resolveFlashPlan', () => {
 
   it('keeps the name of a board on the generic firmware through the automatic reflash', async () => {
     await fs.writeFile(path.join(dir, 'mikrojs.bin'), appImage())
-    const args = JSON.parse(await fs.readFile(path.join(dir, 'flasher_args.json'), 'utf8'))
-    await fs.writeFile(
-      path.join(dir, 'flasher_args.json'),
-      JSON.stringify({...args, app: {offset: '0x10000', file: 'mikrojs.bin'}}),
-    )
     device(undefined)
     spawned.length = 0
 
@@ -307,6 +303,33 @@ describe('resolveFlashPlan', () => {
     )
     const name = (await fs.readFile(app)).subarray(0x124, 0x124 + 14)
     expect(name.toString()).toBe('acme/t-display')
+  })
+
+  it('leaves the bootloader and partition table alone in the automatic reflash when the flash holds them', async () => {
+    await fs.writeFile(path.join(dir, 'mikrojs.bin'), appImage())
+    device('8MB')
+    spawned.length = 0
+
+    await flashFirmware({port: '/dev/tty.fixture'})
+
+    // The grown table from the cache, as the last flash wrote it; the device
+    // runs another version, so the whole app
+    const [written] = spawned
+    const table = written![written!.indexOf(String(0x8000)) + 1]!
+    expect(table.startsWith(cache.current + path.sep)).toBe(true)
+    expect(written!.slice(written!.indexOf('--diff-with'))).toEqual([
+      '--diff-with',
+      path.join(dir, 'bootloader.bin'),
+      table,
+      'skip',
+      '--',
+      '0',
+      path.join(dir, 'bootloader.bin'),
+      String(0x8000),
+      table,
+      String(0x10000),
+      path.join(dir, 'mikrojs.bin'),
+    ])
   })
 
   it('keeps the automatic reflash from shrinking the app filesystem', async () => {

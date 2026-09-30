@@ -68,10 +68,18 @@ const BOARD_SOURCE_LABELS: Record<BoardSource, string> = {
 const PROBE_TIMEOUT_MS = 4000
 
 /** The device's firmware identity (`fw`), the same when it is not the
- *  firmware bundled with this CLI (`custom`), and the features it reports. */
+ *  firmware bundled with this CLI (`custom`), the features it reports, and
+ *  `firmware`: that identity with its version. */
 type ProbeState =
   | {status: 'pending'}
-  | {status: 'done'; fw?: string; custom?: string; features?: string[]; board?: DeviceBoard}
+  | {
+      status: 'done'
+      fw?: string
+      custom?: string
+      features?: string[]
+      board?: DeviceBoard
+      firmware?: {name: string; version: string}
+    }
 
 const IMAGE_SOURCE_LABELS: Record<ImageChoice['source'], string> = {
   features: 'from --features',
@@ -130,6 +138,10 @@ export default function FlashCmd(props: Props) {
             custom: customFirmwareOf(ready),
             features: ready.features,
             board: genericBoardOf(ready),
+            firmware:
+              ready.fw !== undefined && ready.version !== null
+                ? {name: ready.fw, version: ready.version}
+                : undefined,
           })
         } finally {
           h.close()
@@ -146,9 +158,11 @@ export default function FlashCmd(props: Props) {
     }
   }, [needsProbe, devicePath])
 
-  // What the device reports running, so the plan keeps its image and board
+  // What the device reports running, so the plan keeps its image and board,
+  // and writes only what changes when that is the image it flashes
   const deviceFeatures = probe.status === 'done' ? probe.features : undefined
   const deviceBoard = probe.status === 'done' ? probe.board : undefined
+  const deviceFirmware = probe.status === 'done' ? probe.firmware : undefined
 
   useEffect(() => {
     if (mutuallyExclusive) return
@@ -172,6 +186,7 @@ export default function FlashCmd(props: Props) {
         features: features === undefined ? undefined : parseFeatures(features),
         deviceFeatures,
         deviceBoard,
+        deviceFirmware,
         chip,
         // Only an interactive run without --yes can answer the picker.
         pickBoard: process.stdin.isTTY && yes !== true,
@@ -209,6 +224,7 @@ export default function FlashCmd(props: Props) {
     probe.status,
     deviceFeatures,
     deviceBoard,
+    deviceFirmware,
   ])
 
   if (mutuallyExclusive) {

@@ -113,6 +113,8 @@ The generic boards also have leaner images: `no-ble` without Bluetooth, and `no-
 
 On a module with more flash than the firmware was built for, the generic firmware, a board package's image and `--from` firmware give the [app filesystem](/developing-for-microcontrollers#filesystem) the rest of the flash, up to 16 MB. This applies when `user` is the last partition, as in the default partition table.
 
+A reflash of the generic firmware or a board package's image writes only what changed. It skips the bootloader and partition table when the device already has them. When the device runs the same image at the same version, it writes only the 4 KB sectors of the app that differ: a new board name changes two. The flash is checked first each time, so a device that holds something else gets the whole file. `--force` doesn't read the device and writes the whole app, and `--build-dir` and `--from` write every file.
+
 ::: tip
 `--build-dir` and `--from` are mutually exclusive. Use `--build-dir` for firmware you built from source, and `--from` for an archive someone shared. To flash the firmware of another Mikro.js version, install that version of `mikro` and run `pn mikro flash`.
 :::
