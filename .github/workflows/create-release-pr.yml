@@ -5,14 +5,22 @@ on:
     branches: [main]
   # Manual trigger for cutting a release out of band of the regular push flow.
   # By default the bump applies the project's 0.x caps (breaking changes
-  # downgraded to minor, features to patch). Set `cut_major` to true when you
-  # actually want a recommended major bump to land (e.g. cutting 1.0.0).
+  # downgraded to minor, features to patch). Set `min_bump` to minor when the
+  # pending changes deserve their own 0.x minor line instead of a patch, and
+  # `cut_major` when you actually want a recommended major bump to land
+  # (e.g. cutting 1.0.0). A later push to main regenerates the PR without
+  # either input, so merge the release PR before more work lands.
   workflow_dispatch:
     inputs:
       cut_major:
         description: Allow a recommended major bump to land (override 0.x safety cap)
         type: boolean
         default: false
+      min_bump:
+        description: Smallest bump to make (minor raises a patch release to the next 0.x minor)
+        type: choice
+        options: [patch, minor]
+        default: patch
 
 concurrency:
   group: create-release-pr
@@ -94,6 +102,7 @@ jobs:
           pnpm --silent releaser bump --mode release \
             ${{ !inputs.cut_major && '--breaking-is-minor-on-0x' || '' }} \
             --feat-is-patch-on-0x \
+            --min-bump ${{ inputs.min_bump || 'patch' }} \
             --json > /tmp/bump.json
           echo "version=$(jq -r .version /tmp/bump.json)" >> "$GITHUB_OUTPUT"
 
