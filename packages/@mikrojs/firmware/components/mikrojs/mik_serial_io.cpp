@@ -87,14 +87,10 @@ static void IRAM_ATTR mik__uart0_rx_notify(uart_port_t port, uart_select_notif_t
 }
 #endif
 
-static enum { CONSOLE_UART, CONSOLE_USB_SERIAL_JTAG } s_console =
 #if SOC_USB_SERIAL_JTAG_SUPPORTED
-    CONSOLE_USB_SERIAL_JTAG;
-#else
-    CONSOLE_UART;
-#endif
-
-#if SOC_USB_SERIAL_JTAG_SUPPORTED
+/* Chips without USB-Serial/JTAG always use UART0, so only these track the
+ * active console. */
+static enum { CONSOLE_UART, CONSOLE_USB_SERIAL_JTAG } s_console = CONSOLE_USB_SERIAL_JTAG;
 static bool s_usj_installed = false;
 #endif
 
