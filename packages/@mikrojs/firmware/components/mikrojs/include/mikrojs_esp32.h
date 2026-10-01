@@ -8,6 +8,9 @@
 
 #include <quickjs.h>
 
+#include "mikrojs/device_store.h"
+#include "mikrojs/ota.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,46 +22,9 @@ typedef struct MIKRuntime MIKRuntime;
  * with REPL, deploy, and config protocol support. */
 void MIK_Main(void);
 
-/* Deploy recovery (mik_deploy.cpp) */
-void MIK_DeployRecover(void);
-
-/* OTA boot reconcile (mik_ota.cpp). Runs before the JS app loads: reflash
- * guard, trial verdict, and a deferred clean-heap install of a staged build
- * (may esp_restart). Call right after MIK_DeployRecover(). */
-void mik__ota_boot_reconcile(void);
-
-/* Stage a streamed .tgz for install at the next boot with adopt semantics:
- * no trial, no rollback baseline, one install attempt. Backs
- * MIK_CMD_DEPLOY_BUILD. Verifies the build against `checksum` (lowercase hex,
- * may be empty to skip) so a corrupt upload still fails synchronously over
- * serial, then arms the boot reconcile's adopt install. Returns false with
- * *err pointing at a static reason string on failure. */
-bool mik__ota_stage_adopt(const char* tgz_path, const char* checksum, const char** err);
-
-/* Outcome of the last adopt-mode boot install, for MIK_CMD_DEPLOY_RESULT.
- * Kept separate from the reconcile record on purpose: that record reaches the
- * registry as `lastInstall` and would blacklist a checksum a developer is
- * about to legitimately re-push over the cable. */
-typedef struct MIKDeployResult {
-    uint8_t status; /* 0 none, 1 ok, 2 fail */
-    char checksum[96];
-    char reason[32];
-    char detail[160];
-} MIKDeployResult;
-
-/* Read and clear the recorded adopt-install outcome (mik_ota.cpp). status 0
- * with empty strings when nothing is recorded. */
-void mik__ota_take_deploy_result(MIKDeployResult* out);
-
-/* True while the running build is an unconfirmed OTA trial (mik_ota.cpp). Lets
- * the boot path treat a JS-level fatal during a trial as a failed trial. */
-bool mik__ota_in_trial(void);
-
-/* Record that the running trial build hit a fatal JS error (an uncaught
- * exception or unhandled rejection), so the next reconcile reverts it even
- * though the reboot looks like a clean software reset. No-op outside a trial.
- * `detail` is a short message kept for the revert diagnostic. */
-void mik__ota_note_trial_failure(const char* detail);
+/* NVS + LittleFS storage for the deploy and config handlers and OTA
+ * (mik_device_store.cpp). */
+extern const MIKDeviceStore MIK_Esp32DeviceStore;
 
 /* Safe-mode recovery window (mik_recovery.cpp).
  * Opens a brief window (typ. 500ms) right after console init that watches

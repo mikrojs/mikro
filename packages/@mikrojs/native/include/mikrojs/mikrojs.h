@@ -82,6 +82,13 @@ void MIK_SetConfig(MIKRuntime* mik_rt, const MIKConfig* config);
 int MIK_LoadTests(const char* base_path, char*** out_paths, size_t* out_count);
 void MIK_FreeTests(char** paths, size_t count);
 
+/* Run a test manifest through the protocol session open on `transport`: each
+ * file in a fresh runtime from `create`, with test helpers enabled, followed by
+ * MANIFEST_DONE. Serving the session afterwards is the caller's. */
+struct MIKReplTransport;
+void MIK_RunTestManifest(struct MIKReplTransport* transport, char** paths, size_t count,
+                         MIKRuntime* (*create)(void* opaque), void* opaque);
+
 void MIK_DefaultOptions(MIKRunOptions* options);
 MIKRuntime* MIK_NewRuntime(void);
 MIKRuntime* MIK_NewRuntimeOptions(MIKRunOptions* options);

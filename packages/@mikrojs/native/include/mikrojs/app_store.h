@@ -7,6 +7,8 @@
  *   <base>/.deploy-old  rollback copy of the previous live app
  * POSIX only (rename/stat/dirent); no ESP-IDF, no QuickJS. */
 
+#include <stddef.h>
+
 enum MIKAppCommitResult {
     MIK_APP_COMMIT_OK = 0,
     MIK_APP_COMMIT_STASH_FAILED,  // rename <base>/app -> <base>/.deploy-old failed
@@ -32,3 +34,17 @@ bool mik__rmdir_recursive(const char* path);
  * left no directory behind, so a full filesystem reads as ENOSPC here instead
  * of as ENOENT from a later open. */
 bool mik__mkdirs(const char* path);
+
+/* Join `base` with each of `count` suffixes in one malloc'd block and point
+ * `*slots[i]` at the i-th path. Returns the block, which the caller frees, or
+ * NULL when out of memory. */
+char* mik__join_paths(const char* base, const char* const* suffixes, size_t count,
+                      const char** const* slots);
+
+/* Size of the file at `path` in bytes, or -1 when it cannot be read. */
+long mik__file_size(const char* path);
+
+/* Capacity and free bytes of the app filesystem. False when the platform can't
+ * report them; callers then skip their size check rather than block an install
+ * on a missing measurement. */
+bool mik__fs_space(long* total, long* free_bytes);

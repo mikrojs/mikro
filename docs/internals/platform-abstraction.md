@@ -130,6 +130,8 @@ On ESP32, the 6-byte base MAC address is encoded as [Crockford's Base32](https:/
 
 `get_reset_reason()` returns a stable lowercase string describing why the chip last reset, exposed as `sys.resetReason` in JavaScript. On ESP32 it maps `esp_reset_reason()` (`"power-on"`, `"panic"`, `"brownout"`, `"deep-sleep"`, and so on); a clean `restart()` reports `"software"`. POSIX/Node has no chip-reset concept and returns `"unknown"`.
 
+Five of the strings are a contract, because the OTA trial verdict compares against them. `platform.h` defines them as `MIK_RESET_PANIC`, `MIK_RESET_WATCHDOG`, `MIK_RESET_INT_WATCHDOG`, `MIK_RESET_TASK_WATCHDOG` and `MIK_RESET_BROWNOUT`. The first four mean the trial build crashed and is rolled back; a brownout is absorbed a few times; every other string counts as a clean boot. A platform that reports a watchdog reset under another string has its crashing trial builds promoted instead of rolled back.
+
 The returned pointer must remain valid for the lifetime of the platform (a `static` buffer is fine).
 
 ## Porting to a new platform
@@ -141,3 +143,14 @@ To port Mikro.js to a new platform:
 3. Build the standalone library (`packages/@mikrojs/native/`) against your platform's toolchain
 
 The minimum viable implementation needs `get_boot_us`, `random`, `yield`, and the I/O functions. Memory/filesystem info can return zeros and `get_device_id` can return NULL initially.
+
+That runs JavaScript. Deploys, `mikro env`, `mikro test` and OTA are portable too (`src/mik_deploy.cpp`, `mik_config.cpp`, `mik_test_supervisor.cpp`, `mik_ota.cpp`), and a port gets them by providing storage and calling their entry points:
+
+1. Fill in a `MIKDeviceStore` (`include/mikrojs/device_store.h`): the app filesystem root, the env var and kv hooks, the firmware hash and the OTA install state. A hook left `NULL` turns its feature off: the command is refused.
+2. At boot, call `MIK_SetDeviceStore()`, then `MIK_DeployRecover()`, then `MIK_OtaBootReconcile()` before loading the app. When the reconcile returns true it installed a build, and the port restarts.
+3. Route the protocol commands: the deploy commands to `MIK_HandleDeployCommand()`, the config and kv commands to `MIK_HandleConfigCommand()`, `MIK_CMD_DEPLOY_RESULT` to `MIK_OtaHandleDeployResult()`, and call `MIK_DeploySessionReset()` when a session ends.
+4. Run a test manifest with `MIK_RunTestManifest()`, which takes a function that creates a runtime.
+5. Set `MIK_OtaTrialErrorHandler` as the app runtime's error handler, and set the store's `stage_build` to `MIK_OtaStageAdopt`.
+6. For OTA downloads, implement the HTTP module's native request path (`include/mikrojs/http_native.h`), and compile `mik_build_install.cpp` with miniz.
+
+The ESP32 port's store is `mik_device_store.cpp`, and `mik_main.cpp` shows the calls in order.

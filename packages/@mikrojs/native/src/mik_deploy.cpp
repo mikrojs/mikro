@@ -1,26 +1,53 @@
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <esp_app_desc.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-
 #include "mikrojs/app_store.h"
+#include "mikrojs/device_store.h"
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/platform.h"
 #include "mikrojs/private.h"
-#include "mikrojs_esp32.h"
 
-static const char* FS_BASE = "/appfs";
-static const char* DEPLOY_TMP = "/appfs/.deploy-tmp";
-static const char* APP_DIR = "/appfs/app";
-static const char* CHECKSUMS_PATH = "/appfs/app/.checksums";
+static const MIKDeviceStore* s_store = nullptr;
+
+void MIK_SetDeviceStore(const MIKDeviceStore* store) { s_store = store; }
+
+const MIKDeviceStore* mik__device_store(void) { return s_store; }
+
+/* Paths under the store's fs_base. They share one heap block, rebuilt when the
+ * base changes. */
+static const char* FS_BASE = "";
+static const char* DEPLOY_TMP = "";
+static const char* APP_DIR = "";
+static const char* CHECKSUMS_PATH = "";
 /* Where DEPLOY_PUT("/.build.tgz", ...) streams the OTA build (DEPLOY_TMP +
  * "/.build.tgz"). Staged for boot install by MIK_CMD_DEPLOY_BUILD. */
-static const char* BUILD_TGZ_PATH = "/appfs/.deploy-tmp/.build.tgz";
+static const char* BUILD_TGZ_PATH = "";
+static char* s_paths = nullptr;
+
+/* NULL when the paths are ready, else why they are not. */
+static const char* init_paths() {
+    const char* base = s_store ? s_store->fs_base : nullptr;
+    if (!base) return "no app filesystem on this device";
+    if (s_paths && strcmp(FS_BASE, base) == 0) return nullptr;
+
+    static const char* const suffixes[] = {"", "/.deploy-tmp", "/app", "/app/.checksums",
+                                           "/.deploy-tmp/.build.tgz"};
+    const char** const slots[] = {&FS_BASE, &DEPLOY_TMP, &APP_DIR, &CHECKSUMS_PATH,
+                                  &BUILD_TGZ_PATH};
+    char* block = mik__join_paths(base, suffixes, sizeof(suffixes) / sizeof(suffixes[0]), slots);
+    if (!block) return "out of memory";
+    free(s_paths);
+    s_paths = block;
+    return nullptr;
+}
+
+static const char* firmware_hash() {
+    return s_store && s_store->firmware_hash ? s_store->firmware_hash() : nullptr;
+}
 
 /* ── Checksums manifest ─────────────────────────────────────────── */
 
@@ -65,15 +92,11 @@ static ChecksumsManifest load_checksums_manifest() {
     buf[n] = '\0';
 
     /* Check firmware hash — if it doesn't match, discard the manifest */
-    const esp_app_desc_t* app_desc = esp_app_get_description();
-    char fw_hash[65];
-    for (int i = 0; i < 32; i++) {
-        snprintf(fw_hash + i * 2, 3, "%02x", app_desc->app_elf_sha256[i]);
-    }
-    bool fw_match = false;
+    const char* fw_hash = firmware_hash();
+    bool fw_match = fw_hash == nullptr;
     const char* p = buf;
     const char* end = buf + n;
-    while (p < end) {
+    while (fw_hash && p < end) {
         const char* nl = static_cast<const char*>(memchr(p, '\n', end - p));
         size_t line_len = nl ? static_cast<size_t>(nl - p) : static_cast<size_t>(end - p);
         if (line_len > FIRMWARE_PREFIX_LEN &&
@@ -103,13 +126,10 @@ static ChecksumsManifest load_checksums_manifest() {
  * be validated on next load.
  */
 static void stamp_checksums_manifest() {
+    const char* hash = firmware_hash();
+    if (!hash) return;
     FILE* f = fopen(CHECKSUMS_PATH, "a");
     if (!f) return;
-    const esp_app_desc_t* desc = esp_app_get_description();
-    char hash[65];
-    for (int i = 0; i < 32; i++) {
-        snprintf(hash + i * 2, 3, "%02x", desc->app_elf_sha256[i]);
-    }
     fprintf(f, "%s%s\n", FIRMWARE_PREFIX, hash);
     fclose(f);
 }
@@ -278,6 +298,13 @@ static const char* keep_file(const char* name) {
 /* ── Deploy recovery ─────────────────────────────────────────────── */
 
 void MIK_DeployRecover(void) {
+    if (const char* why = init_paths()) {
+        const MIKPlatform* platform = MIK_GetPlatform();
+        if (platform && platform->log) {
+            platform->log(MIK_LOG_WARN, "deploy", "no deploy recovery: %s", why);
+        }
+        return;
+    }
     mik__app_recover(FS_BASE);
 }
 
@@ -341,7 +368,7 @@ static void deploy_cleanup() {
  * CLI killed mid-upload). Discards the staging dir so the next session
  * starts from a clean slate and restores the prior pause state.
  */
-void mik__deploy_session_reset(void) {
+void MIK_DeploySessionReset(void) {
     if (!s_deploy_active) return;
     put_close_and_clear();
     discard_staging();
@@ -353,8 +380,12 @@ void mik__deploy_session_reset(void) {
  * The payload bytes have NOT been read yet — this handler reads them
  * directly from the transport, enabling streaming for large files.
  */
-bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
-                                uint32_t payload_len) {
+bool MIK_HandleDeployCommand(MIKReplTransport* transport, uint8_t cmd_type, uint32_t payload_len) {
+    if (const char* why = init_paths()) {
+        mik__proto_drain(transport, payload_len);
+        mik__proto_send_err(transport, why);
+        return true;
+    }
     deploy_ensure_init();
 
     switch (cmd_type) {
@@ -702,7 +733,9 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
             put_close_and_clear();
 
             const char* err = nullptr;
-            if (mik__ota_stage_adopt(BUILD_TGZ_PATH, checksum, &err)) {
+            if (!s_store || !s_store->stage_build) {
+                mik__proto_send_err(transport, "builds are not supported on this device");
+            } else if (s_store->stage_build(BUILD_TGZ_PATH, checksum, &err)) {
                 mik__proto_send_ok(transport);
             } else {
                 mik__proto_send_err(transport, err ? err : "build stage failed");
@@ -723,54 +756,4 @@ bool mik__handle_deploy_command(MIKReplTransport* transport, uint8_t cmd_type,
             mik__proto_drain(transport, payload_len);
             return false;
     }
-}
-
-/*
- * Handle MIK_CMD_FS_GET: stream the contents of a file off the device.
- * Payload: u16le path_len | path.
- * Suspends the file logger so its buffered writes are flushed to disk and
- * its FILE* released before we open the same path for reading, then
- * resumes it once streaming is done.
- */
-bool mik__handle_fs_get(MIKReplTransport* transport, uint32_t payload_len) {
-    if (payload_len < 2) {
-        mik__proto_drain(transport, payload_len);
-        mik__proto_send_err(transport, "fs get: short header");
-        return true;
-    }
-    uint8_t nl[2];
-    if (!mik__proto_read_exact(transport, nl, 2)) return false;
-    uint16_t path_len = nl[0] | (nl[1] << 8);
-    if (path_len == 0 || path_len >= 256 || (uint32_t)path_len + 2 > payload_len) {
-        mik__proto_drain(transport, payload_len - 2);
-        mik__proto_send_err(transport, "fs get: bad path length");
-        return true;
-    }
-    char path[256];
-    if (!mik__proto_read_exact(transport, path, path_len)) return false;
-    path[path_len] = '\0';
-    uint32_t consumed = 2 + (uint32_t)path_len;
-    if (payload_len > consumed) mik__proto_drain(transport, payload_len - consumed);
-
-    mik_logfile_suspend();
-
-    FILE* f = fopen(path, "r");
-    if (!f) {
-        char msg[160];
-        snprintf(msg, sizeof(msg), "fs get: open failed: %s", strerror(errno));
-        mik__proto_send_err(transport, msg);
-        mik_logfile_resume();
-        return true;
-    }
-
-    uint8_t buf[512];
-    for (;;) {
-        size_t n = fread(buf, 1, sizeof(buf), f);
-        if (n == 0) break;
-        mik__proto_send(transport, MIK_MSG_FS_CHUNK, buf, n);
-    }
-    fclose(f);
-    mik_logfile_resume();
-    mik__proto_send_ok(transport);
-    return true;
 }

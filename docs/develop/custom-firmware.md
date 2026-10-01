@@ -148,7 +148,7 @@ idf_component_register(SRCS "main.cpp"
     INCLUDE_DIRS "")
 ```
 
-To change what `MIK_Main()` itself does, start from [its source](https://github.com/mikrojs/mikro/blob/main/packages/%40mikrojs/firmware/components/mikrojs/mik_main.cpp).
+To change what `MIK_Main()` itself does, start from [its source](https://github.com/mikrojs/mikro/blob/main/packages/%40mikrojs/firmware/components/mikrojs/mik_main.cpp). Keep its `MIK_SetDeviceStore(&MIK_Esp32DeviceStore)` call ahead of `MIK_DeployRecover()`: without a store, the firmware refuses deploys, `mikro env` and OTA updates.
 
 Mikro.js keeps a 68-byte structure in ESP-IDF's [custom app description](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/app_image_format.html#adding-a-custom-structure-to-an-application) (`.rodata_custom_desc`), where `mikro flash` writes a board's name into the generic firmware. A structure of your own shares that section, and the link order decides which of the two comes first, so its offset in the image isn't fixed: give it a marker of its own to find it by.
 

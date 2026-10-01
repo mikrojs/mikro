@@ -7,11 +7,9 @@
 
 #include <nanocbor/nanocbor.h>
 
-#include "nvs.h"
-#include "nvs_flash.h"
+#include "mikrojs/device_store.h"
 #include "mikrojs/mikrojs.h"
 #include "mikrojs/private.h"
-#include "mikrojs_esp32.h"
 
 /* ── Unified protocol config handler ────────────────────────────── */
 
@@ -28,7 +26,13 @@ static void encode_config_entry(nanocbor_encoder_t* enc, const config_entry_t& e
     nanocbor_put_tstr(enc, "key");
     nanocbor_put_tstrn(enc, entry.key.c_str(), entry.key.size());
     nanocbor_put_tstr(enc, "value");
-    nanocbor_put_tstrn(enc, entry.value.c_str(), entry.value.size());
+    /* Header only for an empty value: in the sizing pass the encoder has no
+     * buffer, and nanocbor would memcpy zero bytes to NULL. */
+    if (entry.value.empty()) {
+        nanocbor_fmt_tstr(enc, 0);
+    } else {
+        nanocbor_put_tstrn(enc, entry.value.c_str(), entry.value.size());
+    }
     nanocbor_put_tstr(enc, "secret");
     nanocbor_fmt_bool(enc, entry.secret);
 }
@@ -37,33 +41,18 @@ static void encode_config_entry(nanocbor_encoder_t* enc, const config_entry_t& e
 static std::vector<uint8_t> build_config_entries_cbor() {
     std::vector<config_entry_t> entries;
 
-    nvs_handle_t handle;
-    if (nvs_open(MIK__NVS_NS_ENV, NVS_READONLY, &handle) == ESP_OK) {
-        nvs_iterator_t it = NULL;
-        esp_err_t err = nvs_entry_find_in_handle(handle, NVS_TYPE_STR, &it);
-        while (err == ESP_OK && it != NULL) {
-            nvs_entry_info_t info;
-            nvs_entry_info(it, &info);
-
-            config_entry_t entry;
-            entry.key = info.key;
-            entry.secret = mik__nvs_is_secret(info.key);
-
-            if (!entry.secret) {
-                size_t val_len = 0;
-                nvs_get_str(handle, info.key, NULL, &val_len);
-                char buf[512];
-                if (val_len > 0 && val_len <= sizeof(buf)) {
-                    nvs_get_str(handle, info.key, buf, &val_len);
-                    entry.value.assign(buf, val_len > 0 ? val_len - 1 : 0);
-                }
-            }
-
-            entries.push_back(std::move(entry));
-            err = nvs_entry_next(&it);
-        }
-        nvs_release_iterator(it);
-        nvs_close(handle);
+    const MIKDeviceStore* store = mik__device_store();
+    if (store && store->env_each) {
+        store->env_each(
+            [](const char* key, const char* value, bool secret, void* ud) {
+                config_entry_t entry;
+                entry.key = key;
+                entry.secret = secret;
+                /* Secret values never leave the device. */
+                if (!secret && value) entry.value = value;
+                static_cast<std::vector<config_entry_t>*>(ud)->push_back(std::move(entry));
+            },
+            &entries);
     }
 
     /* Two-pass CBOR encode */
@@ -84,8 +73,22 @@ static std::vector<uint8_t> build_config_entries_cbor() {
     return buf;
 }
 
-bool mik__handle_config_command(MIKReplTransport* transport, uint8_t cmd_type,
-                                uint32_t payload_len) {
+bool MIK_HandleConfigCommand(MIKReplTransport* transport, uint8_t cmd_type, uint32_t payload_len) {
+    const MIKDeviceStore* store = mik__device_store();
+    if (!store) {
+        mik__proto_drain(transport, payload_len);
+        mik__proto_send_err(transport, "no key store on this device");
+        return true;
+    }
+    /* A store may leave out the hooks it cannot back. */
+    if ((cmd_type == MIK_CMD_CONFIG_SET && !store->env_set) ||
+        (cmd_type == MIK_CMD_CONFIG_DELETE && !store->env_delete) ||
+        (cmd_type == MIK_CMD_KV_SET && !store->kv_set) ||
+        (cmd_type == MIK_CMD_KV_DELETE && !store->kv_delete)) {
+        mik__proto_drain(transport, payload_len);
+        mik__proto_send_err(transport, "not supported on this device");
+        return true;
+    }
     switch (cmd_type) {
         case MIK_CMD_CONFIG_LIST: {
             mik__proto_drain(transport, payload_len);
@@ -145,11 +148,11 @@ bool mik__handle_config_command(MIKReplTransport* transport, uint8_t cmd_type,
             }
 
             bool changed = false;
-            if (mik__nvs_env_set(key, value, flags & MIK_ENV_FLAG_SECRET, &changed)) {
+            if (store->env_set(key, value, flags & MIK_ENV_FLAG_SECRET, &changed)) {
                 uint8_t byte = changed ? 1 : 0;
                 mik__proto_send(transport, MIK_MSG_OK, &byte, 1);
             } else {
-                mik__proto_send_err(transport, "nvs write failed");
+                mik__proto_send_err(transport, "env write failed");
             }
             return true;
         }
@@ -176,7 +179,7 @@ bool mik__handle_config_command(MIKReplTransport* transport, uint8_t cmd_type,
             uint32_t consumed = 2 + (uint32_t)key_len;
             if (payload_len > consumed) mik__proto_drain(transport, payload_len - consumed);
 
-            uint8_t byte = mik__nvs_env_delete(key) ? 1 : 0;
+            uint8_t byte = store->env_delete(key) ? 1 : 0;
             mik__proto_send(transport, MIK_MSG_OK, &byte, 1);
             return true;
         }
@@ -269,19 +272,13 @@ bool mik__handle_config_command(MIKReplTransport* transport, uint8_t cmd_type,
             }
             size_t blob_len = nanocbor_encoded_len(&enc);
 
-            nvs_handle_t handle;
-            esp_err_t err = nvs_open(ns == 1 ? "mik.sys" : "mik.kv", NVS_READWRITE, &handle);
-            if (err == ESP_OK) {
-                err = nvs_set_blob(handle, key, blob, blob_len);
-                if (err == ESP_OK) err = nvs_commit(handle);
-                nvs_close(handle);
-            }
+            bool ok = store->kv_set(ns == 1 ? "mik.sys" : "mik.kv", key, blob, blob_len);
             free(value);
             free(blob);
-            if (err == ESP_OK) {
+            if (ok) {
                 mik__proto_send_ok(transport);
             } else {
-                mik__proto_send_err(transport, "nvs write failed");
+                mik__proto_send_err(transport, "kv write failed");
             }
             return true;
         }
@@ -316,20 +313,9 @@ bool mik__handle_config_command(MIKReplTransport* transport, uint8_t cmd_type,
             uint32_t consumed = 3 + (uint32_t)key_len;
             if (payload_len > consumed) mik__proto_drain(transport, payload_len - consumed);
 
-            bool existed = false;
-            esp_err_t err = ESP_FAIL;
-            nvs_handle_t handle;
-            if (nvs_open(ns == 1 ? "mik.sys" : "mik.kv", NVS_READWRITE, &handle) == ESP_OK) {
-                size_t len = 0;
-                existed = nvs_get_blob(handle, key, nullptr, &len) == ESP_OK;
-                err = nvs_erase_key(handle, key);
-                /* Deleting a key that was never there is a successful no-op. */
-                if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
-                if (err == ESP_OK) err = nvs_commit(handle);
-                nvs_close(handle);
-            }
-            if (err != ESP_OK) {
-                mik__proto_send_err(transport, "nvs delete failed");
+            int existed = store->kv_delete(ns == 1 ? "mik.sys" : "mik.kv", key);
+            if (existed < 0) {
+                mik__proto_send_err(transport, "kv delete failed");
                 return true;
             }
             uint8_t byte = existed ? 1 : 0;

@@ -1,5 +1,6 @@
-// Host regression test for the pure unpack path in ../../mik_ota.cpp:
-// unpack_tgz() (streaming gunzip -> untar) and sha256_file().
+// Host regression test for the pure unpack path in
+// packages/@mikrojs/native/src/mik_build_install.cpp: unpack_tgz() (streaming
+// gunzip -> untar) and sha256_file().
 //
 // Two things this guards:
 //
@@ -20,8 +21,10 @@
 #include <cstdlib>
 #include <cstring>
 
-#define MIK_OTA_HOST_TEST 1
 #include "miniz.h"
+#include "mikrojs/app_store.h"
+#include "mikrojs/build_install.h"
+#include "mikrojs/platform.h"
 
 // Non-zero after a run means the modelled over-read actually fired (so the test
 // isn't passing vacuously).
@@ -44,14 +47,33 @@ static tinfl_status rom_tinfl_decompress(tinfl_decompressor* r, const mz_uint8* 
 // From here on, unpack_tgz()'s tinfl_decompress(...) call hits the shim.
 #define tinfl_decompress rom_tinfl_decompress
 
-#ifndef MIK_OTA_SRC
-#define MIK_OTA_SRC "../../mik_ota.cpp"
+#ifndef MIK_BUILD_SRC
+#define MIK_BUILD_SRC "../../../../../native/src/mik_build_install.cpp"
 #endif
-#include MIK_OTA_SRC  // brings unpack_tgz/sha256_file into this TU
+#include MIK_BUILD_SRC  // brings unpack_tgz/sha256_file into this TU
+
+// The install swap, its free-space precheck and the watchdog feed are not
+// under test.
+MIKAppCommitResult mik__app_commit(const char*, bool) {
+    return MIK_APP_COMMIT_OK;
+}
+long mik__file_size(const char*) {
+    return -1;
+}
+bool mik__fs_space(long*, long*) {
+    return false;
+}
+const MIKPlatform* MIK_GetPlatform(void) {
+    return nullptr;
+}
+
+static const char* err_kind(MIKBuildErr k) {
+    return k == MIK_BUILD_ERR_CORRUPT ? "corrupt" : k == MIK_BUILD_ERR_OOM ? "oom" : "transient";
+}
 
 static int cmd_unpack(const char* build, const char* dest, bool expect_ok) {
     const char* err = "(none)";
-    OtaErr kind = OtaErr::kTransient;
+    MIKBuildErr kind = MIK_BUILD_ERR_TRANSIENT;
     bool ok = unpack_tgz(build, dest, &err, &kind);
     printf("unpack_tgz(%s) -> %s (err=%s kind=%s)  rom_shim_ate=%zu\n", build,
            ok ? "OK" : "FAIL", err, err_kind(kind), g_rom_ate);
@@ -76,7 +98,7 @@ static int count_open_fds() {
 // fails *mid-member*: the corrupt.tgz fixture dies before any file is opened.
 static int cmd_leak(const char* build, const char* dest) {
     const char* err = "(none)";
-    OtaErr kind = OtaErr::kTransient;
+    MIKBuildErr kind = MIK_BUILD_ERR_TRANSIENT;
     if (unpack_tgz(build, dest, &err, &kind)) {
         printf("fixture unpacked cleanly — it must fail mid-member to test this\n");
         return 1;

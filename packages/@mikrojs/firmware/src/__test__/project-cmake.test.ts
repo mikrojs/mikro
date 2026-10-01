@@ -223,6 +223,8 @@ test.skipIf(!hasCmake())(
     )
     const vars = configureComponent(dir)
     expect(definitionsOf(vars, 'mik_sys.cpp')).toContain(`MIK_FW_VERSION="${version}"`)
+    // the OTA check-in reports it
+    expect(definitionsOf(vars, 'mik_ota_env.cpp')).toContain(`MIK_FW_VERSION="${version}"`)
     expect(vars.DEFINITIONS).toContain('MIK_BOARD_NAME="acme-sensor-fw"')
     expect(vars.DEFINITIONS).toContain('MIK_FW_FEATURES="wifi,i2s"')
     expect(existsSync(vars.QUICKJS_CMAKE ?? '')).toBe(true)

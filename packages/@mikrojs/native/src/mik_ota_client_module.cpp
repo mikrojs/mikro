@@ -11,10 +11,9 @@
 #include <memory>
 #include <vector>
 
-#include "esp_log.h"
-#include "mik_http_internal.h"
-#include "mik_ota_native.h"
 #include "mikrojs/cbor_helpers.h"
+#include "mikrojs/http_native.h"
+#include "mikrojs/ota.h"
 #include "mikrojs/ota_client.h"
 #include "mikrojs/ota_config.h"
 #include "mikrojs/ota_js_hooks.h"

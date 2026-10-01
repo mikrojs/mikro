@@ -42,7 +42,7 @@ if(CONFIG_MIKROJS_WIFI)
     list(APPEND _MIK_WIFI_SRCS "mik_wifi.cpp")
 endif()
 
-# mik_ota.cpp includes <miniz.h> for tinfl (gunzip). On the esp32c6 the
+# mik_build_install.cpp includes <miniz.h> for tinfl (gunzip). On the esp32c6 the
 # implementation is in the chip mask ROM and the header comes from the
 # always-available `esp_rom` common dependency, so no REQUIRES entry is needed.
 # A target without ROM miniz needs the `miniz` managed component adding to
@@ -64,8 +64,11 @@ idf_component_register(
     "${MIK_SRC_DIR}/mem.cpp"
     "${MIK_SRC_DIR}/mik_app_config.cpp"
     "${MIK_SRC_DIR}/mik_app_store.cpp"
+    "${MIK_SRC_DIR}/mik_build_install.cpp"
     "${MIK_SRC_DIR}/mik_color.cpp"
+    "${MIK_SRC_DIR}/mik_config.cpp"
     "${MIK_SRC_DIR}/mik_console.cpp"
+    "${MIK_SRC_DIR}/mik_deploy.cpp"
     "${MIK_SRC_DIR}/mik_inspect.cpp"
     "${MIK_SRC_DIR}/mik_repl.cpp"
     "${MIK_SRC_DIR}/mik_stdio.cpp"
@@ -74,6 +77,7 @@ idf_component_register(
     "${MIK_SRC_DIR}/mik_cbor.cpp"
     "${MIK_SRC_DIR}/mik_schema.cpp"
     "${MIK_SRC_DIR}/mik_test.cpp"
+    "${MIK_SRC_DIR}/mik_test_supervisor.cpp"
     "${MIK_SRC_DIR}/mik_sys_codec.cpp"
     "${MIK_SRC_DIR}/mik_result.cpp"
     "${MIK_SRC_DIR}/mik_udp.cpp"
@@ -92,8 +96,8 @@ idf_component_register(
     "mik_main.cpp"
     # ESP32-specific modules and protocols
     ${_MIK_BLE_SRCS}
-    "mik_config.cpp"
-    "mik_deploy.cpp"
+    "mik_device_store.cpp"
+    "mik_fs_get.cpp"
     "mik_http.cpp"
     "mik_http_server.cpp"
     "mik_i2c.cpp"
@@ -103,16 +107,17 @@ idf_component_register(
     "mik_gpio.cpp"
     "mik_pwm.cpp"
     "mik_nvs_kv.cpp"
-    "mik_ota.cpp"
-    # The OTA check-in client and config reader: policy, state machine and slot
-    # store in the portable library, platform seam and JS surface here.
+    # OTA, all portable: the install core, the check-in client and config
+    # reader, and their JS surface. The device store and mik_http.cpp's
+    # native path are the platform side.
+    "${MIK_SRC_DIR}/mik_ota.cpp"
     "${MIK_SRC_DIR}/mik_ota_policy.cpp"
     "${MIK_SRC_DIR}/mik_ota_slots.cpp"
     "${MIK_SRC_DIR}/mik_ota_config.cpp"
     "${MIK_SRC_DIR}/mik_ota_js_hooks.cpp"
     "${MIK_SRC_DIR}/mik_ota_client.cpp"
-    "mik_ota_env.cpp"
-    "mik_ota_client_module.cpp"
+    "${MIK_SRC_DIR}/mik_ota_env.cpp"
+    "${MIK_SRC_DIR}/mik_ota_client_module.cpp"
     "mik_recovery.cpp"
     "mik_rtc.cpp"
     "mik_serial_io.cpp"
@@ -150,7 +155,7 @@ string(JSON _MIK_VERSION GET "${_MIK_PACKAGE}" version)
 # The version and the build date change between builds, so only the files that
 # read them get them: the rest of the component neither recompiles nor misses ccache.
 set_property(SOURCE "${MIK_SRC_DIR}/mik_repl.cpp" "${MIK_SRC_DIR}/mik_sys.cpp" "mik_main.cpp"
-    "mik_ota_env.cpp" APPEND PROPERTY COMPILE_DEFINITIONS "MIK_FW_VERSION=\"${_MIK_VERSION}\"")
+    "${MIK_SRC_DIR}/mik_ota_env.cpp" APPEND PROPERTY COMPILE_DEFINITIONS "MIK_FW_VERSION=\"${_MIK_VERSION}\"")
 # Core runtime owns the bare `native:mikro/*` namespace. MIK_PACKAGE_NAME makes
 # MIK_REGISTER_MODULE enforce that every native module here is named
 # "native:mikro/<module>"; a package's native module sets its package name.
