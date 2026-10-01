@@ -20,6 +20,7 @@ import {rememberDeviceForPort} from '../deviceCache.js'
 import {encodeDeviceName, NAME_KV, validateDeviceName} from '../deviceName.js'
 import {describeError} from '../errorMessage.js'
 import {FirmwareIncompatibleError} from '../firmwareCompat.js'
+import {isExitKey, isKey, replKeysHelp} from '../keys.js'
 import {getMikroDir} from '../projectRoot.js'
 import {isIncomplete} from '../protocol.js'
 import type {ReplEvent, ReplSession} from '../session.js'
@@ -49,12 +50,13 @@ export interface ReplMachineState {
   history: string[]
   historyIdx: number
   historyDraft: string | null
-  showWelcome: boolean
   evaluating: boolean
   /** Whether eval timing is shown on result lines. Host-side toggle (`/time`);
    *  the device always reports timing, the CLI decides whether to render it. */
   showTiming: boolean
   paused: boolean
+  /** Whether Ctrl+S deploys here (`mikro dev`), so `/help` lists it only then */
+  deployEnabled: boolean
   ctrlCPending: boolean
   returnPending: boolean
   disabled: boolean
@@ -70,6 +72,9 @@ export interface ReplMachineState {
   events: ReplLogEvent[]
   /** Printed events dropped so far, so `eventsDropped + i` numbers `events[i]` */
   eventsDropped: number
+  /** Times the console was cleared (`/clear`, Ctrl+L): it wipes the screen on
+   *  each change */
+  clears: number
   /** Number of the first event the console has not printed */
   printedUpTo: number
 }
@@ -117,7 +122,7 @@ export type ReplEffect =
   | {type: 'deploy'; force: boolean}
   | {type: 'appendHistory'; entry: string}
   | {type: 'scheduleCtrlCTimeout'}
-  | {type: 'scheduleReturnResolve'; multiline: boolean}
+  | {type: 'scheduleReturnResolve'}
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -126,6 +131,7 @@ const SLASH_COMMANDS = [
   '/help',
   '/name',
   '/env',
+  '/clear',
   '/mem',
   '/info',
   '/gc',
@@ -142,6 +148,19 @@ const SLASH_COMMANDS = [
   '/exit',
 ]
 
+/** The commands the host answers, laid out as the device's `/help` lays out
+ *  its own (11 columns), so the two read as one list. */
+const HOST_COMMANDS_HELP = (
+  [
+    ['/env', "Edit the device's environment variables"],
+    ['/clear', 'Clear the console'],
+    ['/time', 'Toggle eval timing'],
+    ['/name', 'Name this device: /name set NAME, or /name unset'],
+  ] as const
+)
+  .map(([command, does]) => command.padEnd(11) + does)
+  .join('\n')
+
 /** Context hints matched against the current input. First match wins. */
 const CONTEXT_HINTS: {pattern: RegExp; hint: string}[] = [
   {pattern: /^console\.\s*$/, hint: 'console.log()  console.warn()  console.error()'},
@@ -151,9 +170,12 @@ const CONTEXT_HINTS: {pattern: RegExp; hint: string}[] = [
   },
 ]
 
-export const WELCOME_HINT =
-  'Enter to submit  |  Ctrl+D to exit  |  Ctrl+C to clear  |  /help for commands'
-export const MULTILINE_HINT = 'Ctrl+Enter to submit  |  Enter to add line'
+// Never Ctrl+D alone: some terminals take it for themselves
+export const EMPTY_HINT = 'Ctrl+Q or Ctrl+D to exit  |  /help for commands'
+export const NOT_READY_HINT = 'Ctrl+C or Ctrl+D to exit'
+export const INPUT_HINT = 'Enter to submit  |  Ctrl+C to clear'
+// Ctrl+J and not Shift+Enter: only some terminals tell that one from Enter
+export const MULTILINE_HINT = 'Enter to submit  |  Ctrl+J to add a line  |  Ctrl+C to clear'
 
 function historyFile() {
   return join(getMikroDir(), 'history.txt')
@@ -221,7 +243,11 @@ export function appendHistory(entry: string) {
 
 // ── Initial state ──────────────────────────────────────────
 
-export function createInitialState(port?: string, history: string[] = []): ReplMachineState {
+export function createInitialState(
+  port?: string,
+  history: string[] = [],
+  deployEnabled = true,
+): ReplMachineState {
   return {
     connection: {type: 'connecting'},
     port,
@@ -230,10 +256,10 @@ export function createInitialState(port?: string, history: string[] = []): ReplM
     history,
     historyIdx: -1,
     historyDraft: null,
-    showWelcome: true,
     evaluating: false,
     showTiming: false,
     paused: false,
+    deployEnabled,
     ctrlCPending: false,
     returnPending: false,
     disabled: false,
@@ -245,6 +271,7 @@ export function createInitialState(port?: string, history: string[] = []): ReplM
     overlay: null,
     events: [{type: 'connecting', port}],
     eventsDropped: 0,
+    clears: 0,
     printedUpTo: 0,
   }
 }
@@ -268,6 +295,12 @@ function trimEvents(state: ReplMachineState): ReplMachineState {
     events: state.events.slice(drop),
     eventsDropped: state.eventsDropped + drop,
   }
+}
+
+/** Empties the console: what was printed, and what was still waiting to be. */
+function clearLog(state: ReplMachineState): ReplMachineState {
+  const upTo = state.eventsDropped + state.events.length
+  return {...state, events: [], eventsDropped: upTo, printedUpTo: upTo, clears: state.clears + 1}
 }
 
 function reduceAction(
@@ -430,14 +463,14 @@ function reduceKey(
 
   // Before ready: only allow exit
   if (state.connection.type !== 'ready') {
-    if (key.ctrl && (ch === 'q' || ch === 'd')) return [state, [{type: 'end'}]]
+    if (isExitKey(ch, key)) return [state, [{type: 'end'}]]
     return [state, []]
   }
 
   // ── Control sequences ──────────────────────────────────
-  if (key.ctrl && ch === 'q') return [state, [{type: 'exit'}, {type: 'end'}]]
+  if (isKey('quit', ch, key)) return [state, [{type: 'exit'}, {type: 'end'}]]
 
-  if (key.ctrl && ch === 'r') {
+  if (isKey('restart', ch, key)) {
     const connection: ConnectionState = {type: 'connecting', message: 'Restarting…'}
     const event: ReplLogEvent = {type: 'restarting'}
     // The restart takes any eval in flight down with it. Drop the spinner
@@ -455,46 +488,46 @@ function reduceKey(
     ]
   }
 
-  if (key.ctrl && ch === 'd' && state.input === '') {
+  if (isKey('exit', ch, key) && state.input === '') {
     return [state, [{type: 'exit'}, {type: 'end'}]]
   }
 
-  if (key.ctrl && ch === 'c') {
+  if (isKey('cancel', ch, key)) {
     return reduceCtrlC(state)
+  }
+
+  if (isKey('clear', ch, key)) {
+    return [clearLog(state), []]
   }
 
   if (state.disabled) return [state, []]
 
   if (key.tab) {
     const input = state.input.slice(0, state.cursor) + '  ' + state.input.slice(state.cursor)
-    return [{...state, input, cursor: state.cursor + 2, showWelcome: false}, []]
+    return [{...state, input, cursor: state.cursor + 2}, []]
   }
 
-  // ── Newline (Shift+Enter or Alt+Enter) ─────────────────
-  if (key.return && (key.shift || key.meta)) {
+  // ── Newline (Shift+Enter, Alt+Enter or Ctrl+J) ─────────
+  // Only some terminals tell Shift+Enter from Enter; where Ctrl+J arrives as
+  // a bare line feed, it is inserted as typed text further down.
+  if ((key.return && (key.shift || key.meta)) || isKey('newline', ch, key)) {
     const input = state.input.slice(0, state.cursor) + '\n' + state.input.slice(state.cursor)
-    return [{...state, input, cursor: state.cursor + 1, showWelcome: false}, []]
+    return [{...state, input, cursor: state.cursor + 1}, []]
   }
 
-  // ── Submit (Ctrl+Enter) ────────────────────────────────
-  if (key.return && key.ctrl) {
-    return reduceSubmit(state)
-  }
-
-  // ── Enter (deferred for paste detection) ───────────────
-  if (key.return && !key.ctrl) {
-    const multiline = state.input.includes('\n')
-    return [{...state, returnPending: true}, [{type: 'scheduleReturnResolve', multiline}]]
+  // ── Enter: submit (deferred for paste detection) ───────
+  if (key.return) {
+    return [{...state, returnPending: true}, [{type: 'scheduleReturnResolve'}]]
   }
 
   // ── Home / Ctrl+A ──────────────────────────────────────
-  if (key.home || (key.ctrl && ch === 'a')) {
+  if (key.home || isKey('lineStart', ch, key)) {
     const lineStart = state.input.lastIndexOf('\n', state.cursor - 1) + 1
     return [{...state, cursor: lineStart}, []]
   }
 
   // ── End / Ctrl+E ───────────────────────────────────────
-  if (key.end || (key.ctrl && ch === 'e')) {
+  if (key.end || isKey('lineEnd', ch, key)) {
     let lineEnd = state.input.indexOf('\n', state.cursor)
     if (lineEnd === -1) lineEnd = state.input.length
     return [{...state, cursor: lineEnd}, []]
@@ -523,9 +556,9 @@ function reduceKey(
   if (key.upArrow) return [reduceUpArrow(state), []]
   if (key.downArrow) return [reduceDownArrow(state), []]
 
-  // ── Ctrl+S — trigger deploy (Ctrl+Shift+S forces full redeploy) ─
-  if (key.ctrl && ch === 's') {
-    return [state, [{type: 'deploy', force: key.shift}]]
+  // ── Ctrl+S — deploy what changed (Ctrl+Shift+S: every file) ───────────
+  if (isKey('deploy', ch, key)) {
+    return [state, [{type: 'deploy', force: isKey('fullDeploy', ch, key)}]]
   }
 
   // ── Alt+Backspace — delete previous word ───────────────
@@ -604,7 +637,7 @@ function reduceCtrlC(state: ReplMachineState): [ReplMachineState, ReplEffect[]] 
     return [state, [{type: 'exit'}, {type: 'end'}]]
   }
   return [
-    {...state, ctrlCPending: true, overrideHint: 'Press Ctrl+C again to exit, or Ctrl+D'},
+    {...state, ctrlCPending: true, overrideHint: 'Press Ctrl+C again, Ctrl+Q or Ctrl+D to exit'},
     [{type: 'scheduleCtrlCTimeout'}],
   ]
 }
@@ -631,7 +664,6 @@ function reduceCharInput(state: ReplMachineState, ch: string): [ReplMachineState
       returnPending: false,
       historyIdx: -1,
       ctrlCPending: false,
-      showWelcome: false,
       overrideHint: null,
       contextHint: resolveContextHint(input),
     },
@@ -718,16 +750,21 @@ function reduceSubmit(state: ReplMachineState): [ReplMachineState, ReplEffect[]]
     return [{...resetState, overlay: 'env'}, effects]
   }
 
+  if (code === '/clear') {
+    return [clearLog(resetState), effects]
+  }
+
   if (code === '/exit') {
     return [resetState, [...effects, {type: 'exit'}, {type: 'end'}]]
   }
 
-  // `/help` is device-answered; add host-only commands so `/name` shows up.
+  // `/help` is device-answered; the host puts the keys and its own commands
+  // above the device's list.
   if (code === '/help') {
     const inputEvent: ReplLogEvent = {type: 'input', code}
     const hostHelp: ReplLogEvent = {
       type: 'info',
-      text: 'Host commands: /time (toggle eval timing) · /name set <name> (name this device) · /name unset (clear the name)',
+      text: `Shortcuts:\n${replKeysHelp(state.deployEnabled)}\n\nSlash commands:\n${HOST_COMMANDS_HELP}`,
     }
     const next = {...resetState, events: [...resetState.events, inputEvent, hostHelp]}
     return [next, [...effects, {type: 'directive', code}]]
@@ -785,16 +822,8 @@ function reduceReturnResolve(
 ): [ReplMachineState, ReplEffect[]] {
   if (!state.returnPending) return [state, []]
 
-  const next = {...state, returnPending: false}
-
-  // Single-line: submit
-  if (!state.input.includes('\n')) {
-    return reduceSubmit(next)
-  }
-
-  // Multi-line: insert newline
-  const input = state.input.slice(0, state.cursor) + '\n' + state.input.slice(state.cursor)
-  return [{...next, input, cursor: state.cursor + 1}, []]
+  // No character followed, so it was the Enter key and not a pasted newline
+  return reduceSubmit({...state, returnPending: false})
 }
 
 // ── Factory ────────────────────────────────────────────────
@@ -841,7 +870,7 @@ export function createRepl(options: {
   const actions$ = new Subject<ReplAction>()
   const deploys$ = new Subject<{force: boolean}>()
   const restarts$ = new Subject<void>()
-  const initial = createInitialState(port, loadHistoryFn())
+  const initial = createInitialState(port, loadHistoryFn(), deployEnabled)
 
   // Latest name pair reported by the handshake; `/name` bumps from here.
   let deviceName: string | undefined

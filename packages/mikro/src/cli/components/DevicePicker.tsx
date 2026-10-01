@@ -1,11 +1,12 @@
 import spinners from 'cli-spinners'
-import {Box, Text, useInput} from 'ink'
+import {Box, Text} from 'ink'
 import SelectInput from 'ink-select-input'
 import React, {type ReactNode, useCallback, useEffect, useState} from 'react'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
 import {matchPortToken} from '../lib/deviceName.js'
+import {useExitKeys} from '../lib/exitKeys.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
 import {TROUBLESHOOTING_HINT_DELAY_MS, TroubleshootingHint} from '../lib/troubleshooting.js'
@@ -60,17 +61,9 @@ export function DevicePicker(props: Props) {
   const isInteractive = process.stdin.isTTY === true
   const current = device || selectedDevice
 
-  // Handle Ctrl+C/Ctrl+Q exit while a device is still being picked. Naming a
-  // device lives in `mikro name`, which writes it over a session — the picker
-  // only selects.
-  useInput(
-    (ch, key) => {
-      if (key.ctrl && (ch === 'c' || ch === 'q')) {
-        process.exit(0)
-      }
-    },
-    {isActive: !current},
-  )
+  // Exit while a device is still being picked. Naming a device lives in
+  // `mikro name`, which writes it over a session; the picker only selects.
+  useExitKeys(!current)
 
   // Stop polling once a device is auto-detected (single device or port match)
   if (current && pollingEnabled) {

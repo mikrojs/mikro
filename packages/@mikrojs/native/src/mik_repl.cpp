@@ -723,9 +723,14 @@ static bool handle_directive_impl(JSContext* ctx, const char* line, std::string&
         return true;
     }
 
-    if (strncmp(line, "/cat ", 5) == 0) {
-        const char* arg = line + 5;
+    if (strncmp(line, "/cat", 4) == 0 && (line[4] == '\0' || line[4] == ' ')) {
+        const char* arg = line + 4;
         while (*arg == ' ') arg++;
+
+        if (*arg == '\0') {
+            out.append("Usage: /cat FILE\n");
+            return true;
+        }
 
         /* Ensure path starts with / for resolve */
         char filename[PATH_MAX];
@@ -767,8 +772,8 @@ static bool handle_directive_impl(JSContext* ctx, const char* line, std::string&
         return true;
     }
 
-    if (strncmp(line, "/rm ", 4) == 0) {
-        const char* arg = line + 4;
+    if (strncmp(line, "/rm", 3) == 0 && (line[3] == '\0' || line[3] == ' ')) {
+        const char* arg = line + 3;
         while (*arg == ' ') arg++;
 
         if (*arg == '\0') {

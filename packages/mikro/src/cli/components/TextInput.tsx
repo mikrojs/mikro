@@ -1,6 +1,8 @@
 import {Text} from 'ink'
 import React from 'react'
 
+import {isKey} from '../lib/keys.js'
+
 export interface TextInputProps {
   value: string
   cursor: number
@@ -61,10 +63,10 @@ export function reduceInput(
     meta?: boolean
   },
 ): InputState | null {
-  if (key.home || (key.ctrl && ch === 'a')) {
+  if (key.home || isKey('lineStart', ch, key)) {
     return {...state, cursor: 0}
   }
-  if (key.end || (key.ctrl && ch === 'e')) {
+  if (key.end || isKey('lineEnd', ch, key)) {
     return {...state, cursor: state.value.length}
   }
   if (key.leftArrow) {
@@ -104,7 +106,7 @@ export function reduceInput(
     }
     return state
   }
-  if (key.ctrl && ch === 'u') {
+  if (isKey('deleteToStart', ch, key)) {
     return {value: state.value.slice(state.cursor), cursor: 0}
   }
   if (ch && !key.ctrl && !key.meta) {

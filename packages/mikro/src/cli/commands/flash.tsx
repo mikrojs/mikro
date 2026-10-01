@@ -13,6 +13,7 @@ import {customFirmwareOf, type DeviceBoard, genericBoardOf} from '../lib/bundled
 import {formatDeviceList} from '../lib/deviceLabel.js'
 import {describeError} from '../lib/errorMessage.js'
 import {type FlasherArgs, getWriteFlashMultiArgs} from '../lib/esptool.js'
+import {AbortQuestion, ExitKeys, useConfirmAbort, useExitKeys} from '../lib/exitKeys.js'
 import {
   assertFilesystemKept,
   type BoardSource,
@@ -22,6 +23,7 @@ import {
   resolveFlashPlan,
 } from '../lib/flashFirmware.js'
 import {formatSize} from '../lib/formatSize.js'
+import {plainKey} from '../lib/keys.js'
 import {loadMikroConfig} from '../lib/loadMikroConfig.js'
 import {INITIAL_SPAWN_STATE, ospawn, spawnErrorMessage, type SpawnState} from '../lib/ospawn.js'
 import {detectPreferredPm, mikroCommand, type PkgManager} from '../lib/pkgManager.js'
@@ -248,6 +250,7 @@ export default function FlashCmd(props: Props) {
   if (deviceDiscovery.status === 'loading') {
     return (
       <Text>
+        <ExitKeys />
         <Spinner spinner={spinners.dots} /> Detecting devices…
       </Text>
     )
@@ -317,6 +320,7 @@ export default function FlashCmd(props: Props) {
   if (probe.status === 'pending') {
     return (
       <Text>
+        <ExitKeys />
         <Spinner spinner={spinners.dots} /> Checking device firmware…
       </Text>
     )
@@ -325,6 +329,7 @@ export default function FlashCmd(props: Props) {
   if (initState.status === 'loading') {
     return (
       <Text>
+        <ExitKeys />
         <Spinner spinner={spinners.dots} /> {initState.message}
       </Text>
     )
@@ -333,6 +338,7 @@ export default function FlashCmd(props: Props) {
   if (initState.status === 'choose') {
     return (
       <Box flexDirection="column">
+        <ExitKeys />
         <Text>Several board packages are installed. Flash firmware for:</Text>
         <SelectInput
           items={initState.boards.map((b) => ({
@@ -423,8 +429,8 @@ function ConfirmFlash(props: {
 }) {
   const {port, flashSize, filesystemSize, chosenImage, warnings, onConfirm, onCancel} = props
 
-  useInput((input) => {
-    if (input.toLowerCase() === 'y') {
+  useInput((input, key) => {
+    if (plainKey(input, key).toLowerCase() === 'y') {
       onConfirm()
     } else {
       onCancel()
@@ -472,6 +478,7 @@ function FlashProgress(props: {
   warnings: string[]
 }) {
   const {esptoolPath, flasherArgs, port, baudRate, board, chosenImage, warnings} = props
+  const abort = useMemo(() => new AbortController(), [])
 
   const observable = useMemo((): Observable<SpawnState> => {
     const esptoolArgs = getWriteFlashMultiArgs({
@@ -485,18 +492,30 @@ function FlashProgress(props: {
       files: flasherArgs.files,
     })
 
-    return ospawn(esptoolPath, esptoolArgs)
-  }, [esptoolPath, flasherArgs, port, baudRate])
+    return ospawn(esptoolPath, esptoolArgs, {signal: abort.signal})
+  }, [esptoolPath, flasherArgs, port, baudRate, abort])
 
   const progress = useObservable(observable, INITIAL_SPAWN_STATE)
   const {output, error, completed} = progress
+
+  // An exit key while esptool writes asks first, then stops it and exits
+  const [aborted, setAborted] = useState(false)
+  const confirmAbort = useConfirmAbort(!completed && !aborted, () => {
+    abort.abort()
+    setAborted(true)
+  })
+  useEffect(() => {
+    if (aborted) process.exit(130)
+  }, [aborted])
 
   const [pm, setPm] = useState<PkgManager>('npm')
   useEffect(() => {
     detectPreferredPm().then(setPm, () => {})
   }, [])
 
-  const success = completed && !error
+  const success = completed && !error && !aborted
+  const devCommand = mikroCommand(pm, 'dev')
+  const consoleCommand = mikroCommand(pm, 'console')
 
   // Reconnect once the device reboots to prove the image runs, and seed a name
   // while we're the one provisioning it. Best-effort: the flash has already
@@ -519,6 +538,7 @@ function FlashProgress(props: {
     [success, port],
   )
   const postFlash = useObservable(postFlashObservable, {status: 'idle'} as PostFlashState)
+  useExitKeys(postFlash.status === 'running')
   const lastLine = getLastLine(output)
 
   return (
@@ -561,6 +581,11 @@ function FlashProgress(props: {
           <Text color="gray">{lastLine}</Text>
         </Box>
       ) : null}
+      {aborted ? (
+        <Text color="yellow">{figures.warning} Flashing aborted.</Text>
+      ) : confirmAbort && !completed ? (
+        <AbortQuestion during="flash" />
+      ) : null}
       {error ? (
         <Box flexDirection="column" paddingLeft={2}>
           {output.map((chunk, i) => (
@@ -598,14 +623,15 @@ function FlashProgress(props: {
       ) : null}
       {success ? (
         <Box flexDirection="column" paddingTop={1} paddingLeft={2}>
-          <Text bold>Next steps</Text>
+          <Text>Next, in the project:</Text>
           <Text>
-            <Text color="gray">{figures.pointerSmall}</Text> Start a dev session:{' '}
-            <Text bold>{mikroCommand(pm, 'dev')}</Text>
+            <Text color="gray">{figures.pointerSmall}</Text>{' '}
+            <Text bold>{devCommand.padEnd(consoleCommand.length)}</Text> runs the app and redeploys
+            it on every save
           </Text>
           <Text>
-            <Text color="gray">{figures.pointerSmall}</Text> Open a REPL:{' '}
-            <Text bold>{mikroCommand(pm, 'console')}</Text>
+            <Text color="gray">{figures.pointerSmall}</Text> <Text bold>{consoleCommand}</Text>{' '}
+            opens a prompt for running JavaScript on the device
           </Text>
         </Box>
       ) : null}

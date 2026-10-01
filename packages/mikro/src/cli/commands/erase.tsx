@@ -8,6 +8,8 @@ import type {Observable} from 'rxjs'
 
 import {type PortInfo, useDevices} from '../hooks/useDevices.js'
 import {formatDeviceList} from '../lib/deviceLabel.js'
+import {AbortQuestion, ExitKeys, useConfirmAbort} from '../lib/exitKeys.js'
+import {plainKey} from '../lib/keys.js'
 import {INITIAL_SPAWN_STATE, ospawn, spawnErrorMessage, type SpawnState} from '../lib/ospawn.js'
 import {RenderAndExit} from '../lib/RenderAndExit.js'
 import {Spinner} from '../lib/Spinner.js'
@@ -60,6 +62,7 @@ function DeviceErase({port, baud, yes}: {port?: string; baud?: string; yes: bool
   if (initState.status === 'loading' || deviceDiscovery.status === 'loading') {
     return (
       <Text>
+        <ExitKeys />
         <Spinner spinner={spinners.dots} /> Preparing…
       </Text>
     )
@@ -133,8 +136,8 @@ function DeviceErase({port, baud, yes}: {port?: string; baud?: string; yes: bool
 function ConfirmErase(props: {port: string; onConfirm: () => void; onCancel: () => void}) {
   const {port, onConfirm, onCancel} = props
 
-  useInput((input) => {
-    if (input.toLowerCase() === 'y') {
+  useInput((input, key) => {
+    if (plainKey(input, key).toLowerCase() === 'y') {
       onConfirm()
     } else {
       onCancel()
@@ -157,13 +160,26 @@ function ConfirmErase(props: {port: string; onConfirm: () => void; onCancel: () 
 
 function EraseProgress(props: {esptoolPath: string; port: string; baudRate: number}) {
   const {esptoolPath, port, baudRate} = props
+  const abort = useMemo(() => new AbortController(), [])
 
   const observable = useMemo((): Observable<SpawnState> => {
-    return ospawn(esptoolPath, ['--port', port, '--baud', String(baudRate), 'erase-flash'])
-  }, [esptoolPath, port, baudRate])
+    return ospawn(esptoolPath, ['--port', port, '--baud', String(baudRate), 'erase-flash'], {
+      signal: abort.signal,
+    })
+  }, [esptoolPath, port, baudRate, abort])
 
   const progress = useObservable(observable, INITIAL_SPAWN_STATE)
   const {output, error, completed} = progress
+
+  // An exit key while esptool erases asks first, then stops it and exits
+  const [aborted, setAborted] = useState(false)
+  const confirmAbort = useConfirmAbort(!completed && !aborted, () => {
+    abort.abort()
+    setAborted(true)
+  })
+  useEffect(() => {
+    if (aborted) process.exit(130)
+  }, [aborted])
 
   return (
     <Box flexDirection="column">
@@ -184,6 +200,11 @@ function EraseProgress(props: {esptoolPath: string; port: string; baudRate: numb
         </Text>
       ))}
       {error && <Text color="red">{spawnErrorMessage(error, 'esptool')}</Text>}
+      {aborted ? (
+        <Text color="yellow">{figures.warning} Erasing aborted.</Text>
+      ) : confirmAbort && !completed ? (
+        <AbortQuestion during="erase" />
+      ) : null}
     </Box>
   )
 }
