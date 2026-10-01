@@ -32,6 +32,12 @@ function keyAction(ch: string, overrides: Partial<KeyInfo> = {}): ReplAction {
   return {type: 'key', ch, key: key(overrides)}
 }
 
+/** Enter, and the tick after it that tells the key from a pasted newline. */
+function submit(state: ReplMachineState) {
+  const [pending] = reduce(state, keyAction('', {return: true}))
+  return reduce(pending, {type: 'returnResolve'})
+}
+
 function deviceEvent(event: Extract<ReplAction, {type: 'deviceEvent'}>['event']): ReplAction {
   return {type: 'deviceEvent', event}
 }
@@ -107,17 +113,6 @@ describe('replStateMachine', () => {
       const [next] = reduce(moved, keyAction('x'))
       expect(next.input).toBe('abxc')
       expect(next.cursor).toBe(3)
-    })
-
-    test('clears showWelcome on first input', () => {
-      const state = createInitialState()
-      const [ready] = reduce(
-        state,
-        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
-      )
-      expect(ready.showWelcome).toBe(true)
-      const [next] = reduce(ready, keyAction('a'))
-      expect(next.showWelcome).toBe(false)
     })
   })
 
@@ -263,14 +258,14 @@ describe('replStateMachine', () => {
   })
 
   describe('submit', () => {
-    test('ctrl+enter submits and emits eval effect', () => {
+    test('enter submits and emits eval effect', () => {
       const state = createInitialState()
       const [ready] = reduce(
         state,
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '1+1')
-      const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [next, effects] = submit(s)
       expect(next.input).toBe('')
       expect(next.evaluating).toBe(true)
       expect(next.events.at(-1)).toEqual({type: 'input', code: '1+1'})
@@ -286,7 +281,7 @@ describe('replStateMachine', () => {
       )
       const s = typeChars(ready, '1+1')
       const [disabled] = reduce(s, {type: 'setDisabled', disabled: true})
-      const [next, effects] = reduce(disabled, keyAction('', {return: true, ctrl: true}))
+      const [next, effects] = submit(disabled)
       expect(next.input).toBe('1+1')
       expect(effects).toEqual([])
     })
@@ -297,7 +292,7 @@ describe('replStateMachine', () => {
         state,
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
-      const [next, effects] = reduce(ready, keyAction('', {return: true, ctrl: true}))
+      const [next, effects] = submit(ready)
       expect(next.input).toBe('')
       expect(effects).toEqual([])
     })
@@ -309,7 +304,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '/exit')
-      const [, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [, effects] = submit(s)
       expect(effects).toContainEqual({type: 'exit'})
       expect(effects).toContainEqual({type: 'end'})
     })
@@ -321,26 +316,67 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '/info')
-      const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [next, effects] = submit(s)
       expect(effects).toContainEqual({type: 'directive', code: '/info'})
       // Command input is logged immediately
       expect(next.events.at(-1)).toEqual({type: 'input', code: '/info'})
     })
 
-    test('/help forwards to the device and appends host-only commands', () => {
+    test('/help forwards to the device, under the keys and the host-only commands', () => {
       const state = createInitialState()
       const [ready] = reduce(
         state,
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '/help')
-      const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [next, effects] = submit(s)
       // Still answered by the device...
       expect(effects).toContainEqual({type: 'directive', code: '/help'})
-      // ...with a host-side note mentioning /name.
+      // ...under the host's part: the keys, then its own commands, one per line.
       const last = next.events.at(-1)
-      expect(last?.type).toBe('info')
-      expect(last && 'text' in last ? last.text : '').toContain('/name')
+      const lines = last?.type === 'info' ? last.text.split('\n') : []
+      expect(lines[0]).toBe('Shortcuts:')
+      expect(lines).toContain('Ctrl+R        Restart the device')
+      // The device's own commands follow the host's, under the same header
+      expect(lines.indexOf('Slash commands:')).toBeGreaterThan(lines.indexOf('Ctrl+Q        Exit'))
+      expect(lines).toContain('/time      Toggle eval timing')
+      expect(lines.at(-1)).toMatch(/^\/name {6}Name this device/)
+    })
+
+    test('/help lists Ctrl+S only where it deploys', () => {
+      const help = (deployEnabled: boolean) => {
+        const [ready] = reduce(
+          createInitialState(undefined, [], deployEnabled),
+          deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+        )
+        const [next] = submit(typeChars(ready, '/help'))
+        const last = next.events.at(-1)
+        return last?.type === 'info' ? last.text : ''
+      }
+      expect(help(true)).toContain('Ctrl+S')
+      expect(help(false)).not.toContain('Ctrl+S')
+      expect(help(false)).toContain('Ctrl+R')
+    })
+
+    test('/clear and ctrl+l empty the log without asking the device', () => {
+      const [ready] = reduce(
+        createInitialState(),
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      const [logged] = reduce(ready, deviceEvent({type: 'log', text: 'old'}))
+      const waiting = logged.eventsDropped + logged.events.length
+
+      const [byCommand, effects] = submit(typeChars(logged, '/clear'))
+      expect(byCommand.clears).toBe(1)
+      expect(byCommand.events).toEqual([])
+      // Later events keep their session-wide numbers
+      expect(byCommand.eventsDropped).toBe(waiting)
+      expect(effects.some((e) => e.type === 'directive')).toBe(false)
+
+      const [byKey] = reduce(typeChars(byCommand, 'abc'), keyAction('l', {ctrl: true}))
+      expect(byKey.clears).toBe(2)
+      // The line being typed stays
+      expect(byKey.input).toBe('abc')
     })
 
     test('/name set <name> emits a setName effect, not a directive', () => {
@@ -350,7 +386,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '/name set kitchen-sensor')
-      const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [next, effects] = submit(s)
       expect(effects).toContainEqual({type: 'setName', name: 'kitchen-sensor'})
       expect(effects.find((e) => e.type === 'directive')).toBeUndefined()
       // Command input is logged immediately
@@ -364,7 +400,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '/name unset')
-      const [, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [, effects] = submit(s)
       expect(effects).toContainEqual({type: 'unsetName'})
     })
 
@@ -375,7 +411,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '/name')
-      const [, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [, effects] = submit(s)
       expect(effects).toContainEqual({type: 'setName', name: ''})
     })
 
@@ -388,14 +424,14 @@ describe('replStateMachine', () => {
       expect(ready.showTiming).toBe(false)
 
       const s = typeChars(ready, '/time')
-      const [on, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [on, effects] = submit(s)
       expect(on.showTiming).toBe(true)
       // Host-side only: never sent to the device.
       expect(effects.find((e) => e.type === 'directive')).toBeUndefined()
       expect(on.events.at(-1)).toEqual({type: 'info', text: 'Timing display on'})
 
       const s2 = typeChars(on, '/time')
-      const [off] = reduce(s2, keyAction('', {return: true, ctrl: true}))
+      const [off] = submit(s2)
       expect(off.showTiming).toBe(false)
     })
 
@@ -406,7 +442,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '/pause')
-      const [next] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [next] = submit(s)
       expect(next.paused).toBe(true)
     })
 
@@ -417,7 +453,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '/env')
-      const [next, effects] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [next, effects] = submit(s)
       expect(next.overlay).toBe('env')
       expect(next.input).toBe('')
       // No directive effect - /env is handled client-side
@@ -431,7 +467,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '/env')
-      const [overlayState] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [overlayState] = submit(s)
       expect(overlayState.overlay).toBe('env')
       const [next] = reduce(overlayState, keyAction('a'))
       expect(next.input).toBe('')
@@ -444,7 +480,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '/env')
-      const [overlayState] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [overlayState] = submit(s)
       expect(overlayState.overlay).toBe('env')
       const [next] = reduce(overlayState, {type: 'closeOverlay'})
       expect(next.overlay).toBeNull()
@@ -504,7 +540,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '1+1')
-      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [submitted] = submit(s)
       expect(submitted.evaluating).toBe(true)
       // Echo lands immediately — no device round-trip required.
       expect(submitted.events.find((e) => e.type === 'input')).toEqual({type: 'input', code: '1+1'})
@@ -521,7 +557,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, 'void 0')
-      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [submitted] = submit(s)
       const [next] = reduce(submitted, deviceEvent({type: 'result', text: ''}))
       expect(next.events.at(-1)).toEqual({type: 'result', text: '', timing: undefined})
     })
@@ -533,7 +569,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, '1+1')
-      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [submitted] = submit(s)
       // Device sends timing (prompt) just before the result.
       const [withTiming] = reduce(submitted, deviceEvent({type: 'prompt', timing: '5ms'}))
       const [next] = reduce(withTiming, deviceEvent({type: 'result', text: '2'}))
@@ -548,7 +584,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, 'bad()')
-      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [submitted] = submit(s)
       const [next] = reduce(submitted, deviceEvent({type: 'eval_error', text: 'ReferenceError'}))
       expect(next.evaluating).toBe(false)
     })
@@ -562,7 +598,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, "(await import('mikro/sys')).restart()")
-      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [submitted] = submit(s)
       expect(submitted.evaluating).toBe(true)
 
       // The device reboots: the port drops, the supervisor reconnects, and the
@@ -587,7 +623,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, 'restart()')
-      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [submitted] = submit(s)
 
       // USB-UART boards keep the link open across the reboot, so the machine
       // stays in `ready` and only sees the device's boot announcement.
@@ -613,7 +649,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       const s = typeChars(ready, 'while (true) {}')
-      const [submitted] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      const [submitted] = submit(s)
       expect(submitted.evaluating).toBe(true)
 
       const [restarting, effects] = reduce(submitted, keyAction('r', {ctrl: true}))
@@ -767,9 +803,9 @@ describe('replStateMachine', () => {
       )
       // Submit some entries to build history
       let s = typeChars(ready, 'first')
-      ;[s] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      ;[s] = submit(s)
       s = typeChars(s, 'second')
-      ;[s] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      ;[s] = submit(s)
 
       // Now press up arrow (cursor must be at 0)
       const [next] = reduce(s, keyAction('', {upArrow: true}))
@@ -784,7 +820,7 @@ describe('replStateMachine', () => {
         deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
       )
       let s = typeChars(ready, 'first')
-      ;[s] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      ;[s] = submit(s)
 
       // Type partial, then navigate up, then down
       s = typeChars(s, 'draft')
@@ -817,6 +853,12 @@ describe('replStateMachine', () => {
     test('ctrl+q exits', () => {
       const state = createInitialState()
       const [, effects] = reduce(state, keyAction('q', {ctrl: true}))
+      expect(effects).toContainEqual({type: 'end'})
+    })
+
+    test('ctrl+c exits', () => {
+      const state = createInitialState()
+      const [, effects] = reduce(state, keyAction('c', {ctrl: true}))
       expect(effects).toContainEqual({type: 'end'})
     })
   })
@@ -969,7 +1011,7 @@ describe('replStateMachine', () => {
       expect(next.cursor).toBe(5)
     })
 
-    test('returnResolve on multi-line inserts newline', () => {
+    test('enter submits input of several lines', () => {
       const state = createInitialState()
       const [ready] = reduce(
         state,
@@ -978,13 +1020,22 @@ describe('replStateMachine', () => {
       let s = typeChars(ready, 'line1')
       ;[s] = reduce(s, keyAction('', {return: true, shift: true}))
       s = typeChars(s, 'line2')
-      // Press enter (deferred)
-      const [pending] = reduce(s, keyAction('', {return: true}))
-      // Return resolves: multi-line, so insert newline instead of submitting
-      const [next, effects] = reduce(pending, {type: 'returnResolve'})
-      // Newline inserted at cursor position
-      expect(next.input).toBe('line1\nline2\n')
-      expect(effects.find((e) => e.type === 'eval')).toBeUndefined()
+      const [next, effects] = submit(s)
+      expect(next.input).toBe('')
+      expect(effects).toContainEqual({type: 'eval', code: 'line1\nline2'})
+    })
+
+    test('ctrl+j adds a line, as a key or as the line feed a terminal sends for it', () => {
+      const state = createInitialState()
+      const [ready] = reduce(
+        state,
+        deviceEvent({type: 'ready', chip: 'ESP32', id: null, version: null}),
+      )
+      let s = typeChars(ready, 'a')
+      ;[s] = reduce(s, keyAction('j', {ctrl: true}))
+      s = typeChars(s, 'b')
+      ;[s] = reduce(s, keyAction('\n'))
+      expect(s.input).toBe('a\nb\n')
     })
 
     test('ctrl+a moves to start of current line in multi-line', () => {
@@ -1031,7 +1082,6 @@ describe('replStateMachine', () => {
       const [next] = reduce(s, keyAction('', {tab: true}))
       expect(next.input).toBe('x  ')
       expect(next.cursor).toBe(3)
-      expect(next.showWelcome).toBe(false)
     })
   })
 
@@ -1102,11 +1152,11 @@ describe('replStateMachine', () => {
       )
       // Pause first
       let s = typeChars(ready, '/pause')
-      ;[s] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      ;[s] = submit(s)
       expect(s.paused).toBe(true)
       // Resume
       s = typeChars(s, '/resume')
-      ;[s] = reduce(s, keyAction('', {return: true, ctrl: true}))
+      ;[s] = submit(s)
       expect(s.paused).toBe(false)
     })
   })
@@ -1210,7 +1260,9 @@ describe('replStateMachine', () => {
 
       // Type and submit
       repl.keyInput('1', NO_KEY)
-      repl.keyInput('', {...NO_KEY, return: true, ctrl: true})
+      repl.keyInput('', {...NO_KEY, return: true})
+      // Enter submits a tick later, once no pasted character has followed it
+      await new Promise((resolve) => setTimeout(resolve, 0))
       expect(calls).toContain('eval:1')
 
       // Restart
@@ -1251,7 +1303,7 @@ describe('replStateMachine', () => {
       messages$.next({type: 'ready', chip: 'ESP32', id: null, version: null})
 
       for (const ch of '/name') repl.keyInput(ch, NO_KEY)
-      repl.keyInput('', {...NO_KEY, return: true, ctrl: true})
+      repl.keyInput('', {...NO_KEY, return: true})
 
       // emitName defers to a microtask; flush before asserting. Without that
       // deferral the usage event is dropped by re-entry into the scan reducer.

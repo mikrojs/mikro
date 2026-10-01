@@ -7,6 +7,9 @@ import {afterEach, describe, expect, it} from 'vitest'
 import {ReplConsole} from '../serial/ReplConsole.js'
 import {
   createInitialState,
+  EMPTY_HINT,
+  INPUT_HINT,
+  type KeyInfo,
   reduce,
   type ReplAction,
   type ReplHandle,
@@ -31,6 +34,22 @@ function fakeRepl() {
     },
   } as unknown as ReplHandle
   return {repl, dispatch, current: () => state}
+}
+
+const NO_KEY: KeyInfo = {
+  ctrl: false,
+  meta: false,
+  shift: false,
+  return: false,
+  tab: false,
+  backspace: false,
+  delete: false,
+  leftArrow: false,
+  rightArrow: false,
+  upArrow: false,
+  downArrow: false,
+  home: false,
+  end: false,
 }
 
 /** Past the console's 16 ms audit and Ink's render */
@@ -74,6 +93,56 @@ describe('ReplConsole scrollback', () => {
     dispatch(logLine(count))
     await settle()
     expect(printedLines(lastFrame())).toEqual(expectedLines(count + 1))
+    unmount()
+  })
+})
+
+describe('ReplConsole clear', () => {
+  afterEach(cleanup)
+
+  it('wipes what was printed, and keeps it gone', async () => {
+    const {repl, dispatch} = fakeRepl()
+    const {lastFrame, unmount} = render(<ReplConsole repl={repl} />)
+    dispatch({type: 'deviceEvent', event: {type: 'ready', chip: 'ESP32', id: null, version: null}})
+    for (let i = 0; i < 3; i++) dispatch(logLine(i))
+    await settle()
+    expect(printedLines(lastFrame())).toEqual(expectedLines(3))
+
+    dispatch({type: 'key', ch: 'l', key: {...NO_KEY, ctrl: true}})
+    await settle()
+    // Ink replays all it printed in every frame here, as it does on a full
+    // redraw in a terminal: nothing of the old log may come back
+    expect(printedLines(lastFrame())).toEqual([])
+
+    dispatch(logLine(3))
+    await settle()
+    expect(printedLines(lastFrame())).toEqual(['line 3'])
+    unmount()
+  })
+})
+
+describe('ReplConsole hint', () => {
+  afterEach(cleanup)
+
+  it('follows the input', async () => {
+    const {repl, dispatch} = fakeRepl()
+    const {lastFrame, unmount} = render(<ReplConsole repl={repl} />)
+    const key = (ch: string, ctrl = false) => dispatch({type: 'key', ch, key: {...NO_KEY, ctrl}})
+    const hint = () => stripVTControlCharacters(lastFrame() ?? '')
+
+    dispatch({type: 'deviceEvent', event: {type: 'ready', chip: 'ESP32', id: null, version: null}})
+    await settle()
+    expect(hint()).toContain(EMPTY_HINT)
+
+    key('a')
+    await settle()
+    expect(hint()).toContain(INPUT_HINT)
+    expect(hint()).not.toContain(EMPTY_HINT)
+
+    // Ctrl+C clears the input, and the empty hint is back
+    key('c', true)
+    await settle()
+    expect(hint()).toContain(EMPTY_HINT)
     unmount()
   })
 })

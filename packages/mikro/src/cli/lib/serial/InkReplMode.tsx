@@ -1,11 +1,12 @@
 import spinners from 'cli-spinners'
-import {Text, useInput} from 'ink'
+import {Text} from 'ink'
 import {useCallback, useEffect, useMemo, useRef} from 'react'
 import {catchError, from, map, type Observable, of, shareReplay, switchMap} from 'rxjs'
 
 import type {LogLevel} from '../../../_exports/index.js'
 import {BAUD_RATE} from '../deploy.js'
 import {describeError} from '../errorMessage.js'
+import {useExitKeys} from '../exitKeys.js'
 import {triggerSafeMode} from '../recover.js'
 import type {ConnectReplOptions, ReplSession} from '../session.js'
 import {Spinner} from '../Spinner.js'
@@ -128,14 +129,9 @@ export function InkReplMode(props: InkReplModeProps) {
     }
   }, [ready, devicePath])
 
-  // Ctrl+C / Ctrl+Q while still connecting — the REPL's own bindings
-  // take over once it's active.
-  useInput(
-    (_ch, key) => {
-      if (key.ctrl && (_ch === 'c' || _ch === 'q')) process.exit(0)
-    },
-    {isActive: !ready},
-  )
+  // Exit while still connecting. The REPL's own bindings take over once it
+  // is active.
+  useExitKeys(!ready)
 
   if (connection instanceof Error) {
     return <Text color="red">Connection error: {describeError(connection)}</Text>

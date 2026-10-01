@@ -1400,16 +1400,20 @@ TEST_CASE("Directive state edge cases and fs argument forms" *
     append_frame(input, MIK_CMD_DIRECTIVE, "/ls /f.txt"); /* not a directory */
     append_frame(input, MIK_CMD_DIRECTIVE, "/cat /sub");  /* not a regular file */
     append_frame(input, MIK_CMD_DIRECTIVE, "/rm /sub");   /* unlink of a directory fails */
+    append_frame(input, MIK_CMD_DIRECTIVE, "/cat");       /* bare: usage, not "unknown" */
+    append_frame(input, MIK_CMD_DIRECTIVE, "/rm");
     append_frame(input, MIK_CMD_EXIT, "");
     auto frames = run_protocol(input);
 
     auto infos = find_frames(frames, MIK_MSG_INFO);
-    REQUIRE(infos.size() == 12);
+    REQUIRE(infos.size() == 14);
     CHECK(infos[0]->payload.find("Current depth") != std::string::npos);
     CHECK(infos[3]->payload.find("already paused") != std::string::npos);
     CHECK(infos[5]->payload.find("not paused") != std::string::npos);
     CHECK(infos[6]->payload.find("Filesystem:") != std::string::npos);
     CHECK(infos[7]->payload.find("inner") != std::string::npos); /* du lists the file */
+    CHECK(infos[12]->payload.find("Usage: /cat FILE") != std::string::npos);
+    CHECK(infos[13]->payload.find("Usage: /rm FILE") != std::string::npos);
 
     proto_teardown();
     nftw(root.c_str(), repl_rm_cb, 8, FTW_DEPTH | FTW_PHYS);

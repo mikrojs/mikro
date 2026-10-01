@@ -1,6 +1,6 @@
 import spinners from 'cli-spinners'
 import figures from 'figures'
-import {Box, Text, useInput} from 'ink'
+import {Box, Text, useInput, useStdout} from 'ink'
 import React, {useCallback, useEffect, useLayoutEffect, useMemo, useState} from 'react'
 import {auditTime} from 'rxjs'
 
@@ -14,10 +14,12 @@ import {TROUBLESHOOTING_HINT_DELAY_MS, TroubleshootingHint} from '../troubleshoo
 import {useObservable} from '../useObservable.js'
 import {
   createInitialState,
+  EMPTY_HINT,
+  INPUT_HINT,
   MULTILINE_HINT,
+  NOT_READY_HINT,
   type ReplHandle,
   type ReplLogEvent,
-  WELCOME_HINT,
 } from './replStateMachine.js'
 
 export interface ReplConsoleProps {
@@ -212,6 +214,10 @@ function shouldRender(event: ReplLogEvent, logLevel: LogLevel): boolean {
 
 const INITIAL_STATE = createInitialState()
 
+/** Erases the screen and puts the cursor at the top, as Ctrl+L does in a
+ *  shell. The scrollback stays: it also holds what ran before this command. */
+const CLEAR_SCREEN = '\x1b[2J\x1b[H'
+
 /** Coalesce state updates so a burst of device lines costs one render */
 const RENDER_AUDIT_MS = 16
 
@@ -269,6 +275,14 @@ export function ReplConsole({
   useInput((ch, key) => {
     if (!state.overlay) repl.keyInput(ch, key)
   })
+
+  // `/clear` and Ctrl+L: wipe the screen. The log below is keyed on the same
+  // count, so Ink also forgets what it printed and cannot bring it back on a
+  // full redraw.
+  const {write} = useStdout()
+  useEffect(() => {
+    if (state.clears > 0) write(CLEAR_SCREEN)
+  }, [state.clears, write])
 
   // Eval spinner (shown after 500ms of waiting for result)
   const [showEvalSpinner, setShowEvalSpinner] = useState(false)
@@ -361,7 +375,12 @@ export function ReplConsole({
 
   return (
     <>
-      <EventLog events={state.events} firstNumber={state.eventsDropped} onPrinted={handlePrinted}>
+      <EventLog
+        key={state.clears}
+        events={state.events}
+        firstNumber={state.eventsDropped}
+        onPrinted={handlePrinted}
+      >
         {(event, index) => {
           if (!shouldRender(event, logLevel)) return null
           const text = eventText(event, deviceName)
@@ -492,11 +511,10 @@ export function ReplConsole({
         </TitledBox>
         <Text dimColor>
           {isConnecting || isError
-            ? 'Ctrl+D to exit'
+            ? NOT_READY_HINT
             : (state.overrideHint ??
               (state.input.includes('\n') ? MULTILINE_HINT : null) ??
-              (state.showWelcome ? WELCOME_HINT : state.contextHint) ??
-              ' ')}
+              (state.input === '' ? EMPTY_HINT : (state.contextHint ?? INPUT_HINT)))}
         </Text>
       </Box>
     </>

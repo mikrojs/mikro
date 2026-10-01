@@ -1,7 +1,6 @@
 import * as pathlib from 'node:path'
 
 import type {InferValue} from '@optique/core/parser'
-import {useInput} from 'ink'
 import React, {useEffect, useState} from 'react'
 import {firstValueFrom, lastValueFrom, tap} from 'rxjs'
 
@@ -12,6 +11,7 @@ import {clearStaleConfigState} from '../lib/configSchema.js'
 import {loadEnvFiles, validateNvsKeys} from '../lib/deploy.js'
 import {formatDeployEvent} from '../lib/deployProgress.js'
 import {UserError} from '../lib/errorMessage.js'
+import {useExitKeys} from '../lib/exitKeys.js'
 import {agentFeatures, missingFeaturesError} from '../lib/featureGate.js'
 import {FirmwareIncompatibleError} from '../lib/firmwareCompat.js'
 import {flashFirmware} from '../lib/flashFirmware.js'
@@ -261,13 +261,8 @@ function DeployInner({
     )
   }, [config, device.path, compat])
 
-  // Ctrl+C / Ctrl+Q while the deploy is still running (no REPL yet).
-  useInput(
-    (_ch, key) => {
-      if (key.ctrl && (_ch === 'c' || _ch === 'q')) process.exit(0)
-    },
-    {isActive: !session},
-  )
+  // Exit while the deploy is still running (no REPL yet).
+  useExitKeys(!session)
 
   // Exit-on-error as a side effect, not inside render. Calling console.error
   // + process.exit during render triggers React's "nested component updates

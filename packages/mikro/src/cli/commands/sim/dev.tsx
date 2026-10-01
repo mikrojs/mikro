@@ -1,7 +1,7 @@
 import * as pathlib from 'node:path'
 
 import spinners from 'cli-spinners'
-import {Text, useApp, useInput} from 'ink'
+import {Text, useApp} from 'ink'
 import {useCallback, useEffect, useState} from 'react'
 import {filter, firstValueFrom, map, Subject, type Subscription} from 'rxjs'
 
@@ -13,6 +13,7 @@ import {
   createAgentStdinReader,
   forwardSessionToAgent,
 } from '../../lib/agent.js'
+import {useExitKeys} from '../../lib/exitKeys.js'
 import {openSim} from '../../lib/openSim.js'
 import {parseLogLevel, parseMinifier, parseMinifyLevel} from '../../lib/parseMinifier.js'
 import {resolveEntry} from '../../lib/resolveEntry.js'
@@ -266,18 +267,12 @@ function SimDevMode(props: DevModeProps) {
 
   // Ink's `exitOnCtrlC` is disabled at the cli.ts render call; until the REPL
   // is mounted (or while an error screen is showing), nothing else handles
-  // input — without this, ctrl-c is a black hole. Matches DevicePicker /
-  // InkReplMode / deploy convention (ctrl-c or ctrl-q).
+  // input — without this, ctrl-c is a black hole.
   const {exit: exitInk} = useApp()
-  useInput(
-    (input, key) => {
-      if (key.ctrl && (input === 'c' || input === 'q')) {
-        exitInk()
-        process.exit(error ? 1 : 0)
-      }
-    },
-    {isActive: !conn},
-  )
+  useExitKeys(!conn, () => {
+    exitInk()
+    process.exit(error ? 1 : 0)
+  })
 
   useEffect(() => {
     let disposed = false

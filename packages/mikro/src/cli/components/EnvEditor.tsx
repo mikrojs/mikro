@@ -2,6 +2,7 @@ import spinners from 'cli-spinners'
 import {Box, Text, useInput, useStdout} from 'ink'
 import React, {useCallback, useEffect, useState} from 'react'
 
+import {isExitKey, plainKey} from '../lib/keys.js'
 import type {EnvEntry} from '../lib/session.js'
 import {Spinner} from '../lib/Spinner.js'
 import {EMPTY_INPUT, type InputState, reduceInput, TextInput} from './TextInput.js'
@@ -91,8 +92,20 @@ export function EnvEditor({config, onClose}: EnvEditorProps) {
   )
 
   useInput((ch, key) => {
-    // ── Loading / saving: ignore input ────────────────────
+    // ── Exit keys back out one step: a field or a question to the list; the
+    // list, or a load or a save that does not come back, to whoever opened the
+    // editor ───────────────────────────────────────────────
+    if (isExitKey(ch, key)) {
+      if (mode.type === 'list' || mode.type === 'loading' || mode.type === 'saving') onClose()
+      else setMode({type: 'list'})
+      return
+    }
+
+    // ── Loading / saving: ignore other input ──────────────
     if (mode.type === 'loading' || mode.type === 'saving') return
+
+    // Letters are commands only without Ctrl or Alt: Ctrl+D is not `d`
+    const letter = plainKey(ch, key)
 
     // ── Error: any key returns to list ────────────────────
     if (mode.type === 'error') {
@@ -102,7 +115,7 @@ export function EnvEditor({config, onClose}: EnvEditorProps) {
 
     // ── Confirm delete ────────────────────────────────────
     if (mode.type === 'confirm-delete') {
-      if (ch === 'y' || ch === 'Y') {
+      if (letter === 'y' || letter === 'Y') {
         const entry = entries[mode.index]!
         setMode({type: 'saving', message: `Deleting ${entry.key}...`})
         void config.delete(entry.key).then(
@@ -120,10 +133,10 @@ export function EnvEditor({config, onClose}: EnvEditorProps) {
 
     // ── Add: secret prompt (y/n) ──────────────────────────
     if (mode.type === 'add-secret') {
-      if (ch === 'y' || ch === 'Y') {
+      if (letter === 'y' || letter === 'Y') {
         setInput(EMPTY_INPUT)
         setMode({type: 'add-value', key: mode.key, secret: true})
-      } else if (ch === 'n' || ch === 'N' || key.return) {
+      } else if (letter === 'n' || letter === 'N' || key.return) {
         setInput(EMPTY_INPUT)
         setMode({type: 'add-value', key: mode.key, secret: false})
       }
@@ -180,7 +193,7 @@ export function EnvEditor({config, onClose}: EnvEditorProps) {
     // ── List mode ─────────────────────────────────────────
     if (mode.type === 'list') {
       // Escape or q: exit
-      if (ch === 'q' || key.escape) {
+      if (letter === 'q' || key.escape) {
         onClose()
         return
       }
@@ -196,14 +209,14 @@ export function EnvEditor({config, onClose}: EnvEditorProps) {
       }
 
       // Add
-      if (ch === 'a') {
+      if (letter === 'a') {
         setInput(EMPTY_INPUT)
         setMode({type: 'add-key'})
         return
       }
 
       // Edit
-      if (ch === 'e' && entries.length > 0) {
+      if (letter === 'e' && entries.length > 0) {
         const entry = entries[selectedIndex]
         if (!entry) return
         setInput(entry.secret ? EMPTY_INPUT : {value: entry.value, cursor: entry.value.length})
@@ -212,7 +225,7 @@ export function EnvEditor({config, onClose}: EnvEditorProps) {
       }
 
       // Delete
-      if (ch === 'd' && entries.length > 0) {
+      if (letter === 'd' && entries.length > 0) {
         setMode({type: 'confirm-delete', index: selectedIndex})
         return
       }

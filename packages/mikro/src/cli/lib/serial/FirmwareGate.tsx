@@ -8,7 +8,9 @@ import {type ReactNode, useEffect, useRef, useState} from 'react'
 import {firstValueFrom} from 'rxjs'
 
 import {customFirmwareOf, type DeviceBoard, genericBoardOf} from '../bundledFirmware.js'
+import {AbortQuestion, useConfirmAbort} from '../exitKeys.js'
 import {flashFirmware} from '../flashFirmware.js'
+import {isExitKey, plainKey} from '../keys.js'
 import {detectPreferredPm, rerunCommand} from '../pkgManager.js'
 import {Spinner} from '../Spinner.js'
 import {openSession} from './openSession.js'
@@ -63,10 +65,6 @@ export interface FirmwareGateProps {
 export function FirmwareGate(props: FirmwareGateProps) {
   const {devicePath, command, yes, children} = props
   const [state, setState] = useState<GateState>({status: 'probing'})
-  // Ctrl+C during a flash asks for confirmation before aborting, since killing
-  // esptool mid-write can leave the device unbootable. Kept out of GateState so
-  // toggling it doesn't restart the flash effect.
-  const [confirmAbort, setConfirmAbort] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   // The features the device reports, so the reflash keeps its image, and the
   // board a device on the generic firmware was flashed as, to keep its name
@@ -150,24 +148,14 @@ export function FirmwareGate(props: FirmwareGateProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.status === 'flashing', devicePath])
 
-  // Ctrl+C while flashing: confirm first (aborting mid-write is dangerous),
-  // then abort esptool and exit. The flash keeps running under the prompt.
-  useInput(
-    (input, key) => {
-      const ctrlC = key.ctrl && (input === 'c' || input === 'q')
-      if (!confirmAbort) {
-        if (ctrlC) setConfirmAbort(true)
-        return
-      }
-      if (input.toLowerCase() === 'y') {
-        abortRef.current?.abort()
-        setState({status: 'aborted'})
-      } else if (input.toLowerCase() === 'n' || key.escape) {
-        setConfirmAbort(false)
-      }
-    },
-    {isActive: state.status === 'flashing'},
-  )
+  // An exit key while flashing: confirm first (killing esptool mid-write can
+  // leave the device unbootable), then abort esptool and exit. The flash keeps
+  // running under the question. Kept out of GateState so toggling it doesn't
+  // restart the flash effect.
+  const confirmAbort = useConfirmAbort(state.status === 'flashing', () => {
+    abortRef.current?.abort()
+    setState({status: 'aborted'})
+  })
 
   // Terminal states exit the process as a side effect (not during render).
   // 'flashed' is handled by FlashedNotice: it prompts to re-run (or, with
@@ -198,17 +186,7 @@ export function FirmwareGate(props: FirmwareGateProps) {
         <Text>
           <Spinner spinner={spinners.dots} /> {state.message}
         </Text>
-        {confirmAbort && (
-          <>
-            <Text color="yellow">
-              {figures.warning} Aborting mid-flash can leave the device unbootable and require a
-              manual re-flash.
-            </Text>
-            <Text>
-              Abort anyway? <Text bold>(y/N)</Text>
-            </Text>
-          </>
-        )}
+        {confirmAbort && <AbortQuestion during="flash" />}
       </Box>
     )
   }
@@ -248,12 +226,12 @@ function ReflashPrompt(props: {
   const {deviceVersion, onConfirm} = props
 
   useInput((input, key) => {
-    const ch = input.toLowerCase()
+    const ch = plainKey(input, key).toLowerCase()
     if (ch === 'y') {
       onConfirm({status: 'flashing', message: 'Preparing firmware…'})
     } else if (ch === 'n') {
       onConfirm({status: 'ok', compat: 'best-effort'})
-    } else if (ch === 'c' || key.return || key.escape || (key.ctrl && (ch === 'c' || ch === 'q'))) {
+    } else if (ch === 'c' || key.return || key.escape || isExitKey(input, key)) {
       // Cancel: exit without touching the device.
       process.exit(0)
     }
@@ -297,8 +275,8 @@ function FlashedNotice(props: {yes: boolean}) {
 
   useInput(
     (input, key) => {
-      if (key.ctrl && (input === 'c' || input === 'q')) process.exit(0)
-      const ch = input.toLowerCase()
+      if (isExitKey(input, key)) process.exit(0)
+      const ch = plainKey(input, key).toLowerCase()
       if (ch === 'y' || key.return) {
         setRerunning(true)
       } else if (ch === 'n' || key.escape) {
