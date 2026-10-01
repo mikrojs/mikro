@@ -249,6 +249,51 @@ TEST_CASE("MSG_READY board field decodes as generic on host" *
     proto_teardown();
 }
 
+/* One unsigned field of a MSG_READY map, or -1 when the field is absent. */
+static int64_t ready_uint(const ParsedFrame& ready, const char* name) {
+    nanocbor_value_t top, map;
+    nanocbor_decoder_init(&top, (const uint8_t*)ready.payload.data(), ready.payload.size());
+    if (nanocbor_enter_map(&top, &map) < 0) return -1;
+    while (!nanocbor_at_end(&map)) {
+        const uint8_t* key = nullptr;
+        size_t key_len = 0;
+        if (nanocbor_get_tstr(&map, &key, &key_len) < 0) return -1;
+        if (std::string((const char*)key, key_len) == name) {
+            uint32_t value = 0;
+            return nanocbor_get_uint32(&map, &value) >= 0 ? (int64_t)value : -1;
+        }
+        if (nanocbor_skip(&map) < 0) return -1;
+    }
+    return -1;
+}
+
+/* A port that restarts the app in place opens a session per app run, and the
+ * next run may boot with another memReserved. */
+TEST_CASE("MSG_READY reports the boot memory of its own app run" *
+          doctest::test_suite("repl_protocol")) {
+    MockTransportCtx mock;
+    MIKReplTransport transport = {};
+    transport.read = mock_transport_read;
+    transport.write = mock_transport_write;
+    transport.ctx = &mock;
+
+    const uint32_t reserved[] = {1000, 2000};
+    for (uint32_t mem_reserved : reserved) {
+        MIKRuntime* rt = MIK_NewRuntime();
+        rt->config.mem_reserved = mem_reserved;
+        MIK_CaptureBootMemory(rt);
+        MIK_ProtocolOpen(&transport);
+        MIK_ProtocolClose();
+        MIK_FreeRuntime(rt);
+    }
+
+    auto frames = parse_output(mock.output);
+    auto readies = find_frames(frames, MIK_MSG_READY);
+    REQUIRE(readies.size() == 2);
+    CHECK(ready_uint(*readies[0], "memRes") == 1000);
+    CHECK(ready_uint(*readies[1], "memRes") == 2000);
+}
+
 TEST_CASE("Protocol exits on CMD_EXIT" * doctest::test_suite("repl_protocol")) {
     proto_setup();
 

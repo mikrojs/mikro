@@ -437,8 +437,8 @@ extern bool mik__proto_send_in_progress;
 void MIK_ProtocolOpen(MIKReplTransport* transport);
 
 /* Close the session. Fires the transport's session_end hook (used for
- * deploy state cleanup), then clears all session state. Safe to call
- * from any state. */
+ * deploy state cleanup), then clears all session state, the boot memory
+ * reading included. Safe to call from any state. */
 void MIK_ProtocolClose(void);
 
 /* Bind a runtime to the active session. Required before serving any
@@ -446,15 +446,18 @@ void MIK_ProtocolClose(void);
  * and must detach before freeing. */
 void MIK_ProtocolAttach(MIKRuntime* mik_rt);
 
-/* Record what `mik_rt` was handed at boot, reported on MSG_READY. Call once,
+/* Record what `mik_rt` was handed at boot, reported on MSG_READY. Call it
  * from the boot path, at the point the app's entry is about to be evaluated:
  * the figures then describe the floor an app starts from rather than whatever
- * happens to be free when a client connects. Later calls are ignored, so a
- * supervisor that swaps runtimes can't overwrite the boot reading with a
- * per-test one. MIK_ProtocolAttach calls this itself, which covers embedders
- * that never call it; a boot path with a test supervisor should call it
- * explicitly, before the supervisor allocates, so both modes report the same
- * figure. */
+ * happens to be free when a client connects. The reading is kept until
+ * MIK_ProtocolClose and later calls before that are ignored, so a supervisor
+ * that swaps runtimes can't overwrite the boot reading with a per-test one.
+ * A port that restarts the app in place captures once per run, after the
+ * previous session's MIK_ProtocolClose and before the next MIK_ProtocolOpen:
+ * a reading taken before that close is dropped with the session.
+ * MIK_ProtocolAttach calls this itself, which covers embedders that never
+ * call it; a boot path with a test supervisor should call it explicitly,
+ * before the supervisor allocates, so both modes report the same figure. */
 void MIK_CaptureBootMemory(MIKRuntime* mik_rt);
 
 /* Unbind the current runtime. Call before MIK_FreeRuntime when swapping
