@@ -80,6 +80,13 @@ describe('without a terminal', () => {
     expect(existsSync(path.join(cwd, 'My Board'))).toBe(false)
   })
 
+  it('refuses a folder that already has files', () => {
+    expect(create('my-app', '-t', 'blank').status).toBe(0)
+    const result = create('my-app', '-t', 'blank')
+    expect(result.status).toBe(1)
+    expect(result.output).toContain('Directory "my-app" already exists and is not empty.')
+  })
+
   it('creates a firmware project for the chip given', () => {
     const result = create('my-app', '-t', 'blank', '--firmware', '--chip', 'esp32s3')
     expect(result.status).toBe(0)

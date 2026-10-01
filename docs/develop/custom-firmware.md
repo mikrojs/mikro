@@ -75,7 +75,7 @@ pn mikro idf build flash monitor
 An IDE that runs CMake itself, such as the ESP-IDF extension for VS Code, has to pass `MikroFirmware_DIR` too. Run `pn mikro idf reconfigure` once; the `MikroFirmware_DIR` line in `.mikro/build-fw/CMakeCache.txt` (`.mikro/build-fw-<folder>/` for a firmware project in a folder of the app) then has the folder. Add `-DMikroFirmware_DIR=<folder>` to the CMake arguments in the IDE's settings. After you update `@mikrojs/firmware`, check the folder again, because it can change.
 
 ::: tip The build says "qjsc not found"
-pnpm skipped the build script of `@mikrojs/quickjs`, which builds the QuickJS bytecode compiler. Run `pnpm approve-builds`, select `@mikrojs/quickjs`, and install again.
+The build compiles the QuickJS bytecode compiler (`qjsc`) with your computer's C compiler when it configures, and it found none. Install one (the Xcode Command Line Tools on macOS, `gcc` or `clang` on Linux) and build again.
 :::
 
 ## Change ESP-IDF settings

@@ -14,6 +14,7 @@ import {firmwareCmakeLists, firmwareGitignore} from './templates/_common/firmwar
 import {gitignore} from './templates/_common/gitignore.js'
 import {mikroConfig} from './templates/_common/mikro-config.js'
 import {packageJson} from './templates/_common/package-json.js'
+import {pnpmWorkspace} from './templates/_common/pnpm-workspace.js'
 import {prettierConfig} from './templates/_common/prettier-config.js'
 import {readme} from './templates/_common/readme.js'
 import {tsconfigJson} from './templates/_common/tsconfig.js'
@@ -239,6 +240,11 @@ export function scaffold(options: ScaffoldOptions) {
   if (firmware) {
     fs.writeFileSync(path.join(targetDir, 'CMakeLists.txt'), firmwareCmakeLists(projectName))
   }
+  // Not inside a pnpm workspace: the file would make the project a workspace
+  // of its own, cut off from that one's lockfile, catalog and packages.
+  if (pkgManager === 'pnpm' && !inPnpmWorkspace(targetDir)) {
+    fs.writeFileSync(path.join(targetDir, 'pnpm-workspace.yaml'), pnpmWorkspace)
+  }
   const templateMeta = TEMPLATES.find((t) => t.name === template)
   const envFileContent = envExample(templateMeta?.envVars)
   fs.writeFileSync(path.join(targetDir, '.env.example'), envFileContent)
@@ -261,6 +267,17 @@ export function scaffold(options: ScaffoldOptions) {
       firmware: firmware && chip !== undefined ? {chip} : undefined,
     }),
   )
+}
+
+/** Whether a folder above `dir` is the root of a pnpm workspace. */
+function inPnpmWorkspace(dir: string): boolean {
+  let parent = path.dirname(path.resolve(dir))
+  for (;;) {
+    if (fs.existsSync(path.join(parent, 'pnpm-workspace.yaml'))) return true
+    const next = path.dirname(parent)
+    if (next === parent) return false
+    parent = next
+  }
 }
 
 function copyDir(src: string, dest: string) {

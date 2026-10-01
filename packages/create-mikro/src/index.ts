@@ -10,6 +10,7 @@ import {run} from '@optique/run'
 
 import {args} from './args.js'
 import {scaffoldBoard} from './board.js'
+import {projectNameProblem, targetDirProblem} from './folder.js'
 import {printLogo} from './logo.js'
 import {formatTargetDir, isValidPackageName, packageNameFor, toValidPackageName} from './names.js'
 import {detectPkgManager, installCommand, mikroCommand} from './pkg-manager.js'
@@ -44,16 +45,36 @@ function exitMissing(what: string, how: string): never {
   process.exit(1)
 }
 
-/** The folder to create the project in: the argument, or asked for. */
-async function askTargetDir(arg: string | undefined, placeholder: string): Promise<string> {
+/** The folder to create the project in: the argument, or asked for until the
+ *  project can go there. */
+async function askTargetDir(
+  arg: string | undefined,
+  placeholder: string,
+  idf: boolean,
+): Promise<string> {
+  const cwd = process.cwd()
   const given = formatTargetDir(arg ?? '')
-  if (given) return given
+  if (given) {
+    const problem = targetDirProblem(given, cwd, idf)
+    if (problem) {
+      p.cancel(problem)
+      process.exit(1)
+    }
+    return given
+  }
   if (!process.stdin.isTTY) exitMissing('project name', 'as an argument')
+  // No name typed here could pass, so say it once instead of at every answer
+  if (idf && cwd.includes(' ')) {
+    p.cancel(
+      `ESP-IDF can't build in a path with spaces: "${cwd}". Run this in a folder without them.`,
+    )
+    process.exit(1)
+  }
   const name = await p.text({
     message: 'Project name',
     placeholder,
     defaultValue: placeholder,
-    validate: (value = '') => (formatTargetDir(value) ? undefined : 'Project name is required'),
+    validate: (value = '') => projectNameProblem(value, placeholder, cwd, idf),
   })
   if (p.isCancel(name)) exitCancelled()
   return formatTargetDir(name) || placeholder
@@ -85,27 +106,12 @@ function shellQuote(word: string): string {
   return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`
 }
 
-/** Where `targetDir` puts the project and its package name, or exits when it
- *  can't go there. `idf`: ESP-IDF builds in the folder. */
-async function resolveProject(targetDir: string, idf: boolean) {
+/** Where `targetDir` puts the project and its package name, or exits when the
+ *  name can't be made valid. */
+async function resolveProject(targetDir: string) {
   const cwd = process.cwd()
   const root = path.resolve(cwd, targetDir)
   const isCwd = root === cwd
-
-  if (idf && root.includes(' ')) {
-    p.cancel(`ESP-IDF can't build in a path with spaces: "${root}". Choose a folder without them.`)
-    process.exit(1)
-  }
-
-  if (isCwd) {
-    if (fs.existsSync(path.join(root, 'package.json'))) {
-      p.cancel('Current directory already contains a package.json.')
-      process.exit(1)
-    }
-  } else if (fs.existsSync(root) && fs.readdirSync(root).length > 0) {
-    p.cancel(`Directory "${targetDir}" already exists and is not empty.`)
-    process.exit(1)
-  }
 
   let pkgName = packageNameFor(targetDir, cwd)
   if (!isValidPackageName(pkgName)) {
@@ -150,8 +156,8 @@ async function createApp(config: Config): Promise<void> {
   checkChip(config.chip)
 
   // The folder first, as it depends on nothing else and may be refused
-  const targetDir = await askTargetDir(config.name, 'my-mikrojs-project')
-  const {isCwd, pkgName, root, cd} = await resolveProject(targetDir, config.firmware === true)
+  const targetDir = await askTargetDir(config.name, 'my-mikrojs-project', config.firmware === true)
+  const {isCwd, pkgName, root, cd} = await resolveProject(targetDir)
 
   let template = config.template
   if (template === undefined) {
@@ -218,8 +224,8 @@ async function createBoard(config: Config): Promise<void> {
   checkChip(config.chip)
 
   // The folder first, as it depends on nothing else and may be refused
-  const targetDir = await askTargetDir(config.name, 'my-board')
-  const {isCwd, pkgName, root, cd} = await resolveProject(targetDir, true)
+  const targetDir = await askTargetDir(config.name, 'my-board', true)
+  const {isCwd, pkgName, root, cd} = await resolveProject(targetDir)
 
   const chip = config.chip ?? (await askChip())
 
