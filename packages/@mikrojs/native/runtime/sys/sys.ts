@@ -1,5 +1,4 @@
 import {err, ok, PanicError, type Result} from 'mikro/result'
-import {getWakeupCause as nativeGetWakeupCause} from 'native:mikro/sleep'
 import * as native from 'native:mikro/sys'
 
 import type {DeviceName} from './types.js'
@@ -80,7 +79,7 @@ export function restart(): never {
 }
 
 export function getWakeupCause(): string {
-  return nativeGetWakeupCause()
+  return native.getWakeupCause()
 }
 
 export function exit(_exitCode?: number): never {

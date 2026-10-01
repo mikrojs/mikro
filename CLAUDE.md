@@ -190,6 +190,9 @@ typedef struct MIKPlatform {
     int (*stderr_write)(const void* buf, size_t len);
     int (*stdin_read)(void* buf, size_t len);
     const char* (*get_device_id)(void);     /* Unique device ID, or NULL */
+    const char* (*get_wakeup_cause)(void);  /* Sleep wake cause; hook may be NULL */
+    const char* (*get_chip_name)(void);     /* Chip id ("esp32c6"); NULL on hosts */
+    void (*get_chip_info)(MIKChipInfo* info); /* sys.board facts off ESP-IDF; NULL on hosts */
 } MIKPlatform;
 ```
 

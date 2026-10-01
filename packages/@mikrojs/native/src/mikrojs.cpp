@@ -103,7 +103,7 @@ static const char* const sys_exports[] = {
     "gc",              "setTime",               "uptime",       "restart",
     "version",         "board",                 "firmware",     "deviceId",
     "deviceName",      "setDeviceName",         "resetReason",  "activeTimers",
-    "unloadNamespace", "isUnloadableNamespace"};
+    "unloadNamespace", "isUnloadableNamespace", "getWakeupCause"};
 
 static int mik__sys_module_init(JSContext* ctx, JSModuleDef* m) {
     JSValue ns = JS_NewObjectProto(ctx, JS_NULL);

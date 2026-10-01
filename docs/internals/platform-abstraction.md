@@ -21,6 +21,7 @@ typedef struct MIKPlatform {
     // System control
     void (*restart)(void);                 // Reboot
     const char* (*get_reset_reason)(void); // Why the chip last reset
+    const char* (*get_wakeup_cause)(void); // What woke the chip from sleep (nullable)
     void (*yield)(void);                   // Cooperative yield
     void (*wait)(int64_t timeout_us);      // Block until wake() or the timeout (optional)
     void (*wake)(void);                    // End a wait, from a task (optional)
@@ -42,6 +43,8 @@ typedef struct MIKPlatform {
 
     // Identity
     const char* (*get_device_id)(void);   // Unique device ID (required)
+    const char* (*get_chip_name)(void);   // Chip id, e.g. "esp32c6" (NULL on hosts)
+    void (*get_chip_info)(MIKChipInfo* info); // sys.board facts off ESP-IDF (NULL on hosts)
 } MIKPlatform;
 ```
 
@@ -69,10 +72,13 @@ MIKRuntime* rt = MIK_NewRuntime();
 | `wait` / `wake`       | Condition variable with a latched wake           |
 | `restart`             | `exit(1)`                                        |
 | `get_reset_reason`    | Returns `"unknown"` (no chip reset concept)      |
+| `get_wakeup_cause`    | Unset (no deep sleep on desktop)                 |
 | `get_free_system_mem` | Returns 0 (not applicable)                       |
 | `stdout_write`        | `write(fileno(stdout), ...)`                     |
 | `stdin_read`          | Non-blocking `read(fileno(stdin), ...)`          |
 | `get_device_id`       | FNV-1a hash of hostname (stable across restarts) |
+| `get_chip_name`       | NULL (`sys.board.chip` reports `"host"`)         |
+| `get_chip_info`       | NULL (1 core, no flash, no features)             |
 
 The standalone library tests use the POSIX platform. The Node.js addon has its own (`addon/platform_node.cpp`) without `wait`, since the simulator sleeps between ticks in JavaScript.
 
@@ -89,10 +95,12 @@ The standalone library tests use the POSIX platform. The Node.js addon has its o
 | `wait` / `wake`       | Task notification index 1 on the main task    |
 | `restart`             | `esp_restart()`                               |
 | `get_reset_reason`    | `esp_reset_reason()` mapped to a string       |
+| `get_wakeup_cause`    | `esp_sleep_get_wakeup_causes()` as a string   |
 | `get_free_system_mem` | `esp_get_free_heap_size()`                    |
 | `get_fs_info`         | `esp_littlefs_info()`                         |
 | `stdout_write`        | UART/USB-serial output                        |
 | `get_device_id`       | Base MAC from efuse                           |
+| `get_chip_name`       | `CONFIG_IDF_TARGET` (`"esp32c6"`)             |
 
 ## What each function is used for
 
@@ -126,11 +134,17 @@ These functions feed `sys.info()` in JavaScript, which reports free heap, total 
 
 On ESP32, the 6-byte base MAC address is encoded as [Crockford's Base32](https://www.crockford.com/base32.html) (10 lowercase characters, no special symbols). The encoding is lossless: decoding the 10 characters recovers the original MAC bytes. On POSIX/Node, an FNV-1a hash of the hostname produces a stable ID that persists across restarts.
 
+`get_chip_name()` returns the chip the firmware runs on as a stable lowercase id (`"esp32c6"`, `"rp2350"`), exposed as `sys.board.chip`. The hook is optional: hosts leave it NULL and `sys.board.chip` reports `"host"`.
+
+`get_chip_info()` fills the rest of `sys.board` (`cores`, `revision`, `flash`, `psram`, `features`) on chips outside ESP-IDF, which `mik_sys.cpp` reads directly. `features` lists only radios whose stack is compiled in, so an app can check `sys.board.features.includes('wifi')`. Hosts leave it NULL.
+
 ### Reset reason
 
 `get_reset_reason()` returns a stable lowercase string describing why the chip last reset, exposed as `sys.resetReason` in JavaScript. On ESP32 it maps `esp_reset_reason()` (`"power-on"`, `"panic"`, `"brownout"`, `"deep-sleep"`, and so on); a clean `restart()` reports `"software"`. POSIX/Node has no chip-reset concept and returns `"unknown"`.
 
 Five of the strings are a contract, because the OTA trial verdict compares against them. `platform.h` defines them as `MIK_RESET_PANIC`, `MIK_RESET_WATCHDOG`, `MIK_RESET_INT_WATCHDOG`, `MIK_RESET_TASK_WATCHDOG` and `MIK_RESET_BROWNOUT`. The first four mean the trial build crashed and is rolled back; a brownout is absorbed a few times; every other string counts as a clean boot. A platform that reports a watchdog reset under another string has its crashing trial builds promoted instead of rolled back.
+
+`get_wakeup_cause()` returns what woke the chip from sleep (`"timer"`, `"ext0"`, `"gpio"`, and so on, or `"undefined"` when the boot was not a wake), exposed as `sys.getWakeupCause()`. The hook is optional: platforms without deep sleep leave it `NULL` and JavaScript sees `"undefined"`.
 
 The returned pointer must remain valid for the lifetime of the platform (a `static` buffer is fine).
 

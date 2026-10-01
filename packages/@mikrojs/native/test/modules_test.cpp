@@ -385,8 +385,7 @@ TEST_CASE("withUnload: real mikro/module export unloads (e2e)"
         "globalThis.__leafEvals = (globalThis.__leafEvals || 0) + 1;\n"
         "export const v = 99;\n");
     /* The real shipped withUnload() from mikro/module — no inlined
-     * copy. mikro/module imports only native:mikro/sys (pure C, host-available), so
-     * unlike mikro/sys it needs no native:mikro/sleep stub. */
+     * copy. mikro/module imports only native:mikro/sys (pure C, host-available). */
     std::string entry_src =
         "import {withUnload} from 'mikro/module';\n"
         "globalThis.__firstLoaded = await withUnload(import('" + leaf + "'), m => m.v);\n"

@@ -92,6 +92,7 @@ declare module 'native:mikro/sys' {
   export function setTime(millisSinceEpoch: number): void
   export function uptime(): {boot: number; rtc: number}
   export function restart(): never
+  export function getWakeupCause(): string
   export const version: string
   export const board: {
     name: string

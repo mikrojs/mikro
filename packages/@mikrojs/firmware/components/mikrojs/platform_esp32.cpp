@@ -342,6 +342,17 @@ static const char* esp32_get_reset_reason(void) {
     }
 }
 
+static const char* esp32_get_wakeup_cause(void) {
+    uint32_t causes = esp_sleep_get_wakeup_causes();
+    if (causes & BIT(ESP_SLEEP_WAKEUP_TIMER)) return "timer";
+    if (causes & BIT(ESP_SLEEP_WAKEUP_EXT0)) return "ext0";
+    if (causes & BIT(ESP_SLEEP_WAKEUP_EXT1)) return "ext1";
+    if (causes & BIT(ESP_SLEEP_WAKEUP_GPIO)) return "gpio";
+    if (causes & BIT(ESP_SLEEP_WAKEUP_TOUCHPAD)) return "touchpad";
+    if (causes & BIT(ESP_SLEEP_WAKEUP_ULP)) return "ulp";
+    return "undefined";
+}
+
 static void esp32_log(int level, const char* tag, const char* fmt, ...) {
     /* Map MIK_LOG_xxx to ESP_LOG_xxx for the runtime filter check. */
     esp_log_level_t esp_level;
@@ -401,6 +412,10 @@ static void esp32_net_init(void) {
     }
 }
 
+static const char* esp32_get_chip_name(void) {
+    return CONFIG_IDF_TARGET;
+}
+
 static const MIKPlatform esp32_platform = {
     .get_boot_us = esp32_get_boot_us,
     .get_rtc_us = esp32_get_rtc_us,
@@ -435,6 +450,8 @@ static const MIKPlatform esp32_platform = {
     .set_device_name = esp32_set_device_name,
     .get_reset_reason = esp32_get_reset_reason,
     .net_init = esp32_net_init,
+    .get_wakeup_cause = esp32_get_wakeup_cause,
+    .get_chip_name = esp32_get_chip_name,
 };
 
 /*
