@@ -63,8 +63,18 @@ my-app/
 The package and CLI were renamed from `mikrojs` to `mikro` with no compatibility shim. Use the `mikro` dependency, the `mikro` command, and `mikro/`-prefixed imports (for example `import {DigitalOut} from 'mikro/gpio'`). The `@mikrojs/*` package scope is unchanged.
 :::
 
-::: details pnpm reports "Ignored build scripts: @mikrojs/quickjs"
-`@mikrojs/quickjs` builds a small bytecode compiler (`qjsc`) in its postinstall script, and pnpm skips dependency build scripts unless they are approved. For the regular app workflow this is safe to ignore. You only need `qjsc` when building firmware from source (see [Custom Firmware](/develop/custom-firmware)); in that case run `pnpm approve-builds`, select `@mikrojs/quickjs`, and install again. Otherwise the firmware build fails with "qjsc not found".
+::: details pnpm and install scripts
+pnpm 11 and later stop an install when a dependency has an install script that nobody has decided on, and three of an app's dependencies have one. An app needs none of them, so `create mikro` gives an app created with pnpm a `pnpm-workspace.yaml` with `ignoreScripts: true`. Remove that line if you add a dependency that needs its install script.
+
+A board package gets no such file, and neither does an app created inside an existing pnpm workspace. There `pnpm install` reports "Ignored build scripts". Decide for the three packages in the workspace's `pnpm-workspace.yaml`:
+
+```yaml
+allowBuilds:
+  '@mikrojs/quickjs': false
+  '@serialport/bindings-cpp': false
+  esbuild: false
+```
+
 :::
 
 ## Plug in your board

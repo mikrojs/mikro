@@ -1,5 +1,13 @@
 import {execFileSync} from 'node:child_process'
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync} from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import {tmpdir} from 'node:os'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
@@ -216,6 +224,54 @@ describe('chip option', () => {
     expect(readFileSync(path.join(targetDir, 'README.md'), 'utf-8')).toContain(
       'idf set-target esp32c6',
     )
+  })
+})
+
+describe('pnpm project', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(path.join(tmpdir(), 'create-mikro-test-pnpm-'))
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, {recursive: true, force: true})
+  })
+
+  const workspaceFile = (pkgManager: 'pnpm' | 'npm') => {
+    const targetDir = path.join(tempDir, pkgManager)
+    scaffold({
+      targetDir,
+      template: 'blank',
+      projectName: 'test-project',
+      mikroVersion: '0.0.0',
+      templatesDir,
+      pkgManager,
+    })
+    return path.join(targetDir, 'pnpm-workspace.yaml')
+  }
+
+  it('skips install scripts, so pnpm does not stop over the ones it has no decision for', () => {
+    expect(readFileSync(workspaceFile('pnpm'), 'utf-8')).toContain('\nignoreScripts: true\n')
+  })
+
+  it('is written for pnpm only', () => {
+    expect(existsSync(workspaceFile('npm'))).toBe(false)
+  })
+
+  it('leaves a project inside a pnpm workspace to that workspace', () => {
+    writeFileSync(path.join(tempDir, 'pnpm-workspace.yaml'), 'packages:\n  - apps/*\n')
+    const targetDir = path.join(tempDir, 'apps', 'device')
+    scaffold({
+      targetDir,
+      template: 'blank',
+      projectName: 'device',
+      mikroVersion: '0.0.0',
+      templatesDir,
+      pkgManager: 'pnpm',
+    })
+    expect(existsSync(path.join(targetDir, 'package.json'))).toBe(true)
+    expect(existsSync(path.join(targetDir, 'pnpm-workspace.yaml'))).toBe(false)
   })
 })
 
