@@ -6,7 +6,7 @@
  * The HAL chain then applies __noreturn to a type, which fails C++
  * -Wattributes (treated as -Werror in ESP-IDF's default build). Compiling
  * this in C sidesteps the attribute restriction entirely, so every
- * esp_bt.h-touching call mik_ble.cpp needs is wrapped here.
+ * esp_bt.h-touching call mik_ble_esp32.cpp needs is wrapped here.
  */
 
 #include "esp_bt.h"

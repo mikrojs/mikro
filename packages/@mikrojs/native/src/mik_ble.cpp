@@ -5,23 +5,28 @@
 #include <string>
 #include <vector>
 
-#include "esp_log.h"
-#include "esp_mac.h"
+/* ESP-IDF has the FreeRTOS headers under freertos/ only. */
+#if __has_include("freertos/FreeRTOS.h")
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/semphr.h"
+#else
+#include "FreeRTOS.h"
+#include "queue.h"
+#include "semphr.h"
+#endif
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
-#include "host/util/util.h"
-#include "nimble/nimble_port.h"
-#include "nimble/nimble_port_freertos.h"
+#include "mikrojs/ble_port.h"
+#include "mikrojs/errors.h"
+#include "mikrojs/private.h"
+#include "mikrojs/utils.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
-#include "mik_ble_c_shim.h"
-#include "mikrojs/errors.h"
-#include "private.h"
-#include "utils.h"
+/* NimBLE host code shared by every chip. What differs per chip (controller
+ * bring-up, the host task, addresses, TX power) sits behind mikrojs/ble_port.h. */
 
 /* Internal helpers below return `MIK_ERR_BLE_*` int codes. This converter
  * maps those codes to the JS-side variant names used by mikrojs/ble, so
@@ -56,8 +61,6 @@ struct MIKBleState {
 static inline MIKBleState*& mik__ble_st(MIKRuntime* rt) {
     return reinterpret_cast<MIKBleState*&>(rt->module_data[mik__ble_slot]);
 }
-
-#define MIK_BLE_TAG "native:mikro/ble"
 
 /* Max advertising payload (31 bytes) minus mandatory flags overhead (3 bytes). */
 #define MIK_BLE_NAME_MAX_LEN 29
@@ -155,13 +158,12 @@ static MIKBleGattTable* s_gatt_table = nullptr;
  * loop thread (consumer). */
 static QueueHandle_t s_ble_event_queue = nullptr;
 
-/* Write payload pool. The mux guards both the data slots and the usage
+/* Write payload pool. The port lock guards both the data slots and the usage
  * bitmap; critical sections are microseconds long. The data/usage buffers
  * are heap-allocated lazily in mik__ble_ensure_initialized so builds that
  * never activate BLE don't pay for ~2 KB of .bss. */
 static uint8_t (*s_write_pool_data)[MIK_BLE_WRITE_POOL_BUF_SIZE] = nullptr;
 static bool* s_write_pool_used = nullptr;
-static portMUX_TYPE s_write_pool_mux = portMUX_INITIALIZER_UNLOCKED;
 
 /* JS event listeners. BLE state is global (single stack), so these live
  * outside the MIKBleState struct. Accessed only from the JS loop thread. */
@@ -184,10 +186,8 @@ struct MIKBleConnection {
 
 /* Heap-allocated in mik__ble_ensure_initialized alongside the write pool. */
 static MIKBleConnection* s_connections = nullptr;
-static portMUX_TYPE s_connections_mux = portMUX_INITIALIZER_UNLOCKED;
 
 /* Forward declarations */
-static void mik__ble_host_task(void* param);
 static void mik__ble_on_sync(void);
 static void mik__ble_on_reset(int reason);
 static int mik__ble_gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
@@ -198,34 +198,34 @@ static MIKBleChar* mik__ble_find_char_by_handle(uint16_t attr_handle);
 /* ── Write pool ─────────────────────────────────────────────────────── */
 
 static uint8_t* mik__ble_pool_alloc(void) {
-    portENTER_CRITICAL(&s_write_pool_mux);
+    mik__ble_port_lock();
     for (int i = 0; i < MIK_BLE_WRITE_POOL_SIZE; i++) {
         if (!s_write_pool_used[i]) {
             s_write_pool_used[i] = true;
-            portEXIT_CRITICAL(&s_write_pool_mux);
+            mik__ble_port_unlock();
             return s_write_pool_data[i];
         }
     }
-    portEXIT_CRITICAL(&s_write_pool_mux);
+    mik__ble_port_unlock();
     return nullptr;
 }
 
 static void mik__ble_pool_free(uint8_t* buf) {
     if (!buf) return;
-    portENTER_CRITICAL(&s_write_pool_mux);
+    mik__ble_port_lock();
     for (int i = 0; i < MIK_BLE_WRITE_POOL_SIZE; i++) {
         if (s_write_pool_data[i] == buf) {
             s_write_pool_used[i] = false;
             break;
         }
     }
-    portEXIT_CRITICAL(&s_write_pool_mux);
+    mik__ble_port_unlock();
 }
 
 /* ── Per-connection tracking ───────────────────────────────────────── */
 
 /* Find or allocate a connection slot by conn_handle. Returns nullptr if
- * all slots are full. Must be called with s_connections_mux held. */
+ * all slots are full. Must be called with the port lock held. */
 static MIKBleConnection* mik__ble_conn_find_or_alloc_locked(uint16_t handle) {
     for (int i = 0; i < MIK_BLE_MAX_CONNECTIONS; i++) {
         if (s_connections[i].active && s_connections[i].handle == handle) {
@@ -257,8 +257,7 @@ static MIKBleConnection* mik__ble_conn_find_locked(uint16_t handle) {
 static void mik__ble_set_default_name(void) {
     if (s_device_name[0] != '\0') return;
     uint8_t mac[6] = {};
-    esp_err_t err = esp_read_mac(mac, ESP_MAC_BT);
-    if (err == ESP_OK) {
+    if (mik__ble_port_address(mac) == 0) {
         snprintf(s_device_name, sizeof(s_device_name), "mikrojs-%02x%02x%02x", mac[3], mac[4],
                  mac[5]);
     } else {
@@ -582,10 +581,10 @@ static int mik__ble_gatt_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                 } else {
                     /* Queue full — return the buffer to the pool. */
                     mik__ble_pool_free(pool_buf);
-                    ESP_LOGW(MIK_BLE_TAG, "event queue full, dropping write event");
+                    MIK_BLE_LOGW("event queue full, dropping write event");
                 }
             } else {
-                ESP_LOGW(MIK_BLE_TAG, "write pool exhausted, dropping write event");
+                MIK_BLE_LOGW("write pool exhausted, dropping write event");
             }
         }
         return 0;
@@ -622,7 +621,7 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
             /* Track the new connection. If all slots are full the connection
              * is still valid at the NimBLE layer, but we won't be able to
              * route notifications to it — log a warn and continue. */
-            portENTER_CRITICAL(&s_connections_mux);
+            mik__ble_port_lock();
             MIKBleConnection* conn =
                 mik__ble_conn_find_or_alloc_locked(event->connect.conn_handle);
             if (conn) {
@@ -631,10 +630,10 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
                 conn->notify_subs = 0;
                 conn->indicate_subs = 0;
             }
-            portEXIT_CRITICAL(&s_connections_mux);
+            mik__ble_port_unlock();
             if (!conn) {
-                ESP_LOGW(MIK_BLE_TAG, "connection slots full, untracked conn %u",
-                         event->connect.conn_handle);
+                MIK_BLE_LOGW("connection slots full, untracked conn %u",
+                             event->connect.conn_handle);
             }
 
             evt.type = MIK_BLE_EVT_CONNECT;
@@ -658,7 +657,7 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
             uint8_t peer_addr[6] = {};
             uint16_t cached_mtu = 0;
 
-            portENTER_CRITICAL(&s_connections_mux);
+            mik__ble_port_lock();
             MIKBleConnection* conn = mik__ble_conn_find_locked(conn_handle);
             if (conn) {
                 memcpy(peer_addr, conn->peer_addr, 6);
@@ -667,7 +666,7 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
             } else {
                 memcpy(peer_addr, event->disconnect.conn.peer_ota_addr.val, 6);
             }
-            portEXIT_CRITICAL(&s_connections_mux);
+            mik__ble_port_unlock();
 
             evt.type = MIK_BLE_EVT_DISCONNECT;
             evt.conn_handle = conn_handle;
@@ -684,10 +683,10 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
             /* Update the cached MTU on the tracked connection so the
              * disconnect event later reflects the negotiated value, and so
              * notify payload validation uses the right ceiling. */
-            portENTER_CRITICAL(&s_connections_mux);
+            mik__ble_port_lock();
             MIKBleConnection* conn = mik__ble_conn_find_locked(event->mtu.conn_handle);
             if (conn) conn->mtu = event->mtu.value;
-            portEXIT_CRITICAL(&s_connections_mux);
+            mik__ble_port_unlock();
 
             evt.type = MIK_BLE_EVT_MTU;
             evt.conn_handle = event->mtu.conn_handle;
@@ -704,7 +703,7 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
             MIKBleChar* chr = mik__ble_find_char_by_handle(event->subscribe.attr_handle);
             if (!chr) return 0;
 
-            portENTER_CRITICAL(&s_connections_mux);
+            mik__ble_port_lock();
             MIKBleConnection* conn =
                 mik__ble_conn_find_locked(event->subscribe.conn_handle);
             if (conn) {
@@ -720,7 +719,7 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
                     conn->indicate_subs &= ~bit;
                 }
             }
-            portEXIT_CRITICAL(&s_connections_mux);
+            mik__ble_port_unlock();
             return 0;
         }
         default:
@@ -728,21 +727,12 @@ static int mik__ble_gap_event_cb(struct ble_gap_event* event, void* arg) {
     }
 }
 
-/* ── NimBLE host task + callbacks ──────────────────────────────────── */
-
-static void mik__ble_host_task(void* param) {
-    (void)param;
-    nimble_port_run();
-    nimble_port_freertos_deinit();
-}
+/* ── NimBLE host callbacks ─────────────────────────────────────────── */
 
 static void mik__ble_on_sync(void) {
-    int rc = ble_hs_util_ensure_addr(0);
-    if (rc == 0) {
-        rc = ble_hs_id_infer_auto(0, &s_own_addr_type);
-    }
+    int rc = mik__ble_port_select_address(&s_own_addr_type);
     if (rc != 0) {
-        ESP_LOGW(MIK_BLE_TAG, "ble_hs_id_infer_auto failed: %d", rc);
+        MIK_BLE_LOGW("address selection failed: %d", rc);
     }
 
     s_nimble_sync_done = true;
@@ -752,7 +742,7 @@ static void mik__ble_on_sync(void) {
 }
 
 static void mik__ble_on_reset(int reason) {
-    ESP_LOGW(MIK_BLE_TAG, "NimBLE host reset (reason=%d)", reason);
+    MIK_BLE_LOGW("NimBLE host reset (reason=%d)", reason);
     s_nimble_sync_done = false;
     s_advertising = false;
 }
@@ -809,11 +799,8 @@ static int mik__ble_ensure_initialized(MIKBleGattTable* new_table) {
             }
         }
 
-        esp_err_t err = nimble_port_init();
-        if (err != ESP_OK) {
-            ESP_LOGE(MIK_BLE_TAG, "nimble_port_init failed: %d", err);
-            return MIK_ERR_BLE_STACK_INIT_FAILED;
-        }
+        int err = mik__ble_port_init();
+        if (err != 0) return err;
 
         ble_hs_cfg.sync_cb = mik__ble_on_sync;
         ble_hs_cfg.reset_cb = mik__ble_on_reset;
@@ -824,12 +811,12 @@ static int mik__ble_ensure_initialized(MIKBleGattTable* new_table) {
         if (new_table && !new_table->svc_defs.empty()) {
             int rc = ble_gatts_count_cfg(new_table->svc_defs.data());
             if (rc != 0) {
-                ESP_LOGE(MIK_BLE_TAG, "ble_gatts_count_cfg failed: %d", rc);
+                MIK_BLE_LOGE("ble_gatts_count_cfg failed: %d", rc);
                 return MIK_ERR_BLE_GATT_REGISTRATION_FAILED;
             }
             rc = ble_gatts_add_svcs(new_table->svc_defs.data());
             if (rc != 0) {
-                ESP_LOGE(MIK_BLE_TAG, "ble_gatts_add_svcs failed: %d", rc);
+                MIK_BLE_LOGE("ble_gatts_add_svcs failed: %d", rc);
                 return MIK_ERR_BLE_GATT_REGISTRATION_FAILED;
             }
             s_gatt_table = new_table; /* take ownership */
@@ -838,13 +825,13 @@ static int mik__ble_ensure_initialized(MIKBleGattTable* new_table) {
         mik__ble_set_default_name();
         ble_svc_gap_device_name_set(s_device_name);
 
-        nimble_port_freertos_init(mik__ble_host_task);
+        mik__ble_port_start_host();
         s_nimble_initialized = true;
     }
 
     if (!s_nimble_sync_done) {
         if (xSemaphoreTake(s_sync_sem, pdMS_TO_TICKS(5000)) != pdTRUE) {
-            ESP_LOGE(MIK_BLE_TAG, "NimBLE sync timeout");
+            MIK_BLE_LOGE("NimBLE sync timeout");
             return MIK_ERR_BLE_STACK_INIT_FAILED;
         }
     }
@@ -874,7 +861,7 @@ static void mik__ble_cleanup_listeners_and_queue(JSContext* ctx) {
     }
 }
 
-static esp_err_t mik__ble_teardown(JSContext* ctx) {
+static int mik__ble_teardown(JSContext* ctx) {
     if (!s_nimble_initialized) {
         if (s_gatt_table) {
             mik__ble_free_gatt_table(ctx, s_gatt_table);
@@ -888,7 +875,7 @@ static esp_err_t mik__ble_teardown(JSContext* ctx) {
         s_write_pool_used = nullptr;
         free(s_connections);
         s_connections = nullptr;
-        return ESP_OK;
+        return 0;
     }
 
     if (s_advertising) {
@@ -896,17 +883,7 @@ static esp_err_t mik__ble_teardown(JSContext* ctx) {
         s_advertising = false;
     }
 
-    int rc = nimble_port_stop();
-    if (rc == 0) {
-        nimble_port_deinit();
-    } else {
-        ESP_LOGW(MIK_BLE_TAG, "nimble_port_stop failed: %d", rc);
-    }
-
-    /* Disable + deinit the BT controller to reclaim RAM. These calls live
-     * in mik_ble_c_shim.c because esp_bt.h cannot be included from C++. */
-    mik_ble_controller_disable();
-    mik_ble_controller_deinit();
+    int rc = mik__ble_port_stop();
 
     if (s_sync_sem) {
         vSemaphoreDelete(s_sync_sem);
@@ -920,9 +897,8 @@ static esp_err_t mik__ble_teardown(JSContext* ctx) {
 
     mik__ble_cleanup_listeners_and_queue(ctx);
 
-    /* Host task + GATT callbacks are gone after nimble_port_deinit, so
-     * nothing else can touch these buffers. Free unconditionally — the
-     * spinlock is unneeded once producers/consumers are torn down. */
+    /* The host is stopped, so no GATT callback can touch these buffers.
+     * Free unconditionally; the lock is unneeded once producers are gone. */
     free(s_write_pool_data);
     s_write_pool_data = nullptr;
     free(s_write_pool_used);
@@ -932,7 +908,7 @@ static esp_err_t mik__ble_teardown(JSContext* ctx) {
 
     s_nimble_initialized = false;
     s_nimble_sync_done = false;
-    return ESP_OK;
+    return rc;
 }
 
 /* ── Method implementations ────────────────────────────────────────── */
@@ -974,14 +950,13 @@ static JSValue mik__ble_get_address(JSContext* ctx, JSValue this_val, int argc, 
     (void)argc;
     (void)argv;
 
-    /* Read the BT MAC directly from efuse. This does not require the NimBLE
-     * stack to be running — so callers can read the address without locking
-     * themselves into broadcaster-only mode. */
+    /* Does not need the stack running, so callers can read the address
+     * without locking themselves into broadcaster-only mode. */
     uint8_t addr[6] = {};
-    esp_err_t err = esp_read_mac(addr, ESP_MAC_BT);
-    if (err != ESP_OK) {
+    int err = mik__ble_port_address(addr);
+    if (err != 0) {
         return mik__result_err_named(ctx, "GetFailed",
-                               "failed to read BT MAC address (err=0x%x)", err);
+                                     "failed to read the BLE address (err=0x%x)", err);
     }
 
     char addr_str[18];
@@ -995,8 +970,7 @@ static JSValue mik__ble_get_tx_power(JSContext* ctx, JSValue this_val, int argc,
     (void)argc;
     (void)argv;
 
-    int dbm = mik_ble_get_tx_power_dbm();
-    return mik__result_ok(ctx, JS_NewInt32(ctx, dbm));
+    return mik__result_ok(ctx, JS_NewInt32(ctx, mik__ble_port_get_tx_power()));
 }
 
 static JSValue mik__ble_set_tx_power(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
@@ -1007,10 +981,10 @@ static JSValue mik__ble_set_tx_power(JSContext* ctx, JSValue this_val, int argc,
     int32_t dbm;
     if (JS_ToInt32(ctx, &dbm, argv[0]) != 0) return JS_EXCEPTION;
 
-    int rc = mik_ble_set_tx_power_dbm(static_cast<int>(dbm));
+    int rc = mik__ble_port_set_tx_power(static_cast<int>(dbm));
     if (rc != 0) {
         return mik__result_err_named(ctx, "SetFailed",
-                               "failed to set TX power to %d dBm (rc=%d)", (int)dbm, rc);
+                                     "failed to set TX power to %d dBm (rc=%d)", (int)dbm, rc);
     }
     return mik__result_ok_void(ctx);
 }
@@ -1175,10 +1149,10 @@ static JSValue mik__ble_stop(JSContext* ctx, JSValue this_val, int argc, JSValue
     (void)argc;
     (void)argv;
 
-    esp_err_t err = mik__ble_teardown(ctx);
-    if (err != ESP_OK) {
+    int err = mik__ble_teardown(ctx);
+    if (err != 0) {
         return mik__result_err_named(ctx, "StackShutdown",
-                               "BLE stack shutdown failed (err=0x%x)", err);
+                               "BLE stack shutdown failed (err=%d)", err);
     }
     return mik__result_ok_void(ctx);
 }
@@ -1341,7 +1315,7 @@ static JSValue mik__ble_notify(JSContext* ctx, JSValue this_val, int argc, JSVal
     uint16_t min_mtu = 0xFFFF;
     uint32_t bit = 1u << chr->global_idx;
 
-    portENTER_CRITICAL(&s_connections_mux);
+    mik__ble_port_lock();
     for (int i = 0; i < MIK_BLE_MAX_CONNECTIONS; i++) {
         if (!s_connections[i].active) continue;
         if (!(s_connections[i].notify_subs & bit)) continue;
@@ -1350,7 +1324,7 @@ static JSValue mik__ble_notify(JSContext* ctx, JSValue this_val, int argc, JSVal
         if (s_connections[i].mtu < min_mtu) min_mtu = s_connections[i].mtu;
         sub_count++;
     }
-    portEXIT_CRITICAL(&s_connections_mux);
+    mik__ble_port_unlock();
 
     /* Always update the cached value, even if nobody is subscribed — that
      * way subsequent GATT reads see the current bytes, matching setValue
@@ -1379,12 +1353,12 @@ static JSValue mik__ble_notify(JSContext* ctx, JSValue this_val, int argc, JSVal
     for (int i = 0; i < sub_count; i++) {
         struct os_mbuf* om = ble_hs_mbuf_from_flat(value_buf, value_len);
         if (!om) {
-            ESP_LOGW(MIK_BLE_TAG, "notify mbuf alloc failed for conn %u", subs[i].handle);
+            MIK_BLE_LOGW("notify mbuf alloc failed for conn %u", subs[i].handle);
             continue;
         }
         int rc = ble_gatts_notify_custom(subs[i].handle, chr->val_handle, om);
         if (rc != 0) {
-            ESP_LOGW(MIK_BLE_TAG, "notify to conn %u failed: %d", subs[i].handle, rc);
+            MIK_BLE_LOGW("notify to conn %u failed: %d", subs[i].handle, rc);
             /* NimBLE frees the mbuf on both success and failure paths for
              * this API, so no cleanup needed here. */
         }
