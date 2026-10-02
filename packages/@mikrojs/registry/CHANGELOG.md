@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.22.1 (2026-10-02)
+
+### Features
+
+- **cli:** share exit keys across interactive screens, rework REPL keys ([#502](https://github.com/mikrojs/mikro/pull/502))
+
+### Bug fixes
+
+- **repl:** report each run's boot memory after an in-place restart ([#503](https://github.com/mikrojs/mikro/pull/503))
+- **create-mikro:** re-ask on existing folder, stop pnpm install failing in a new app ([#501](https://github.com/mikrojs/mikro/pull/501))
+- **firmware:** silence s_console warning on plain ESP32 ([#497](https://github.com/mikrojs/mikro/pull/497))
+
+### Other
+
+- **native:** read ESP32 board facts through the get_chip_info hook ([#505](https://github.com/mikrojs/mikro/pull/505))
+- **native:** share the NimBLE host code between chips ([#504](https://github.com/mikrojs/mikro/pull/504))
+- **native:** let ports outside ESP-IDF report board info ([#500](https://github.com/mikrojs/mikro/pull/500))
+- **native:** portable library for deploy, config, test supervisor + OTA ([#499](https://github.com/mikrojs/mikro/pull/499))
+
 ## 0.22.0 (2026-09-30)
 
 ### Features
