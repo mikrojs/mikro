@@ -18,8 +18,8 @@ extern "C" {
 #define MIK_RESET_TASK_WATCHDOG "task-watchdog"
 #define MIK_RESET_BROWNOUT "brownout"
 
-/* What sys.board reports about the chip. `features` is NULL-terminated
- * ("wifi", "ble", ...) and names only radios whose stack is compiled in. */
+/* What sys.board reports about the chip. `features` is NULL-terminated: "wifi",
+ * "ble" and "bt" only with their stack compiled in, "ieee802154" on silicon alone. */
 typedef struct MIKChipInfo {
     int cores;
     int revision;
@@ -133,8 +133,7 @@ typedef struct MIKPlatform {
      *  "rp2350"). NULL on hosts, where callers report "host". The returned
      *  pointer must remain valid for the lifetime of the platform. */
     const char* (*get_chip_name)(void);
-    /** Facts for sys.board on non-ESP-IDF chips (ESP-IDF builds read the
-     *  chip directly). NULL on hosts: 1 core, no flash, no features. */
+    /** Facts for sys.board. NULL on hosts: 1 core, no flash, no features. */
     void (*get_chip_info)(MIKChipInfo* info);
 } MIKPlatform;
 

@@ -4,11 +4,6 @@
 
 #ifdef CONFIG_IDF_TARGET
 #include <esp_app_desc.h>
-#include <esp_chip_info.h>
-#include <esp_flash.h>
-#ifdef CONFIG_SPIRAM
-#include <esp_psram.h>
-#endif
 #endif
 
 #include "mikrojs/platform.h"
@@ -219,46 +214,6 @@ static JSValue mik__sys_board(JSContext* ctx) {
     const char* chip = platform->get_chip_name ? platform->get_chip_name() : nullptr;
     JS_SetPropertyStr(ctx, obj, "chip", JS_NewString(ctx, chip ? chip : "host"));
 
-#ifdef CONFIG_IDF_TARGET
-    esp_chip_info_t chip_info;
-    esp_chip_info(&chip_info);
-    JS_SetPropertyStr(ctx, obj, "cores", JS_NewInt32(ctx, chip_info.cores));
-    JS_SetPropertyStr(ctx, obj, "revision", JS_NewInt32(ctx, chip_info.revision));
-
-    /* Features as string array. Callers use this to decide whether an
-     * optional module will work, so a radio only counts when the silicon
-     * has it AND the stack behind it was compiled in. */
-    JSValue features = JS_NewArray(ctx);
-    uint32_t fi = 0;
-#ifdef CONFIG_MIKROJS_WIFI
-    if (chip_info.features & CHIP_FEATURE_WIFI_BGN)
-        JS_SetPropertyUint32(ctx, features, fi++, JS_NewString(ctx, "wifi"));
-#endif
-#ifdef CONFIG_BT_ENABLED
-    if (chip_info.features & CHIP_FEATURE_BLE)
-        JS_SetPropertyUint32(ctx, features, fi++, JS_NewString(ctx, "ble"));
-    if (chip_info.features & CHIP_FEATURE_BT)
-        JS_SetPropertyUint32(ctx, features, fi++, JS_NewString(ctx, "bt"));
-#endif
-    /* No stack to gate on: mikrojs has no 802.15.4 API, so this stays a
-     * plain silicon report. */
-    if (chip_info.features & CHIP_FEATURE_IEEE802154)
-        JS_SetPropertyUint32(ctx, features, fi++, JS_NewString(ctx, "ieee802154"));
-    JS_SetPropertyStr(ctx, obj, "features", features);
-
-    /* Flash size in bytes */
-    uint32_t flash_size = 0;
-    esp_flash_get_size(NULL, &flash_size);
-    JS_SetPropertyStr(ctx, obj, "flash", JS_NewInt64(ctx, flash_size));
-
-    /* PSRAM size in bytes */
-#ifdef CONFIG_SPIRAM
-    JS_SetPropertyStr(ctx, obj, "psram", JS_NewInt64(ctx, esp_psram_get_size()));
-#else
-    JS_SetPropertyStr(ctx, obj, "psram", JS_NewInt64(ctx, 0));
-#endif
-
-#else
     MIKChipInfo info = {.cores = 1};
     if (platform->get_chip_info) platform->get_chip_info(&info);
     JS_SetPropertyStr(ctx, obj, "cores", JS_NewInt32(ctx, info.cores));
@@ -270,7 +225,6 @@ static JSValue mik__sys_board(JSContext* ctx) {
     JS_SetPropertyStr(ctx, obj, "features", features);
     JS_SetPropertyStr(ctx, obj, "flash", JS_NewInt64(ctx, static_cast<int64_t>(info.flash)));
     JS_SetPropertyStr(ctx, obj, "psram", JS_NewInt64(ctx, static_cast<int64_t>(info.psram)));
-#endif
     return obj;
 }
 

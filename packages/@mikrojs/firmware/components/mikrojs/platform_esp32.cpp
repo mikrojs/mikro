@@ -2,10 +2,15 @@
 #include "mikrojs_esp32.h"
 
 #include <esp_attr.h>
+#include <esp_chip_info.h>
+#include <esp_flash.h>
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 #include <esp_mac.h>
 #include <esp_netif.h>
+#ifdef CONFIG_SPIRAM
+#include <esp_psram.h>
+#endif
 #include <nanocbor/nanocbor.h>
 #include <nvs.h>
 #include <esp_random.h>
@@ -416,6 +421,39 @@ static const char* esp32_get_chip_name(void) {
     return CONFIG_IDF_TARGET;
 }
 
+static void esp32_get_chip_info(MIKChipInfo* info) {
+    esp_chip_info_t chip_info;
+    esp_chip_info(&chip_info);
+    info->cores = chip_info.cores;
+    info->revision = chip_info.revision;
+
+    /* Callers use the features to decide whether an optional module will
+     * work, so a radio only counts when the silicon has it AND the stack
+     * behind it was compiled in. */
+    static const char* features[5]; /* the four names below + NULL */
+    size_t n = 0;
+#ifdef CONFIG_MIKROJS_WIFI
+    if (chip_info.features & CHIP_FEATURE_WIFI_BGN) features[n++] = "wifi";
+#endif
+#ifdef CONFIG_BT_ENABLED
+    if (chip_info.features & CHIP_FEATURE_BLE) features[n++] = "ble";
+    if (chip_info.features & CHIP_FEATURE_BT) features[n++] = "bt";
+#endif
+    /* No stack to gate on: mikrojs has no 802.15.4 API, so this stays a
+     * plain silicon report. */
+    if (chip_info.features & CHIP_FEATURE_IEEE802154) features[n++] = "ieee802154";
+    features[n] = nullptr;
+    info->features = features;
+
+    uint32_t flash_size;
+    info->flash = esp_flash_get_size(NULL, &flash_size) == ESP_OK ? flash_size : 0;
+#ifdef CONFIG_SPIRAM
+    info->psram = esp_psram_get_size();
+#else
+    info->psram = 0;
+#endif
+}
+
 static const MIKPlatform esp32_platform = {
     .get_boot_us = esp32_get_boot_us,
     .get_rtc_us = esp32_get_rtc_us,
@@ -452,6 +490,7 @@ static const MIKPlatform esp32_platform = {
     .net_init = esp32_net_init,
     .get_wakeup_cause = esp32_get_wakeup_cause,
     .get_chip_name = esp32_get_chip_name,
+    .get_chip_info = esp32_get_chip_info,
 };
 
 /*

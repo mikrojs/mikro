@@ -44,7 +44,7 @@ typedef struct MIKPlatform {
     // Identity
     const char* (*get_device_id)(void);   // Unique device ID (required)
     const char* (*get_chip_name)(void);   // Chip id, e.g. "esp32c6" (NULL on hosts)
-    void (*get_chip_info)(MIKChipInfo* info); // sys.board facts off ESP-IDF (NULL on hosts)
+    void (*get_chip_info)(MIKChipInfo* info); // sys.board facts (NULL on hosts)
 } MIKPlatform;
 ```
 
@@ -136,7 +136,7 @@ On ESP32, the 6-byte base MAC address is encoded as [Crockford's Base32](https:/
 
 `get_chip_name()` returns the chip the firmware runs on as a stable lowercase id (`"esp32c6"`, `"rp2350"`), exposed as `sys.board.chip`. The hook is optional: hosts leave it NULL and `sys.board.chip` reports `"host"`.
 
-`get_chip_info()` fills the rest of `sys.board` (`cores`, `revision`, `flash`, `psram`, `features`) on chips outside ESP-IDF, which `mik_sys.cpp` reads directly. `features` lists only radios whose stack is compiled in, so an app can check `sys.board.features.includes('wifi')`. Hosts leave it NULL.
+`get_chip_info()` fills the rest of `sys.board` (`cores`, `revision`, `flash`, `psram`, `features`). `features` lists `wifi`, `ble` and `bt` only when their stack is compiled in, so an app can check `sys.board.features.includes('wifi')`; `ieee802154` reports silicon alone. Hosts leave it NULL.
 
 ### Reset reason
 
