@@ -24,6 +24,10 @@ describe('sys', () => {
     assert.truthy(board.cores > 0)
   })
 
+  test.runIf(board.chip !== 'host')('board reports the flash size on a chip', () => {
+    assert.truthy(board.flash > 0)
+  })
+
   test('firmware has expected properties', () => {
     assert.type(firmware, 'object')
     assert.type(firmware.idfVersion, 'string')
