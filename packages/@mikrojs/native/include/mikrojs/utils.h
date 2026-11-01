@@ -157,3 +157,8 @@ JSValue mik__result_err_tag(JSContext* ctx, const char* name);
  * ownership of `error_obj`. For variants with extra fields beyond
  * {name, message} — path, code, limit, etc. */
 JSValue mik__result_err_obj(JSContext* ctx, JSValue error_obj);
+/* Throw a PanicError, for a failure with no Result to return. Use it for
+ * hardware failures instead of JS_ThrowInternalError, which means the engine
+ * itself is in a bad state and which JS code cannot catch. */
+JSValue mik__throw_panic(JSContext* ctx, const char* fmt, ...)
+    __attribute__((format(printf, 2, 3)));

@@ -451,7 +451,7 @@ static JSClassDef mik_wifi_classdef = {
 static JSValue mik__wifi_constructor(JSContext* ctx, JSValue new_target, int argc, JSValue* argv) {
     esp_err_t err = mik__wifi_ensure_initialized(ctx);
     if (err != ESP_OK) {
-        return JS_ThrowInternalError(ctx, "WiFi init failed: %s", esp_err_to_name(err));
+        return mik__throw_panic(ctx, "WiFi init failed: %s", esp_err_to_name(err));
     }
     return JS_NewObjectClass(ctx, mik_wifi_class_id);
 }

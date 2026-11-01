@@ -19,8 +19,8 @@ void mik__blocking_begin(MIKRuntime* mik_rt) {
     mik_rt->blocking_armed = true;
 }
 
-int mik__watchdog_interrupt(JSRuntime* rt, void* opaque) {
-    (void)rt;
+int mik__watchdog_interrupt(JSContext* ctx, void* opaque) {
+    (void)ctx;
     MIKRuntime* mik_rt = static_cast<MIKRuntime*>(opaque);
     int budget_ms = mik_rt->config.blocking_timeout_ms;
     if (budget_ms <= 0 || !mik_rt->blocking_armed) {
@@ -109,9 +109,8 @@ void mik__watchdog_check(MIKRuntime* mik_rt) {
             mik__print_error_line("[watchdog] WATCHDOG TRIGGERED: time since last feed() exceeded "
                                   "configured limit of %d ms",
                                   mik_rt->config.feed_timeout_ms);
-            /* No JS frame is active here, so uncatchable marking is moot: the
-             * JS_HasException branch in MIK_Loop routes this before any user
-             * code runs. */
+            /* No JS frame is active here: the JS_HasException branch in
+             * MIK_Loop routes this before any user code runs. */
             JS_ThrowInternalError(mik_rt->ctx,
                                   "watchdog: time since last feed() exceeded configured limit "
                                   "of %d ms",

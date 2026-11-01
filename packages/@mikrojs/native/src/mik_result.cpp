@@ -122,6 +122,18 @@ JSValue mik__result_err_named(JSContext* ctx, const char* name, const char* fmt,
     return result;
 }
 
+JSValue mik__throw_panic(JSContext* ctx, const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    char msg[256];
+    vsnprintf(msg, sizeof(msg), fmt, ap);
+    va_end(ap);
+
+    JSValue error = JS_NewPlainError(ctx, "%s", msg);
+    define_prop(ctx, error, result_atoms(ctx).name, JS_NewString(ctx, "PanicError"));
+    return JS_Throw(ctx, error);
+}
+
 JSValue MIK_ResultOk(JSContext* ctx, JSValue value) { return mik__result_ok(ctx, value); }
 
 JSValue MIK_ResultOkVoid(JSContext* ctx) { return mik__result_ok_void(ctx); }

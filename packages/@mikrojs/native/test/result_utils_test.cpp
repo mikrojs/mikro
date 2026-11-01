@@ -360,6 +360,21 @@ static std::string take_exception_name(JSContext* ctx) {
     return out;
 }
 
+TEST_CASE_FIXTURE(RtFixture, "mik__throw_panic throws a catchable PanicError" *
+                                 doctest::test_suite("result")) {
+    CHECK(JS_IsException(mik__throw_panic(ctx, "light sleep failed: %s", "busy")));
+    JSValue exc = JS_GetException(ctx);
+    CHECK(JS_IsError(exc));
+    CHECK_FALSE(JS_IsUncatchableError(exc));
+    JSValue message = JS_GetPropertyStr(ctx, exc, "message");
+    const char* text = JS_ToCString(ctx, message);
+    CHECK(std::string(text) == "light sleep failed: busy");
+    JS_FreeCString(ctx, text);
+    JS_FreeValue(ctx, message);
+    JS_Throw(ctx, exc);
+    CHECK(take_exception_name(ctx) == "PanicError");
+}
+
 TEST_CASE("factory argument readers throw TypeError for the wrong types") {
     RtFixture f;
     int32_t n = -7;
