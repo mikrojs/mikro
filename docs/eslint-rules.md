@@ -85,11 +85,11 @@ Standard JavaScript functions still throw: `JSON.parse()` on invalid input, `ato
 
 ```typescript
 function parseJson(text: string): Result<unknown, {name: 'InvalidJson'}> {
-  // eslint-disable-next-line @mikrojs/no-try-catch -- JSON.parse has no Result form
   try {
     return ok(JSON.parse(text))
+    // eslint-disable-next-line @mikrojs/no-try-catch -- JSON.parse has no Result form
   } catch {
-    return err({name: 'InvalidJson'})
+    return err({name: 'InvalidJson' as const})
   }
 }
 ```

@@ -54,22 +54,9 @@ export interface ServerResponse {
 
 export type Handler = (req: ServerRequest) => ServerResponse | Promise<ServerResponse>
 
-/**
- * Called when a handler panics (throws or rejects) — an unexpected failure, not
- * the place for normal error handling. Receives the thrown value and the
- * request. Return a `ServerResponse` to send it; return nothing to fall back to
- * a plain 500. If the hook itself throws, the 500 fallback is used.
- */
-export type PanicHandler = (
-  error: unknown,
-  req: ServerRequest,
-) => ServerResponse | undefined | void | Promise<ServerResponse | undefined | void>
-
 export interface ServerOptions {
   /** Cap on the buffered request body, in bytes (default 16 KiB). */
   maxBodySize?: number
-  /** Hook invoked when a handler panics (throws). See {@link PanicHandler}. */
-  onPanic?: PanicHandler
 }
 
 export interface Server {
@@ -201,10 +188,6 @@ async function streamResponse(
       // means the client disconnected, so stop pulling from the generator.
       if (!(await native.respondChunk(id, bytes))) break
     }
-  } catch {
-    // The generator threw after status + headers were already sent, so the
-    // status can't change. End the response below to truncate it cleanly; the
-    // server keeps running.
   } finally {
     // Only end a stream we actually started, so the worker is always released
     // exactly once.
@@ -230,32 +213,11 @@ async function sendResponse(
   }
 }
 
-const FALLBACK_500: ServerResponse = {status: 500, body: 'Internal Server Error'}
-
-// A handler that panics (throws) is isolated to its one request so the server
-// keeps serving: run the optional onPanic hook for a custom response (and
-// server-side visibility), else send a plain 500. The httpd worker is blocked
-// until we respond, so every branch must produce exactly one response.
-async function handlePanic(
-  onPanic: PanicHandler | undefined,
-  error: unknown,
-  req: ServerRequest,
-): Promise<ServerResponse> {
-  if (!onPanic) return FALLBACK_500
-  try {
-    return (await onPanic(error, req)) ?? FALLBACK_500
-  } catch {
-    // The hook itself threw; don't let its bug hang the worker.
-    return FALLBACK_500
-  }
-}
-
 async function serveLoop(
   native: NativeHttpServerModule,
   handler: Handler,
   isRunning: () => boolean,
   cap: number,
-  onPanic: PanicHandler | undefined,
 ): Promise<void> {
   while (isRunning()) {
     let desc: NativeRequestDescriptor | {closed: true}
@@ -267,21 +229,9 @@ async function serveLoop(
     if ('closed' in desc) break
 
     const req = makeServerRequest(native, desc, cap)
-    // The whole per-request cycle (handler + send) is isolated so neither a
-    // throwing handler nor a failed send can break the serve loop and stall
-    // the server.
-    try {
-      let response: ServerResponse
-      try {
-        response = await handler(req)
-      } catch (e) {
-        response = await handlePanic(onPanic, e, req)
-      }
-      await sendResponse(native, desc.id, response)
-    } catch {
-      // Sending the response failed; the request is already past the point
-      // where we can change it. Keep serving the next request.
-    }
+    // A throw from the handler or its body generator is a panic, like a throw
+    // anywhere else: it leaves this loop as an unhandled rejection.
+    await sendResponse(native, desc.id, await handler(req))
   }
 }
 
@@ -295,7 +245,7 @@ export function createServerFromNative(native: NativeHttpServerModule): CreateSe
         const started = native.start(port, opts.maxBodySize)
         if (!started.ok) return started
         running = true
-        void serveLoop(native, handler, () => running, cap, opts.onPanic)
+        void serveLoop(native, handler, () => running, cap)
         return ok()
       },
       close() {

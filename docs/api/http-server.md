@@ -69,7 +69,7 @@ const server = createServer((req): ServerResponse => {
   const path = req.url.split('?')[0]
   if (req.method === 'GET' && path === '/status') return {status: 200, body: 'ok'}
   if (req.method === 'GET' && path?.startsWith('/echo/')) {
-    return {status: 200, body: decodeURIComponent(path.slice('/echo/'.length))}
+    return {status: 200, body: path.slice('/echo/'.length)}
   }
   return {status: 404, body: 'Not found'}
 })
@@ -107,25 +107,21 @@ A chunk may be a `string` (UTF-8 encoded) or a `Uint8Array`.
 
 ## Handling errors
 
-A handler that **panics** (throws or rejects) is isolated to its one request: the server keeps serving and the client gets a `500`. Pass an `onPanic` hook to log the failure or return a custom response:
+A handler that throws or rejects, or a body generator that throws, is a [panic](/error-handling#what-about-exceptions), the same as a throw anywhere else. It is reported with its stack, the client gets no response, and the device then does whatever [`onPanic`](/config#onpanic) says: by default it restarts.
+
+Anything a request can get wrong is an expected failure, so handle it inside the handler and return an explicit `{status, body}`. Otherwise any client on the network can restart your device. Check the [`Result`](/api/result) from `req.json()` and `req.text()`:
 
 ```ts twoslash
 import {createServer} from 'mikro/http/server'
 // ---cut---
-const server = createServer(
-  () => {
-    throw new Error('boom')
-  },
-  {
-    onPanic: (error, req) => {
-      console.error('handler panicked for %s', req.url)
-      return {status: 500, body: 'Something went wrong'}
-    },
-  },
-)
+const server = createServer(async (req) => {
+  const body = await req.json()
+  if (!body.ok) return {status: 400, body: 'Invalid JSON'}
+  return {status: 200, body: 'ok'}
+})
 ```
 
-If `onPanic` returns nothing (or itself throws), a plain `500` is sent. `onPanic` is a safety net for _unexpected_ throws, not where you do normal error handling: handle expected failures inside the handler (check the [`Result`](/api/result) from `req.json()`/`req.text()`) and return an explicit `{status, body}` for each case, so the handler never panics in the first place.
+Standard functions such as `decodeURIComponent()` throw on bad input. [Convert them to a `Result`](/eslint-rules#no-try-catch) at the call site.
 
 ## Serving static files
 
@@ -163,7 +159,6 @@ Validate or sandbox the path before opening files if untrusted clients can reach
 ```ts
 interface ServerOptions {
   maxBodySize?: number // cap on the buffered request body, bytes (default 16 KiB)
-  onPanic?: PanicHandler
 }
 ```
 
@@ -201,15 +196,6 @@ interface ServerResponse {
 ```
 
 String bodies are sent as UTF-8 bytes, but the response declares no charset unless you set one. For `text/html` (or any text type) with non-ASCII content, include it explicitly: `'content-type': 'text/html; charset=utf-8'`. Otherwise browsers can decode the bytes as Latin-1 and mangle them. JSON and `text/event-stream` are UTF-8 by spec and need no charset.
-
-### PanicHandler
-
-```ts
-type PanicHandler = (
-  error: unknown,
-  req: ServerRequest,
-) => ServerResponse | undefined | void | Promise<ServerResponse | undefined | void>
-```
 
 ## Errors
 
