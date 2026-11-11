@@ -220,12 +220,7 @@ async function serveLoop(
   cap: number,
 ): Promise<void> {
   while (isRunning()) {
-    let desc: NativeRequestDescriptor | {closed: true}
-    try {
-      desc = await native.nextRequest()
-    } catch {
-      break
-    }
+    const desc = await native.nextRequest()
     if ('closed' in desc) break
 
     const req = makeServerRequest(native, desc, cap)

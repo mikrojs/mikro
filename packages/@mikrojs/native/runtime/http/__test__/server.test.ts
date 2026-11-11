@@ -379,6 +379,17 @@ describe('createServerFromNative', () => {
     expect(fake.responses).toEqual([])
   })
 
+  it('panics when nextRequest throws', async () => {
+    const fake = createFakeNative()
+    fake.native.nextRequest = () => Promise.reject(new TypeError('nextRequest already pending'))
+    const createServer = createServerFromNative(fake.native)
+    const server = createServer(() => ({status: 200}))
+
+    const panic = nextUnhandledRejection()
+    server.listen({port: 80})
+    expect(await panic).toMatchObject({message: 'nextRequest already pending'})
+  })
+
   it('returns AlreadyListening on a second listen()', async () => {
     const fake = createFakeNative()
     const createServer = createServerFromNative(fake.native)
