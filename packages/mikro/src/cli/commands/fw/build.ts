@@ -376,6 +376,7 @@ export async function run(config: Args): Promise<void> {
         packageDir,
         toFlash.board.name,
         featuresOf(toFlash.board, toFlash.image),
+        config.force === true,
       )
       if (code !== 0) process.exit(code)
     }

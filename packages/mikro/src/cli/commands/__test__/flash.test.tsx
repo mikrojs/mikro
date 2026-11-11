@@ -112,9 +112,11 @@ describe('mikro flash confirmation', () => {
     const {lastFrame} = render(<Flash args={{port: PORT} as never} />)
 
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1))
-    expect(stripVTControlCharacters(lastFrame() ?? '')).toContain(
-      'Device is running custom firmware ("my-firmware")',
-    )
+    const frame = stripVTControlCharacters(lastFrame() ?? '').replaceAll(/\s+/g, ' ')
+    expect(frame).toContain('Device is running custom firmware ("my-firmware")')
+    // Also printed for `mikro fw build --flash`, which has --force but no --build-dir
+    expect(frame).toContain('Re-run with --force')
+    expect(frame).toContain('mikro flash --build-dir <your-firmware-build>')
   })
 
   it("warns before flashing a board's image over other firmware", async () => {

@@ -162,6 +162,7 @@ pn mikro fw build
 | `--image IMAGE` | Build only this image of each board, `full` or one of its [leaner images](/develop/creating-boards#leaner-images), and keep the others. A bare `--image` asks which, or without a terminal lists the images. A board that runs the generic firmware has no images of its own, so `--image` refuses it |
 | `--parallel N`  | Build up to N images at once, from all the boards, instead of one after another (`--parallel 4`). Each build writes its output to a log beside its build folder (`.mikro/build-fw+no-ble.log`), and a line per image says how it went. After a failure, no more builds start                          |
 | `--flash`       | Then flash the image it built, as [`mikro flash`](#mikro-flash) does. It needs one board (`--board` in a package with several) and, for a board with leaner images, `--image`                                                                                                                         |
+| `--force`       | With `--flash`, flash as `mikro flash --force` does: even over custom firmware, or when the new partition table would shrink the app filesystem and erase its files                                                                                                                                   |
 
 ### mikro fw list
 
