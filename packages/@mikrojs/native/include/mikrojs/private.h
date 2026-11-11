@@ -357,7 +357,7 @@ JSModuleDef* mik__test_load(JSContext* ctx);
  * (lightSleep). One store; the interrupt handler stamps on its next poll. */
 void mik__blocking_begin(struct MIKRuntime* mik_rt);
 /* JS_SetInterruptHandler callback; opaque is the MIKRuntime*. */
-int mik__watchdog_interrupt(JSRuntime* rt, void* opaque);
+int mik__watchdog_interrupt(JSContext* ctx, void* opaque);
 /* If the blocking deadline was hit, log the watchdog line and clear the
  * flag. Returns whether it did; callers print the error trace after. */
 bool mik__watchdog_report_blocking(struct MIKRuntime* mik_rt);

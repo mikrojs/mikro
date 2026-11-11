@@ -105,12 +105,12 @@ export default defineConfig({
 - **16-32 KB**: if your app doesn't use the network stack (for example a sensor logger over UART, or a BLE-only app). Firmware built without WiFi and BLE defaults to 16 KB.
 - **Don't go below ~8 KB.** Native subsystems always need some room.
 
-If JavaScript runs out of memory, you get an `InternalError`. It's catchable, but the handler runs with almost no memory left, so the realistic options are logging a short pre-built message and restarting. If the system heap runs out (native code), you get a hard reset. The reserve keeps these from happening at the same time.
+If JavaScript runs out of memory, you get an `InternalError`. JavaScript cannot catch it: `try`, `catch` and `finally` blocks are skipped, so it ends in a panic, which prints the stack trace and restarts the device. If the system heap runs out (native code), you get a hard reset. The reserve keeps these from happening at the same time.
 
 Two things worth knowing about how the reserve works:
 
 - `memReserved` is measured once, against free heap at boot. It covers the native subsystems' future demand from that point, and it caps how much JavaScript may allocate; it does not partition the heap, and native code is not held to it.
-- Treat it as choosing which side runs out first, not as a hard guarantee. JavaScript hits its limit with a catchable error while native subsystems keep their room to work. Large native bursts (a TLS handshake, a WiFi reconnect) are transient, which is why the 64 KB default is enough for most network apps even though the subsystems' combined peak can exceed it.
+- Treat it as choosing which side runs out first, not as a hard guarantee. JavaScript hits its limit with an `InternalError` and a stack trace while native subsystems keep their room to work. Large native bursts (a TLS handshake, a WiFi reconnect) are transient, which is why the 64 KB default is enough for most network apps even though the subsystems' combined peak can exceed it.
 
 ### Finding memory issues
 

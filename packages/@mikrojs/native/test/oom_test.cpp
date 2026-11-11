@@ -384,6 +384,105 @@ TEST_CASE("GC threshold untouched when mem_limit is 0 (unlimited)" *
     MIK_FreeRuntime(rt);
 }
 
+static bool global_flag(JSContext* ctx, const char* name) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue value = JS_GetPropertyStr(ctx, global, name);
+    bool flag = JS_ToBool(ctx, value) == 1;
+    JS_FreeValue(ctx, value);
+    JS_FreeValue(ctx, global);
+    return flag;
+}
+
+TEST_CASE("JS out-of-memory skips try/catch and finally" * doctest::test_suite("oom")) {
+    MIKRunOptions options;
+    MIK_DefaultOptions(&options);
+    options.mem_limit = 512 * 1024;
+    MIKRuntime* rt = MIK_NewRuntimeOptions(&options);
+    REQUIRE(rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    const char* src =
+        "(() => {\n"
+        "  const hog = [];\n"
+        "  try {\n"
+        "    while (true) hog.push(new ArrayBuffer(4096));\n"
+        "  } catch {\n"
+        "    globalThis.caught = true;\n"
+        "  } finally {\n"
+        "    globalThis.finallyRan = true;\n"
+        "  }\n"
+        "})();\n";
+    JSValue result = JS_Eval(ctx, src, strlen(src), "main.js", JS_EVAL_TYPE_GLOBAL);
+    REQUIRE(JS_IsException(result));
+    JSValue exc = JS_GetException(ctx);
+    CHECK(JS_IsUncatchableError(exc));
+    JS_FreeValue(ctx, exc);
+    CHECK_FALSE(global_flag(ctx, "caught"));
+    CHECK_FALSE(global_flag(ctx, "finallyRan"));
+
+    /* The hog died with its frame, so the runtime is usable again. */
+    const char* after = "globalThis.alive = true;";
+    result = JS_Eval(ctx, after, strlen(after), "main.js", JS_EVAL_TYPE_GLOBAL);
+    CHECK_FALSE(JS_IsException(result));
+    JS_FreeValue(ctx, result);
+    CHECK(global_flag(ctx, "alive"));
+
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("JS out-of-memory after an await ends as an unhandled rejection" *
+          doctest::test_suite("oom")) {
+    /* An async loop with a catch-all around its body, like the HTTP server's
+     * serve loop: the catch must not run, and the rejection stops the app. */
+    MIKRunOptions options;
+    MIK_DefaultOptions(&options);
+    options.mem_limit = 512 * 1024;
+    MIKRuntime* rt = MIK_NewRuntimeOptions(&options);
+    REQUIRE(rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    int error_count = 0;
+    MIK_SetErrorHandler(
+        rt, [](JSContext*, JSValue, void* opaque) { (*static_cast<int*>(opaque))++; },
+        &error_count);
+
+    const char* src =
+        "(async () => {\n"
+        "  const hog = [];\n"
+        "  try {\n"
+        "    await null;\n"
+        "    while (true) hog.push(new ArrayBuffer(4096));\n"
+        "  } catch {\n"
+        "    globalThis.caught = true;\n"
+        "  }\n"
+        "})();\n";
+    JSValue result = JS_Eval(ctx, src, strlen(src), "main.js", JS_EVAL_TYPE_GLOBAL);
+    CHECK_FALSE(JS_IsException(result));
+    JS_FreeValue(ctx, result);
+
+    CHECK_EQ(1, MIK_Loop(rt));
+    CHECK_EQ(1, error_count);
+    CHECK_FALSE(global_flag(ctx, "caught"));
+
+    MIK_FreeRuntime(rt);
+}
+
+TEST_CASE("Stack overflow stays catchable" * doctest::test_suite("oom")) {
+    MIKRuntime* rt = MIK_NewRuntime();
+    REQUIRE(rt != nullptr);
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    const char* src =
+        "function recurse() { recurse(); }\n"
+        "try { recurse(); } catch (e) { globalThis.caught = e instanceof RangeError; }\n";
+    JSValue result = JS_Eval(ctx, src, strlen(src), "main.js", JS_EVAL_TYPE_GLOBAL);
+    CHECK_FALSE(JS_IsException(result));
+    JS_FreeValue(ctx, result);
+    CHECK(global_flag(ctx, "caught"));
+
+    MIK_FreeRuntime(rt);
+}
+
 TEST_CASE("No OOM event when mem_limit is 0 (unlimited)" * doctest::test_suite("oom")) {
     /* mem_limit == 0 means no soft cap. The pre-eval check should
      * short-circuit and never fire. */

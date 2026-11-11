@@ -2,8 +2,8 @@ diff --git a/quickjs.c b/quickjs.c
 index 8155888..ffe0951 100644
 --- a/quickjs.c
 +++ b/quickjs.c
-@@ -31238,9 +31238,19 @@ done:
-     goto done;
+@@ -32096,9 +32096,19 @@ int JS_FinishDynamicImport(JSContext *ctx, JSValue token, JSValue promise,
+     return ret;
  }
  
 +/* mikrojs patch: once a module reaches EVALUATED its init function can

@@ -1021,7 +1021,7 @@ JSValue mik__load_module_ns(JSContext* ctx, const char* importer, const char* sp
     JSAtom name = JS_NewAtom(ctx, specifier);
     JSModuleDef* m = JS_FindLoadedModule(ctx, name);
     if (!m) {
-        JSValue p = JS_LoadModule(ctx, importer, specifier);
+        JSValue p = JS_LoadModule(ctx, importer, specifier, JS_UNDEFINED);
         if (JS_IsException(p)) {
             /* Propagate the loader's real error (e.g. a syntax error in a
              * virtual stub), not a generic resolution failure. */

@@ -79,7 +79,7 @@ static JSValue mik__host_call(JSContext* ctx, JSValue this_val, int argc, JSValu
     } catch (const Napi::Error& e) {
         JS_FreeCString(ctx, method);
         if (args_json) JS_FreeCString(ctx, args_json);
-        return JS_ThrowInternalError(ctx, "RPC handler error: %s", e.Message().c_str());
+        return mik__throw_panic(ctx, "RPC handler error: %s", e.Message().c_str());
     }
 
     JS_FreeCString(ctx, method);

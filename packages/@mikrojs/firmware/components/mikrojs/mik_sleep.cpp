@@ -46,7 +46,7 @@ static bool mik__configure_timer(JSContext* ctx, JSValue sources) {
             uint64_t us = static_cast<uint64_t>(ms * 1000.0);
             esp_err_t err = esp_sleep_enable_timer_wakeup(us);
             if (err != ESP_OK) {
-                JS_ThrowInternalError(ctx, "timer wakeup failed: %s", esp_err_to_name(err));
+                mik__throw_panic(ctx, "timer wakeup failed: %s", esp_err_to_name(err));
                 ok = false;
             }
         }
@@ -101,13 +101,13 @@ static bool mik__configure_gpio(JSContext* ctx, JSValue sources, int* wake_gpio)
     *wake_gpio = gpio;
     esp_err_t err = gpio_wakeup_enable(static_cast<gpio_num_t>(gpio), intr);
     if (err != ESP_OK) {
-        JS_ThrowInternalError(ctx, "gpio_wakeup_enable failed on GPIO %d: %s", gpio,
-                              esp_err_to_name(err));
+        mik__throw_panic(ctx, "gpio_wakeup_enable failed on GPIO %d: %s", gpio,
+                         esp_err_to_name(err));
         return false;
     }
     err = esp_sleep_enable_gpio_wakeup();
     if (err != ESP_OK) {
-        JS_ThrowInternalError(ctx, "GPIO wakeup source failed: %s", esp_err_to_name(err));
+        mik__throw_panic(ctx, "GPIO wakeup source failed: %s", esp_err_to_name(err));
         return false;
     }
     return true;
@@ -137,14 +137,13 @@ static bool mik__configure_ext0(JSContext* ctx, JSValue sources) {
     mik__rtc_pull_for_wake(gpio, level == 1);
     esp_err_t err = esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(gpio), level);
     if (err != ESP_OK) {
-        JS_ThrowInternalError(ctx, "EXT0 wakeup on GPIO %d failed: %s", gpio,
-                              esp_err_to_name(err));
+        mik__throw_panic(ctx, "EXT0 wakeup on GPIO %d failed: %s", gpio, esp_err_to_name(err));
         return false;
     }
     return true;
 #else
     JS_FreeValue(ctx, ext0);
-    JS_ThrowInternalError(ctx, "EXT0 wakeup is not supported on this chip");
+    mik__throw_panic(ctx, "EXT0 wakeup is not supported on this chip");
     return false;
 #endif
 }
@@ -230,13 +229,13 @@ static bool mik__configure_ext1(JSContext* ctx, JSValue sources) {
     esp_err_t err = esp_sleep_enable_ext1_wakeup(
         pin_mask, static_cast<esp_sleep_ext1_wakeup_mode_t>(mode_value));
     if (err != ESP_OK) {
-        JS_ThrowInternalError(ctx, "EXT1 wakeup failed: %s", esp_err_to_name(err));
+        mik__throw_panic(ctx, "EXT1 wakeup failed: %s", esp_err_to_name(err));
         return false;
     }
     return true;
 #else
     JS_FreeValue(ctx, ext1);
-    JS_ThrowInternalError(ctx, "EXT1 wakeup is not supported on this chip");
+    mik__throw_panic(ctx, "EXT1 wakeup is not supported on this chip");
     return false;
 #endif
 }
@@ -300,7 +299,7 @@ static JSValue mik__sleep_light(JSContext* ctx, JSValue this_val, int argc, JSVa
     mik__watchdog_wake(MIK_GetRuntime(ctx));
 
     if (err != ESP_OK)
-        return JS_ThrowInternalError(ctx, "light sleep failed: %s", esp_err_to_name(err));
+        return mik__throw_panic(ctx, "light sleep failed: %s", esp_err_to_name(err));
 
     return JS_UNDEFINED;
 }

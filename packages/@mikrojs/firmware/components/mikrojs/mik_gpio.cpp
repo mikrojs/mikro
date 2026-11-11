@@ -518,8 +518,8 @@ static JSValue js_digital_in_get_on_change(JSContext* ctx, JSValueConst this_val
         JS_FreeValue(ctx, s->next_fn);
         JS_FreeValue(ctx, s->complete_fn);
         s->observable = s->next_fn = s->complete_fn = JS_UNDEFINED;
-        return JS_ThrowInternalError(ctx, "gpio_isr_handler_add failed on GPIO %d: %s", s->gpio,
-                                     esp_err_to_name(err));
+        return mik__throw_panic(ctx, "gpio_isr_handler_add failed on GPIO %d: %s", s->gpio,
+                                esp_err_to_name(err));
     }
     s->isr_added = true;
     s->ctx = ctx;

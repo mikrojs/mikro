@@ -76,7 +76,7 @@ Values below 1000 ms are raised to 1000 at boot with a warning.
 
 ### `stackSize`
 
-QuickJS C stack size. Controls how deep call stacks and recursion can go before hitting a stack overflow. The default is set by the firmware and is suitable for most apps. Only increase this if you hit `InternalError: stack overflow` on code that genuinely needs deep recursion.
+QuickJS C stack size. Controls how deep call stacks and recursion can go before hitting a stack overflow. The default is set by the firmware and is suitable for most apps. Only increase this if you hit `RangeError: Maximum call stack size exceeded` on code that genuinely needs deep recursion.
 
 ### `memReserved`
 
@@ -86,7 +86,7 @@ The default is 64 KB, or 16 KB on firmware built without WiFi and BLE (such as t
 
 - If your app doesn't touch the network stack, **lower it** (16-32 KB). This leaves more of the heap for JS and module loading.
 - **Keep the default** (64 KB) for anything with WiFi + HTTPS. TLS handshakes need contiguous multi-KB buffers.
-- **Don't go below ~8 KB** unless you know exactly what your native side does. If system heap hits 0 while QuickJS still thinks it has budget left, that's a hard crash rather than a catchable JS OOM.
+- **Don't go below ~8 KB** unless you know exactly what your native side does. If system heap hits 0 while QuickJS still thinks it has budget left, that's a hard crash rather than a JS out-of-memory error with a stack trace.
 
 Use `/mem` in the REPL to verify: the **System** line should have a comfortable cushion over the **QuickJS** line. See [Configuring memReserved](/developing-for-microcontrollers#configuring-memreserved) for more guidance.
 
