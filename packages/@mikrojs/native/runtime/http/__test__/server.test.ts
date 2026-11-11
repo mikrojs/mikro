@@ -132,6 +132,28 @@ function createFakeNative(opts: {startError?: ServerError; disconnectAfter?: num
 
 const decode = (b?: Uint8Array) => (b ? new TextDecoder().decode(b) : '')
 
+type RejectionListener = (reason: unknown) => void
+// The runtime tsconfig has no Node types.
+declare const process: {
+  listeners(event: 'unhandledRejection'): RejectionListener[]
+  removeAllListeners(event: 'unhandledRejection'): void
+  on(event: 'unhandledRejection', listener: RejectionListener): void
+  once(event: 'unhandledRejection', listener: RejectionListener): void
+}
+
+// A panic leaves the serve loop as an unhandled rejection. Take the next one
+// from the test runner, which would otherwise fail the run on it.
+function nextUnhandledRejection(): Promise<unknown> {
+  const listeners = process.listeners('unhandledRejection')
+  process.removeAllListeners('unhandledRejection')
+  return new Promise((resolve) => {
+    process.once('unhandledRejection', (reason) => {
+      for (const listener of listeners) process.on('unhandledRejection', listener)
+      resolve(reason)
+    })
+  })
+}
+
 /* ── Tests ─────────────────────────────────────────────────────────── */
 
 describe('createServerFromNative', () => {
@@ -276,7 +298,7 @@ describe('createServerFromNative', () => {
     expect(pulled).toBe(3)
   })
 
-  it('truncates cleanly when the generator throws mid-stream', async () => {
+  it('ends the stream and panics when the generator throws mid-stream', async () => {
     const fake = createFakeNative()
     const createServer = createServerFromNative(fake.native)
     async function* gen() {
@@ -286,9 +308,11 @@ describe('createServerFromNative', () => {
     const server = createServer(() => ({status: 200, body: gen()}))
     server.listen({port: 80})
 
+    const panic = nextUnhandledRejection()
     const res = await fake.inject({url: '/stream'})
     expect(res.streamed).toBe(true)
     expect(decode(res.body)).toBe('partial')
+    expect(await panic).toMatchObject({message: 'mid-stream boom'})
   })
 
   it('normalizes Record response headers to tuples', async () => {
@@ -326,7 +350,7 @@ describe('createServerFromNative', () => {
     expect(bodyErr?.name).toBe('BodyTooLarge')
   })
 
-  it('responds 500 when a handler throws', async () => {
+  it('panics without responding when a handler throws', async () => {
     const fake = createFakeNative()
     const createServer = createServerFromNative(fake.native)
     const server = createServer(() => {
@@ -334,71 +358,25 @@ describe('createServerFromNative', () => {
     })
     server.listen({port: 80})
 
-    const res = await fake.inject({url: '/'})
-    expect(res.status).toBe(500)
-    expect(decode(res.body)).toBe('Internal Server Error')
+    const panic = nextUnhandledRejection()
+    void fake.inject({url: '/'})
+    expect(await panic).toMatchObject({message: 'boom'})
+    expect(fake.responses).toEqual([])
   })
 
-  it('invokes onPanic with the error and request, sending its response', async () => {
+  it('panics without responding when a handler rejects', async () => {
     const fake = createFakeNative()
     const createServer = createServerFromNative(fake.native)
-    let seenError: unknown
-    let seenUrl: string | undefined
-    const server = createServer(
-      () => {
-        throw new Error('boom')
-      },
-      {
-        onPanic: (error, req) => {
-          seenError = error
-          seenUrl = req.url
-          return {status: 503, body: 'try later'}
-        },
-      },
-    )
-    server.listen({port: 80})
-
-    const res = await fake.inject({url: '/widgets'})
-    expect((seenError as Error).message).toBe('boom')
-    expect(seenUrl).toBe('/widgets')
-    expect(res.status).toBe(503)
-    expect(decode(res.body)).toBe('try later')
-  })
-
-  it('falls back to 500 when onPanic returns nothing or itself throws', async () => {
-    const fake = createFakeNative()
-    const createServer = createServerFromNative(fake.native)
-    const server = createServer(
-      () => {
-        throw new Error('boom')
-      },
-      {
-        onPanic: () => {
-          throw new Error('hook bug')
-        },
-      },
-    )
-    server.listen({port: 80})
-
-    const res = await fake.inject({url: '/'})
-    expect(res.status).toBe(500)
-  })
-
-  it('isolates a handler throw and keeps serving', async () => {
-    const fake = createFakeNative()
-    const createServer = createServerFromNative(fake.native)
-    let n = 0
-    const server = createServer(() => {
-      n++
-      if (n === 1) throw new Error('boom')
-      return {status: 200, body: 'recovered'}
+    const server = createServer(async () => {
+      await Promise.resolve()
+      throw new Error('boom')
     })
     server.listen({port: 80})
 
-    const first = await fake.inject({url: '/'})
-    expect(first.status).toBe(500)
-    const second = await fake.inject({url: '/'})
-    expect(decode(second.body)).toBe('recovered')
+    const panic = nextUnhandledRejection()
+    void fake.inject({url: '/'})
+    expect(await panic).toMatchObject({message: 'boom'})
+    expect(fake.responses).toEqual([])
   })
 
   it('returns AlreadyListening on a second listen()', async () => {

@@ -18,6 +18,7 @@ Join an existing WiFi network and serve a small HTTP API: a JSON status endpoint
 ```ts twoslash
 import {env} from 'mikro/env'
 import {createServer, type ServerResponse} from 'mikro/http/server'
+import {err, ok, type Result} from 'mikro/result'
 import {sleep} from 'mikro/sleep'
 import {memoryUsage, uptime} from 'mikro/sys'
 import {wifi} from 'mikro/wifi'
@@ -48,6 +49,17 @@ if (!connected.ok) {
     yield 'data: liftoff\n\n'
   }
 
+  // decodeURIComponent throws on a malformed %-encoding, and a throw in a
+  // handler is a panic, so without this any client could restart the device.
+  function decodeParam(text: string): Result<string, {name: 'InvalidEncoding'}> {
+    try {
+      return ok(decodeURIComponent(text))
+      // eslint-disable-next-line @mikrojs/no-try-catch -- decodeURIComponent has no Result form
+    } catch {
+      return err({name: 'InvalidEncoding' as const})
+    }
+  }
+
   // Routing is left to the app: branch on req.method and the path.
   const server = createServer((req): ServerResponse => {
     if (req.method !== 'GET') return json(405, {error: 'method not allowed'})
@@ -72,7 +84,9 @@ if (!connected.ok) {
     }
 
     if (path?.startsWith('/api/echo/')) {
-      return json(200, {echo: decodeURIComponent(path.slice('/api/echo/'.length))})
+      const msg = decodeParam(path.slice('/api/echo/'.length))
+      if (!msg.ok) return json(400, {error: 'malformed path'})
+      return json(200, {echo: msg.value})
     }
 
     if (path === '/events') {
@@ -93,7 +107,7 @@ if (!connected.ok) {
 
 2. **Connect, then serve.** `wifi.connect()` joins the network and returns the device's IP. The server is created only after a successful connection.
 
-3. **Routing is yours.** There is no built-in router. Strip the query string from `req.url` and branch on `req.method` and the path. The `/api/echo/<msg>` route reads a path param by slicing the prefix.
+3. **Routing is yours.** There is no built-in router. Strip the query string from `req.url` and branch on `req.method` and the path. The `/api/echo/<msg>` route reads a path param by slicing the prefix, and answers 400 if the param is badly encoded.
 
 4. **JSON responses.** A small `json()` helper sets `content-type` and stringifies the body. Returning a plain `{status, body}` object is all a handler does.
 

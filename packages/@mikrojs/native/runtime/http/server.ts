@@ -20,7 +20,6 @@ export const createServer = createServerFromNative(native)
 export type {
   CreateServer,
   Handler,
-  PanicHandler,
   RequestHeaders,
   Server,
   ServerOptions,

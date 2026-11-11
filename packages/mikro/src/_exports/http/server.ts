@@ -6,7 +6,6 @@
 import type {
   CreateServer,
   Handler,
-  PanicHandler,
   RequestHeaders,
   Server,
   ServerOptions,
@@ -24,7 +23,6 @@ export declare const ServerError: {
 export type {
   CreateServer,
   Handler,
-  PanicHandler,
   RequestHeaders,
   Server,
   ServerOptions,

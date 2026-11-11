@@ -1,5 +1,6 @@
 import {env} from 'mikro/env'
 import {createServer, type ServerResponse} from 'mikro/http/server'
+import {err, ok, type Result} from 'mikro/result'
 import {sleep} from 'mikro/sleep'
 import {memoryUsage, uptime} from 'mikro/sys'
 import {wifi} from 'mikro/wifi'
@@ -30,6 +31,17 @@ if (!connected.ok) {
     yield 'data: liftoff\n\n'
   }
 
+  // decodeURIComponent throws on a malformed %-encoding, and a throw in a
+  // handler is a panic, so without this any client could restart the device.
+  function decodeParam(text: string): Result<string, {name: 'InvalidEncoding'}> {
+    try {
+      return ok(decodeURIComponent(text))
+      // eslint-disable-next-line @mikrojs/no-try-catch -- decodeURIComponent has no Result form
+    } catch {
+      return err({name: 'InvalidEncoding' as const})
+    }
+  }
+
   // Routing is left to the app: branch on req.method and the path. Strip the
   // query string, then match exact paths or a prefix for a "param".
   const server = createServer((req): ServerResponse => {
@@ -55,9 +67,9 @@ if (!connected.ok) {
     }
 
     if (path?.startsWith('/api/echo/')) {
-      // A malformed %-encoding throws; the server isolates the handler and
-      // returns 500 for that one request, so no try/catch is needed here.
-      return json(200, {echo: decodeURIComponent(path.slice('/api/echo/'.length))})
+      const msg = decodeParam(path.slice('/api/echo/'.length))
+      if (!msg.ok) return json(400, {error: 'malformed path'})
+      return json(200, {echo: msg.value})
     }
 
     if (path === '/events') {
