@@ -262,6 +262,7 @@ type WifiDisconnectReason = 'no-ssid' | 'auth-failed' | 'connection-lost' | 'dis
 
 | Variant             | Fields    | Description                       |
 | ------------------- | --------- | --------------------------------- |
+| `InitFailed`        | `message` | Failed to initialize WiFi         |
 | `CountryNotSet`     | —         | Regulatory country not configured |
 | `StartFailed`       | `message` | Failed to start WiFi              |
 | `ConnectFailed`     | `message` | Connection attempt failed         |

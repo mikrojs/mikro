@@ -634,8 +634,7 @@ int wc_module_init(JSContext* ctx, JSModuleDef* m) {
     JS_FreeValue(ctx, ns);
     if (JS_IsException(wifi_ctor)) return -1;
 
-    /* One native instance per runtime, constructed at import (TS parity:
-     * `new NativeWifi()` ran at module scope and its throw failed the import). */
+    /* One native instance per runtime, constructed at import. */
     JSValue nat = JS_CallConstructor(ctx, wifi_ctor, 0, nullptr);
     JS_FreeValue(ctx, wifi_ctor);
     if (JS_IsException(nat)) return -1;

@@ -449,14 +449,19 @@ static JSClassDef mik_wifi_classdef = {
 };
 
 static JSValue mik__wifi_constructor(JSContext* ctx, JSValue new_target, int argc, JSValue* argv) {
-    esp_err_t err = mik__wifi_ensure_initialized(ctx);
-    if (err != ESP_OK) {
-        return mik__throw_panic(ctx, "WiFi init failed: %s", esp_err_to_name(err));
-    }
+    /* This runs at import, where a failure could only panic. connect, scan and
+     * ap.start try again and return InitFailed. */
+    mik__wifi_ensure_initialized(ctx);
     return JS_NewObjectClass(ctx, mik_wifi_class_id);
 }
 
 static JSValue mik__wifi_connect(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    esp_err_t init_err = mik__wifi_ensure_initialized(ctx);
+    if (init_err != ESP_OK) {
+        return mik__result_err_named(ctx, "InitFailed",
+                               "WiFi init failed: %s", esp_err_to_name(init_err));
+    }
+
     if (!mik__wifi_try_auto_country(ctx)) {
         return mik__result_err_tag(ctx, "CountryNotSet");
     }
@@ -603,6 +608,12 @@ static JSValue mik__wifi_status(JSContext* ctx, JSValue this_val, int argc, JSVa
 }
 
 static JSValue mik__wifi_scan(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    esp_err_t init_err = mik__wifi_ensure_initialized(ctx);
+    if (init_err != ESP_OK) {
+        return mik__result_err_named(ctx, "InitFailed",
+                               "WiFi init failed: %s", esp_err_to_name(init_err));
+    }
+
     if (!mik__wifi_try_auto_country(ctx)) {
         return mik__result_err_tag(ctx, "CountryNotSet");
     }
@@ -855,6 +866,12 @@ static JSValue mik__wifi_set_ip_config(JSContext* ctx, JSValue this_val, int arg
 /* ── Phase 5: Access Point mode ────────────────────────────────────── */
 
 static JSValue mik__wifi_ap_start(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    esp_err_t init_err = mik__wifi_ensure_initialized(ctx);
+    if (init_err != ESP_OK) {
+        return mik__result_err_named(ctx, "InitFailed",
+                               "WiFi init failed: %s", esp_err_to_name(init_err));
+    }
+
     if (!mik__wifi_try_auto_country(ctx)) {
         return mik__result_err_tag(ctx, "CountryNotSet");
     }
