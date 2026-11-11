@@ -5,84 +5,84 @@
       "sysUsed": 13144
     },
     "test/cbor.test.ts": {
-      "heapDelta": 3800,
-      "sysUsed": 4060
+      "heapDelta": 728,
+      "sysUsed": 1056
     },
     "test/env.test.ts": {
-      "heapDelta": 3864,
-      "sysUsed": 4056
+      "heapDelta": 828,
+      "sysUsed": 1340
     },
     "test/fs-stream.test.ts": {
-      "heapDelta": 4224,
-      "sysUsed": 6044
+      "heapDelta": 1232,
+      "sysUsed": 988
     },
     "test/fs.test.ts": {
-      "heapDelta": 4064,
-      "sysUsed": 4052
+      "heapDelta": 1016,
+      "sysUsed": 128
     },
     "test/globals.test.ts": {
-      "heapDelta": 4556,
-      "sysUsed": 6272
+      "heapDelta": 1564,
+      "sysUsed": 2344
     },
     "test/http-request-e2e.test.ts": {
-      "heapDelta": 2592,
-      "sysUsed": 73724
+      "heapDelta": 912,
+      "sysUsed": 91016
     },
     "test/http-request-streaming.test.ts": {
-      "heapDelta": 2560,
-      "sysUsed": 66124
+      "heapDelta": 408,
+      "sysUsed": 73436
     },
     "test/http-server-e2e.test.ts": {
-      "heapDelta": 1256,
-      "sysUsed": 84604
+      "heapDelta": -536,
+      "sysUsed": 83964
     },
     "test/import-meta.test.ts": {
-      "heapDelta": 3600,
-      "sysUsed": 4052
+      "heapDelta": 536,
+      "sysUsed": 128
     },
     "test/kv.test.ts": {
-      "heapDelta": 3584,
-      "sysUsed": 3064
+      "heapDelta": 536,
+      "sysUsed": 260
     },
     "test/logfile.test.ts": {
-      "heapDelta": 4512,
-      "sysUsed": 7040
+      "heapDelta": 1376,
+      "sysUsed": 4156
     },
     "test/modules-hw.test.ts": {
       "heapDelta": 26540,
       "sysUsed": 29176
     },
     "test/modules-network.test.ts": {
-      "heapDelta": 22060,
-      "sysUsed": 58748
+      "heapDelta": 24564,
+      "sysUsed": 60480
     },
     "test/modules.test.ts": {
-      "heapDelta": 3584,
-      "sysUsed": 4060
+      "heapDelta": 536,
+      "sysUsed": 1148
     },
     "test/observable.test.ts": {
-      "heapDelta": 4176,
-      "sysUsed": 4768
+      "heapDelta": 1184,
+      "sysUsed": 2228
     },
     "test/result.test.ts": {
-      "heapDelta": 3864,
-      "sysUsed": 6052
+      "heapDelta": 1072,
+      "sysUsed": 364
     },
     "test/schema.test.ts": {
-      "heapDelta": 3536,
-      "sysUsed": 6052
+      "heapDelta": 536,
+      "sysUsed": 1116
     },
     "test/smoke.test.ts": {
-      "heapDelta": 3600,
-      "sysUsed": 5064
+      "heapDelta": 536,
+      "sysUsed": 72
     },
     "test/sys.test.ts": {
-      "heapDelta": 3600,
-      "sysUsed": 4052
+      "heapDelta": 608,
+      "sysUsed": 1140
     },
     "test/udp.test.ts": {
-      "heapDelta": 4152,
-      "sysUsed": 59688
+      "heapDelta": 1400,
+      "sysUsed": 54212
     },
     "test/wifi-e2e.test.ts": {
       "heapDelta": 22992,
@@ -93,13 +93,13 @@
       "sysUsed": 58096
     },
     "test/withUnload.test.ts": {
-      "heapDelta": 7168,
-      "sysUsed": 11984
+      "heapDelta": 3976,
+      "sysUsed": 7928
     }
   },
   "boot": {
-    "heapFree": 220460,
-    "systemFree": 275800,
+    "heapFree": 216704,
+    "systemFree": 271988,
     "memReserved": 65536
   }
 }
