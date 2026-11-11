@@ -290,7 +290,7 @@ export default function FlashCmd(props: Props) {
         </Text>
         <Text>
           Re-run with <Text bold>--force</Text> to overwrite it, or flash your own build with{' '}
-          <Text bold>--build-dir</Text>.
+          <Text bold>mikro flash --build-dir &lt;your-firmware-build&gt;</Text>.
         </Text>
       </RenderAndExit>
     )

@@ -93,12 +93,17 @@ export async function buildBoardLogged(
 /** Flash an image `mikro fw build` wrote by running `mikro flash` in its
  *  package, which picks it by its features, so it flashes as any image of the
  *  board does: fitted to the device's flash, with that command's prompts and
- *  checks. Returns its exit code. */
-export function flashBuiltImage(packageDir: string, board: string, features: string): number {
+ *  checks, which `force` skips as `--force` does. Returns its exit code. */
+export function flashBuiltImage(
+  packageDir: string,
+  board: string,
+  features: string,
+  force: boolean,
+): number {
   const cli = process.argv[1]!
   const flash = spawnSync(
     process.execPath,
-    [cli, 'flash', '--board', board, '--features', features],
+    [cli, 'flash', '--board', board, '--features', features, ...(force ? ['--force'] : [])],
     {stdio: 'inherit', cwd: packageDir},
   )
   return flash.status ?? 1

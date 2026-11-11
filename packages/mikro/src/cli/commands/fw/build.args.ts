@@ -27,6 +27,11 @@ export const args = command(
         description: message`Then flash the image it built, as mikro flash does. Needs one board and, for a board with other images, --image`,
       }),
     ),
+    force: optional(
+      flag('--force', {
+        description: message`With --flash, flash as mikro flash --force does: even if the device reports custom firmware or the new partition table shrinks the app filesystem`,
+      }),
+    ),
   }),
   {
     description: message`Build the boards in boards.config.ts and write their images where the package's "firmware" exports point`,
