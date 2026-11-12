@@ -187,11 +187,10 @@ void mik__flush_unhandled_rejections(JSContext* ctx) {
     std::vector<MIKRejectedPromise> rejected;
     rejected.swap(mik_rt->pending_rejections);
 
-    /* The same reason can reach reporting twice: the entry-eval path reads a
-     * rejected module promise by value and the host dumps it via the throw
-     * path while the promise itself stays queued here. mik__report_uncaught
-     * dedups by reason-object identity, so the duplicate is a no-op; only act
-     * on a fresh report so the host bridge and the halt don't fire twice.
+    /* Several queued promises can share one reason (`p.then(a); p.then(b)` on a
+     * rejected `p`). mik__report_uncaught dedups by reason-object identity, so
+     * the loop acts only on a fresh report, and the host bridge and the halt
+     * fire once.
      * (quickjs-libc reports every entry; we collapse same-error duplicates.) */
     for (const MIKRejectedPromise& rp : rejected) {
         if (mik__report_uncaught(ctx, rp.reason, true)) {
@@ -317,6 +316,7 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
     mik_rt->result_ok_void_singleton = JS_UNDEFINED;
     mik_rt->http_body_consumed_ctor = JS_UNDEFINED;
     mik_rt->inspect_cache.object_proto = JS_UNDEFINED;
+    mik_rt->reported_atom = JS_ATOM_NULL;
 
     /* Default fs read cap: 64 KiB. Large enough for typical config/JSON
      * payloads on MCU; small enough that a runaway readFile() can't
@@ -349,6 +349,13 @@ MIKRuntime* MIK_NewRuntimeInternal(MIKRunOptions* options) {
 
     /* unhandled promise rejection tracker */
     JS_SetHostPromiseRejectionTracker(rt, mik__promise_rejection_tracker, NULL);
+    JSValue reported_sym = JS_NewPrivateSymbol(ctx, "mik_reported");
+    if (JS_IsException(reported_sym)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+    } else {
+        mik_rt->reported_atom = JS_ValueToAtom(ctx, reported_sym);
+        JS_FreeValue(ctx, reported_sym);
+    }
 
     /* Blocking watchdog: polled every 10k branches/calls. */
     JS_SetInterruptHandler(rt, mik__watchdog_interrupt, mik_rt);
@@ -455,6 +462,8 @@ void MIK_FreeRuntime(MIKRuntime* mik_rt) {
     JS_FreeValue(mik_rt->ctx, ic.object_proto);
     ic.object_proto = JS_UNDEFINED;
     JS_FreeContext(mik_rt->ctx);
+    JS_FreeAtomRT(mik_rt->rt, mik_rt->reported_atom);
+    mik_rt->reported_atom = JS_ATOM_NULL;
     MIKResultAtoms& ra = mik_rt->result_atoms;
     JS_FreeAtomsRT(mik_rt->rt, ra.ok, ra.value, ra.error, ra.err, ra.code, ra.message, ra.name);
     ra = {};

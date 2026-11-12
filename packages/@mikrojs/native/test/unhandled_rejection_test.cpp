@@ -47,6 +47,23 @@ int count_uncaught(const std::string& s) {
     return n;
 }
 
+/* Captures stderr into g_captured and restores the platform even when a
+ * REQUIRE unwinds. */
+struct CaptureStderr {
+    const MIKPlatform* saved = MIK_GetPlatform();
+    MIKPlatform mock = *saved;
+    CaptureStderr() {
+        mock.stderr_write = capture_stderr;
+        MIK_SetPlatform(&mock);
+        g_captured.clear();
+    }
+    ~CaptureStderr() { MIK_SetPlatform(saved); }
+};
+
+JSValue eval_global(JSContext* ctx, const char* src) {
+    return JS_Eval(ctx, src, strlen(src), "<test>", JS_EVAL_TYPE_GLOBAL);
+}
+
 // Run an entry module to completion and return how many "Uncaught" reports
 // it produced. No clock mocking and no sleeps: the result depends only on
 // event-loop turns, never on wall-clock timing.
@@ -138,6 +155,20 @@ TEST_CASE("rejection handled in a later turn still reports once" *
     CHECK_EQ(run_and_count_reports(main), 1);
 }
 
+/* Two unhandled promises derived from one rejected promise share its reason:
+ * the error is reported once, not once per promise. */
+TEST_CASE("forked rejection with one reason reports once" *
+          doctest::test_suite("unhandled-rejection")) {
+    TmpDir dir;
+    std::string main = dir.write(
+        "main.js",
+        "const p = Promise.reject(new Error('boom'));\n"
+        "p.then(() => 1);\n"
+        "p.then(() => 2);\n");
+
+    CHECK_EQ(run_and_count_reports(main), 1);
+}
+
 /* Guards the flush-time reason dedup against over-collapsing: two DISTINCT
  * unhandled rejections in the same turn must both be reported, never merged.
  * (The dedup keys on reason identity; a regression here would silently
@@ -153,18 +184,12 @@ TEST_CASE("distinct unhandled rejections in one turn each report" *
     CHECK_EQ(run_and_count_reports(main), 2);
 }
 
-/* mik__report_uncaught dedups by error-object identity across report paths.
- * This is what keeps the REPL throw-path report and the deferred flush from
- * printing the same error twice, and lets the flush collapse a dynamic
- * import's two same-reason rejections. Reporting the SAME object twice prints
- * once and returns false the second time; a DISTINCT object reports again. */
+/* mik__report_uncaught dedups by error-object identity. Reporting the SAME
+ * object twice prints once and returns false the second time; a DISTINCT
+ * object reports again. */
 TEST_CASE("report_uncaught dedups same error object, not distinct ones" *
           doctest::test_suite("unhandled-rejection")) {
-    const MIKPlatform* orig = MIK_GetPlatform();
-    MIKPlatform mock = *orig;
-    mock.stderr_write = capture_stderr;
-    MIK_SetPlatform(&mock);
-    g_captured.clear();
+    CaptureStderr capture;
 
     MIKRuntime* rt = MIK_NewRuntime();
     JSContext* ctx = MIK_GetJSContext(rt);
@@ -175,6 +200,18 @@ TEST_CASE("report_uncaught dedups same error object, not distinct ones" *
     CHECK_FALSE(mik__report_uncaught(ctx, e, true));  // same object: deduped
     CHECK_EQ(count_uncaught(g_captured), 1);
 
+    /* The marker is a private symbol: user code can't see it. */
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "__e", JS_DupValue(ctx, e));
+    JSValue keys = eval_global(ctx, "Reflect.ownKeys(__e).join()");
+    REQUIRE_FALSE(JS_IsException(keys));
+    const char* keys_str = JS_ToCString(ctx, keys);
+    REQUIRE(keys_str);
+    CHECK_EQ(std::string(keys_str), "message");
+    JS_FreeCString(ctx, keys_str);
+    JS_FreeValue(ctx, keys);
+    JS_FreeValue(ctx, global);
+
     JSValue other = JS_NewError(ctx);
     JS_SetPropertyStr(ctx, other, "message", JS_NewString(ctx, "different"));
     CHECK(mik__report_uncaught(ctx, other, true));  // distinct object: reports
@@ -183,5 +220,62 @@ TEST_CASE("report_uncaught dedups same error object, not distinct ones" *
     JS_FreeValue(ctx, e);
     JS_FreeValue(ctx, other);
     MIK_FreeRuntime(rt);
-    MIK_SetPlatform(orig);
+}
+
+/* A Proxy reason is reported without marking, so its traps never receive the
+ * marker. Printing the error reads properties but never calls has or
+ * defineProperty, so any key there is the marker; getOwnPropertyDescriptor
+ * also serves printing, so only symbol keys count there. */
+TEST_CASE("report_uncaught keeps the marker away from Proxy traps" *
+          doctest::test_suite("unhandled-rejection")) {
+    CaptureStderr capture;
+
+    MIKRuntime* rt = MIK_NewRuntime();
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    JSValue p = eval_global(ctx,
+                            "globalThis.seen = [];"
+                            "new Proxy(new Error('boom'), {"
+                            "  has(t, k) { seen.push(k); return Reflect.has(t, k); },"
+                            "  defineProperty(t, k, d) {"
+                            "    seen.push(k); return Reflect.defineProperty(t, k, d); },"
+                            "  getOwnPropertyDescriptor(t, k) {"
+                            "    if (typeof k === 'symbol') seen.push(k);"
+                            "    return Reflect.getOwnPropertyDescriptor(t, k); },"
+                            "})");
+    REQUIRE_FALSE(JS_IsException(p));
+    CHECK(mik__report_uncaught(ctx, p, true));
+    CHECK_EQ(count_uncaught(g_captured), 1);
+
+    JSValue seen = eval_global(ctx, "seen.length");
+    int32_t n = -1;
+    JS_ToInt32(ctx, &n, seen);
+    CHECK_EQ(n, 0);
+
+    JS_FreeValue(ctx, seen);
+    JS_FreeValue(ctx, p);
+    MIK_FreeRuntime(rt);
+}
+
+/* The marker is checked as an own property: an error whose prototype is an
+ * already-reported error is a distinct error and reports. */
+TEST_CASE("report_uncaught reports an error inheriting from a reported one" *
+          doctest::test_suite("unhandled-rejection")) {
+    CaptureStderr capture;
+
+    MIKRuntime* rt = MIK_NewRuntime();
+    JSContext* ctx = MIK_GetJSContext(rt);
+
+    JSValue a = eval_global(ctx, "globalThis.a = new Error('first'); a");
+    REQUIRE_FALSE(JS_IsException(a));
+    CHECK(mik__report_uncaught(ctx, a, true));
+
+    JSValue b = eval_global(ctx, "Object.create(a)");
+    REQUIRE_FALSE(JS_IsException(b));
+    CHECK(mik__report_uncaught(ctx, b, true));
+    CHECK_EQ(count_uncaught(g_captured), 2);
+
+    JS_FreeValue(ctx, a);
+    JS_FreeValue(ctx, b);
+    MIK_FreeRuntime(rt);
 }

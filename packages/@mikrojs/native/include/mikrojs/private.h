@@ -153,6 +153,9 @@ struct MIKRuntime {
      * module. Created lazily on first http module init, freed in
      * MIK_FreeRuntime. */
     JSValue http_body_consumed_ctor;
+    /* Private-symbol atom marking error objects mik__report_uncaught already
+     * reported. Created with the runtime, freed after JS_FreeContext. */
+    JSAtom reported_atom;
     JSValue env_obj;  /* Frozen object with env vars, set on import.meta.env */
     struct {
         JSValue on_data;  /* JS callback for stdin data, JS_UNDEFINED when not listening */
