@@ -331,37 +331,28 @@ static void mik__append_error_head(JSContext* ctx, JSValue exc, const char* inde
     JS_FreeValue(ctx, stack_val);
 }
 
-/* Dedup across report paths: one error can reach this function more than
- * once for a single failure. The sync throw path (mik_dump_error) can report
- * an error whose promise still sits in the deferred flush queue, e.g. an
- * entry module whose rejected eval promise is read by value while the host
- * dumps the pending exception. Mark the error object the first
- * time it is reported and skip it afterwards. Keying on object identity is
- * exact and time-independent; a recycled address belongs to a fresh object
- * with no marker, so distinct errors are never suppressed. Primitive
- * rejections (e.g. a null OOM rejection) can't hold a marker and are always
- * reported. Returns true if it reported, false if it was a duplicate. */
+/* One error can reach here more than once, e.g. `p.then(a); p.then(b)` on a
+ * rejected `p` leaves two unhandled promises with one reason. The first report
+ * marks the error object and later ones are skipped. Primitives, proxies (their
+ * traps would see the marker) and non-extensible objects always report.
+ * Returns false for a skipped duplicate. */
 bool mik__report_uncaught(JSContext* ctx, JSValue exc, bool in_promise) {
-    if (JS_IsObject(exc)) {
-        JSAtom marker = JS_NewAtom(ctx, "\xff" "mik_reported");
-        if (marker != JS_ATOM_NULL) {
-            if (JS_HasProperty(ctx, exc, marker) > 0) {
-                JS_FreeAtom(ctx, marker);
-                return false;
-            }
-            /* Non-enumerable, non-writable, non-configurable so it stays
-             * invisible to user code. Best-effort: JS_* calls return error
-             * codes (no C++ throw), so under OOM we just report without
-             * dedup rather than abort. */
-            JS_DefinePropertyValue(ctx, exc, marker, JS_TRUE, 0);
-            JS_FreeAtom(ctx, marker);
+    MIKRuntime* mik_rt = MIK_GetRuntime(ctx);
+    JSAtom marker = mik_rt ? mik_rt->reported_atom : JS_ATOM_NULL;
+    if (marker != JS_ATOM_NULL && JS_IsObject(exc) && !JS_IsProxy(exc)) {
+        if (JS_GetOwnProperty(ctx, nullptr, exc, marker) > 0) {
+            return false;
+        }
+        /* Best-effort: on failure, report without dedup. */
+        if (JS_DefinePropertyValue(ctx, exc, marker, JS_TRUE, 0) < 0) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
         }
     }
 
     /* A blocking-watchdog timeout reaches here either through mik_dump_error
      * (which already reported it; this is then a no-op) or as an unhandled
      * rejection when the interrupted turn was a module evaluation. */
-    mik__watchdog_report_blocking(MIK_GetRuntime(ctx));
+    mik__watchdog_report_blocking(mik_rt);
 
     /* Fixed-size stack buffer so this function never allocates from the
      * C++ heap. Previously we used std::string + mik_inspect here; both
