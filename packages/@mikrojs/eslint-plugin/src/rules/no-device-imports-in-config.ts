@@ -4,7 +4,7 @@ const createRule = ESLintUtils.RuleCreator(
   (name) => `https://github.com/mikrojs/mikro/blob/main/docs/rules/${name}.md`,
 )
 
-const DEFAULT_CONFIG_FILES = ['mikro.config.ts', 'mikro.config.js']
+export const DEFAULT_CONFIG_FILES = ['mikro.config.ts', 'mikro.config.js']
 
 type Options = [{configFiles?: string[]}]
 

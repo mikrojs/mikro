@@ -9,6 +9,7 @@ import {noTemporal} from './rules/no-temporal.js'
 import {noThrow} from './rules/no-throw.js'
 import {noTryCatch} from './rules/no-try-catch.js'
 import {noUnhandledResult} from './rules/no-unhandled-result.js'
+import {noUnsafeBuiltins} from './rules/no-unsafe-builtins.js'
 
 const plugin = {
   meta: {
@@ -18,6 +19,7 @@ const plugin = {
   rules: {
     'no-unhandled-result': noUnhandledResult,
     'no-throw': noThrow,
+    'no-unsafe-builtins': noUnsafeBuiltins,
     'no-try-catch': noTryCatch,
     'no-promise-reject': noPromiseReject,
     'no-dot-catch': noDotCatch,
@@ -44,6 +46,7 @@ Object.assign(plugin.configs, {
       rules: {
         '@mikrojs/no-unhandled-result': 'error',
         '@mikrojs/no-throw': 'error',
+        '@mikrojs/no-unsafe-builtins': 'error',
         '@mikrojs/no-try-catch': 'error',
         '@mikrojs/no-promise-reject': 'error',
         '@mikrojs/no-dot-catch': 'error',

@@ -121,7 +121,7 @@ const server = createServer(async (req) => {
 })
 ```
 
-Standard functions such as `decodeURIComponent()` throw on bad input. [Convert them to a `Result`](/eslint-rules#no-try-catch) at the call site.
+Standard functions such as `decodeURIComponent()` throw on bad input. Call them through [`safe()`](/api/result#safe) to get a `Result`.
 
 ## Serving static files
 

@@ -139,6 +139,14 @@ export default [
     },
   },
 
+  // Node scripts: safe() only exists on the device
+  {
+    files: ['dev/*/scripts/**', 'scripts/**'],
+    rules: {
+      '@mikrojs/no-unsafe-builtins': 'off',
+    },
+  },
+
   // Disable mikrojs error-handling rules for internal packages
   // (runtime modules intentionally use throw, try/catch at the boundary layer)
   {
@@ -146,6 +154,7 @@ export default [
     rules: {
       '@mikrojs/no-unhandled-result': 'off',
       '@mikrojs/no-throw': 'off',
+      '@mikrojs/no-unsafe-builtins': 'off',
       '@mikrojs/no-try-catch': 'off',
       '@mikrojs/no-promise-reject': 'off',
       '@mikrojs/no-dot-catch': 'off',

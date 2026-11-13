@@ -59,6 +59,7 @@ declare module 'native:mikro/result' {
   export function ok(): OkResult<void>
   export function ok<T>(value: T): OkResult<T>
   export function err<E>(error: E): ErrResult<E>
+  export {safe, tryCall} from '@mikrojs/native/runtime/result/types'
 }
 
 declare module 'native:mikro/observable' {

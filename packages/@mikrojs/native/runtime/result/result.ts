@@ -1,4 +1,4 @@
-export {err, ok} from 'native:mikro/result'
+export {err, ok, safe, tryCall} from 'native:mikro/result'
 
 export class PanicError extends Error {
   constructor(message: string, options?: {cause?: unknown}) {

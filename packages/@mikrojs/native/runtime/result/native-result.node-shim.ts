@@ -36,6 +36,66 @@ export function ok(value?: unknown): unknown {
   return r
 }
 
+// atob/btoa are untyped in this tsconfig
+const g = globalThis as unknown as Record<string, unknown>
+const safeBuiltins: unknown[] = [
+  JSON.parse,
+  JSON.stringify,
+  g.atob,
+  g.btoa,
+  decodeURI,
+  decodeURIComponent,
+  encodeURI,
+  encodeURIComponent,
+  RegExp,
+  String.fromCodePoint,
+]
+
+export function safe(fn: (...args: unknown[]) => unknown, ...args: unknown[]): unknown {
+  if (!safeBuiltins.includes(fn)) {
+    throw new TypeError(
+      'safe: expected one of JSON.parse, JSON.stringify, atob, btoa, decodeURI, ' +
+        'decodeURIComponent, encodeURI, encodeURIComponent, RegExp, String.fromCodePoint',
+    )
+  }
+  const name =
+    fn === JSON.parse
+      ? 'JSON.parse reviver'
+      : fn === JSON.stringify
+        ? 'JSON.stringify replacer'
+        : ''
+  const callArgs = name
+    ? args.slice(0, 3).map((a, i) =>
+        i === 1 && typeof a === 'function'
+          ? function (this: unknown, ...cbArgs: unknown[]) {
+              try {
+                return a.apply(this, cbArgs)
+              } catch (cause) {
+                throw new Error(`${name} threw`, {cause})
+              }
+            }
+          : a,
+      )
+    : args
+  try {
+    return ok(fn(...callArgs))
+  } catch (e) {
+    return err(e)
+  }
+}
+
+export function tryCall(fn: (() => unknown) | Promise<unknown>): unknown {
+  if (fn instanceof Promise) return fn.then(ok, err)
+  if (typeof fn !== 'function') throw new TypeError('tryCall: expected a function or a promise')
+  let value: unknown
+  try {
+    value = fn()
+  } catch (e) {
+    return err(e)
+  }
+  return value instanceof Promise ? value.then(ok, err) : ok(value)
+}
+
 export function err(error: unknown): unknown {
   const r = Object.create(proto)
   r.ok = false
