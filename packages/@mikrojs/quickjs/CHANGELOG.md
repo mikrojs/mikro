@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.23.0 (2026-11-14)
+
+### Breaking changes
+
+- **http:** remove onPanic from createServer ([#509](https://github.com/mikrojs/mikro/pull/509))
+- **quickjs:** upgrade quickjs-ng to v0.18.0 ([#506](https://github.com/mikrojs/mikro/pull/506))
+
+### Features
+
+- **result:** add safe() and tryCall() for code that throws ([#511](https://github.com/mikrojs/mikro/pull/511))
+- **cli:** share exit keys across interactive screens, rework REPL keys ([#502](https://github.com/mikrojs/mikro/pull/502))
+
+### Bug fixes
+
+- **http:** panic when nextRequest throws instead of stopping quietly ([#510](https://github.com/mikrojs/mikro/pull/510))
+- **cli:** support --force in `mikro fw build --flash` ([#508](https://github.com/mikrojs/mikro/pull/508))
+- **wifi:** return InitFailed instead of failing the import ([#507](https://github.com/mikrojs/mikro/pull/507))
+- **repl:** report each run's boot memory after an in-place restart ([#503](https://github.com/mikrojs/mikro/pull/503))
+- **create-mikro:** re-ask on existing folder, stop pnpm install failing in a new app ([#501](https://github.com/mikrojs/mikro/pull/501))
+- **firmware:** silence s_console warning on plain ESP32 ([#497](https://github.com/mikrojs/mikro/pull/497))
+
+### Other
+
+- **native:** read ESP32 board facts through the get_chip_info hook ([#505](https://github.com/mikrojs/mikro/pull/505))
+- **native:** share the NimBLE host code between chips ([#504](https://github.com/mikrojs/mikro/pull/504))
+- **native:** let ports outside ESP-IDF report board info ([#500](https://github.com/mikrojs/mikro/pull/500))
+- **native:** portable library for deploy, config, test supervisor + OTA ([#499](https://github.com/mikrojs/mikro/pull/499))
+
 ## 0.22.0 (2026-09-30)
 
 ### Features
