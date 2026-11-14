@@ -95,6 +95,107 @@ TEST_CASE_FIXTURE(RtFixture, "ok and err factories" * doctest::test_suite("resul
     CHECK(read_global_string(ctx, "__errEmpty") == "undefined");
 }
 
+TEST_CASE_FIXTURE(RtFixture, "safe turns a builtin's throw into an Err" *
+                                 doctest::test_suite("result")) {
+    run(ctx, (std::string(PRELUDE) +
+              "import {safe} from 'mikro/result'\n"
+              "const name = (r) => r.ok ? 'ok' : r.error.name\n"
+              "const cyclic = {}; cyclic.self = cyclic\n"
+              "globalThis.__got = [\n"
+              "  safe(JSON.parse, '{\"a\":1}').value.a,\n"
+              "  name(safe(JSON.parse, '{')),\n"
+              "  name(safe(JSON.parse)),\n"
+              "  safe(JSON.stringify, {a: 1}).value,\n"
+              "  name(safe(JSON.stringify, cyclic)),\n"
+              "  safe(atob, 'aGk=').value,\n"
+              "  name(safe(atob, '!!')),\n"
+              "  safe(btoa, 'hi').value,\n"
+              "  name(safe(btoa, '\\u0100')),\n"
+              "  safe(decodeURIComponent, '%41').value,\n"
+              "  name(safe(decodeURIComponent, '%')),\n"
+              "  name(safe(decodeURI, '%E0%A4%A')),\n"
+              "  name(safe(encodeURIComponent, '\\uD800')),\n"
+              "  name(safe(encodeURI, '\\uDC00')),\n"
+              "  safe(RegExp, 'a+', 'i').value.test('AA'),\n"
+              "  name(safe(RegExp, '(')),\n"
+              "  name(safe(RegExp, 'a', 'zz')),\n"
+              "  safe(String.fromCodePoint, 72, 105).value,\n"
+              "  name(safe(String.fromCodePoint, 0x110000)),\n"
+              "].join('|')\n"
+              "globalThis.__misuse = [\n"
+              "  attempt(() => safe()),\n"
+              "  attempt(() => safe((s) => s, 'x')),\n"
+              "  attempt(() => safe('JSON.parse', '1')),\n"
+              "].join('|')\n"
+              "const boom = () => { throw new RangeError('bug') }\n"
+              "const callbackErr = (r) => [r.ok, r.error.name, r.error.message, r.error.cause.name,\n"
+              "  r.error.cause.message].join(',')\n"
+              "globalThis.__callbacks = [\n"
+              "  safe(JSON.parse, '{\"a\":1}', (k, v) => typeof v === 'number' ? v * 2 : v).value.a,\n"
+              "  safe(JSON.parse, '{\"a\":1}', function (k, v) { return k ? typeof this : v }).value.a,\n"
+              "  safe(JSON.stringify, {a: 1, b: 2}, (k, v) => k === 'b' ? undefined : v).value,\n"
+              "  safe(JSON.stringify, {a: 1}, ['a'], 1).value.length,\n"
+              "  callbackErr(safe(JSON.parse, '1', boom)),\n"
+              "  callbackErr(safe(JSON.stringify, 1, boom)),\n"
+              "  name(safe(JSON.parse, '{', boom)),\n"
+              "  safe(JSON.stringify, Object.assign(() => 1, {toJSON: () => 'F'})).value,\n"
+              "].join('|')\n"
+              "const realJSON = JSON\n"
+              "Object.defineProperty(globalThis, 'JSON', {get() { throw new RangeError('get') },\n"
+              "  configurable: true})\n"
+              "globalThis.__lookup = attempt(() => safe(atob, 'aGk='))\n"
+              "Object.defineProperty(globalThis, 'JSON', {value: realJSON, writable: true,\n"
+              "  configurable: true})\n")
+                 .c_str());
+    CHECK(read_global_string(ctx, "__got") ==
+          "1|SyntaxError|SyntaxError|{\"a\":1}|TypeError|hi|SyntaxError|aGk=|RangeError|A|"
+          "URIError|URIError|URIError|URIError|true|SyntaxError|SyntaxError|Hi|RangeError");
+    CHECK(read_global_string(ctx, "__misuse") == "threw:TypeError|threw:TypeError|threw:TypeError");
+    CHECK(read_global_string(ctx, "__callbacks") ==
+          "2|object|{\"a\":1}|11|false,Error,JSON.parse reviver threw,RangeError,bug|"
+          "false,Error,JSON.stringify replacer threw,RangeError,bug|SyntaxError|\"F\"");
+    CHECK(read_global_string(ctx, "__lookup") == "threw:RangeError");
+}
+
+TEST_CASE_FIXTURE(RtFixture, "tryCall turns any throw into an Err" *
+                                 doctest::test_suite("result")) {
+    run(ctx, (std::string(PRELUDE) +
+              "import {tryCall} from 'mikro/result'\n"
+              "const lib = {n: 2, double() { return this.n * 2 }}\n"
+              "globalThis.__got = [\n"
+              "  tryCall(() => lib.double()).value,\n"
+              "  tryCall(() => {}).ok,\n"
+              "  tryCall(() => { throw new RangeError('x') }).error.name,\n"
+              "  tryCall(() => { throw 'plain' }).error,\n"
+              "  tryCall(function () { return this }).value,\n"
+              "].join('|')\n"
+              "globalThis.__misuse = [\n"
+              "  attempt(() => tryCall()),\n"
+              "  attempt(() => tryCall(42)),\n"
+              "].join('|')\n")
+                 .c_str());
+    CHECK(read_global_string(ctx, "__got") == "4|true|RangeError|plain|");
+    CHECK(read_global_string(ctx, "__misuse") == "threw:TypeError|threw:TypeError");
+}
+
+TEST_CASE_FIXTURE(RtFixture, "tryCall turns a rejection into an Err" *
+                                 doctest::test_suite("result")) {
+    run(ctx,
+        "import {tryCall} from 'mikro/result'\n"
+        "const show = (r) => r.ok ? 'ok:' + r.value : 'err:' + (r.error.name ?? r.error)\n"
+        "Promise.all([\n"
+        "  tryCall(async () => 5),\n"
+        "  tryCall(async () => { throw new RangeError('x') }),\n"
+        "  tryCall(() => Promise.reject('no')),\n"
+        "  tryCall(Promise.resolve(7)),\n"
+        "  tryCall(Promise.reject(new TypeError('y'))),\n"
+        "]).then((rs) => { globalThis.__async = rs.map(show).join('|') })\n");
+    JSContext* pending;
+    while (JS_ExecutePendingJob(JS_GetRuntime(ctx), &pending) > 0) {
+    }
+    CHECK(read_global_string(ctx, "__async") == "ok:5|err:RangeError|err:no|ok:7|err:TypeError");
+}
+
 TEST_CASE_FIXTURE(RtFixture, "map, mapErr, andThen" * doctest::test_suite("result")) {
     run(ctx, (std::string(PRELUDE) +
               "globalThis.__map = ok(2).map((v) => v * 10).value\n"

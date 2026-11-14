@@ -6,7 +6,7 @@ description: Result type for typed error handling
 # result
 
 ```ts twoslash
-import {ok, err, matchError} from 'mikro/result'
+import {ok, err, matchError, safe, tryCall} from 'mikro/result'
 import type {Result, OkResult, ErrResult} from 'mikro/result'
 ```
 
@@ -48,6 +48,71 @@ const result = err({name: 'NotFound' as const})
 result.ok // false
 result.error // {name: 'NotFound'}
 ```
+
+### safe()
+
+Calls a standard function that throws on bad input and returns the outcome as a `Result`: `ok(value)`, or `err(error)` with what it threw.
+
+```ts
+function safe<A extends unknown[], R>(fn: (...args: A) => R, ...args: A): Result<R, Error>
+// Spelled out where TypeScript can't infer the arguments on its own:
+function safe(
+  fn: RegExpConstructor,
+  pattern: string | RegExp,
+  flags?: string,
+): Result<RegExp, Error>
+function safe(
+  fn: typeof JSON.parse,
+  text: string,
+  reviver?: (key: string, value: any) => any,
+): Result<unknown, Error>
+function safe(
+  fn: typeof JSON.stringify,
+  value: unknown,
+  replacer?: (key: string, value: any) => any,
+  space?: string | number,
+): Result<string, Error>
+```
+
+```ts twoslash
+import {safe} from 'mikro/result'
+declare const text: string
+// ---cut---
+const config = safe(JSON.parse, text)
+if (!config.ok) console.error('invalid config:', config.error)
+```
+
+`fn` must be one of `JSON.parse`, `JSON.stringify`, `atob`, `btoa`, `decodeURI`, `decodeURIComponent`, `encodeURI`, `encodeURIComponent`, `RegExp` or `String.fromCodePoint`. The errors each one throws are listed under [`no-unsafe-builtins`](/eslint-rules#no-unsafe-builtins). Any other function throws a `TypeError`; use [`tryCall()`](#trycall) for those. It is synchronous.
+
+If a `JSON.parse` reviver or `JSON.stringify` replacer throws, the error is an `Error` with the message `JSON.parse reviver threw` or `JSON.stringify replacer threw`, and what it threw as its `cause`. A bug in the callback is then not mistaken for bad input.
+
+### tryCall()
+
+Calls `fn` and returns the outcome as a `Result`: `ok(value)`, or `err(error)` with what it threw. Use it for code that throws and that `safe()` doesn't cover, such as a function from a library.
+
+```ts
+function tryCall<T>(promise: Promise<T>): Promise<Result<T, unknown>>
+function tryCall<T>(fn: () => Promise<T>): Promise<Result<T, unknown>>
+function tryCall<T>(fn: () => T): Result<T, unknown>
+```
+
+```ts twoslash
+import {tryCall} from 'mikro/result'
+declare const yaml: {parse(text: string): unknown}
+declare const lib: {download(url: string): Promise<Uint8Array>}
+declare const text: string
+declare const url: string
+// ---cut---
+const doc = tryCall(() => yaml.parse(text))
+if (!doc.ok) console.error('invalid config:', doc.error)
+
+const body = await tryCall(() => lib.download(url))
+if (!body.ok) console.error('download failed:', body.error)
+```
+
+Given a promise, or a `fn` that returns one, `tryCall` returns a promise of a `Result` that never rejects. Passing the promise directly, as in `tryCall(lib.download(url))`, misses a throw that happens before the promise exists; the callback form catches both.
+
+The error is `unknown`, since a library can throw anything, not only an `Error`. Keep the callback short: a bug in your own code inside it comes back as an `Err` instead of a panic with a stack trace.
 
 ### matchError()
 

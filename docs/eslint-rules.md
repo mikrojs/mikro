@@ -81,20 +81,39 @@ try {
 }
 ```
 
-Standard JavaScript functions still throw: `JSON.parse()` on invalid input, `atob()` on a malformed string, `decodeURIComponent()` on invalid sequences. These aren't Mikro.js APIs and have no `Result` equivalent, so catching them is the correct thing to do. Disable the rule at the call site and convert to a `Result` immediately:
+Some standard JavaScript functions throw on bad input, such as `JSON.parse()` on invalid JSON. Call them through `safe()` instead of catching; see [`no-unsafe-builtins`](#no-unsafe-builtins).
+
+For other code that throws, such as a library or a native module function, use [`tryCall()`](/api/result#trycall), which returns the outcome as a `Result`.
+
+### `@mikrojs/no-unsafe-builtins` {#no-unsafe-builtins}
+
+**Severity:** error
+
+Flags direct calls to standard functions that throw on bad input. Call them through [`safe()`](/api/result#safe) from `mikro/result`, which returns the outcome as a `Result`. The editor offers a fix that rewrites the call.
+
+| Function                          | Throws        | When                                           |
+| --------------------------------- | ------------- | ---------------------------------------------- |
+| `JSON.parse`                      | `SyntaxError` | invalid JSON                                   |
+| `JSON.stringify`                  | `TypeError`   | a circular reference or a BigInt               |
+| `atob`                            | `SyntaxError` | malformed base64                               |
+| `btoa`                            | `RangeError`  | a character above U+00FF                       |
+| `decodeURI`, `decodeURIComponent` | `URIError`    | a malformed `%`-sequence                       |
+| `encodeURI`, `encodeURIComponent` | `URIError`    | a lone surrogate                               |
+| `RegExp`                          | `SyntaxError` | an invalid pattern or flags                    |
+| `String.fromCodePoint`            | `RangeError`  | a negative, fractional or too large code point |
+
+`new RegExp()` with only literal arguments is not flagged, since its author can see whether the pattern is valid. Neither is `JSON.stringify()` of plain data: strings, numbers, booleans, null, and object or array literals of those.
 
 ```typescript
-function parseJson(text: string): Result<unknown, {name: 'InvalidJson'}> {
-  try {
-    return ok(JSON.parse(text))
-    // eslint-disable-next-line @mikrojs/no-try-catch -- JSON.parse has no Result form
-  } catch {
-    return err({name: 'InvalidJson' as const})
-  }
-}
+// Bad: invalid input throws
+const config = JSON.parse(text)
+
+// Good: invalid input is an Err
+const config = safe(JSON.parse, text)
+if (!config.ok) return err(new Error('invalid config', {cause: config.error}))
 ```
 
-The same applies at a native module boundary, where a C function throws instead of returning a `Result`. See [What about exceptions?](/error-handling#what-about-exceptions).
+The rule also flags a `safe()` call whose first argument isn't one of these functions. That throws a `TypeError` at runtime.
 
 ### `@mikrojs/no-promise-reject` {#no-promise-reject}
 
@@ -132,6 +151,8 @@ fetchData().catch((err) => console.error(err))
 const result = await fetchData()
 if (!result.ok) console.error(result.error)
 ```
+
+A promise that rejects, such as one from a library, becomes a `Result` with [`tryCall()`](/api/result#trycall): `await tryCall(() => lib.download(url))`.
 
 ### `@mikrojs/no-eval` {#no-eval}
 

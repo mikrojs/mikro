@@ -13,6 +13,7 @@ ESLint plugin with rules for Mikro.js projects. Enforces patterns that reduce me
 | `no-sparse-arrays`    | Disallow sparse arrays                                   |
 | `no-throw`            | Require Result types instead of throwing exceptions      |
 | `no-try-catch`        | Require Result types instead of try/catch                |
+| `no-unsafe-builtins`  | Require `safe()` for builtins that throw on bad input    |
 | `no-unhandled-result` | Require checking `.ok` on Result values                  |
 | `no-temporal`         | Disallow `Temporal` APIs (not available in QuickJS)      |
 

@@ -13,7 +13,7 @@ export const noTryCatch = createRule({
     },
     messages: {
       noTryCatch:
-        'Do not use try/catch. Use Result types for error handling. try/finally for cleanup is allowed.',
+        'Do not use try/catch. Use Result types for error handling, and safe() or tryCall() from mikro/result for code that throws. try/finally for cleanup is allowed.',
     },
     schema: [],
   },

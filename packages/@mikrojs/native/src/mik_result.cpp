@@ -169,6 +169,147 @@ static JSValue js_result_err(JSContext* ctx, JSValue this_val, int argc, JSValue
     return new_err_result(ctx, argc > 0 ? JS_DupValue(ctx, argv[0]) : JS_UNDEFINED);
 }
 
+/* ── safe(fn, ...args) ────────────────────────────────────────── */
+
+/* The builtins that throw on bad input. safe() calls only these, so it can't
+ * become a general try/catch. Looked up per call: no per-runtime cost. */
+static const struct {
+    const char* object;   /* nullptr: a global function */
+    const char* name;
+    const char* callback; /* what a function argument is called, or nullptr */
+} safe_builtins[] = {
+    {"JSON", "parse", "reviver"},
+    {"JSON", "stringify", "replacer"},
+    {nullptr, "atob", nullptr},
+    {nullptr, "btoa", nullptr},
+    {nullptr, "decodeURI", nullptr},
+    {nullptr, "decodeURIComponent", nullptr},
+    {nullptr, "encodeURI", nullptr},
+    {nullptr, "encodeURIComponent", nullptr},
+    {nullptr, "RegExp", nullptr},
+    {"String", "fromCodePoint", nullptr},
+};
+
+/* ok(ret), or err(thrown) when the call threw; consumes `ret` */
+static JSValue result_of_call(JSContext* ctx, JSValue ret) {
+    if (!JS_IsException(ret)) return mik__result_ok(ctx, ret);
+    JSValue thrown = JS_GetException(ctx);
+    if (JS_IsUncatchableError(thrown)) {
+        /* An interrupt, which try/catch can't catch either */
+        return JS_Throw(ctx, thrown);
+    }
+    return new_err_result(ctx, thrown);
+}
+
+/* Index into safe_builtins, -1 if fn isn't one, or -2 if a lookup threw */
+static int safe_builtin_index(JSContext* ctx, JSValue fn) {
+    if (!JS_IsFunction(ctx, fn)) return -1;
+    JSValue global = JS_GetGlobalObject(ctx);
+    int found = -1;
+    for (int i = 0; i < (int)countof(safe_builtins) && found == -1; i++) {
+        const auto& b = safe_builtins[i];
+        JSValue holder = b.object ? JS_GetPropertyStr(ctx, global, b.object)
+                                  : JS_DupValue(ctx, global);
+        JSValue candidate = JS_GetPropertyStr(ctx, holder, b.name);
+        if (JS_IsException(holder) || JS_IsException(candidate)) {
+            found = -2;
+        } else if (JS_IsStrictEqual(ctx, candidate, fn)) {
+            found = i;
+        }
+        JS_FreeValue(ctx, candidate);
+        JS_FreeValue(ctx, holder);
+    }
+    JS_FreeValue(ctx, global);
+    return found;
+}
+
+/* Stands in for a reviver or replacer. Its throw becomes an Error naming the
+ * builtin, with the thrown value as cause, so a bug in it can't pass for bad
+ * input. `magic` is the builtin's index in safe_builtins. */
+static JSValue safe_callback(JSContext* ctx, JSValue this_val, int argc, JSValue* argv, int magic,
+                             JSValue* data) {
+    JSValue ret = JS_Call(ctx, data[0], this_val, argc, argv);
+    if (!JS_IsException(ret)) return ret;
+    JSValue thrown = JS_GetException(ctx);
+    if (JS_IsUncatchableError(thrown)) return JS_Throw(ctx, thrown);
+    const auto& b = safe_builtins[magic];
+    char msg[64];
+    snprintf(msg, sizeof(msg), "%s.%s %s threw", b.object, b.name, b.callback);
+    JSValue error = JS_NewError(ctx);
+    JS_DefinePropertyValueStr(ctx, error, "message", JS_NewString(ctx, msg), JS_PROP_C_W_E);
+    JS_DefinePropertyValueStr(ctx, error, "cause", thrown, JS_PROP_C_W_E);
+    return JS_Throw(ctx, error);
+}
+
+/* safe(fn, ...args): ok(fn(...args)), or err(thrown) when it throws. */
+static JSValue js_result_safe(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    int index = argc < 1 ? -1 : safe_builtin_index(ctx, argv[0]);
+    if (index == -2) return JS_EXCEPTION;
+    if (index < 0) {
+        return JS_ThrowTypeError(ctx,
+                                 "safe: expected one of JSON.parse, JSON.stringify, atob, "
+                                 "btoa, decodeURI, decodeURIComponent, encodeURI, "
+                                 "encodeURIComponent, RegExp, String.fromCodePoint");
+    }
+    /* Only JSON.parse and JSON.stringify call back into JS: the reviver or
+     * replacer is their second argument */
+    JSValue args[3];
+    int nargs = argc - 1;
+    JSValue* call_args = argv + 1;
+    bool takes_callback = safe_builtins[index].callback != nullptr;
+    if (takes_callback) {
+        nargs = nargs < 3 ? nargs : 3;
+        for (int i = 0; i < nargs; i++) {
+            args[i] = i == 1 && JS_IsFunction(ctx, argv[i + 1])
+                          ? JS_NewCFunctionData(ctx, safe_callback, 2, index, 1, &argv[i + 1])
+                          : JS_DupValue(ctx, argv[i + 1]);
+            if (JS_IsException(args[i])) {
+                while (i-- > 0) JS_FreeValue(ctx, args[i]);
+                return JS_EXCEPTION;
+            }
+        }
+        call_args = args;
+    }
+    JSValue ret = JS_Call(ctx, argv[0], JS_UNDEFINED, nargs, call_args);
+    if (takes_callback) {
+        for (int i = 0; i < nargs; i++) JS_FreeValue(ctx, args[i]);
+    }
+    return result_of_call(ctx, ret);
+}
+
+/* promise.then(ok, err): a promise of a Result that never rejects */
+static JSValue result_promise(JSContext* ctx, JSValue promise) {
+    JSValue handlers[2] = {JS_NewCFunction(ctx, js_result_ok, "ok", 1),
+                           JS_NewCFunction(ctx, js_result_err, "err", 1)};
+    JSValue then = JS_GetPropertyStr(ctx, promise, "then");
+    /* Without both handlers a rejection would pass through */
+    JSValue chained = JS_IsException(handlers[0]) || JS_IsException(handlers[1]) ||
+                              JS_IsException(then)
+                          ? JS_EXCEPTION
+                          : JS_Call(ctx, then, promise, 2, handlers);
+    JS_FreeValue(ctx, then);
+    JS_FreeValue(ctx, handlers[0]);
+    JS_FreeValue(ctx, handlers[1]);
+    return chained;
+}
+
+/* tryCall(fn | promise): the outcome as a Result, for code safe() doesn't
+ * cover, such as a library. A promise, or a fn that returns one, gives a
+ * promise of a Result instead. */
+static JSValue js_result_try_call(JSContext* ctx, JSValue this_val, int argc, JSValue* argv) {
+    if (argc > 0 && JS_IsPromise(argv[0])) return result_promise(ctx, argv[0]);
+    if (argc < 1 || !JS_IsFunction(ctx, argv[0])) {
+        return JS_ThrowTypeError(ctx, "tryCall: expected a function or a promise");
+    }
+    JSValue ret = JS_Call(ctx, argv[0], JS_UNDEFINED, 0, nullptr);
+    if (JS_IsPromise(ret)) {
+        JSValue chained = result_promise(ctx, ret);
+        JS_FreeValue(ctx, ret);
+        return chained;
+    }
+    return result_of_call(ctx, ret);
+}
+
 /* ── Prototype method helpers ───────────────────────────────────── */
 
 static inline bool result_is_ok(JSContext* ctx, JSValue this_val) {
@@ -350,6 +491,10 @@ static void mik__result_install_methods(JSContext* ctx, JSValue proto) {
 static int mik__result_module_init(JSContext* ctx, JSModuleDef* m) {
     JS_SetModuleExport(ctx, m, "ok", JS_NewCFunction(ctx, js_result_ok, "ok", 1));
     JS_SetModuleExport(ctx, m, "err", JS_NewCFunction(ctx, js_result_err, "err", 1));
+    JS_SetModuleExport(ctx, m, "safe",
+                       JS_NewCFunction(ctx, js_result_safe, "safe", 1));
+    JS_SetModuleExport(ctx, m, "tryCall",
+                       JS_NewCFunction(ctx, js_result_try_call, "tryCall", 1));
     return 0;
 }
 
@@ -382,5 +527,7 @@ JSModuleDef* mik__result_init(JSContext* ctx) {
     if (!m) return nullptr;
     JS_AddModuleExport(ctx, m, "ok");
     JS_AddModuleExport(ctx, m, "err");
+    JS_AddModuleExport(ctx, m, "safe");
+    JS_AddModuleExport(ctx, m, "tryCall");
     return m;
 }

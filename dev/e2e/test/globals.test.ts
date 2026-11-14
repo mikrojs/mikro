@@ -71,6 +71,7 @@ describe('TextEncoder / TextDecoder', () => {
   })
 })
 
+/* eslint-disable @mikrojs/no-unsafe-builtins -- tests the builtins themselves */
 describe('btoa / atob', () => {
   test('roundtrip', () => {
     assert.equal(atob(btoa('hello world')), 'hello world')

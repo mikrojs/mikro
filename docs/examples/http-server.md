@@ -18,7 +18,7 @@ Join an existing WiFi network and serve a small HTTP API: a JSON status endpoint
 ```ts twoslash
 import {env} from 'mikro/env'
 import {createServer, type ServerResponse} from 'mikro/http/server'
-import {err, ok, type Result} from 'mikro/result'
+import {safe} from 'mikro/result'
 import {sleep} from 'mikro/sleep'
 import {memoryUsage, uptime} from 'mikro/sys'
 import {wifi} from 'mikro/wifi'
@@ -36,7 +36,7 @@ if (!connected.ok) {
   const json = (status: number, value: unknown): ServerResponse => ({
     status,
     headers: {'content-type': 'application/json'},
-    body: JSON.stringify(value),
+    body: safe(JSON.stringify, value).orPanic('response is not JSON-serializable'),
   })
 
   // A short, finite stream. The server handles one request at a time, so a
@@ -47,17 +47,6 @@ if (!connected.ok) {
       await sleep(1000)
     }
     yield 'data: liftoff\n\n'
-  }
-
-  // decodeURIComponent throws on a malformed %-encoding, and a throw in a
-  // handler is a panic, so without this any client could restart the device.
-  function decodeParam(text: string): Result<string, {name: 'InvalidEncoding'}> {
-    try {
-      return ok(decodeURIComponent(text))
-      // eslint-disable-next-line @mikrojs/no-try-catch -- decodeURIComponent has no Result form
-    } catch {
-      return err({name: 'InvalidEncoding' as const})
-    }
   }
 
   // Routing is left to the app: branch on req.method and the path.
@@ -84,7 +73,9 @@ if (!connected.ok) {
     }
 
     if (path?.startsWith('/api/echo/')) {
-      const msg = decodeParam(path.slice('/api/echo/'.length))
+      // decodeURIComponent throws on a malformed %-encoding, and a throw in a
+      // handler is a panic, so safe() returns it as a Result instead.
+      const msg = safe(decodeURIComponent, path.slice('/api/echo/'.length))
       if (!msg.ok) return json(400, {error: 'malformed path'})
       return json(200, {echo: msg.value})
     }

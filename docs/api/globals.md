@@ -63,7 +63,7 @@ btoa('Hello') // "SGVsbG8="
 atob('SGVsbG8=') // "Hello"
 ```
 
-`btoa` throws a `RangeError` if the string contains characters outside the latin1 range. `atob` throws a `SyntaxError` on invalid base64 input.
+`btoa` throws a `RangeError` if the string contains characters outside the latin1 range. `atob` throws a `SyntaxError` on invalid base64 input. Call them through [`safe()`](/api/result#safe) to get a `Result` instead.
 
 ## TextEncoder / TextDecoder
 
