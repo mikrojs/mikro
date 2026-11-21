@@ -255,8 +255,29 @@ mikro logs tail
 | Option            | Description                                                                                     |
 | ----------------- | ----------------------------------------------------------------------------------------------- |
 | `-p, --port PORT` | Serial port (auto-detected if omitted)                                                          |
-| `-r, --restart`   | Restart the device first                                                                        |
+| `-r, --restart`   | Restart the device when it first connects                                                       |
 | `--loglevel`      | Drop device output below this level: `none`, `error`, `warn`, `info`, `debug` (default `debug`) |
+
+If the device is not connected, the command waits for it. If the device disconnects, the command waits for it to return. This lets you follow a device that uses deep sleep: a chip on its built-in USB Serial/JTAG port disconnects while it sleeps and connects again when it wakes.
+
+After the first connection the command stays on that device, also when another device connects.
+
+The command runs until you stop it with Ctrl+C, or until one of these problems ends it:
+
+- There is no `--port` and more than one device to choose from.
+- Another program holds the port.
+- The port is listed but does not open.
+
+Status lines go to stderr, so piped output holds device output only. While it waits, the command prints what it waits for and each other device that is connected. If the device you expected shows up as another device, check the `--port` value.
+
+```
+Waiting for kitchen-sensr…
+Found another device: kitchen-sensor (chip=esp32c6, id=2m68224yym) on /dev/cu.usbmodem1101
+```
+
+If no device has connected after 10 seconds, the command prints a link to [Troubleshooting](/troubleshooting) and keeps waiting.
+
+The device does not keep output for a host that is not connected. After a wake, the output from before your computer has found the device is lost, and a wake that ends sooner than that prints nothing. To read that output, turn on the file logger ([`logFile`](/config#logfile)). It writes the most recent output to the device, and `mikro logs pull` reads it while the device is awake.
 
 ### mikro logs pull
 

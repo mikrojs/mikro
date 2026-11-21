@@ -12,14 +12,28 @@ import {TROUBLESHOOTING_URL} from './troubleshooting.js'
 
 export const BAUD_RATE = 115200
 
-interface PortInfo {
+export interface PortInfo {
   path: string
   manufacturer?: string
   serialNumber?: string
   vendorId?: string
 }
 
+/** The device `resolveDevice` looked for is not connected. `devices` are the ones that are. */
+export class DeviceNotFoundError extends UserError {
+  readonly devices: readonly PortInfo[]
+  constructor(message: string, devices: readonly PortInfo[]) {
+    super(message)
+    this.devices = devices
+  }
+}
+
 export async function resolvePort(explicit?: string): Promise<string> {
+  return (await resolveDevice(explicit)).path
+}
+
+/** Like `resolvePort`, but returns the device, which carries its USB serial number. */
+export async function resolveDevice(explicit?: string): Promise<PortInfo> {
   const devices: PortInfo[] = (await SerialPort.list()).filter((p) => p.serialNumber)
 
   if (explicit) {
@@ -34,17 +48,20 @@ export async function resolvePort(explicit?: string): Promise<string> {
         lines.push('No devices found')
       }
       lines.push(`See ${TROUBLESHOOTING_URL} for help.`)
-      throw new UserError(lines.join('\n'))
+      throw new DeviceNotFoundError(lines.join('\n'), devices)
     }
-    return match.path
+    return match
   }
 
   if (devices.length === 0) {
-    throw new UserError(`No serial devices found\nSee ${TROUBLESHOOTING_URL} for help.`)
+    throw new DeviceNotFoundError(
+      `No serial devices found\nSee ${TROUBLESHOOTING_URL} for help.`,
+      devices,
+    )
   }
 
   if (devices.length === 1) {
-    return devices[0]!.path
+    return devices[0]!
   }
 
   const lines = ['Multiple devices found. Use --port to select one:\n']
