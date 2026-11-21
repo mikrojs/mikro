@@ -401,11 +401,14 @@ TEST_CASE("JS out-of-memory skips try/catch and finally" * doctest::test_suite("
     REQUIRE(rt != nullptr);
     JSContext* ctx = MIK_GetJSContext(rt);
 
+    /* One allocation past the limit, not a loop of small ones: a nearly full
+     * heap can't allocate the OOM error, and quickjs then throws a catchable
+     * null. */
     const char* src =
         "(() => {\n"
         "  const hog = [];\n"
         "  try {\n"
-        "    while (true) hog.push(new ArrayBuffer(4096));\n"
+        "    hog.push(new ArrayBuffer(1024 * 1024));\n"
         "  } catch {\n"
         "    globalThis.caught = true;\n"
         "  } finally {\n"
@@ -451,7 +454,7 @@ TEST_CASE("JS out-of-memory after an await ends as an unhandled rejection" *
         "  const hog = [];\n"
         "  try {\n"
         "    await null;\n"
-        "    while (true) hog.push(new ArrayBuffer(4096));\n"
+        "    hog.push(new ArrayBuffer(1024 * 1024));\n"
         "  } catch {\n"
         "    globalThis.caught = true;\n"
         "  }\n"
