@@ -25,7 +25,9 @@ const tailArgs = command(
   objectConstruct({
     subcommand: constant('tail' as const),
     port: portOption,
-    restart: optional(flag('-r', '--restart', {description: message`Restart the device first`})),
+    restart: optional(
+      flag('-r', '--restart', {description: message`Restart the device when it first connects`}),
+    ),
     logLevel: optional(
       option('--loglevel', string({metavar: 'LEVEL'}), {
         description: message`Drop device output below this level: none, error, warn, info, debug (default: debug)`,

@@ -50,16 +50,22 @@ export function openSerial(path: string, baudRate: number): Observable<SerialPor
   })
 }
 
+/** A serial port that would not open, for a reason other than a lock on it. */
+export class PortOpenError extends UserError {}
+
 /**
  * Error for a serial port that would not open, with the serial error as the
  * cause. serialport reports a port that another program holds as "Cannot lock
  * port" and gives no error code to test for.
  */
 export function serialOpenError(path: string, err: Error): UserError {
-  const message = err.message.includes('Cannot lock port')
-    ? `${path} is in use by another program (close any serial monitor or other mikro command using it)`
-    : `Could not open ${path}`
-  return new UserError(message, {cause: err})
+  if (err.message.includes('Cannot lock port')) {
+    return new UserError(
+      `${path} is in use by another program (close any serial monitor or other mikro command using it)`,
+      {cause: err},
+    )
+  }
+  return new PortOpenError(`Could not open ${path}`, {cause: err})
 }
 
 /**

@@ -1,6 +1,6 @@
 import {SerialPort} from 'serialport'
 
-import {BAUD_RATE, resolvePort} from '../deploy.js'
+import {BAUD_RATE, resolveDevice} from '../deploy.js'
 import {triggerSafeMode} from '../recover.js'
 import {connectRepl, type ReplSession} from '../session.js'
 import {createSerialTransport, serialOpenError} from '../transport.js'
@@ -9,6 +9,8 @@ export interface SessionHandles {
   session: ReplSession
   serial: SerialPort
   devicePath: string
+  /** USB serial number of the device, which follows it across ports. */
+  serialNumber: string | undefined
   /** Close session + serial. Safe to call more than once. */
   close(): void
 }
@@ -40,7 +42,7 @@ export interface OpenSessionOptions {
  * eager subscription is listening when the post-reset MSG_READY arrives.
  */
 export async function openSession(options: OpenSessionOptions): Promise<SessionHandles> {
-  const devicePath = await resolvePort(options.port)
+  const {path: devicePath, serialNumber} = await resolveDevice(options.port)
   options.onConnecting?.(devicePath)
 
   const serial = new SerialPort({path: devicePath, baudRate: BAUD_RATE, autoOpen: false})
@@ -60,6 +62,7 @@ export async function openSession(options: OpenSessionOptions): Promise<SessionH
     session,
     serial,
     devicePath,
+    serialNumber,
     close() {
       if (closed) return
       closed = true
@@ -69,7 +72,9 @@ export async function openSession(options: OpenSessionOptions): Promise<SessionH
         // already closed
       }
       try {
-        serial.close()
+        // A disconnect has closed the port already, and closing it again
+        // reports "Port is not open" as an unhandled error event.
+        if (serial.isOpen) serial.close()
       } catch {
         // already closed
       }
