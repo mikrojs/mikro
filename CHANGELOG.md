@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.1 (2026-11-21)
+
+### Other
+
+- **prebuilds:** move darwin build off retired macos-14 runner ([#515](https://github.com/mikrojs/mikro/pull/515))
+
 ## 0.23.0 (2026-11-21)
 
 ### Breaking changes
