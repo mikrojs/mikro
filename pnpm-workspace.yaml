@@ -57,7 +57,7 @@ trustPolicyIgnoreAfter: 1051200
 minimumReleaseAgeExclude:
   # Renovate security update: esbuild@0.28.1
   - esbuild@0.28.1
-  # Renovate security update: vite@8.0.16
-  - vite@8.0.16
+  # Renovate security update: vite@8.0.16 || 8.3.3
+  - vite@8.0.16 || 8.3.3
   # Renovate security update: tar@7.5.21
   - tar@7.5.21
